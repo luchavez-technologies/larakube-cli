@@ -11,28 +11,41 @@
     keys.
 
     Stateless: state lives entirely in MAS's own Postgres tenant, so no PVC
-    here. chat-mas-config's content (config.yaml, including real encryption/
+    here. the MAS config Secret's content (config.yaml, including real encryption/
     signing keys from `mas-cli config generate`) is generated and written by
-    deployMas() directly via kubectl, same posture as chat-synapse-config —
+    deployMas() directly via kubectl, same posture as Synapse's config Secret —
     this file only declares the Deployment/Service that mount it by name.
 --}}
-@php($__tplHash = substr(hash_file('sha256', resource_path('views/k8s/chat/mas.blade.php')), 0, 12))
-{{-- Brand new component, no existing live data — fully instance-suffixed
-     from birth, unlike chat-synapse/chat-synapse-db (see matrix.blade.php's
-     own comment on why those stay unsuffixed). --}}
-@php($__instanceSuffix = ($instance ?? null) ? "-{$instance}" : '')
-@php($masName = 'chat-mas'.$__instanceSuffix)
-@php($masDbDeploymentName = 'chat-mas-db'.$__instanceSuffix)
-@php($masDbStorageName = 'chat-mas-db-storage'.$__instanceSuffix)
-@php($masSecretsName = 'chat-mas-secrets'.$__instanceSuffix)
-@php($masConfigSecretName = 'chat-mas-config'.$__instanceSuffix)
-@php($masIngressName = 'chat-mas-ingress'.$__instanceSuffix)
+@php
+    $__tplHash = substr(hash_file('sha256', resource_path('views/k8s/chat/mas.blade.php')), 0, 12);
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::CHAT->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::CHAT, $instance);
+    $labels = function (string $component) use ($names) {
+        $out = '';
+        foreach ($names->labels($component) as $key => $value) {
+            $out .= "\n    {$key}: {$value}";
+        }
+
+        return $out;
+    };
+    $podLabels = fn (string $component) => str_replace("\n    ", "\n        ", $labels($component));
+    $masName = $names->deployment('mas');
+    $masDbDeploymentName = $names->deployment('mas-db');
+    $masDbStorageName = $names->volume('storage', 'mas-db');
+    $masSecretsName = $names->secret(\App\Enums\SecretKind::CREDENTIALS, 'mas');
+    $masConfigSecretName = $names->secret(\App\Enums\SecretKind::CONFIG, 'mas');
+    $masIngressName = $masName;
+    $masDbName = $names->commonsDatabases()[1];
+@endphp
 @if($noPlex ?? false)
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: {{ $masDbStorageName }}
   namespace: larakube-shared
+  labels:{!! $labels('mas-db') !!}
 spec:
   accessModes:
     - ReadWriteOnce
@@ -45,6 +58,7 @@ kind: Deployment
 metadata:
   name: {{ $masDbDeploymentName }}
   namespace: larakube-shared
+  labels:{!! $labels('mas-db') !!}
 spec:
   replicas: 1
   strategy:
@@ -55,21 +69,21 @@ spec:
   template:
     metadata:
       labels:
-        app: {{ $masDbDeploymentName }}
+        app: {{ $masDbDeploymentName }}{!! $podLabels('mas-db') !!}
     spec:
       containers:
         - name: postgres
           image: postgres:15-alpine
           env:
             - name: POSTGRES_USER
-              value: chat_mas
+              value: {{ $masDbName }}
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ $masSecretsName }}
                   key: db-password
             - name: POSTGRES_DB
-              value: chat_mas
+              value: {{ $masDbName }}
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
           volumeMounts:
@@ -85,6 +99,7 @@ kind: Service
 metadata:
   name: {{ $masDbDeploymentName }}
   namespace: larakube-shared
+  labels:{!! $labels('mas-db') !!}
 spec:
   selector:
     app: {{ $masDbDeploymentName }}
@@ -99,7 +114,7 @@ kind: Deployment
 metadata:
   name: {{ $masName }}
   namespace: larakube-shared
-  labels:
+  labels:{!! $labels('mas') !!}
     app: {{ $masName }}
     app.kubernetes.io/part-of: chat
 spec:
@@ -112,13 +127,13 @@ spec:
   template:
     metadata:
       labels:
-        app: {{ $masName }}
+        app: {{ $masName }}{!! $podLabels('mas') !!}
       annotations:
         {{-- Only the checksum of the config itself matters here — the
              content already folds in every credential (DB password,
              Zitadel client secret, Synapse trust secret); a config-only
              checksum still forces a restart on rotation without needing
-             chat-mas's own Deployment to know those values individually. --}}
+             MAS's own Deployment to know those values individually. --}}
         larakube.io/config-checksum: "{{ substr(hash('sha256', $masConfigHash.$__tplHash), 0, 16) }}"
     spec:
       containers:
@@ -153,6 +168,7 @@ kind: Service
 metadata:
   name: {{ $masName }}
   namespace: larakube-shared
+  labels:{!! $labels('mas') !!}
 spec:
   selector:
     app: {{ $masName }}
@@ -166,12 +182,13 @@ spec:
       fighting Cinny for "/" on the main chat host — MAS's docs document
       this "basic configuration" (MAS owns the domain root) as the
       alternative to the compat-endpoint carve-out matrix.blade.php's
-      chat-ingress adds once cutover is active. --}}
+      the host ingress adds once cutover is active. --}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ $masIngressName }}
   namespace: larakube-shared
+  labels:{!! $labels('mas') !!}
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"

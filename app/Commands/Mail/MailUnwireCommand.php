@@ -4,6 +4,7 @@ namespace App\Commands\Mail;
 
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
+use App\Enums\SecretKind;
 use App\Services\Kubectl;
 use App\Traits\InteractsWithChat;
 use App\Traits\InteractsWithClusterContext;
@@ -245,14 +246,19 @@ class MailUnwireCommand extends Command
             return false;
         }
 
+        $chat = $this->chatNames($kubectl);
+        if ($chat === null) {
+            return false;
+        }
+
         $ns = $schema['namespace'];
         $ok = true;
 
-        $this->withSpin('Unwiring Matrix (Synapse) mail from homeserver.yaml...', function () use ($kubectl, $ns, &$ok): void {
+        $this->withSpin('Unwiring Matrix (Synapse) mail from homeserver.yaml...', function () use ($kubectl, $ns, $chat, &$ok): void {
             $oidc = $this->readChatWiredOidc($kubectl, $ns);
             $mas = $this->readChatWiredMas($kubectl, $ns);
 
-            $raw = Process::run("{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'")->output();
+            $raw = Process::run("{$kubectl} get secret {$chat->secret(SecretKind::CONFIG)} -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'")->output();
             if (trim($raw) === '') {
                 $ok = false;
 
@@ -266,14 +272,14 @@ class MailUnwireCommand extends Command
             $tmp = $temporaryDirectory->path().'/homeserver.yaml';
             file_put_contents($tmp, $homeserver);
             $result = Process::run(
-                "{$kubectl} create secret generic chat-synapse-config -n {$ns} --from-file=homeserver.yaml={$tmp} --dry-run=client -o yaml | {$kubectl} apply -f -",
+                "{$kubectl} create secret generic {$chat->secret(SecretKind::CONFIG)} -n {$ns} --from-file=homeserver.yaml={$tmp} --dry-run=client -o yaml | {$kubectl} apply -f -",
             );
             $temporaryDirectory->delete();
 
             $ok = $result->successful();
             if ($ok) {
-                Process::run("{$kubectl} rollout restart deployment/chat-synapse -n {$ns}");
-                Process::run("{$kubectl} delete secret chat-smtp -n {$ns} --ignore-not-found");
+                Process::run("{$kubectl} rollout restart deployment/{$chat->deployment()} -n {$ns}");
+                Process::run("{$kubectl} delete secret {$chat->secret(SecretKind::SMTP)} -n {$ns} --ignore-not-found");
             }
         });
 

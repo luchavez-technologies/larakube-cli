@@ -42,7 +42,7 @@ function masDatabaseFixture(array $overrides = []): array
     ], $overrides);
 }
 
-const MAS_MATRIX_TRUST_FIXTURE = ['homeserver' => 'chat.example.com', 'secret' => 'trust-secret'];
+const MAS_MATRIX_TRUST_FIXTURE = ['homeserver' => 'chat.example.com', 'secret' => 'trust-secret', 'synapse' => 'synapse-chat-example-com'];
 const MAS_UPSTREAM_FIXTURE = ['id' => 'provider-1', 'issuer' => 'https://sso.example.com', 'client_id' => 'cid', 'client_secret' => 'csecret'];
 
 test('database uri includes the explicit :5432 port', function (): void {
@@ -96,7 +96,7 @@ test('matrix and upstream_oauth2 sections render correctly and matrix.endpoint t
     expect($parsed['matrix']['homeserver'])->toBe('chat.example.com')
         ->and($parsed['matrix']['secret'])->toBe('trust-secret')
         // Cluster-internal Synapse Service — never the public host.
-        ->and($parsed['matrix']['endpoint'])->toBe('http://chat-synapse:8008')
+        ->and($parsed['matrix']['endpoint'])->toBe('http://synapse-chat-example-com:8008')
         ->and($parsed['upstream_oauth2']['providers'][0]['issuer'])->toBe('https://sso.example.com')
         ->and($parsed['upstream_oauth2']['providers'][0]['client_secret'])->toBe('csecret')
         ->and($parsed['upstream_oauth2']['providers'][0]['token_endpoint_auth_method'])->toBe('client_secret_basic');

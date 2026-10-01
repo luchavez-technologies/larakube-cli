@@ -24,7 +24,7 @@ trait InteractsWithVolumeSizing
     protected bool $warnedUnexpandableGrowth = false;
 
     /**
-     * A closure for Blade: `storage: {{ $volumeSize('chat-synapse-data', '5Gi', true) }}`.
+     * A closure for Blade: `storage: {{ $volumeSize($dataVolume, '5Gi', true) }}`.
      *
      * Returns whichever is larger — the live claim or the template's default —
      * so a resize survives re-apply AND a raised default still takes effect.

@@ -34,7 +34,7 @@ function backupRunFakes(array $overrides = []): array
         // excluded, Synapse signing key included, etc.) still hold under the
         // new discovery mechanism, not the old hardcoded array.
         '*get namespace -o jsonpath*' => Process::result(output: 'larakube-shared larakube-vault larakube-secrets larakube-sso larakube-vpn larakube-plex'),
-        '*get deployment -n larakube-shared -o jsonpath*' => Process::result(output: 'forgejo-git-luchtech-dev forgejo-runner-git-luchtech-dev ocis-drive-example-com stalwart chat-synapse chat-cinny chat-coturn chat-synapse-db webmail-bulwark grafana-monitor-luchtech-dev prometheus-server loki'),
+        '*get deployment -n larakube-shared -o jsonpath*' => Process::result(output: 'forgejo-git-luchtech-dev forgejo-runner-git-luchtech-dev ocis-drive-example-com stalwart synapse-chat-luchtech-dev element-web-chat-luchtech-dev coturn-chat-luchtech-dev synapse-db-chat-luchtech-dev webmail-bulwark grafana-monitor-luchtech-dev prometheus-server loki'),
         '*get deployment -n larakube-vault -o jsonpath*' => Process::result(output: 'vaultwarden-vault-luchtech-dev'),
         '*get deployment -n larakube-secrets -o jsonpath*' => Process::result(output: 'openbao-backend'),
         '*get deployment -n larakube-sso -o jsonpath*' => Process::result(output: 'sso-zitadel'),
@@ -98,7 +98,7 @@ test('the inventory excludes Prometheus and includes the Synapse signing key', f
     expect($names)->not->toContain('prometheus')
         // 59 bytes, and losing it permanently breaks federation and every
         // existing device session.
-        ->and($names)->toContain('chat-synapse')
+        ->and($names)->toContain('synapse-chat-luchtech-dev')
         ->and($paths)->toContain('/data/chat.luchtech.dev.signing.key')
         // The object store holds chat media, git LFS, notes, signed documents.
         // Plex Commons infrastructure, so it keeps its explicit name.
@@ -119,8 +119,8 @@ test('the inventory excludes Prometheus and includes the Synapse signing key', f
     // (Cinny, Coturn, the bundled --no-plex Postgres) never opted in, so
     // their bulk/rebuildable data stays excluded even though they're live
     // Deployments discovery sees just as clearly as Synapse itself.
-    expect($names)->not->toContain('chat-cinny')
-        ->and($names)->not->toContain('chat-coturn')
+    expect($names)->not->toContain('element-web-chat-luchtech-dev')
+        ->and($names)->not->toContain('coturn-chat-luchtech-dev')
         ->and($names)->not->toContain('chat-db');
 });
 

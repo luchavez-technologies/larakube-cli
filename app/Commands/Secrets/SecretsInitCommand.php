@@ -300,7 +300,7 @@ class SecretsInitCommand extends Command
             // ExternalSecret name too, so the race it exists to prevent was
             // unguarded. Confirmed live 2026-08-29: notes/design/git have only
             // their dynamic `-db` ExternalSecrets, and the static ones that do
-            // exist (monitor-secrets, chat-secrets) predate the renames.
+            // exist (monitor-secrets, vault-secrets) predate the renames.
             $toolHost = $this->getToolHost($kubectl, $tool);
             $instance = $toolHost !== null ? $tool->instanceSlugFromHost($toolHost) : null;
 

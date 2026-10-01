@@ -3,6 +3,7 @@
 namespace App\Commands\Meet;
 
 use App\Enums\ClusterTool;
+use App\Enums\SecretKind;
 use App\Services\Kubectl;
 use App\Traits\InteractsWithChat;
 use App\Traits\InteractsWithClusterContext;
@@ -176,18 +177,25 @@ class MeetWireCommand extends Command
     }
 
     /**
-     * Rewrite Synapse's calling block in place and restart it. The chat-meet
-     * Secret is what chat:init reads back on re-run.
+     * Rewrite Synapse's calling block in place and restart it. The Meet Secret
+     * is what chat:init reads back on re-run.
      */
     protected function wireSynapseCalling(string $kubectl, string $ns, string $jwtUrl): bool
     {
+        $chat = $this->chatNames($kubectl);
+        if ($chat === null) {
+            $this->laraKubeError('Chat is not installed, so there is no Synapse to point at the Meet bridge.');
+
+            return false;
+        }
+
         $ok = true;
 
-        $this->withSpin('Pointing Synapse at the Meet bridge...', function () use ($kubectl, $ns, $jwtUrl, &$ok): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'chat-meet', ['jwt-url' => $jwtUrl]);
+        $this->withSpin('Pointing Synapse at the Meet bridge...', function () use ($kubectl, $ns, $jwtUrl, $chat, &$ok): void {
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $chat->name('meet', 'synapse'), ['jwt-url' => $jwtUrl]);
 
             $raw = Process::run(
-                "{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'",
+                "{$kubectl} get secret {$chat->secret(SecretKind::CONFIG)} -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'",
             )->output();
 
             if (trim($raw) === '') {
@@ -207,7 +215,7 @@ class MeetWireCommand extends Command
             $tmp = $temporaryDirectory->path().'/homeserver.yaml';
             file_put_contents($tmp, $homeserver);
             $result = Process::run(
-                "{$kubectl} create secret generic chat-synapse-config -n {$ns} "
+                "{$kubectl} create secret generic {$chat->secret(SecretKind::CONFIG)} -n {$ns} "
                 ."--from-file=homeserver.yaml={$tmp} "
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
@@ -215,7 +223,7 @@ class MeetWireCommand extends Command
 
             $ok = $result->successful();
             if ($ok) {
-                Process::run("{$kubectl} rollout restart deployment/chat-synapse -n {$ns}");
+                Process::run("{$kubectl} rollout restart deployment/{$chat->deployment()} -n {$ns}");
             }
         });
 

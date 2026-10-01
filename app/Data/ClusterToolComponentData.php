@@ -22,7 +22,7 @@ class ClusterToolComponentData extends Data
         public ClusterToolComponentRole $role,
         /** Fully resolved Deployment name for the requested instance/engine — same string shape deploymentName() has always returned for the PRIMARY component. */
         public string $deployment,
-        /** Container name for kubectl exec (backup, admin commands). Defaults to $deployment when null — set explicitly only when it differs (e.g. chat-synapse's container is "synapse"). */
+        /** Container name for kubectl exec (backup, admin commands). Defaults to $deployment when null — set explicitly only when it differs (e.g. Synapse's container is "synapse"). */
         public ?string $container = null,
         /**
          * Other resources teardown must also delete for this component —
@@ -32,7 +32,7 @@ class ClusterToolComponentData extends Data
          * @var list<array{kind: string, name: string}>
          */
         public array $resources = [],
-        /** True only for a --no-plex bundled-storage component (chat-synapse-db) — never a real Commons Postgres replacement. Informational; teardown deletes it unconditionally with --ignore-not-found either way. */
+        /** True only for a --no-plex bundled-storage component (Synapse's bundled database) — never a real Commons Postgres replacement. Informational; teardown deletes it unconditionally with --ignore-not-found either way. */
         public bool $bundledOnly = false,
         /** When true, sso:wire/mail:wire also `kubectl set env --from=secret` + rollout-restart THIS deployment using the PRIMARY component's secret — the general form of Penpot's frontend needing the same OIDC client as its backend. */
         public bool $sharesPrimarySecret = false,

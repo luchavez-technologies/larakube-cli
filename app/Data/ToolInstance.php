@@ -71,6 +71,15 @@ final readonly class ToolInstance
         return $instances;
     }
 
+    /**
+     * The one registered instance of a tool that can only ever have one (Chat:
+     * Synapse serves a single server_name), or null when none is registered.
+     */
+    public static function first(string $kubectl, ClusterTool $tool): ?self
+    {
+        return self::registered($kubectl, $tool)[0] ?? null;
+    }
+
     /** Whether one of $tool's registered instances runs $component's Deployment. */
     public static function componentDeployed(string $kubectl, ClusterTool $tool, ?string $component = null): bool
     {

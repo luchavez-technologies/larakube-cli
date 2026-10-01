@@ -6,6 +6,7 @@ function chatManifest(array $overrides = []): string
 {
     return view('k8s.chat.matrix', array_merge([
         'host' => 'chat.example.com',
+        'instance' => 'chat-example-com',
         'appName' => 'Chat',
         'logoUrl' => '',
         'plexNamespace' => 'larakube-plex',
@@ -14,11 +15,11 @@ function chatManifest(array $overrides = []): string
         'isLocal' => false,
         'proxied' => false,
         's3Endpoint' => 'http://seaweedfs.larakube-plex.svc.cluster.local:8333',
-        's3Bucket' => 'chat-media',
+        's3Bucket' => 'synapse-media-chat-example-com',
         's3AccessKey' => 'seaweedfs',
         's3SecretKey' => 'seaweedfs',
-        'dbName' => 'chat_matrix',
-        'dbUser' => 'chat_matrix',
+        'dbName' => 'synapse_chat_example_com',
+        'dbUser' => 'synapse_chat_example_com',
         'dbPassword' => 'db-secret',
         'registrationSecret' => 'reg-secret',
         'turnSecret' => 'turn-secret',
@@ -74,13 +75,13 @@ test('chat no longer ships an SFU — that belongs to the meet tool', function (
         ->not->toContain('stripprefix')
         ->not->toContain('livekit-server')
         // Coturn stays: it backs Synapse's legacy 1:1 turn_uris, not the SFU.
-        ->toContain('chat-coturn');
+        ->toContain('coturn-chat-example-com');
 });
 
 test('the synapse init container and runtime container run the same image', function (): void {
     $synapse = collect(chatDocuments(chatManifest()))
         ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment'
-            && ($doc['metadata']['name'] ?? null) === 'chat-synapse');
+            && ($doc['metadata']['name'] ?? null) === 'synapse-chat-example-com');
 
     $init = $synapse['spec']['template']['spec']['initContainers'][0]['image'];
     $runtime = $synapse['spec']['template']['spec']['containers'][0]['image'];
@@ -91,7 +92,7 @@ test('the synapse init container and runtime container run the same image', func
 test('synapse enables the MSCs Element Call needs, with a delay ceiling and raised rate limits', function (): void {
     $config = collect(chatDocuments(chatManifest()))
         ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Secret'
-            && ($doc['metadata']['name'] ?? null) === 'chat-synapse-config');
+            && ($doc['metadata']['name'] ?? null) === 'synapse-config-chat-example-com');
 
     $homeserver = Yaml::parse($config['stringData']['homeserver.yaml']);
 
@@ -114,7 +115,7 @@ test('synapse enables the MSCs Element Call needs, with a delay ceiling and rais
 test('the RTC experimental block is skipped entirely when Meet is not wired', function (): void {
     $config = collect(chatDocuments(chatManifest(['meetJwtUrl' => null])))
         ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Secret'
-            && ($doc['metadata']['name'] ?? null) === 'chat-synapse-config');
+            && ($doc['metadata']['name'] ?? null) === 'synapse-config-chat-example-com');
 
     $homeserver = Yaml::parse($config['stringData']['homeserver.yaml']);
 
@@ -125,12 +126,12 @@ test('the RTC experimental block is skipped entirely when Meet is not wired', fu
 test('uploads are capped and rate-limited even when Meet is not wired', function (): void {
     // Unlike rc_message (only set inside the meetJwtUrl block above), upload
     // abuse doesn't depend on Meet being wired — an unbounded upload can fill
-    // the 5Gi chat-synapse-data PVC and crash the pod regardless. This must
+    // the 5Gi data volume and crash the pod regardless. This must
     // hold with meetJwtUrl null, the exact case the previous test proves
     // skips the experimental/rc_message block entirely.
     $config = collect(chatDocuments(chatManifest(['meetJwtUrl' => null])))
         ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Secret'
-            && ($doc['metadata']['name'] ?? null) === 'chat-synapse-config');
+            && ($doc['metadata']['name'] ?? null) === 'synapse-config-chat-example-com');
 
     $homeserver = Yaml::parse($config['stringData']['homeserver.yaml']);
 
@@ -142,7 +143,7 @@ test('uploads are capped and rate-limited even when Meet is not wired', function
 test('every chat container declares a memory limit', function (): void {
     $deployments = collect(chatDocuments(chatManifest()))
         ->filter(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment'
-            && str_starts_with($doc['metadata']['name'], 'chat-'));
+            && str_ends_with($doc['metadata']['name'], '-chat-example-com'));
 
     expect($deployments)->not->toBeEmpty();
 
@@ -160,7 +161,7 @@ test('the S3 prefix ends in a slash — the provider concatenates it without one
     // silent rename of every key, orphaning objects already in the bucket.
     $config = collect(chatDocuments(chatManifest()))
         ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Secret'
-            && ($doc['metadata']['name'] ?? null) === 'chat-synapse-config');
+            && ($doc['metadata']['name'] ?? null) === 'synapse-config-chat-example-com');
 
     $prefix = Yaml::parse($config['stringData']['homeserver.yaml'])['media_storage_providers'][0]['config']['prefix'];
 
@@ -173,7 +174,7 @@ test('a media prune CronJob ships whenever S3 offload is on', function (): void 
     // PVCs are directories on the same block device. Two copies, one disk.
     $cron = collect(chatDocuments(chatManifest()))
         ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'CronJob'
-            && ($doc['metadata']['name'] ?? null) === 'chat-media-prune');
+            && ($doc['metadata']['name'] ?? null) === 'synapse-media-prune-chat-example-com');
 
     expect($cron)->not->toBeNull();
 
@@ -206,7 +207,7 @@ test('synapse media offload uses the credentials it is handed, not a hardcoded l
         's3AccessKey' => 'larakube',
         's3SecretKey' => 'real-commons-secret',
     ])))->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Secret'
-        && ($doc['metadata']['name'] ?? null) === 'chat-synapse-config');
+        && ($doc['metadata']['name'] ?? null) === 'synapse-config-chat-example-com');
 
     $s3 = Yaml::parse($config['stringData']['homeserver.yaml'])['media_storage_providers'][0]['config'];
 
@@ -218,7 +219,7 @@ test('rotating the Commons S3 secret changes the synapse config-checksum', funct
     $checksum = function (string $secret): string {
         $synapse = collect(chatDocuments(chatManifest(['s3SecretKey' => $secret])))
             ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment'
-                && ($doc['metadata']['name'] ?? null) === 'chat-synapse');
+                && ($doc['metadata']['name'] ?? null) === 'synapse-chat-example-com');
 
         return $synapse['spec']['template']['metadata']['annotations']['larakube.io/config-checksum'];
     };
@@ -231,7 +232,7 @@ test('rotating the Commons S3 secret changes the synapse config-checksum', funct
 test('the media path pods carry no CPU limit — throttling a relay drops calls', function (): void {
     $documents = chatDocuments(chatManifest());
 
-    foreach (['chat-coturn'] as $name) {
+    foreach (['coturn-chat-example-com'] as $name) {
         $container = collect($documents)
             ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment'
                 && ($doc['metadata']['name'] ?? null) === $name)['spec']['template']['spec']['containers'][0];

@@ -4,6 +4,7 @@ namespace App\Commands\Mail;
 
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
+use App\Enums\SecretKind;
 use App\Exceptions\MissingFlagException;
 use App\Services\Kubectl;
 use App\Traits\InteractsWithChat;
@@ -530,7 +531,7 @@ class MailWireCommand extends Command
 
     /**
      * Synapse reads mail settings from homeserver.yaml, not env: store them in
-     * chat-smtp (so chat:init re-renders the email: block) and re-render the
+     * Synapse's SMTP Secret (so chat:init re-renders the email: block) and re-render the
      * config, keeping any OIDC/MAS wiring. Mirror of MailUnwireCommand's
      * unwireSynapseSmtp(). Credentials travel on stdin, never argv.
      */
@@ -538,6 +539,11 @@ class MailWireCommand extends Command
     {
         $schema = $tool->smtpEnv('matrix');
         if ($schema === null) {
+            return false;
+        }
+
+        $chat = $this->chatNames($kubectl);
+        if ($chat === null) {
             return false;
         }
 
@@ -551,11 +557,11 @@ class MailWireCommand extends Command
         ];
         $ok = true;
 
-        $this->withSpin('Wiring Matrix (Synapse) mail via homeserver.yaml...', function () use ($kubectl, $ns, $smtp, &$ok): void {
+        $this->withSpin('Wiring Matrix (Synapse) mail via homeserver.yaml...', function () use ($kubectl, $ns, $smtp, $chat, &$ok): void {
             $secret = Process::input((string) json_encode([
                 'apiVersion' => 'v1',
                 'kind' => 'Secret',
-                'metadata' => ['name' => 'chat-smtp', 'namespace' => $ns],
+                'metadata' => ['name' => $chat->secret(SecretKind::SMTP), 'namespace' => $ns, 'labels' => $chat->labels('synapse')],
                 'type' => 'Opaque',
                 'data' => array_map('base64_encode', $smtp),
             ]))->run("{$kubectl} apply -f -");
@@ -565,7 +571,7 @@ class MailWireCommand extends Command
                 return;
             }
 
-            $raw = Process::run("{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'")->output();
+            $raw = Process::run("{$kubectl} get secret {$chat->secret(SecretKind::CONFIG)} -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'")->output();
             if (trim($raw) === '') {
                 $ok = false;
 
@@ -583,13 +589,13 @@ class MailWireCommand extends Command
             $tmp = $temporaryDirectory->path().'/homeserver.yaml';
             file_put_contents($tmp, $homeserver);
             $result = Process::run(
-                "{$kubectl} create secret generic chat-synapse-config -n {$ns} --from-file=homeserver.yaml={$tmp} --dry-run=client -o yaml | {$kubectl} apply -f -",
+                "{$kubectl} create secret generic {$chat->secret(SecretKind::CONFIG)} -n {$ns} --from-file=homeserver.yaml={$tmp} --dry-run=client -o yaml | {$kubectl} apply -f -",
             );
             $temporaryDirectory->delete();
 
             $ok = $result->successful();
             if ($ok) {
-                Process::run("{$kubectl} rollout restart deployment/chat-synapse -n {$ns}");
+                Process::run("{$kubectl} rollout restart deployment/{$chat->deployment()} -n {$ns}");
             }
         });
 

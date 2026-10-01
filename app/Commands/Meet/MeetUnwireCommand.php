@@ -3,6 +3,7 @@
 namespace App\Commands\Meet;
 
 use App\Enums\ClusterTool;
+use App\Enums\SecretKind;
 use App\Services\Kubectl;
 use App\Traits\InteractsWithChat;
 use App\Traits\InteractsWithClusterContext;
@@ -127,14 +128,19 @@ class MeetUnwireCommand extends Command
         return 0;
     }
 
-    /** Strip the calling block from homeserver.yaml, drop chat-meet, restart. */
+    /** Strip the calling block from homeserver.yaml, drop the Meet Secret, restart. */
     protected function unwireSynapseCalling(string $kubectl, string $ns): bool
     {
+        $chat = $this->chatNames($kubectl);
+        if ($chat === null) {
+            return false;
+        }
+
         $ok = true;
 
-        $this->withSpin('Removing the focus from Synapse...', function () use ($kubectl, $ns, &$ok): void {
+        $this->withSpin('Removing the focus from Synapse...', function () use ($kubectl, $ns, $chat, &$ok): void {
             $raw = Process::run(
-                "{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'",
+                "{$kubectl} get secret {$chat->secret(SecretKind::CONFIG)} -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'",
             )->output();
 
             if (trim($raw) === '') {
@@ -152,7 +158,7 @@ class MeetUnwireCommand extends Command
             $tmp = $temporaryDirectory->path().'/homeserver.yaml';
             file_put_contents($tmp, $homeserver);
             $result = Process::run(
-                "{$kubectl} create secret generic chat-synapse-config -n {$ns} "
+                "{$kubectl} create secret generic {$chat->secret(SecretKind::CONFIG)} -n {$ns} "
                 ."--from-file=homeserver.yaml={$tmp} "
                 ."--dry-run=client -o yaml | {$kubectl} apply -f -",
             );
@@ -160,8 +166,8 @@ class MeetUnwireCommand extends Command
 
             $ok = $result->successful();
             if ($ok) {
-                Process::run("{$kubectl} delete secret chat-meet -n {$ns} --ignore-not-found");
-                Process::run("{$kubectl} rollout restart deployment/chat-synapse -n {$ns}");
+                Process::run("{$kubectl} delete secret {$chat->name('meet', 'synapse')} -n {$ns} --ignore-not-found");
+                Process::run("{$kubectl} rollout restart deployment/{$chat->deployment()} -n {$ns}");
             }
         });
 

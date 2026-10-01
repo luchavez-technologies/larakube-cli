@@ -4,7 +4,9 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
+use App\Enums\SecretKind;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
 
@@ -21,10 +23,22 @@ trait InteractsWithChat
         return 'larakube-shared';
     }
 
-    /** Chat Deployment present (Synapse)? */
+    /** Chat Deployment present (Synapse)? Found by label: it is named per instance. */
     protected function isChatInstalled(string $kubectl, string $ns): bool
     {
-        return trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'deployment', 'chat-synapse', '-n', $ns, '--no-headers', '--ignore-not-found'])->output) !== '';
+        return trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'deployment', '-l', 'larakube.io/tool=chat,larakube.io/component=synapse', '-n', $ns, '--no-headers', '--ignore-not-found'])->output) !== '';
+    }
+
+    /**
+     * Every Chat resource name (ADR 0021), for the instance this host serves.
+     * $host is optional: commands that read Chat state without knowing its host
+     * fall back to the live registered one. Null only when Chat is not deployed.
+     */
+    protected function chatNames(string $kubectl, ?string $host = null): ?ToolInstance
+    {
+        $slug = $this->chatInstanceSlug($kubectl, $host);
+
+        return $slug === null ? null : ToolInstance::forInstance(ClusterTool::CHAT, $slug);
     }
 
     /** Which engine is installed? Always returns 'matrix' when present. */
@@ -33,14 +47,16 @@ trait InteractsWithChat
         return $this->isChatInstalled($kubectl, $ns) ? 'matrix' : null;
     }
 
-    /** Read a key from the chat-secrets secret. */
-    protected function readChatSecret(string $kubectl, string $ns, string $key): ?string
+    /** Read a key from Synapse's credentials Secret. */
+    protected function readChatSecret(string $kubectl, string $ns, string $key, ?string $host = null): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'chat-secrets', $key);
+        $names = $this->chatNames($kubectl, $host);
+
+        return $names === null ? null : $this->readClusterSecretKey($kubectl, $ns, $names->secret(), $key);
     }
 
     /**
-     * Write (or overwrite) a key on the chat-secrets secret — a plain k8s
+     * Write (or overwrite) a key on Synapse's credentials Secret — a plain k8s
      * Secret patch, same posture as InteractsWithMail::storeMailSecret():
      * this holds Synapse's OWN self-contained automation credentials (the
      * larakube-automation admin's access token/password, minted lazily by
@@ -48,13 +64,15 @@ trait InteractsWithChat
      * tools consume, so it stays k8s-only rather than gaining an OpenBao
      * dependency.
      */
-    protected function storeChatSecret(string $kubectl, string $ns, string $key, string $value): bool
+    protected function storeChatSecret(string $kubectl, string $ns, string $key, string $value, ?string $host = null): bool
     {
-        return Kubectl::fromPrefix($kubectl)->patchSecret($ns, 'chat-secrets', [$key => $value])->ok;
+        $names = $this->chatNames($kubectl, $host);
+
+        return $names !== null && Kubectl::fromPrefix($kubectl)->patchSecret($ns, $names->secret(), [$key => $value])->ok;
     }
 
     /**
-     * Read wired SMTP values from the `chat-smtp` Secret.
+     * Read wired SMTP values from Synapse's SMTP Secret.
      *
      * Returns an array suitable for passing as `$smtp` to the matrix view, or
      * null when the Secret does not exist (unwired state). The six keys map
@@ -62,9 +80,14 @@ trait InteractsWithChat
      *
      * @return array{host: string, port: string, user: string, password: string, from: string}|null
      */
-    protected function readChatWiredSmtp(string $kubectl, string $ns): ?array
+    protected function readChatWiredSmtp(string $kubectl, string $ns, ?string $host = null): ?array
     {
-        $read = fn (string $key): ?string => Kubectl::fromPrefix($kubectl)->secretValue($ns, 'chat-smtp', $key);
+        $names = $this->chatNames($kubectl, $host);
+        if ($names === null) {
+            return null;
+        }
+
+        $read = fn (string $key): ?string => Kubectl::fromPrefix($kubectl)->secretValue($ns, $names->secret(SecretKind::SMTP), $key);
 
         $host = $read('host');
         if ($host === null) {
@@ -86,9 +109,11 @@ trait InteractsWithChat
      * so a re-run does not silently un-wire calling — same discipline as the
      * SMTP and OIDC read-backs either side of this.
      */
-    protected function readChatWiredMeet(string $kubectl, string $ns): ?string
+    protected function readChatWiredMeet(string $kubectl, string $ns, ?string $host = null): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'chat-meet', 'jwt-url');
+        $names = $this->chatNames($kubectl, $host);
+
+        return $names === null ? null : $this->readClusterSecretKey($kubectl, $ns, $names->name('meet', 'synapse'), 'jwt-url');
     }
 
     /**
@@ -139,16 +164,21 @@ trait InteractsWithChat
     }
 
     /**
-     * Read wired OIDC values from the `chat-oidc` Secret.
+     * Read wired OIDC values from Synapse's OIDC Secret.
      *
      * Returns an array suitable for passing as `$oidc` to the matrix view, or
      * null when the Secret does not exist (unwired state).
      *
      * @return array{issuer: string, client_id: string, client_secret: string, name: string}|null
      */
-    protected function readChatWiredOidc(string $kubectl, string $ns): ?array
+    protected function readChatWiredOidc(string $kubectl, string $ns, ?string $host = null): ?array
     {
-        $read = fn (string $key): ?string => Kubectl::fromPrefix($kubectl)->secretValue($ns, 'chat-oidc', $key);
+        $names = $this->chatNames($kubectl, $host);
+        if ($names === null) {
+            return null;
+        }
+
+        $read = fn (string $key): ?string => Kubectl::fromPrefix($kubectl)->secretValue($ns, $names->secret(SecretKind::OIDC), $key);
 
         $issuer = $read('issuer');
         if ($issuer === null) {
@@ -225,7 +255,7 @@ trait InteractsWithChat
 
     /**
      * Whether MAS is deployed AND currently the active auth mode for
-     * Synapse, read from the SAME `chat-mas-secrets-{instance}` Secret
+     * Synapse, read from the SAME MAS credentials Secret
      * `chat:init`'s own deployMas() writes when it deploys the component —
      * no separate "cutover" marker Secret. `public_issuer` (MAS's own
      * public subdomain, needed for the org.matrix.msc2965.authentication
@@ -244,13 +274,13 @@ trait InteractsWithChat
      */
     protected function readChatWiredMas(string $kubectl, string $ns, ?string $host = null): ?array
     {
-        $instance = $this->chatInstanceSlug($kubectl, $host);
-        if ($instance === null) {
+        $names = $this->chatNames($kubectl, $host);
+        if ($names === null) {
             return null;
         }
 
-        $secretName = "chat-mas-secrets-{$instance}";
-        $serviceName = "chat-mas-{$instance}";
+        $secretName = $names->secret(SecretKind::CREDENTIALS, 'mas');
+        $serviceName = $names->deployment('mas');
 
         $read = fn (string $key): ?string => Kubectl::fromPrefix($kubectl)->secretValue($ns, $secretName, $key);
 
@@ -406,23 +436,25 @@ trait InteractsWithChat
             return false;
         }
 
-        $smtp = $this->readChatWiredSmtp($kubectl, $ns);
-        $raw = Kubectl::fromPrefix($kubectl)->secretValue($ns, 'chat-synapse-config', 'homeserver.yaml');
+        $names = $this->chatNames($kubectl, $host);
+        $configSecret = $names->secret(SecretKind::CONFIG);
+        $smtp = $this->readChatWiredSmtp($kubectl, $ns, $host);
+        $raw = Kubectl::fromPrefix($kubectl)->secretValue($ns, $configSecret, 'homeserver.yaml');
         if ($raw === null || $raw === '') {
             return false;
         }
 
         $homeserver = $this->renderSynapseConfig($raw, $smtp, null, $mas);
 
-        $meetJwtUrl = $this->readChatWiredMeet($kubectl, $ns);
+        $meetJwtUrl = $this->readChatWiredMeet($kubectl, $ns, $host);
         $homeserver = $this->renderSynapseCalling($homeserver, $meetJwtUrl, $mas['public_issuer']);
 
-        $applied = Kubectl::fromPrefix($kubectl)->putSecret($ns, 'chat-synapse-config', ['homeserver.yaml' => $homeserver])->ok;
+        $applied = Kubectl::fromPrefix($kubectl)->putSecret($ns, $configSecret, ['homeserver.yaml' => $homeserver])->ok;
 
         if ($applied) {
-            $this->recordChatAuthMode($kubectl, $ns, 'mas');
+            $this->recordChatAuthMode($kubectl, $ns, 'mas', $host);
             $this->withSpin('Activating Matrix Authentication Service auth...', fn () => $this->runStreaming(
-                "{$kubectl} rollout restart deployment/chat-synapse -n {$ns}",
+                "{$kubectl} rollout restart deployment/{$names->deployment()} -n {$ns}",
             ));
         }
 
@@ -430,15 +462,25 @@ trait InteractsWithChat
     }
 
     /** The recorded sign-in mode ("mas"), or null while Chat still uses classic SSO. */
-    protected function readChatAuthMode(string $kubectl, string $ns): ?string
+    protected function readChatAuthMode(string $kubectl, string $ns, ?string $host = null): ?string
     {
-        $mode = trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'configmap', 'chat-auth-mode', '-n', $ns, '-o', 'jsonpath={.data.mode}', '--ignore-not-found'])->output);
+        $names = $this->chatNames($kubectl, $host);
+        if ($names === null) {
+            return null;
+        }
+
+        $mode = trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'configmap', $names->configMap('auth-mode', 'synapse'), '-n', $ns, '-o', 'jsonpath={.data.mode}', '--ignore-not-found'])->output);
 
         return $mode !== '' ? $mode : null;
     }
 
-    protected function recordChatAuthMode(string $kubectl, string $ns, string $mode): void
+    protected function recordChatAuthMode(string $kubectl, string $ns, string $mode, ?string $host = null): void
     {
-        Kubectl::fromPrefix($kubectl)->putConfigMap($ns, 'chat-auth-mode', ['mode' => $mode], ['app.kubernetes.io/part-of' => 'chat']);
+        $names = $this->chatNames($kubectl, $host);
+        if ($names === null) {
+            return;
+        }
+
+        Kubectl::fromPrefix($kubectl)->putConfigMap($ns, $names->configMap('auth-mode', 'synapse'), ['mode' => $mode], $names->labels('synapse'));
     }
 }

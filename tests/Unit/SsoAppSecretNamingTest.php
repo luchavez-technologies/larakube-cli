@@ -41,5 +41,5 @@ test('a tool with two OIDC clients names the second after its component', functi
     $namer = ssoAppNamer();
 
     expect($namer->name(ClusterTool::CHAT, 'chat-luchtech-dev', 'mas'))
-        ->toBe('chat-mas-sso-chat-luchtech-dev');
+        ->toBe('mas-sso-chat-luchtech-dev');
 });

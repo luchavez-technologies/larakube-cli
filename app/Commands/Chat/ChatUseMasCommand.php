@@ -60,7 +60,7 @@ class ChatUseMasCommand extends Command
             return 1;
         }
 
-        if (! $this->kubectlStep('Waiting for Synapse...', fn () => Kubectl::fromPrefix($kubectl)->rolloutStatus($ns, 'chat-synapse', 180))) {
+        if (! $this->kubectlStep('Waiting for Synapse...', fn () => Kubectl::fromPrefix($kubectl)->rolloutStatus($ns, $this->chatNames($kubectl)->deployment(), 180))) {
             return 1;
         }
         $this->laraKubeInfo('✅ Chat signs in through MAS; chat:init keeps it that way.');

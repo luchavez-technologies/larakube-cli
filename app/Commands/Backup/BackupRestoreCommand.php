@@ -289,7 +289,7 @@ class BackupRestoreCommand extends Command
     protected function offerRestoreTargets(array $dbs, array $vols): array
     {
         if ($this->cannotPrompt()) {
-            $this->line('  <fg=gray>Restore one database:</> <fg=blue>larakube backup:restore --database=chat_matrix</>');
+            $this->line('  <fg=gray>Restore one database:</> <fg=blue>larakube backup:restore --database=<database></>');
             $this->line('  <fg=gray>Restore one volume:</>   <fg=blue>larakube backup:restore --volume=forgejo</>');
             $this->newLine();
 

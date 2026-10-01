@@ -1,4 +1,4 @@
-{{-- Reduced copy of chat-ingress used ONLY by the local-TLD `up` reconciler
+{{-- Reduced copy of the host ingress used ONLY by the local-TLD `up` reconciler
      (InteractsWithTraefik::applySharedService(), always $isLocal=true, no
      $mas payload threaded through) to re-point the host on a config:tld
      change — NOT kept in lockstep with matrix.blade.php's MAS compat-
@@ -10,11 +10,21 @@
      an oversight. $webName IS kept in lockstep though — $host is already
      this reconciler's own primary input, so deriving the instance costs
      nothing extra here, unlike the $mas/$instance-elsewhere problem above. --}}
-@php($webName = 'chat-web-'.\App\Enums\ClusterTool::CHAT->instanceSlugFromHost($host))
+@php
+    $instance = \App\Enums\ClusterTool::CHAT->instanceSlugFromHost($host);
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::CHAT, $instance);
+    $synapseName = $names->deployment('synapse');
+    $webName = $names->deployment('web');
+    $ingressLabels = '';
+    foreach ($names->labels('synapse') as $key => $value) {
+        $ingressLabels .= "\n    {$key}: {$value}";
+    }
+@endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: chat-ingress
+  name: {{ $synapseName }}
+  labels:{!! $ingressLabels !!}
   namespace: larakube-shared
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -26,7 +36,7 @@ metadata:
 @endif
 @endunless
 @if($vpnOnly ?? false)
-    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-chat-vpn-only@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: {{ $names->vpnMiddleware()->traefikMiddleware() }}
 @endif
 spec:
   rules:
@@ -37,14 +47,14 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: chat-synapse
+                name: {{ $synapseName }}
                 port:
                   number: 8008
           - path: /_synapse
             pathType: Prefix
             backend:
               service:
-                name: chat-synapse
+                name: {{ $synapseName }}
                 port:
                   number: 8008
           - path: /

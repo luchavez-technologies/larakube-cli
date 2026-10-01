@@ -21,7 +21,7 @@ database:
 matrix:
   homeserver: "{{ $matrixTrust['homeserver'] }}"
   secret: "{{ $matrixTrust['secret'] }}"
-  endpoint: "http://chat-synapse:8008"
+  endpoint: "http://{{ $matrixTrust['synapse'] }}:8008"
 upstream_oauth2:
   providers:
     - id: "{{ $upstream['id'] }}"

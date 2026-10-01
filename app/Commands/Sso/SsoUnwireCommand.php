@@ -5,6 +5,7 @@ namespace App\Commands\Sso;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\ClusterTool;
+use App\Enums\SecretKind;
 use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithChat;
@@ -155,9 +156,9 @@ class SsoUnwireCommand extends Command
         Process::run("{$kubectl} delete secret {$appSecret} -n {$ssoNs} --ignore-not-found");
         Process::run("{$kubectl} delete secret {$schema['secret']} -n {$schema['namespace']} --ignore-not-found");
 
-        if ($schema['deployment'] === 'chat-synapse') {
+        if (in_array($tool, [ClusterTool::CHAT, ClusterTool::MATRIX], true)) {
             $this->unwireSynapseOidc($kubectl, $schema['namespace']);
-            Process::run("{$kubectl} rollout restart deployment/chat-synapse -n {$schema['namespace']}");
+            Process::run("{$kubectl} rollout restart deployment/{$schema['deployment']} -n {$schema['namespace']}");
             $this->laraKubeInfo("✅ {$tool->getLabel()} no longer uses Zitadel SSO.");
 
             return 0;
@@ -342,13 +343,18 @@ class SsoUnwireCommand extends Command
 
     protected function unwireSynapseOidc(string $kubectl, string $ns): void
     {
+        $chat = $this->chatNames($kubectl);
+        if ($chat === null) {
+            return;
+        }
+
         $smtp = $this->readChatWiredSmtp($kubectl, $ns);
         // Read back MAS state so this doesn't clobber an already-active MAS
         // mode — renderSynapseConfig() always prefers $mas over oidc_providers:, so
         // this is a safe no-op on the auth block whenever MAS is active
         // (there's no oidc_providers: block for it to unwire in that case).
         $mas = $this->readChatWiredMas($kubectl, $ns);
-        $raw = trim(Process::run("{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'")->output());
+        $raw = trim(Process::run("{$kubectl} get secret {$chat->secret(SecretKind::CONFIG)} -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'")->output());
         if ($raw === '') {
             return;
         }
@@ -360,12 +366,12 @@ class SsoUnwireCommand extends Command
         $tmp = $temporaryDirectory->path().'/homeserver.yaml';
         file_put_contents($tmp, $homeserver);
         $result = Process::run(
-            "{$kubectl} create secret generic chat-synapse-config -n {$ns} --from-file=homeserver.yaml={$tmp} --dry-run=client -o yaml | {$kubectl} apply -f -",
+            "{$kubectl} create secret generic {$chat->secret(SecretKind::CONFIG)} -n {$ns} --from-file=homeserver.yaml={$tmp} --dry-run=client -o yaml | {$kubectl} apply -f -",
         );
         $temporaryDirectory->delete();
 
         if ($result->successful()) {
-            Process::run("{$kubectl} rollout restart deployment/chat-synapse -n {$ns}");
+            Process::run("{$kubectl} rollout restart deployment/{$chat->deployment()} -n {$ns}");
         }
     }
 

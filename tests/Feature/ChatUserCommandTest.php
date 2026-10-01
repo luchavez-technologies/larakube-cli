@@ -11,11 +11,11 @@ use Saloon\Laravel\Facades\Saloon;
 function chatUserBaseProcessFakes(): array
 {
     return [
-        '*get deployment chat-synapse*' => Process::result(output: 'chat-synapse   1/1   1   1   10d'),
-        '*get secret chat-secrets*admin-access-token*' => Process::result(output: '', exitCode: 1),
-        '*get secret chat-secrets*registration-secret*' => Process::result(output: base64_encode('shared-registration-secret')),
-        '*get secret chat-secrets*automation-password*' => Process::result(output: '', exitCode: 1),
-        '*patch secret chat-secrets*' => Process::result(output: 'secret/chat-secrets patched'),
+        '*get deployment -l larakube.io/tool=chat*' => Process::result(output: 'synapse-chat-test   1/1   1   1   10d'),
+        '*get secret synapse-secrets-*admin-access-token*' => Process::result(output: '', exitCode: 1),
+        '*get secret synapse-secrets-*registration-secret*' => Process::result(output: base64_encode('shared-registration-secret')),
+        '*get secret synapse-secrets-*automation-password*' => Process::result(output: '', exitCode: 1),
+        '*patch secret synapse-secrets-*' => Process::result(output: 'secret/synapse-secrets patched'),
     ];
 }
 
@@ -30,7 +30,7 @@ test('chat:user is registered', function (): void {
 });
 
 test('chat:user requires installed chat', function (): void {
-    Process::fake(['*get deployment chat-synapse*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*get deployment -l larakube.io/tool=chat*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('chat:user', ['--username' => 'alice', '--no-interaction' => true])
         ->assertExitCode(1)
@@ -58,8 +58,8 @@ test('chat:user bootstraps the automation admin (shared-secret register) then cr
 
 test('chat:user reuses a cached admin token without re-bootstrapping', function (): void {
     Process::fake([
-        '*get deployment chat-synapse*' => Process::result(output: 'chat-synapse   1/1   1   1   10d'),
-        '*get secret chat-secrets*admin-access-token*' => Process::result(output: base64_encode('cached-admin-token')),
+        '*get deployment -l larakube.io/tool=chat*' => Process::result(output: 'synapse-chat-test   1/1   1   1   10d'),
+        '*get secret synapse-secrets-*admin-access-token*' => Process::result(output: base64_encode('cached-admin-token')),
     ]);
 
     Saloon::fake([

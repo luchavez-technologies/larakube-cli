@@ -72,7 +72,7 @@ class ChatRoomCommand extends Command
 
         $adminToken = $this->matrixAdminToken($kubectl, $ns, $host);
         if ($adminToken === null) {
-            $this->laraKubeError('Could not reach Matrix\'s automation credentials — check chat-secrets/registration-secret exists (re-run `larakube chat:init` if needed).');
+            $this->laraKubeError('Could not reach Matrix\'s automation credentials — check the Synapse credentials Secret has a registration-secret (re-run `larakube chat:init` if needed).');
 
             return 1;
         }

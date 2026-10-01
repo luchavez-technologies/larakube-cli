@@ -2,83 +2,94 @@
      edit (no variable changed) still forces an already-running pod to restart —
      subPath-mounted Secrets/ConfigMaps don't hot-reload, and hashing only the
      input variables misses changes to literal strings in this file. --}}
-@php($__tplHash = substr(hash_file('sha256', resource_path('views/k8s/chat/matrix.blade.php')), 0, 12))
-{{-- chat-synapse (its config/PVC/secrets) and chat-synapse-db stay
-     unsuffixed always — see ChatTool::components()'s comment: they hold
-     live data (media store, signing key, chat_matrix rows on --no-plex),
-     so renaming them is a deliberate future migration, not a Blade change.
-     Everything else here IS instance-suffixed (web, coturn — stateless,
-     safe to rename any time — and the mas/admin resources referenced from
-     this file's ingress) — ChatInitCommand always computes a real
-     $instance (never null), but this file defaults to '' so an old test
-     fixture that doesn't pass it renders unsuffixed rather than crashing
-     on an undefined variable. --}}
-{{-- Each resource's FULL name gets the instance suffix appended as one
-     unit (matching ChatTool::components()'s own $name() helper exactly —
-     $name('chat-web-config') suffixes the whole string, NOT "chat-web"
-     suffixed then "-config" appended after) — mixing the two shapes was a
-     real bug caught while writing this. --}}
-@php($__instanceSuffix = ($instance ?? null) ? "-{$instance}" : '')
-@php($webName = 'chat-web'.$__instanceSuffix)
-@php($webConfigName = 'chat-web-config'.$__instanceSuffix)
-@php($coturnName = 'chat-coturn'.$__instanceSuffix)
-@php($coturnConfigName = 'chat-coturn-config'.$__instanceSuffix)
-@php($masName = 'chat-mas'.$__instanceSuffix)
+@php
+    $__tplHash = substr(hash_file('sha256', resource_path('views/k8s/chat/matrix.blade.php')), 0, 12);
+    // Every name comes from ToolInstance (ADR 0021). ChatInitCommand always
+    // passes a real $instance; a bare render derives it from the host.
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::CHAT->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::CHAT, $instance);
+    $synapseName = $names->deployment('synapse');
+    $synapseConfigName = $names->secret(\App\Enums\SecretKind::CONFIG);
+    $secretsName = $names->secret();
+    $dataVolume = $names->volume('storage', 'synapse');
+    $dbDeployment = $names->deployment('db');
+    $dbVolume = $names->volume('storage', 'db');
+    $webName = $names->deployment('web');
+    $webConfigName = $names->configMap('config', 'web');
+    $coturnName = $names->deployment('coturn');
+    $coturnConfigName = $names->secret(\App\Enums\SecretKind::CONFIG, 'coturn');
+    $masName = $names->deployment('mas');
+    $pruneName = $names->name('media-prune', 'synapse');
+    $labels = function (string $component) use ($names) {
+        $out = '';
+        foreach ($names->labels($component) as $key => $value) {
+            $out .= "\n    {$key}: {$value}";
+        }
+
+        return $out;
+    };
+    $podLabels = fn (string $component) => str_replace("\n    ", "\n        ", $labels($component));
+@endphp
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: chat-synapse-data
+  name: {{ $dataVolume }}
   namespace: larakube-shared
+  labels:{!! $labels('synapse') !!}
 spec:
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: {{ $volumeSize('chat-synapse-data', '5Gi', true) }}
+      storage: {{ $volumeSize($dataVolume, '5Gi', true) }}
 @if($noPlex)
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: chat-synapse-db-storage
+  name: {{ $dbVolume }}
   namespace: larakube-shared
+  labels:{!! $labels('db') !!}
 spec:
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: {{ $volumeSize('chat-synapse-db-storage', '5Gi', true) }}
+      storage: {{ $volumeSize($dbVolume, '5Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: chat-synapse-db
+  name: {{ $dbDeployment }}
   namespace: larakube-shared
+  labels:{!! $labels('db') !!}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: chat-synapse-db
+      app: {{ $dbDeployment }}
   template:
     metadata:
       labels:
-        app: chat-synapse-db
+        app: {{ $dbDeployment }}
     spec:
       containers:
         - name: postgres
           image: postgres:15-alpine
           env:
             - name: POSTGRES_USER
-              value: chat_matrix
+              value: {{ $dbUser ?? $names->database() }}
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: chat-secrets
+                  name: {{ $secretsName }}
                   key: db-password
             - name: POSTGRES_DB
-              value: chat_matrix
+              value: {{ $dbName ?? $names->database() }}
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
           volumeMounts:
@@ -87,16 +98,17 @@ spec:
       volumes:
         - name: storage
           persistentVolumeClaim:
-            claimName: chat-synapse-db-storage
+            claimName: {{ $dbVolume }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: chat-synapse-db
+  name: {{ $dbDeployment }}
   namespace: larakube-shared
+  labels:{!! $labels('db') !!}
 spec:
   selector:
-    app: chat-synapse-db
+    app: {{ $dbDeployment }}
   ports:
     - protocol: TCP
       port: 5432
@@ -106,7 +118,8 @@ spec:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: chat-synapse-config
+  name: {{ $synapseConfigName }}
+  labels:{!! $labels('synapse') !!}
   namespace: larakube-shared
 type: Opaque
 stringData:
@@ -135,11 +148,11 @@ stringData:
       name: psycopg2
       allow_unsafe_locale: true
       args:
-        user: "{{ $dbUser ?? 'chat_matrix' }}"
-        {{-- No password here: libpq reads PGPASSWORD (from chat-secrets), which
+        user: "{{ $dbUser ?? $names->database() }}"
+        {{-- No password here: libpq reads PGPASSWORD (from the credentials Secret), which
              OpenBao rotates. A copy baked into this file went stale on rotation. --}}
-        database: "{{ $dbName ?? 'chat_matrix' }}"
-        host: "{{ $dbHost ?? ($noPlex ? 'chat-synapse-db' : 'postgres.'.$plexNamespace.'.svc.cluster.local') }}"
+        database: "{{ $dbName ?? $names->database() }}"
+        host: "{{ $dbHost ?? ($noPlex ? $dbDeployment : 'postgres.'.$plexNamespace.'.svc.cluster.local') }}"
         port: 5432
         cp_min: 5
         cp_max: 10
@@ -148,7 +161,7 @@ stringData:
     # Unconditional (not gated behind meetJwtUrl like rc_message below) —
     # upload abuse doesn't depend on whether Meet is wired. Without a cap,
     # Synapse accepts an upload of ANY size; a single large file (or a
-    # handful) can fill the 5Gi chat-synapse-data PVC in one shot and crash
+    # handful) can fill the 5Gi data volume in one shot and crash
     # the pod — the 30d media-prune CronJob only clears cold files, it does
     # nothing against a live burst. 100M keeps normal workshop-style sharing
     # (screenshots, PDFs, short recordings) working while capping the
@@ -272,6 +285,7 @@ kind: Secret
 metadata:
   name: {{ $coturnConfigName }}
   namespace: larakube-shared
+  labels:{!! $labels('coturn') !!}
 type: Opaque
 stringData:
   turnserver.conf: |
@@ -294,7 +308,7 @@ kind: Deployment
 metadata:
   name: {{ $coturnName }}
   namespace: larakube-shared
-  labels:
+  labels:{!! $labels('coturn') !!}
     app: {{ $coturnName }}
 spec:
   replicas: 1
@@ -306,7 +320,7 @@ spec:
   template:
     metadata:
       labels:
-        app: {{ $coturnName }}
+        app: {{ $coturnName }}{!! $podLabels('coturn') !!}
       annotations:
         larakube.io/config-checksum: "{{ substr(hash('sha256', $turnSecret.$host.$__tplHash), 0, 16) }}"
     spec:
@@ -343,6 +357,7 @@ kind: Service
 metadata:
   name: {{ $coturnName }}
   namespace: larakube-shared
+  labels:{!! $labels('coturn') !!}
 spec:
   selector:
     app: {{ $coturnName }}
@@ -367,13 +382,13 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: chat-synapse
+  name: {{ $synapseName }}
   namespace: larakube-shared
-  labels:
-    app: chat-synapse
+  labels:{!! $labels('synapse') !!}
+    app: {{ $synapseName }}
     app.kubernetes.io/part-of: chat
   annotations:
-    {{-- Restart when chat-secrets changes (an OpenBao password rotation). --}}
+    {{-- Restart when the credentials Secret changes (an OpenBao password rotation). --}}
     reloader.stakater.com/auto: "true"
 spec:
   replicas: 1
@@ -381,11 +396,11 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: chat-synapse
+      app: {{ $synapseName }}
   template:
     metadata:
       labels:
-        app: chat-synapse
+        app: {{ $synapseName }}{!! $podLabels('synapse') !!}
       annotations:
         {{-- $s3SecretKey is in the hash because homeserver.yaml bakes the Commons
              S3 credentials in: without it a `plex:rotate` would write a new Secret
@@ -408,7 +423,7 @@ spec:
             - name: PGPASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: chat-secrets
+                  name: {{ $secretsName }}
                   key: db-password
 @if($s3Bucket ?? null)
             - name: PYTHONPATH
@@ -432,19 +447,20 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: chat-synapse-data
+            claimName: {{ $dataVolume }}
         - name: config
           secret:
-            secretName: chat-synapse-config
+            secretName: {{ $synapseConfigName }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: chat-synapse
+  name: {{ $synapseName }}
   namespace: larakube-shared
+  labels:{!! $labels('synapse') !!}
 spec:
   selector:
-    app: chat-synapse
+    app: {{ $synapseName }}
   ports:
     - protocol: TCP
       port: 8008
@@ -460,11 +476,12 @@ kind: ConfigMap
 metadata:
   name: {{ $webConfigName }}
   namespace: larakube-shared
+  labels:{!! $labels('web') !!}
 data:
   {{-- No /.well-known/matrix/client handling needed here either: Element
        Web reads default_server_config directly rather than doing its own
-       well-known discovery, and chat-ingress's /.well-known/matrix rule
-       (routed to chat-synapse) is the sole effective well-known owner
+       well-known discovery, and the host ingress's /.well-known/matrix rule
+       (routed to Synapse) is the sole effective well-known owner
        regardless — see the extra_well_known_client_content block above for
        MAS's org.matrix.msc2965.authentication discovery key. --}}
   config.json: |
@@ -487,7 +504,7 @@ kind: Deployment
 metadata:
   name: {{ $webName }}
   namespace: larakube-shared
-  labels:
+  labels:{!! $labels('web') !!}
     app: {{ $webName }}
     app.kubernetes.io/part-of: chat
 spec:
@@ -498,7 +515,7 @@ spec:
   template:
     metadata:
       labels:
-        app: {{ $webName }}
+        app: {{ $webName }}{!! $podLabels('web') !!}
       annotations:
         larakube.io/config-checksum: "{{ substr(hash('sha256', $host.($appName ?? '').($logoUrl ?? '').$__tplHash), 0, 16) }}"
     spec:
@@ -528,6 +545,7 @@ kind: Service
 metadata:
   name: {{ $webName }}
   namespace: larakube-shared
+  labels:{!! $labels('web') !!}
 spec:
   selector:
     app: {{ $webName }}
@@ -539,8 +557,9 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: chat-ingress
+  name: {{ $synapseName }}
   namespace: larakube-shared
+  labels:{!! $labels('synapse') !!}
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -551,7 +570,7 @@ metadata:
 @endif
 @endunless
 @if($vpnOnly ?? false)
-    traefik.ingress.kubernetes.io/router.middlewares: "larakube-shared-chat-vpn-only@kubernetescrd"
+    traefik.ingress.kubernetes.io/router.middlewares: "{{ $names->vpnMiddleware()->traefikMiddleware() }}"
 @endif
 spec:
   rules:
@@ -560,7 +579,7 @@ spec:
         paths:
 {{--  MAS's official reverse-proxy guide carves these three EXISTING Synapse
       client-API paths out to MAS instead — it does not add new endpoints of
-      its own on this host (that's chat-mas-ingress's job, on its own
+      its own on this host (that's MAS's own ingress's job, on its own
       subdomain, below). Core networking.k8s.io/v1 Ingress can't wildcard the
       API version segment (no regex path matching), so the two currently
       live versions are enumerated explicitly; these Prefix rules win over
@@ -584,21 +603,21 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: chat-synapse
+                name: {{ $synapseName }}
                 port:
                   number: 8008
           - path: /_synapse
             pathType: Prefix
             backend:
               service:
-                name: chat-synapse
+                name: {{ $synapseName }}
                 port:
                   number: 8008
           - path: /.well-known/matrix
             pathType: Prefix
             backend:
               service:
-                name: chat-synapse
+                name: {{ $synapseName }}
                 port:
                   number: 8008
           - path: /
@@ -611,7 +630,7 @@ spec:
   tls:
     - hosts:
         - {{ $host }}
-{{--  chat-mas-ingress (MAS's own subdomain — OAuth authorize/token,
+{{--  MAS's own ingress (its own subdomain — OAuth authorize/token,
       discovery, account-management UI, GraphQL, assets) is a SEPARATE
       resource applied by ChatInitCommand::deployMas() from its own
       resources/views/k8s/chat/mas.blade.php, not this file — this file's
@@ -630,15 +649,15 @@ spec:
 # S3 and has not been accessed for {{ $mediaRetention ?? '30d' }} — recent media
 # stays local and fast, everything colder lives once, in SeaweedFS.
 #
-# That is also what keeps chat-synapse-data (5Gi) from filling: total media can
+# That is also what keeps the Synapse data volume (5Gi) from filling: total media can
 # exceed the PVC because only the working set is held locally.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: chat-media-prune
+  name: {{ $pruneName }}
   namespace: larakube-shared
-  labels:
-    app: chat-media-prune
+  labels:{!! $labels('synapse') !!}
+    app: {{ $pruneName }}
     app.kubernetes.io/part-of: chat
 spec:
   # 02:41, deliberately BEFORE the 03:17 backup and not overlapping it. This
@@ -704,13 +723,13 @@ spec:
                   mountPath: /data/homeserver.yaml
                   subPath: homeserver.yaml
           volumes:
-            # ReadWriteOnce, shared with chat-synapse. Fine while both land on
+            # ReadWriteOnce, shared with Synapse. Fine while both land on
             # one node; on a multi-node cluster this job must be pinned to
             # Synapse's node or given its own ReadWriteMany volume.
             - name: data
               persistentVolumeClaim:
-                claimName: chat-synapse-data
+                claimName: {{ $dataVolume }}
             - name: config
               secret:
-                secretName: chat-synapse-config
+                secretName: {{ $synapseConfigName }}
 @endif

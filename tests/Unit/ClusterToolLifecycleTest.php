@@ -305,8 +305,7 @@ test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifest
     }
 
     expect($names)->toBe([
-        // Fixed names — templates haven't adopted the instance suffix yet.
-        'chat' => ['chat-secrets', 'chat-secrets'],
+        'chat' => ['synapse-secrets-inst', 'synapse-secrets-inst'],
         'monitor' => ['grafana-secrets-inst', 'grafana-secrets-inst'],
         'passwords' => ['vaultwarden-secrets-inst', 'vaultwarden-secrets-inst'],
         'sso' => [null, 'sso-secrets'],

@@ -15,19 +15,30 @@
     Pre-1.0 project (v0.x tags) — pin bumps deserve a quick changelog check,
     not blind trust, more than the other pinned images here.
 --}}
-@php($__tplHash = substr(hash_file('sha256', resource_path('views/k8s/chat/admin.blade.php')), 0, 12))
-{{-- Brand new component, no existing live data — fully instance-suffixed
-     from birth, matching ChatTool::components()'s $name('chat-admin')/
-     $name('chat-admin-ingress') exactly (full name suffixed as one unit). --}}
-@php($__instanceSuffix = ($instance ?? null) ? "-{$instance}" : '')
-@php($adminName = 'chat-admin'.$__instanceSuffix)
-@php($adminIngressName = 'chat-admin-ingress'.$__instanceSuffix)
+@php
+    $__tplHash = substr(hash_file('sha256', resource_path('views/k8s/chat/admin.blade.php')), 0, 12);
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::CHAT->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::CHAT, $instance);
+    $labels = function (string $component) use ($names) {
+        $out = '';
+        foreach ($names->labels($component) as $key => $value) {
+            $out .= "\n    {$key}: {$value}";
+        }
+
+        return $out;
+    };
+    $podLabels = fn (string $component) => str_replace("\n    ", "\n        ", $labels($component));
+    $adminName = $names->deployment('admin');
+    $adminIngressName = $adminName;
+@endphp
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ $adminName }}
   namespace: larakube-shared
-  labels:
+  labels:{!! $labels('admin') !!}
     app: {{ $adminName }}
     app.kubernetes.io/part-of: chat
 spec:
@@ -40,7 +51,7 @@ spec:
   template:
     metadata:
       labels:
-        app: {{ $adminName }}
+        app: {{ $adminName }}{!! $podLabels('admin') !!}
       annotations:
         larakube.io/config-checksum: "{{ substr(hash('sha256', $host.$__tplHash), 0, 16) }}"
     spec:
@@ -70,6 +81,7 @@ kind: Service
 metadata:
   name: {{ $adminName }}
   namespace: larakube-shared
+  labels:{!! $labels('admin') !!}
 spec:
   selector:
     app: {{ $adminName }}
@@ -83,6 +95,7 @@ kind: Ingress
 metadata:
   name: {{ $adminIngressName }}
   namespace: larakube-shared
+  labels:{!! $labels('admin') !!}
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -100,7 +113,7 @@ metadata:
          step) MUST call ensureVpnMiddleware(CHAT, ...) unconditionally
          before applying this manifest, even on installs that never passed
          --vpn-only for chat's own ingress. --}}
-    traefik.ingress.kubernetes.io/router.middlewares: "larakube-shared-chat-vpn-only@kubernetescrd"
+    traefik.ingress.kubernetes.io/router.middlewares: "{{ $names->vpnMiddleware()->traefikMiddleware() }}"
 spec:
   rules:
     - host: admin.{{ $host }}

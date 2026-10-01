@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Exceptions\MissingFlagException;
 use App\Services\Kubectl;
@@ -30,8 +31,7 @@ trait ResolvesMeetWireTarget
     {
         $installed = array_values(array_filter(
             ClusterTool::shippedCases(),
-            fn (ClusterTool $t) => $t->hasMeetWire()
-                && Kubectl::fromPrefix($kubectl)->hasDeployment($t->namespace(), $t->deploymentName()),
+            fn (ClusterTool $t) => $t->hasMeetWire() && $this->isMeetWireTargetDeployed($kubectl, $t),
         ));
 
         $slug = $this->option('tool');
@@ -87,5 +87,18 @@ trait ResolvesMeetWireTarget
             options: $options,
             scroll: count($options),
         ));
+    }
+
+    /**
+     * Whether the tool's primary Deployment exists, under the name its
+     * registered instance gives it: a migrated tool's Deployment carries the
+     * instance, so the bare name matches nothing.
+     */
+    private function isMeetWireTargetDeployed(string $kubectl, ClusterTool $tool): bool
+    {
+        $instance = ToolInstance::first($kubectl, $tool);
+
+        return $instance !== null
+            && Kubectl::fromPrefix($kubectl)->hasDeployment($tool->namespace(), $instance->deployment());
     }
 }

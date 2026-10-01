@@ -236,7 +236,9 @@ enum SharedClusterService: string
             self::DRIVE => 'deployment drive-ocis -n larakube-shared',
             self::INSIGHTS => 'deployment insights-metabase -n larakube-shared',
             self::MAIL => 'deployment stalwart -n larakube-shared',
-            self::CHAT => 'deployment chat-synapse -n larakube-shared',
+            // Synapse is named per instance, so a probe on a bare name never
+            // matches; select on the identity label instead.
+            self::CHAT => 'deployment -l larakube.io/tool=chat,larakube.io/component=synapse -n larakube-shared',
             self::SSO => 'deployment sso-zitadel -n larakube-sso',
             // Bulwark's Deployment is named per instance, so a probe on a bare
             // name never matches — select on the identity label instead.

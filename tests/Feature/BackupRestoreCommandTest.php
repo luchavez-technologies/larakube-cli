@@ -30,7 +30,7 @@ function backupRestoreFakes(array $overrides = []): array
         '*larakube-backup-config*passphrase*' => $val('test-passphrase'),
         '*larakube-backup-config*region*' => $val('us-east-1'),
         '*get namespace -o jsonpath*' => Process::result(output: 'larakube-shared larakube-vault larakube-secrets larakube-sso larakube-vpn larakube-plex'),
-        '*get deployment -n larakube-shared -o jsonpath*' => Process::result(output: 'forgejo forgejo-runner drive-ocis stalwart chat-synapse chat-cinny chat-coturn chat-synapse-db webmail-bulwark grafana prometheus-server loki'),
+        '*get deployment -n larakube-shared -o jsonpath*' => Process::result(output: 'forgejo forgejo-runner drive-ocis stalwart synapse-chat-luchtech-dev element-web-chat-luchtech-dev coturn-chat-luchtech-dev synapse-db-chat-luchtech-dev webmail-bulwark grafana prometheus-server loki'),
         '*get deployment -n larakube-vault -o jsonpath*' => Process::result(output: 'vaultwarden'),
         '*get deployment -n larakube-secrets -o jsonpath*' => Process::result(output: 'openbao-backend'),
         '*get deployment -n larakube-sso -o jsonpath*' => Process::result(output: 'sso-zitadel'),
@@ -144,11 +144,11 @@ test('the volume restore mounts the claim where the real pod mounts it', functio
 });
 
 test('a Secret mounted inside the data volume never wins over the PVC', function (): void {
-    // chat-synapse mounts homeserver.yaml at /data/homeserver.yaml, inside the
+    // synapse-chat-luchtech-dev mounts homeserver.yaml at /data/homeserver.yaml, inside the
     // PVC's own /data. Only the PVC-backed mount can be restored into, so the
     // longest-prefix match must still skip non-PVC mounts.
     Process::fake([
-        '*get deploy chat-synapse*-o json*' => Process::result(output: json_encode([
+        '*get deploy synapse-chat-luchtech-dev*-o json*' => Process::result(output: json_encode([
             'spec' => ['template' => ['spec' => [
                 'containers' => [[
                     'name' => 'synapse',
@@ -158,7 +158,7 @@ test('a Secret mounted inside the data volume never wins over the PVC', function
                     ],
                 ]],
                 'volumes' => [
-                    ['name' => 'data', 'persistentVolumeClaim' => ['claimName' => 'chat-synapse-data']],
+                    ['name' => 'data', 'persistentVolumeClaim' => ['claimName' => 'synapse-storage-chat-luchtech-dev']],
                     ['name' => 'config', 'secret' => ['secretName' => 'chat-synapse-config']],
                 ],
             ]]],
@@ -176,11 +176,11 @@ test('a Secret mounted inside the data volume never wins over the PVC', function
         }
     })->resolve('kubectl', [
         'name' => 'synapse-identity', 'namespace' => 'larakube-shared',
-        'deployment' => 'chat-synapse', 'container' => 'synapse',
+        'deployment' => 'synapse-chat-luchtech-dev', 'container' => 'synapse',
         'paths' => ['/data/chat.luchtech.dev.signing.key'],
     ]);
 
-    expect($resolved)->toBe(['claim' => 'chat-synapse-data', 'mountPath' => '/data']);
+    expect($resolved)->toBe(['claim' => 'synapse-storage-chat-luchtech-dev', 'mountPath' => '/data']);
 });
 
 test('backup:restore declares the flags the restore flow depends on', function (): void {

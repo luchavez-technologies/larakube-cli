@@ -13,14 +13,15 @@ function meetWireFakes(array $overrides = []): array
 
     return array_merge([
         '*-l larakube.io/tool=meet --no-headers*' => Process::result(output: 'livekit-meet-example-com 1/1'),
-        '*get deployment chat-synapse*' => Process::result(output: 'chat-synapse 1/1'),
+        '*get deployment -l larakube.io/tool=chat*' => Process::result(output: 'synapse-chat-example-com 1/1'),
+        '*get deployment synapse-chat-example-com*' => Process::result(output: 'synapse-chat-example-com 1/1'),
         '*larakube.io/component=lk-jwt*' => Process::result(output: ''),
         '*get secret livekit-secrets-meet-example-com*' => Process::result(output: base64_encode($registry)),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'meet', 'host' => 'meet.example.com', 'instance' => 'meet-example-com'],
             ['tool' => 'chat', 'host' => 'chat.example.com', 'instance' => 'chat-example-com'],
         ]))),
-        '*get secret chat-synapse-config*' => Process::result(output: $homeserver),
+        '*get secret synapse-config-chat-example-com*' => Process::result(output: $homeserver),
         '*create secret*' => Process::result(output: 'secret created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'restarted'),
@@ -37,7 +38,10 @@ test('meet:wire refuses when Meet is not installed instead of half-wiring chat',
 });
 
 test('meet:wire refuses when Team Chat is not installed', function (): void {
-    Process::fake(meetWireFakes(['*get deployment chat-synapse*' => Process::result(output: '')]));
+    Process::fake(meetWireFakes([
+        '*get deployment -l larakube.io/tool=chat*' => Process::result(output: ''),
+        '*get deployment synapse-chat-example-com*' => Process::result(output: ''),
+    ]));
 
     $this->artisan('meet:wire local --tool=chat --no-interaction')
         ->assertExitCode(1)
@@ -70,8 +74,8 @@ test('meet:wire deploys the bridge and points Synapse at it', function (): void 
 
     // The wiring must be recorded so a later chat:init re-render does not
     // silently drop calling.
-    Process::assertRan(fn ($job) => (appliedSecret($job)['name'] ?? null) === 'chat-meet');
-    Process::assertRan(fn ($job) => str_contains($job->command, 'rollout restart deployment/chat-synapse'));
+    Process::assertRan(fn ($job) => (appliedSecret($job)['name'] ?? null) === 'synapse-meet-chat-example-com');
+    Process::assertRan(fn ($job) => str_contains($job->command, 'rollout restart deployment/synapse-chat-example-com'));
 });
 
 test('meet:unwire is a no-op when chat was never wired', function (): void {
@@ -98,5 +102,5 @@ test('meet:unwire removes the bridge and revokes the key', function (): void {
         ->expectsOutputToContain('disconnected from Meet');
 
     Process::assertRan(fn ($job) => str_contains($job->command, 'deployment,service -l larakube.io/tool=meet,larakube.io/component=lk-jwt,larakube.io/instance=meet-example-com'));
-    Process::assertRan(fn ($job) => str_contains($job->command, 'delete secret chat-meet'));
+    Process::assertRan(fn ($job) => str_contains($job->command, 'delete secret synapse-meet-chat-example-com'));
 });

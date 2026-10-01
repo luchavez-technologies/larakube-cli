@@ -16,6 +16,7 @@ use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWhiteLabel;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
+use App\Data\ToolInstance;
 
 /** The vendor enum backing ClusterTool::CHAT — 'Team Chat'. Only Matrix today. */
 enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasMeetBridge, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents
@@ -27,11 +28,13 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '') ? 'chat-vpn-only' : "chat-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '')
+            ? 'chat-vpn-only'
+            : ToolInstance::forInstance(ClusterTool::CHAT, $instance)->name('vpn-only', 'synapse');
 
         return [
             'name' => $name,
-            'namespace' => 'larakube-shared',
+            'namespace' => ClusterTool::CHAT->namespace(),
         ];
     }
 
@@ -43,43 +46,41 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
         ];
     }
 
+    /**
+     * Every component, with every resource the manifests declare, so
+     * teardown() can't drift from what is deployed. The category is stripped
+     * from the Deployment names by ClusterTool::components(); the nested
+     * names are composed here the same way. Synapse is no longer exempt: its
+     * volume holds the server's signing key, which is a reason to copy it
+     * with care, not to leave it unnamed.
+     *
+     * @return list<ClusterToolComponentData>
+     */
     public function components(?string $instance = null, ?string $engine = null): array
     {
-        // Null-safe on purpose, unlike every other forward-facing method on
-        // this vendor: unsuffixed base names are what ClusterTool::forDeployment()'s
-        // reverse lookup (dynamic backup discovery) matches live Deployment
-        // names against — it calls components() with no instance BECAUSE it
-        // doesn't know the instance yet; that's what it's trying to discover.
+        // Null-safe on purpose: ClusterTool::forDeployment()'s reverse lookup
+        // calls this with no instance BECAUSE it doesn't know the instance yet.
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
+        $canonical = fn (string $n) => ClusterTool::CHAT->withoutCategory($n);
+        $synapse = $canonical($name('chat-synapse'));
 
         return [
-            // synapse/db stay UNSUFFIXED even when $instance is given — the
-            // one thing Chat can never actually have two of (Synapse only
-            // ever runs one server_name per process, so there is no real
-            // second-instance collision this would ever protect against),
-            // and chat-synapse-data/chat-synapse-db-storage hold LIVE data
-            // (media store, signing key, chat_matrix rows on --no-plex).
-            // Renaming them means a brand-new empty volume, not the existing
-            // one — that's a deliberate, separate migration (preserving the
-            // signing key explicitly), not a Blade naming change. Every
-            // component below this DOES thread $instance through, for the
-            // same naming-convention-uniformity reason every other tool
-            // does — chat is not exempt just because it has no real
-            // multi-instance use case.
             new ClusterToolComponentData(
                 key: 'synapse',
                 role: ClusterToolComponentRole::PRIMARY,
-                deployment: 'chat-synapse',
+                deployment: $name('chat-synapse'),
                 container: 'synapse',
                 resources: [
-                    ['kind' => 'cronjob', 'name' => 'chat-media-prune'],
-                    ['kind' => 'service', 'name' => 'chat-synapse'],
-                    ['kind' => 'configmap', 'name' => 'chat-synapse-config'],
-                    ['kind' => 'pvc', 'name' => 'chat-synapse-data'],
-                    ['kind' => 'secret', 'name' => 'chat-secrets'],
-                    ['kind' => 'secret', 'name' => 'chat-smtp'],
-                    ['kind' => 'secret', 'name' => 'chat-oidc'],
-                    ['kind' => 'secret', 'name' => 'chat-meet'],
+                    ['kind' => 'cronjob', 'name' => $canonical($name('chat-synapse-media-prune'))],
+                    ['kind' => 'service', 'name' => $synapse],
+                    ['kind' => 'ingress', 'name' => $synapse],
+                    ['kind' => 'secret', 'name' => $canonical($name('chat-synapse-config'))],
+                    ['kind' => 'configmap', 'name' => $canonical($name('chat-synapse-auth-mode'))],
+                    ['kind' => 'pvc', 'name' => $canonical($name('chat-synapse-storage'))],
+                    ['kind' => 'secret', 'name' => $canonical($name('chat-synapse-secrets'))],
+                    ['kind' => 'secret', 'name' => $canonical($name('chat-synapse-smtp'))],
+                    ['kind' => 'secret', 'name' => $canonical($name('chat-synapse-oidc'))],
+                    ['kind' => 'secret', 'name' => $canonical($name('chat-synapse-meet'))],
                 ],
                 backupVolume: true,
                 // The signing key only — media_store/site-packages are
@@ -87,17 +88,13 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
                 // backed up. See InteractsWithBackup's docblock.
                 backupPaths: ['/data/chat.luchtech.dev.signing.key'],
             ),
-            // chat-ingress stays unsuffixed too — it routes to BOTH synapse
-            // (unsuffixed above) and web (suffixed below), and is tied to
-            // the tool's stable, still-unsuffixed primary identity.
             new ClusterToolComponentData(
                 key: 'web',
                 role: ClusterToolComponentRole::INGRESS,
-                deployment: $name('chat-web'),
+                deployment: $name('chat-element-web'),
                 resources: [
-                    ['kind' => 'service', 'name' => $name('chat-web')],
-                    ['kind' => 'configmap', 'name' => $name('chat-web-config')],
-                    ['kind' => 'ingress', 'name' => 'chat-ingress'],
+                    ['kind' => 'service', 'name' => $canonical($name('chat-element-web'))],
+                    ['kind' => 'configmap', 'name' => $canonical($name('chat-element-web-config'))],
                 ],
             ),
             new ClusterToolComponentData(
@@ -105,43 +102,38 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
                 role: ClusterToolComponentRole::WORKER,
                 deployment: $name('chat-coturn'),
                 resources: [
-                    ['kind' => 'service', 'name' => $name('chat-coturn')],
-                    ['kind' => 'secret', 'name' => $name('chat-coturn-config')],
+                    ['kind' => 'service', 'name' => $canonical($name('chat-coturn'))],
+                    ['kind' => 'secret', 'name' => $canonical($name('chat-coturn-config'))],
                 ],
             ),
             new ClusterToolComponentData(
                 key: 'db',
                 role: ClusterToolComponentRole::DATABASE,
-                deployment: 'chat-synapse-db',
+                deployment: $name('chat-synapse-db'),
                 bundledOnly: true,
                 resources: [
-                    ['kind' => 'service', 'name' => 'chat-synapse-db'],
-                    ['kind' => 'pvc', 'name' => 'chat-synapse-db-storage'],
+                    ['kind' => 'service', 'name' => $canonical($name('chat-synapse-db'))],
+                    ['kind' => 'pvc', 'name' => $canonical($name('chat-synapse-db-storage'))],
                 ],
             ),
             // Matrix Authentication Service — deployed unconditionally by
             // `chat:init` once Zitadel is available (Element X requires
             // MSC3861/MAS-native OIDC; it does not speak the classic
             // oidc_providers: flow the `synapse` component above uses).
-            // Stateless: its state lives entirely in its own Postgres
-            // tenant (Commons-backed, or chat-mas-db on --no-plex),
-            // so it carries no backupVolume of its own. Brand new — no
-            // existing live data to preserve, so fully suffixed from birth.
+            // Stateless: its state lives entirely in its own Postgres tenant,
+            // so it carries no backupVolume of its own.
             new ClusterToolComponentData(
                 key: 'mas',
                 role: ClusterToolComponentRole::AUTH,
                 deployment: $name('chat-mas'),
                 container: 'mas',
-                // sso-app-chat-mas is NOT listed here — it lives in the SSO
-                // namespace, not chat's, and this list is same-namespace-only
-                // (see ClusterToolComponentData's own docblock). Deregistering
-                // it from Zitadel is a separate concern from tearing down
-                // chat's own resources.
+                // The Zitadel app Secret lives in the SSO namespace, not
+                // chat's, and this list is same-namespace-only.
                 resources: [
-                    ['kind' => 'service', 'name' => $name('chat-mas')],
-                    ['kind' => 'ingress', 'name' => $name('chat-mas-ingress')],
-                    ['kind' => 'secret', 'name' => $name('chat-mas-config')],
-                    ['kind' => 'secret', 'name' => $name('chat-mas-secrets')],
+                    ['kind' => 'service', 'name' => $canonical($name('chat-mas'))],
+                    ['kind' => 'ingress', 'name' => $canonical($name('chat-mas'))],
+                    ['kind' => 'secret', 'name' => $canonical($name('chat-mas-config'))],
+                    ['kind' => 'secret', 'name' => $canonical($name('chat-mas-secrets'))],
                 ],
             ),
             new ClusterToolComponentData(
@@ -150,8 +142,8 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
                 deployment: $name('chat-mas-db'),
                 bundledOnly: true,
                 resources: [
-                    ['kind' => 'service', 'name' => $name('chat-mas-db')],
-                    ['kind' => 'pvc', 'name' => $name('chat-mas-db-storage')],
+                    ['kind' => 'service', 'name' => $canonical($name('chat-mas-db'))],
+                    ['kind' => 'pvc', 'name' => $canonical($name('chat-mas-db-storage'))],
                 ],
             ),
             // Element Admin — a static SPA with no data of its own (it acts
@@ -161,10 +153,10 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
             new ClusterToolComponentData(
                 key: 'admin',
                 role: ClusterToolComponentRole::WORKER,
-                deployment: $name('chat-admin'),
+                deployment: $name('chat-element-admin'),
                 resources: [
-                    ['kind' => 'service', 'name' => $name('chat-admin')],
-                    ['kind' => 'ingress', 'name' => $name('chat-admin-ingress')],
+                    ['kind' => 'service', 'name' => $canonical($name('chat-element-admin'))],
+                    ['kind' => 'ingress', 'name' => $canonical($name('chat-element-admin'))],
                 ],
             ),
         ];
@@ -172,9 +164,12 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
 
     public function smtpEnv(?string $instance = null): ?array
     {
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
+        $canonical = fn (string $n) => ClusterTool::CHAT->withoutCategory($n);
+
         return [
-            'deployment' => 'chat-synapse',
-            'secret' => 'chat-smtp',
+            'deployment' => $canonical($name('chat-synapse')),
+            'secret' => $canonical($name('chat-synapse-smtp')),
             'static' => [],
             'vars' => [
                 'host' => 'host',
@@ -188,9 +183,12 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
 
     public function oidcEnv(?string $instance = null): ?array
     {
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
+        $canonical = fn (string $n) => ClusterTool::CHAT->withoutCategory($n);
+
         return [
-            'deployment' => 'chat-synapse',
-            'secret' => 'chat-oidc',
+            'deployment' => $canonical($name('chat-synapse')),
+            'secret' => $canonical($name('chat-synapse-oidc')),
             'static' => [
                 'SYNAPSE_OIDC_ENABLED' => 'true',
             ],
@@ -205,12 +203,13 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
 
     public function commonsDatabaseList(): array
     {
-        return ['chat_matrix'];
+        return ['chat_matrix', 'chat_mas'];
     }
 
+    /** Synapse's tenant first (callers read [0]); MAS's own follows. */
     public function canonicalDatabaseList(): array
     {
-        return ['synapse'];
+        return ['synapse', 'mas'];
     }
 
     public function commonsBucketList(): array
@@ -235,7 +234,9 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
     public function openbaoSyncConfig(?string $instance = null): array
     {
         return [
-            'secret' => 'chat-secrets',
+            'secret' => ($instance === null || $instance === '')
+                ? 'synapse-secrets'
+                : ToolInstance::forInstance(ClusterTool::CHAT, $instance)->secret(SecretKind::CREDENTIALS, 'synapse'),
             'keys' => ['CHAT_MATRIX_DB_PASSWORD'],
         ];
     }

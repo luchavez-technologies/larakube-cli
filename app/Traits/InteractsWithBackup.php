@@ -50,7 +50,7 @@ trait InteractsWithBackup
      *   - the Prometheus PVC — metrics history, ~1.1G, rebuildable by waiting
      *     (not a ClusterTool component at all, so forDeployment() never
      *     matches it — nothing to opt out of)
-     *   - chat-synapse's media_store and site-packages — media is mirrored to
+     *   - Synapse's media_store and site-packages — media is mirrored to
      *     object storage and pip re-installs on every pod start; only the
      *     59-byte signing key matters (CHAT's synapse component's
      *     backupPath is scoped to that one file, not the whole /data mount)
@@ -470,7 +470,7 @@ trait InteractsWithBackup
      * anywhere else and you get /data/data/… instead of /data/….
      *
      * Longest-prefix wins because a pod can mount a Secret *inside* its data
-     * volume (chat-synapse mounts homeserver.yaml under /data), and only the
+     * volume (Synapse mounts homeserver.yaml under /data), and only the
      * PVC-backed mount is restorable.
      *
      * @param  array<string, string>  $target

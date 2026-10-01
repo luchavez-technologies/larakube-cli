@@ -41,7 +41,7 @@ test('returns null for an unmanaged Deployment — the exclusion mechanism itsel
 });
 
 test('a compound tool\'s bundled-storage component resolves by its own exact name', function (): void {
-    $match = ClusterTool::forDeployment('chat-synapse-db');
+    $match = ClusterTool::forDeployment('synapse-db');
     expect($match['tool'])->toBe(ClusterTool::CHAT)
         ->and($match['component']->key)->toBe('db');
 });

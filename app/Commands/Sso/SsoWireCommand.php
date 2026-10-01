@@ -309,7 +309,7 @@ class SsoWireCommand extends Command
         // Skip applyToolEnv and go straight to wireSynapseOidc.
         // OpenBao is configured via its CLI inside the pod (bao auth enable oidc).
         // NetBird is configured via its own REST API (/api/identity-providers).
-        if ($schema['deployment'] === 'chat-synapse') {
+        if (in_array($tool, [ClusterTool::CHAT, ClusterTool::MATRIX], true)) {
             $ok = $this->wireSynapseOidc($kubectl, $schema['namespace'], $ssoHost, $logical['issuer'], $clientId, $clientSecret, $env);
         } elseif ($schema['deployment'] === 'openbao-backend') {
             $ok = $this->wireOpenBaoOidc($kubectl, $schema['namespace'], $ssoHost, $toolHost, $clientId, $clientSecret, $env);
@@ -511,9 +511,9 @@ class SsoWireCommand extends Command
         // :init / heal re-inject creds for the now-deregistered Zitadel app.
         Process::run("{$kubectl} delete secret {$schema['secret']} -n {$schema['namespace']} --ignore-not-found");
 
-        if ($schema['deployment'] === 'chat-synapse') {
+        if (in_array($tool, [ClusterTool::CHAT, ClusterTool::MATRIX], true)) {
             $this->unwireSynapseOidc($kubectl, $schema['namespace']);
-            Process::run("{$kubectl} rollout restart deployment/chat-synapse -n {$schema['namespace']}");
+            Process::run("{$kubectl} rollout restart deployment/{$schema['deployment']} -n {$schema['namespace']}");
             $this->laraKubeInfo("✅ {$tool->getLabel()} no longer uses Zitadel SSO.");
 
             return 0;
@@ -1172,7 +1172,7 @@ class SsoWireCommand extends Command
     }
 
     /**
-     * Persist the OIDC credentials to the `chat-oidc` Secret (so `chat:init`
+     * Persist the OIDC credentials to Synapse's OIDC Secret (so `chat:init`
      * re-renders the oidc_providers: block on re-run) and apply them to
      * Synapse's homeserver.yaml Secret. Preserves any existing `email:` block.
      * Issues a rollout restart so Synapse picks up the new config immediately.
@@ -1188,9 +1188,14 @@ class SsoWireCommand extends Command
         string $clientSecret,
         string $env,
     ): bool {
-        // 1. Persist credentials to the chat-oidc Secret so chat:init can
+        $chat = $this->chatNames($kubectl);
+        if ($chat === null) {
+            return false;
+        }
+
+        // 1. Persist credentials to Synapse's OIDC Secret so chat:init can
         //    re-render the oidc_providers: block on a re-run.
-        Kubectl::fromPrefix($kubectl)->putSecret($ns, 'chat-oidc', [
+        Kubectl::fromPrefix($kubectl)->putSecret($ns, $chat->secret(SecretKind::OIDC), [
             'issuer' => $issuer,
             'client-id' => $clientId,
             'client-secret' => $clientSecret,
@@ -1206,7 +1211,7 @@ class SsoWireCommand extends Command
             'client_secret' => $clientSecret,
             'name' => 'Zitadel',
         ];
-        // If chat:init has already activated MAS-delegated auth (chat-oidc
+        // If chat:init has already activated MAS-delegated auth (the OIDC Secret
         // was absent when it ran), a plain `sso:wire chat` re-run must not
         // silently regress it back to
         // classic oidc_providers: — renderSynapseConfig() always prefers
@@ -1215,7 +1220,7 @@ class SsoWireCommand extends Command
         $mas = $this->readChatWiredMas($kubectl, $ns);
 
         $raw = trim(Process::run(
-            "{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'",
+            "{$kubectl} get secret {$chat->secret(SecretKind::CONFIG)} -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'",
         )->output());
 
         if ($raw === '') {
@@ -1229,14 +1234,14 @@ class SsoWireCommand extends Command
         $tmp = $temporaryDirectory->path().'/homeserver.yaml';
         file_put_contents($tmp, $homeserver);
         $result = Process::run(
-            "{$kubectl} create secret generic chat-synapse-config -n {$ns} "
+            "{$kubectl} create secret generic {$chat->secret(SecretKind::CONFIG)} -n {$ns} "
             ."--from-file=homeserver.yaml={$tmp} "
             ."--dry-run=client -o yaml | {$kubectl} apply -f -",
         );
         $temporaryDirectory->delete();
 
         if ($result->successful()) {
-            Process::run("{$kubectl} rollout restart deployment/chat-synapse -n {$ns}");
+            Process::run("{$kubectl} rollout restart deployment/{$chat->deployment()} -n {$ns}");
         }
 
         return $result->successful();
@@ -1244,20 +1249,25 @@ class SsoWireCommand extends Command
 
     /**
      * Remove the `oidc_providers:` block from Synapse's homeserver.yaml Secret,
-     * delete the `chat-oidc` credential Secret, and restart the pod.
+     * delete Synapse's OIDC credential Secret, and restart the pod.
      * Preserves any existing `email:` block.
      */
     protected function unwireSynapseOidc(string $kubectl, string $ns): void
     {
-        // Delete the chat-oidc credential Secret first so chat:init won't
+        $chat = $this->chatNames($kubectl);
+        if ($chat === null) {
+            return;
+        }
+
+        // Delete the OIDC credential Secret first so chat:init won't
         // re-render the oidc_providers: block on the next run.
-        Process::run("{$kubectl} delete secret chat-oidc -n {$ns} --ignore-not-found");
+        Process::run("{$kubectl} delete secret {$chat->secret(SecretKind::OIDC)} -n {$ns} --ignore-not-found");
 
         $smtp = $this->readChatWiredSmtp($kubectl, $ns);
         $mas = $this->readChatWiredMas($kubectl, $ns);
 
         $raw = trim(Process::run(
-            "{$kubectl} get secret chat-synapse-config -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'",
+            "{$kubectl} get secret {$chat->secret(SecretKind::CONFIG)} -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'",
         )->output());
 
         if ($raw === '') {
@@ -1271,14 +1281,14 @@ class SsoWireCommand extends Command
         $tmp = $temporaryDirectory->path().'/homeserver.yaml';
         file_put_contents($tmp, $homeserver);
         $result = Process::run(
-            "{$kubectl} create secret generic chat-synapse-config -n {$ns} "
+            "{$kubectl} create secret generic {$chat->secret(SecretKind::CONFIG)} -n {$ns} "
             ."--from-file=homeserver.yaml={$tmp} "
             ."--dry-run=client -o yaml | {$kubectl} apply -f -",
         );
         $temporaryDirectory->delete();
 
         if ($result->successful()) {
-            Process::run("{$kubectl} rollout restart deployment/chat-synapse -n {$ns}");
+            Process::run("{$kubectl} rollout restart deployment/{$chat->deployment()} -n {$ns}");
         }
     }
 

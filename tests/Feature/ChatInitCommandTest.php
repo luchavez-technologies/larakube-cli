@@ -23,7 +23,7 @@ test('chat:init deploys matrix using plex commons postgres by default', function
             ],
         ]),
         '*get secret plex-admin*' => base64_encode('test-cred'),
-        '*get secret chat-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret synapse-secrets-*' => Process::result(output: '', exitCode: 1),
         '*exec *' => Process::result(output: 'success'),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -59,21 +59,21 @@ test('chat:init deploys MAS via resolveManagedDbPassword() (Commons Postgres pat
             ],
         ]),
         '*get secret plex-admin*' => base64_encode('test-cred'),
-        '*get secret chat-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret synapse-secrets-*' => Process::result(output: '', exitCode: 1),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*get secret chat-mas-sso*' => Process::result(output: '', exitCode: 1),
-        '*get secret chat-mas-secrets*' => Process::result(output: '', exitCode: 1),
-        '*get secret chat-mas-config*' => Process::result(output: '', exitCode: 1),
-        '*run chat-mas-config-gen*' => Process::result(output: 'pod/chat-mas-config-gen created'),
+        '*get secret mas-sso-*' => Process::result(output: '', exitCode: 1),
+        '*get secret mas-secrets-*' => Process::result(output: '', exitCode: 1),
+        '*get secret mas-config-*' => Process::result(output: '', exitCode: 1),
+        '*run mas-config-gen*' => Process::result(output: 'pod/mas-config-gen created'),
         // kubectl run without -i/--rm only creates the Pod object — the
         // actual generated config comes back through a SEPARATE `kubectl
         // logs` call, deliberately never mixed with kubectl's own status
         // text on the same stream (that mixing is the real bug this
         // three-step split fixes — see deployMas()'s own comment).
-        '*wait --for=jsonpath*' => Process::result(output: 'pod/chat-mas-config-gen condition met'),
-        '*logs chat-mas-config-gen*' => Process::result(output: "http:\n  listeners: []\nsecrets:\n  encryption: \"deadbeef\"\n"),
-        '*delete pod chat-mas-config-gen*' => Process::result(output: 'pod deleted'),
+        '*wait --for=jsonpath*' => Process::result(output: 'pod/mas-config-gen condition met'),
+        '*logs mas-config-gen*' => Process::result(output: "http:\n  listeners: []\nsecrets:\n  encryption: \"deadbeef\"\n"),
+        '*delete pod mas-config-gen*' => Process::result(output: 'pod deleted'),
         '*exec *' => Process::result(output: 'success'),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create secret*' => Process::result(output: 'secret created'),
@@ -93,7 +93,7 @@ test('chat:init deploys MAS via resolveManagedDbPassword() (Commons Postgres pat
         ->expectsOutputToContain('Element X (mobile):');
 
     Process::assertRan(function ($job) {
-        return str_contains($job->command, 'chat-mas-config-gen');
+        return str_contains($job->command, 'mas-config-gen');
     });
 });
 
@@ -116,21 +116,21 @@ test('chat:init restarts Synapse when MAS is already the active auth mode and it
             ],
         ]),
         '*get secret plex-admin*' => base64_encode('test-cred'),
-        '*get secret chat-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret synapse-secrets-*' => Process::result(output: '', exitCode: 1),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
         // MAS is ALREADY the active auth mode before this run: chat-oidc
         // absent (unmatched Process::fake patterns default to empty/success,
         // so no explicit fake is needed for that), chat-mas-secrets already
         // has real values.
-        '*chat-mas-secrets*data.trust-secret*' => Process::result(output: base64_encode('existing-trust-secret')),
-        '*chat-mas-secrets*data.public-issuer*' => Process::result(output: base64_encode('https://mas.chat.luchtech.local/')),
+        '*mas-secrets-*data.trust-secret*' => Process::result(output: base64_encode('existing-trust-secret')),
+        '*mas-secrets-*data.public-issuer*' => Process::result(output: base64_encode('https://mas.chat.luchtech.local/')),
         // The previously-stored MAS config is deliberately missing
         // http.public_base/http.issuer — exactly the shape of the real bug
         // — so renderMasConfig()'s freshly-rendered output necessarily
         // differs from it, regardless of the exact masHost this test
         // environment resolves.
-        '*get secret chat-mas-config*' => Process::result(output: base64_encode("http:\n  listeners: []\nsecrets:\n  encryption: \"deadbeef\"\n")),
+        '*get secret mas-config-*' => Process::result(output: base64_encode("http:\n  listeners: []\nsecrets:\n  encryption: \"deadbeef\"\n")),
         '*exec *' => Process::result(output: 'success'),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create secret*' => Process::result(output: 'secret created'),
@@ -149,7 +149,7 @@ test('chat:init restarts Synapse when MAS is already the active auth mode and it
         ->expectsOutputToContain("Restarting Synapse to pick up Matrix Authentication Service's updated metadata...");
 
     Process::assertRan(function ($job) {
-        return str_contains($job->command, 'rollout restart deployment/chat-synapse');
+        return str_contains($job->command, 'rollout restart deployment/synapse-');
     });
 });
 
@@ -167,7 +167,7 @@ test('chat:init aborts when the Commons S3 credentials are missing', function ()
             ],
         ]),
         '*get secret plex-admin*' => base64_encode('test-cred'),
-        '*get secret chat-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret synapse-secrets-*' => Process::result(output: '', exitCode: 1),
         '*exec *' => Process::result(output: 'success'),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -181,7 +181,7 @@ test('chat:init aborts when the Commons S3 credentials are missing', function ()
 
 test('chat:init deploys standalone matrix when --no-plex is passed', function (): void {
     Process::fake([
-        '*get secret chat-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret synapse-secrets-*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
@@ -195,7 +195,7 @@ test('chat:init deploys standalone matrix when --no-plex is passed', function ()
 
 test('chat:init --vpn-only creates the Traefik Middleware before applying the manifests', function (): void {
     Process::fake([
-        '*get secret chat-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret synapse-secrets-*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
@@ -209,7 +209,7 @@ test('chat:init --vpn-only creates the Traefik Middleware before applying the ma
 
 test('chat:init --vpn-only aborts when the Middleware apply fails', function (): void {
     Process::fake([
-        '*get secret chat-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret synapse-secrets-*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*apply -f *' => Process::result(output: '', exitCode: 1),
     ]);
@@ -224,10 +224,10 @@ test('chat:init --vpn-only aborts when the Middleware apply fails', function ():
 // there below — kept together per-command instead of split across the
 // init and remove test files.
 
-test('Synapse takes its database password from chat-secrets, so an OpenBao rotation reaches it', function (): void {
-    // It used to be baked into homeserver.yaml: OpenBao rotated chat_matrix's
-    // password, chat-secrets followed, the config file didn't, and Synapse
-    // lost the database once its open connections recycled.
+test('Synapse takes its database password from its credentials Secret, so an OpenBao rotation reaches it', function (): void {
+    // It must not be baked into homeserver.yaml: OpenBao rotates the role's
+    // password, the credentials Secret follows, the config file wouldn't, and
+    // Synapse would lose the database once its open connections recycled.
     $manifests = [];
     Process::fake(function ($process) use (&$manifests) {
         $cmd = (string) $process->command;
@@ -238,7 +238,7 @@ test('Synapse takes its database password from chat-secrets, so an OpenBao rotat
         return match (true) {
             str_contains($cmd, 'get configmap plex-commons') => Process::result(output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true], 'seaweedfs' => ['enabled' => true]]])),
             str_contains($cmd, 'get secret plex-admin') => Process::result(output: base64_encode('test-cred')),
-            str_contains($cmd, 'get secret chat-secrets') && str_contains($cmd, 'db-password') => Process::result(output: base64_encode('rotated-by-openbao')),
+            str_contains($cmd, 'get secret synapse-secrets-') && str_contains($cmd, 'db-password') => Process::result(output: base64_encode('rotated-by-openbao')),
             default => Process::result(output: ''),
         };
     });
@@ -248,9 +248,9 @@ test('Synapse takes its database password from chat-secrets, so an OpenBao rotat
     $manifest = implode("\n---\n", $manifests);
     $homeserver = (string) preg_replace('/^.*?homeserver\.yaml: \|\n(.*?)\n---.*$/s', '$1', $manifest);
 
-    expect($manifest)->toContain("- name: PGPASSWORD\n              valueFrom:\n                secretKeyRef:\n                  name: chat-secrets\n                  key: db-password")
+    expect($manifest)->toMatch('/- name: PGPASSWORD\n\s+valueFrom:\n\s+secretKeyRef:\n\s+name: synapse-secrets-[\w-]+\n\s+key: db-password/')
         ->toContain('reloader.stakater.com/auto: "true"')
         ->not->toContain('rotated-by-openbao')
-        ->and($homeserver)->toContain('user: "chat_matrix"')
+        ->and($homeserver)->toMatch('/user: "synapse_\w+"/')
         ->not->toMatch('/args:.*password:/s');
 });

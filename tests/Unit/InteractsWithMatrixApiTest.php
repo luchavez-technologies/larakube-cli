@@ -35,10 +35,10 @@ afterEach(function (): void {
 
 test('matrixAdminToken falls back to a password login when shared-secret registration says the user already exists', function (): void {
     Process::fake([
-        '*get secret chat-secrets*admin-access-token*' => Process::result(output: '', exitCode: 1),
-        '*get secret chat-secrets*registration-secret*' => Process::result(output: base64_encode('shared-secret')),
-        '*get secret chat-secrets*automation-password*' => Process::result(output: base64_encode('cached-password')),
-        '*patch secret chat-secrets*' => Process::result(output: 'patched'),
+        '*get secret synapse-secrets-chat-example-com*admin-access-token*' => Process::result(output: '', exitCode: 1),
+        '*get secret synapse-secrets-chat-example-com*registration-secret*' => Process::result(output: base64_encode('shared-secret')),
+        '*get secret synapse-secrets-chat-example-com*automation-password*' => Process::result(output: base64_encode('cached-password')),
+        '*patch secret synapse-secrets-chat-example-com*' => Process::result(output: 'patched'),
     ]);
     Saloon::fake([
         GetRegisterNonceRequest::class => MockResponse::make(['nonce' => 'nonce-abc']),
@@ -54,9 +54,9 @@ test('matrixAdminToken falls back to a password login when shared-secret registr
 
 test('matrixAdminToken returns null when both registration and the login fallback fail', function (): void {
     Process::fake([
-        '*get secret chat-secrets*admin-access-token*' => Process::result(output: '', exitCode: 1),
-        '*get secret chat-secrets*registration-secret*' => Process::result(output: base64_encode('shared-secret')),
-        '*get secret chat-secrets*automation-password*' => Process::result(output: '', exitCode: 1),
+        '*get secret synapse-secrets-chat-example-com*admin-access-token*' => Process::result(output: '', exitCode: 1),
+        '*get secret synapse-secrets-chat-example-com*registration-secret*' => Process::result(output: base64_encode('shared-secret')),
+        '*get secret synapse-secrets-chat-example-com*automation-password*' => Process::result(output: '', exitCode: 1),
     ]);
     Saloon::fake([
         GetRegisterNonceRequest::class => MockResponse::make(['nonce' => 'nonce-abc']),

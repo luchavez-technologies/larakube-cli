@@ -22,7 +22,7 @@ test('chat:remove deletes the same resource set as before the component refactor
 
     $deleteCommand = null;
     Process::assertRan(function ($process) use (&$deleteCommand) {
-        if (str_contains($process->command, 'kubectl delete') && str_contains($process->command, 'chat-synapse')) {
+        if (str_contains($process->command, 'kubectl delete') && str_contains($process->command, 'synapse')) {
             $deleteCommand = $process->command;
 
             return true;
@@ -38,36 +38,37 @@ test('chat:remove deletes the same resource set as before the component refactor
 
     sort($resources);
     $expected = [
-        'cronjob/chat-media-prune',
-        'deployment/chat-web',
-        'deployment/chat-coturn',
-        'deployment/chat-synapse',
-        'deployment/chat-synapse-db',
-        'deployment/chat-mas',
-        'deployment/chat-mas-db',
-        'deployment/chat-admin',
-        'service/chat-synapse',
-        'service/chat-web',
-        'service/chat-coturn',
-        'service/chat-synapse-db',
-        'service/chat-mas',
-        'service/chat-mas-db',
-        'service/chat-admin',
-        'ingress/chat-ingress',
-        'ingress/chat-mas-ingress',
-        'ingress/chat-admin-ingress',
-        'configmap/chat-synapse-config',
-        'configmap/chat-web-config',
-        'pvc/chat-synapse-data',
-        'pvc/chat-synapse-db-storage',
-        'pvc/chat-mas-db-storage',
-        'secret/chat-secrets',
-        'secret/chat-smtp',
-        'secret/chat-oidc',
-        'secret/chat-meet',
-        'secret/chat-coturn-config',
-        'secret/chat-mas-config',
-        'secret/chat-mas-secrets',
+        'cronjob/synapse-media-prune',
+        'deployment/synapse',
+        'deployment/element-web',
+        'deployment/coturn',
+        'deployment/synapse-db',
+        'deployment/mas',
+        'deployment/mas-db',
+        'deployment/element-admin',
+        'service/synapse',
+        'service/element-web',
+        'service/coturn',
+        'service/synapse-db',
+        'service/mas',
+        'service/mas-db',
+        'service/element-admin',
+        'ingress/synapse',
+        'ingress/mas',
+        'ingress/element-admin',
+        'secret/synapse-config',
+        'configmap/synapse-auth-mode',
+        'configmap/element-web-config',
+        'pvc/synapse-storage',
+        'pvc/synapse-db-storage',
+        'pvc/mas-db-storage',
+        'secret/synapse-secrets',
+        'secret/synapse-smtp',
+        'secret/synapse-oidc',
+        'secret/synapse-meet',
+        'secret/coturn-config',
+        'secret/mas-config',
+        'secret/mas-secrets',
     ];
     sort($expected);
 
@@ -76,11 +77,8 @@ test('chat:remove deletes the same resource set as before the component refactor
 
 test('chat:remove targets the real instance-suffixed resources when chat is actually registered', function (): void {
     // The test above fakes an empty registry lookup, so resolveInstance()
-    // falls back to null and every resource comes back bare — real,
-    // correct behavior for that case, but it never exercises the
-    // instance-suffixed naming chat:init actually produces once MAS/web/
-    // coturn/admin land (2026-08-24). This is the live-shaped case: chat
-    // registered under its real host-derived instance slug.
+    // falls back to null and every resource comes back bare. This is the
+    // live-shaped case: chat registered under its host-derived instance slug.
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
@@ -95,7 +93,7 @@ test('chat:remove targets the real instance-suffixed resources when chat is actu
 
     $deleteCommand = null;
     Process::assertRan(function ($process) use (&$deleteCommand) {
-        if (str_contains($process->command, 'kubectl delete') && str_contains($process->command, 'chat-synapse')) {
+        if (str_contains($process->command, 'kubectl delete') && str_contains($process->command, 'synapse')) {
             $deleteCommand = $process->command;
 
             return true;
@@ -106,22 +104,21 @@ test('chat:remove targets the real instance-suffixed resources when chat is actu
 
     expect($deleteCommand)
         ->not->toBeNull()
-        // Unsuffixed, always — the live data this component holds.
-        ->toContain('deployment/chat-synapse ')
-        ->toContain('pvc/chat-synapse-data')
-        // Suffixed — born after MAS work, no real multi-instance need, but
-        // not exempt from the naming convention either.
-        ->toContain('deployment/chat-web-chat-luchtech-dev')
-        ->toContain('deployment/chat-mas-chat-luchtech-dev')
-        ->toContain('deployment/chat-admin-chat-luchtech-dev')
-        ->toContain('secret/chat-mas-secrets-chat-luchtech-dev')
-        ->not->toContain('deployment/chat-web ')
-        ->not->toContain('deployment/chat-mas ');
+        // Every component is named per instance, Synapse included.
+        ->toContain('deployment/synapse-chat-luchtech-dev ')
+        ->toContain('pvc/synapse-storage-chat-luchtech-dev')
+        ->toContain('secret/synapse-secrets-chat-luchtech-dev')
+        ->toContain('deployment/element-web-chat-luchtech-dev')
+        ->toContain('deployment/mas-chat-luchtech-dev')
+        ->toContain('deployment/element-admin-chat-luchtech-dev')
+        ->toContain('secret/mas-secrets-chat-luchtech-dev')
+        ->not->toContain('deployment/synapse ')
+        ->not->toContain('deployment/mas ');
 });
 
 test('chat:remove aborts when a delete step fails', function (): void {
     Process::fake([...registeredToolRemoveFakes('chat:remove'),
-        '*get deployment chat-synapse-db*' => Process::result(output: 'chat-synapse-db   1/1   1   1   1d'),
+        '*get deployment synapse-db*' => Process::result(output: 'synapse-db   1/1   1   1   1d'),
         '*delete *' => Process::result(output: '', exitCode: 1),
     ]);
 

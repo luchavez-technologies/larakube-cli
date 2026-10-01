@@ -31,8 +31,8 @@ trait InteractsWithMatrixApi
     /**
      * The larakube-automation admin's access token, bootstrapping the
      * account on first use via Synapse's shared-secret registration API
-     * (registration_shared_secret, already stored as chat-secrets/
-     * registration-secret by chat:init). Cached in chat-secrets so
+     * (registration_shared_secret, already stored as the registration-secret key of
+     * Synapse's credentials Secret by chat:init). Cached in that Secret so
      * subsequent calls skip straight to using it.
      *
      * On a re-run where the account already exists, shared-secret
@@ -43,18 +43,18 @@ trait InteractsWithMatrixApi
      */
     protected function matrixAdminToken(string $kubectl, string $ns, string $host): ?string
     {
-        $existing = $this->readChatSecret($kubectl, $ns, 'admin-access-token');
+        $existing = $this->readChatSecret($kubectl, $ns, 'admin-access-token', $host);
         if ($existing !== null && $existing !== '') {
             return $existing;
         }
 
-        $secret = $this->readChatSecret($kubectl, $ns, 'registration-secret');
+        $secret = $this->readChatSecret($kubectl, $ns, 'registration-secret', $host);
         if ($secret === null || $secret === '') {
             return null;
         }
 
         $username = 'larakube-automation';
-        $password = $this->readChatSecret($kubectl, $ns, 'automation-password') ?? Str::password(32);
+        $password = $this->readChatSecret($kubectl, $ns, 'automation-password', $host) ?? Str::password(32);
 
         $connector = MatrixConnector::make($host);
 
@@ -86,8 +86,8 @@ trait InteractsWithMatrixApi
             return null;
         }
 
-        $this->storeChatSecret($kubectl, $ns, 'admin-access-token', $token);
-        $this->storeChatSecret($kubectl, $ns, 'automation-password', $password);
+        $this->storeChatSecret($kubectl, $ns, 'admin-access-token', $token, $host);
+        $this->storeChatSecret($kubectl, $ns, 'automation-password', $password, $host);
 
         return $token;
     }

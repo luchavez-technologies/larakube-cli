@@ -66,42 +66,40 @@ test('GIT always requires a real instance — there is no bare/default deploymen
     expect(ClusterTool::GIT->deploymentName('git-luchtech-dev'))->toBe('forgejo-git-luchtech-dev');
 });
 
-test('CHAT is the one tool where the PRIMARY component never gains an instance suffix', function (): void {
-    // Synapse only ever runs one server_name per process — there's no real
-    // second chat instance this would ever protect against — and
-    // chat-synapse/chat-synapse-db hold live data (media store, signing
-    // key, chat_matrix rows on --no-plex), so renaming them is a
-    // deliberate future migration, not something chat:init does today.
-    // Every OTHER component (born after MAS work landed, 2026-08-24) DOES
-    // thread the instance through, for the same naming-convention-
-    // uniformity reason every other tool does.
+test('CHAT names every component per instance, with the product as the stem', function (): void {
+    // Synapse holds the server's signing key, which is a reason to copy its
+    // volume with care, not to leave it unnamed (ADR 0021 has no exemptions).
     $components = collect(ClusterTool::CHAT->components('chat-luchtech-dev'))->keyBy('key');
 
-    expect($components['synapse']->deployment)->toBe('chat-synapse')
-        ->and($components['db']->deployment)->toBe('chat-synapse-db')
-        ->and($components['web']->deployment)->toBe('chat-web-chat-luchtech-dev')
-        ->and($components['coturn']->deployment)->toBe('chat-coturn-chat-luchtech-dev')
-        ->and($components['mas']->deployment)->toBe('chat-mas-chat-luchtech-dev')
-        ->and($components['mas-db']->deployment)->toBe('chat-mas-db-chat-luchtech-dev')
-        ->and($components['admin']->deployment)->toBe('chat-admin-chat-luchtech-dev');
+    expect($components['synapse']->deployment)->toBe('synapse-chat-luchtech-dev')
+        ->and($components['db']->deployment)->toBe('synapse-db-chat-luchtech-dev')
+        ->and($components['web']->deployment)->toBe('element-web-chat-luchtech-dev')
+        ->and($components['coturn']->deployment)->toBe('coturn-chat-luchtech-dev')
+        ->and($components['mas']->deployment)->toBe('mas-chat-luchtech-dev')
+        ->and($components['mas-db']->deployment)->toBe('mas-db-chat-luchtech-dev')
+        ->and($components['admin']->deployment)->toBe('element-admin-chat-luchtech-dev');
 
-    // Every resource NAME inside a suffixed component's own resources list
-    // gets the instance appended to the FULL name as one unit too — e.g.
-    // chat-web-config-{instance}, never chat-web-{instance}-config. Mixing
-    // the two shapes was a real bug caught writing the Blade templates.
+    // Every resource NAME inside a component's own resources list gets the
+    // instance appended to the FULL name as one unit too.
     $webResources = collect($components['web']->resources)->pluck('name');
-    expect($webResources)->toContain('chat-web-config-chat-luchtech-dev')
-        ->and($webResources)->not->toContain('chat-web-chat-luchtech-dev-config');
+    expect($webResources)->toContain('element-web-config-chat-luchtech-dev')
+        ->and($webResources)->not->toContain('element-web-chat-luchtech-dev-config');
 
     $masResources = collect($components['mas']->resources)->pluck('name');
-    expect($masResources)->toContain('chat-mas-ingress-chat-luchtech-dev')
-        ->and($masResources)->toContain('chat-mas-config-chat-luchtech-dev')
-        ->and($masResources)->toContain('chat-mas-secrets-chat-luchtech-dev');
+    expect($masResources)->toContain('mas-chat-luchtech-dev')
+        ->and($masResources)->toContain('mas-config-chat-luchtech-dev')
+        ->and($masResources)->toContain('mas-secrets-chat-luchtech-dev');
+
+    $synapseResources = collect($components['synapse']->resources)->pluck('name');
+    expect($synapseResources)->toContain('synapse-storage-chat-luchtech-dev')
+        ->and($synapseResources)->toContain('synapse-secrets-chat-luchtech-dev')
+        ->and($synapseResources)->toContain('synapse-config-chat-luchtech-dev')
+        ->and($synapseResources)->toContain('synapse-media-prune-chat-luchtech-dev');
 });
 
 test('CHAT/GIT/DESIGN component lists match today\'s hand-written Blade/teardown deployment names exactly', function (): void {
     $chatDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::CHAT->components());
-    expect($chatDeployments)->toBe(['chat-synapse', 'chat-web', 'chat-coturn', 'chat-synapse-db', 'chat-mas', 'chat-mas-db', 'chat-admin']);
+    expect($chatDeployments)->toBe(['synapse', 'element-web', 'coturn', 'synapse-db', 'mas', 'mas-db', 'element-admin']);
 
     $gitDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::GIT->components('git-luchtech-dev'));
     expect($gitDeployments)->toBe(['forgejo-git-luchtech-dev', 'forgejo-runner-git-luchtech-dev']);

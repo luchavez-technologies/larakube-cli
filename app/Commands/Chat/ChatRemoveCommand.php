@@ -3,6 +3,7 @@
 namespace App\Commands\Chat;
 
 use App\Commands\Tool\AbstractToolRemoveCommand;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Traits\ManagesToolFirewallPorts;
@@ -31,7 +32,7 @@ class ChatRemoveCommand extends AbstractToolRemoveCommand
         ];
 
         if ($this->option('purge')) {
-            $lines[] = 'Plex Commons database WILL BE DESTROYED: chat_matrix';
+            $lines[] = 'Plex Commons databases WILL BE DESTROYED: Synapse and Matrix Authentication Service.';
         } else {
             $lines[] = 'Persistent data (Plex Commons DB + S3 buckets) WILL BE PRESERVED.';
         }
@@ -42,7 +43,9 @@ class ChatRemoveCommand extends AbstractToolRemoveCommand
     /** A bundled (--no-plex) install runs its own Postgres Deployment. */
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
-        return $this->deploymentExists($kubectl, $namespace, 'chat-synapse-db');
+        $chat = ToolInstance::first($kubectl, ClusterTool::CHAT);
+
+        return $chat !== null && $this->deploymentExists($kubectl, $namespace, $chat->deployment('db'));
     }
 
     protected function teardown(string $kubectl, string $namespace): bool

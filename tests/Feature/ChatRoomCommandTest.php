@@ -12,8 +12,8 @@ use Saloon\Laravel\Facades\Saloon;
 function chatRoomBaseProcessFakes(): array
 {
     return [
-        '*get deployment chat-synapse*' => Process::result(output: 'chat-synapse   1/1   1   1   10d'),
-        '*get secret chat-secrets*admin-access-token*' => Process::result(output: base64_encode('cached-admin-token')),
+        '*get deployment -l larakube.io/tool=chat*' => Process::result(output: 'synapse-chat-test   1/1   1   1   10d'),
+        '*get secret synapse-secrets-*admin-access-token*' => Process::result(output: base64_encode('cached-admin-token')),
     ];
 }
 
@@ -28,7 +28,7 @@ test('chat:room is registered', function (): void {
 });
 
 test('chat:room requires installed chat', function (): void {
-    Process::fake(['*get deployment chat-synapse*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*get deployment -l larakube.io/tool=chat*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('chat:room', ['--alias' => 'partner-team', '--no-interaction' => true])
         ->assertExitCode(1)
