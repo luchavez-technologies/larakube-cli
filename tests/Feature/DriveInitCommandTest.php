@@ -1,9 +1,9 @@
 <?php
 
-use App\Commands\Drive\DriveInitCommand;
+use App\Commands\Ocis\OcisInitCommand;
 use Illuminate\Support\Facades\Process;
 
-test('drive:init deploys ocis engine', function (): void {
+test('ocis:init deploys ocis engine', function (): void {
     Process::fake([
         '*get secret drive-secrets*' => Process::result(output: '', exitCode: 1),
         '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
@@ -12,9 +12,8 @@ test('drive:init deploys ocis engine', function (): void {
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan(DriveInitCommand::class, [
+    $this->artisan(OcisInitCommand::class, [
         'environment' => 'local',
-        '--engine' => 'ocis',
         '--domain' => 'drive.test.dev',
         '--no-plex' => true,
         '--force' => true,

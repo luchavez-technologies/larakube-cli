@@ -25,7 +25,7 @@ Traefik's `acme.json` before Phase 1 step 2.
   the uncovered hosts.
 
 ## Phase 1b: switch production
-1. `larakube tls:init production`: it offers to reuse the `dns:init` token
+1. `larakube tls:init production`: it offers to reuse the `external-dns:init` token
    (group `luchtech-dev`), shows the zones, the host count, "existing
    certificates are kept", then asks to confirm.
 2. Confirm.
@@ -55,7 +55,7 @@ static site at `tls-check.luchtech.dev`.
   `acme.json`, restart Traefik, and confirm a fresh certificate arrives while
   still proxied.
 
-## Phase 1d: `dns:init` never ran (fresh or non-ExternalDNS cluster)
+## Phase 1d: `external-dns:init` never ran (fresh or non-ExternalDNS cluster)
 On a scratch cluster with no `cloudflare-token-*` Secrets:
 - [ ] Interactive `tls:init production` explains ExternalDNS isn't needed,
   lists the required token permissions, and prompts for a hidden token.

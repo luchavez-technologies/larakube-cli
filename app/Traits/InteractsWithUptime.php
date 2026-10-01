@@ -72,10 +72,10 @@ trait InteractsWithUptime
         return 'larakube-shared';
     }
 
-    /** Uptime Kuma Deployment present? A cheap "is uptime installed" probe. */
+    /** Uptime Kuma Deployment present? A cheap "is uptime installed" probe, by identity label. */
     protected function isUptimeInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'uptime-kuma');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=uptime');
     }
 
     /**

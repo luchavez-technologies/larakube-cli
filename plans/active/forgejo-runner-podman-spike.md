@@ -4,7 +4,7 @@ Gate for the `cloud:configure` Forgejo/static-site CI work (Phase 2+). Proves th
 re-applied runner can build and push an image through its rootless Podman
 sidecar before any workflow generator depends on it.
 
-## What changed in `git:init`
+## What changed in `forgejo:init`
 - Runner `6.4.0` → `13.1.0`, Forgejo `16.0.1` → `16.0.4`, Podman sidecar `v5.8.2` → `v5.8.4` (constants on `GitInitCommand`).
 - Job labels map to `node:24-trixie` (was `node:22-bookworm`).
 - Runner config: `container.docker_host: unix:///run/podman/podman.sock` mounts the sidecar socket into every job at `/var/run/docker.sock`, and `runner.envs.CONTAINER_HOST` points a job's `podman` CLI at it.
@@ -14,7 +14,7 @@ sidecar before any workflow generator depends on it.
 ## 1. Re-apply the runner
 ```bash
 ./build
-larakube git:init production
+larakube forgejo:init production
 ```
 Expect a short Forgejo restart (16.0.4 image). Then check the runner is online:
 repo or site admin → Actions → Runners → `larakube` shows **Idle** with labels

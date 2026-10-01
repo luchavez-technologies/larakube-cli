@@ -95,7 +95,7 @@ function domainResolverRegisteredAt(?string $registeredHost): object
 
 test('a host the tool already serves is used as-is, whatever its prefix looks like', function (): void {
     // monitor's prefix is `grafana`, so its own registered host does not start
-    // with it — prefixing turned `monitor:init --domain=monitor.luchtech.dev`
+    // with it — prefixing turned `grafana:init --domain=monitor.luchtech.dev`
     // into grafana.monitor.luchtech.dev and built a second, parallel instance
     // with its own Deployments, Ingress and Commons database.
     expect(domainResolverRegisteredAt('monitor.luchtech.dev')

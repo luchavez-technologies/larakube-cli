@@ -104,7 +104,7 @@ class SsoWireCommand extends Command
         }
 
         if (! $this->isSsoInstalled($kubectl, $ssoNs)) {
-            $this->laraKubeError('Zitadel is not installed. Run `larakube sso:init` first.');
+            $this->laraKubeError('Zitadel is not installed. Run `larakube zitadel:init` first.');
 
             return 1;
         }
@@ -118,7 +118,7 @@ class SsoWireCommand extends Command
 
         $pat = $this->readSsoSecret($kubectl, $ssoNs, 'machine-pat');
         if ($pat === null) {
-            $this->laraKubeError('Could not reach Zitadel\'s automation credentials — re-run `larakube sso:init` to recapture them.');
+            $this->laraKubeError('Could not reach Zitadel\'s automation credentials — re-run `larakube zitadel:init` to recapture them.');
 
             return 1;
         }
@@ -309,11 +309,11 @@ class SsoWireCommand extends Command
         // Skip applyToolEnv and go straight to wireSynapseOidc.
         // OpenBao is configured via its CLI inside the pod (bao auth enable oidc).
         // NetBird is configured via its own REST API (/api/identity-providers).
-        if (in_array($tool, [ClusterTool::CHAT, ClusterTool::MATRIX], true)) {
+        if ($tool->category() === ClusterTool::CHAT) {
             $ok = $this->wireSynapseOidc($kubectl, $schema['namespace'], $ssoHost, $logical['issuer'], $clientId, $clientSecret, $env);
-        } elseif (in_array($tool, [ClusterTool::SECRETS, ClusterTool::OPENBAO], true)) {
+        } elseif ($tool->category() === ClusterTool::SECRETS) {
             $ok = $this->wireOpenBaoOidc($kubectl, $schema['namespace'], $ssoHost, $toolHost, $clientId, $clientSecret, $env);
-        } elseif ($tool === ClusterTool::VPN) {
+        } elseif ($tool->category() === ClusterTool::VPN) {
             $ok = $this->wireNetbirdOidc($kubectl, $schema['namespace'], $toolHost, $ssoHost, $clientId, $clientSecret);
         } else {
             $ok = $tool->usesCliOidc()
@@ -511,7 +511,7 @@ class SsoWireCommand extends Command
         // :init / heal re-inject creds for the now-deregistered Zitadel app.
         Process::run("{$kubectl} delete secret {$schema['secret']} -n {$schema['namespace']} --ignore-not-found");
 
-        if (in_array($tool, [ClusterTool::CHAT, ClusterTool::MATRIX], true)) {
+        if ($tool->category() === ClusterTool::CHAT) {
             $this->unwireSynapseOidc($kubectl, $schema['namespace']);
             Process::run("{$kubectl} rollout restart deployment/{$schema['deployment']} -n {$schema['namespace']}");
             $this->laraKubeInfo("✅ {$tool->getLabel()} no longer uses Zitadel SSO.");
@@ -519,7 +519,7 @@ class SsoWireCommand extends Command
             return 0;
         }
 
-        if (in_array($tool, [ClusterTool::SECRETS, ClusterTool::OPENBAO], true)) {
+        if ($tool->category() === ClusterTool::SECRETS) {
             $this->unwireOpenBaoOidc($kubectl, $schema['namespace']);
             $this->laraKubeInfo("✅ {$tool->getLabel()} no longer uses Zitadel SSO.");
 
@@ -575,7 +575,7 @@ class SsoWireCommand extends Command
      * place when one is already present — matching the canonical `zitadel` name
      * as well as the legacy `Login with SSO` label, and renaming any legacy
      * source to `zitadel` so the callback path agrees with the redirect URI
-     * registered in Zitadel. Mirrors how git:init checks `admin user list`
+     * registered in Zitadel. Mirrors how forgejo:init checks `admin user list`
      * before creating its admin.
      *
      * @param  array{deployment: string, namespace: string, secret: string, vars: array<string, string>, redirect_path: string}  $schema
@@ -1008,12 +1008,12 @@ class SsoWireCommand extends Command
     protected function applyToolEnv(string $kubectl, array $schema, array $logical): bool
     {
         $staticVars = $schema['static'] ?? [];
-        $isPenpot = str_starts_with($schema['deployment'], 'design-penpot-backend');
-        // Instance suffix (e.g. '-design-luchtech-dev', or '' for the bare
+        $isPenpot = str_starts_with($schema['deployment'], 'penpot-backend');
+        // Instance suffix (e.g. '-penpot-luchtech-dev', or '' for the bare
         // legacy name) — derived from the deployment name so the smtp/oidc
         // secret and frontend deployment names below always match the same
         // instance $schema['secret']/$schema['deployment'] already resolved to.
-        $penpotSuffix = $isPenpot ? substr($schema['deployment'], strlen('design-penpot-backend')) : '';
+        $penpotSuffix = $isPenpot ? substr($schema['deployment'], strlen('penpot-backend')) : '';
 
         // PENPOT_FLAGS is reconciled from scratch by ReconcilesPenpotFlags,
         // not carried through the generic static-var plumbing below — see
@@ -1112,11 +1112,11 @@ class SsoWireCommand extends Command
                     $kubectl,
                     $ns,
                     $secret,
-                    "design-smtp{$penpotSuffix}",
+                    "penpot-backend-smtp{$penpotSuffix}",
                     $ssoOnlyOption,
                     $deployment,
                 );
-                $this->applyDesignPenpotFlags($kubectl, $ns, $secret, $penpotFlags, $deployment, ...($schema['also_patch'] ?? ["design-penpot-frontend{$penpotSuffix}"]));
+                $this->applyDesignPenpotFlags($kubectl, $ns, $secret, $penpotFlags, $deployment, ...($schema['also_patch'] ?? ["penpot-frontend{$penpotSuffix}"]));
             }
         });
 
@@ -1140,7 +1140,7 @@ class SsoWireCommand extends Command
         }
 
         // ResolvesToolHost::promptForCloudHost() persists cloud tool hosts to
-        // the CLUSTER REGISTRY, not .larakube.json — dashboard:init never
+        // the CLUSTER REGISTRY, not .larakube.json — headlamp:init never
         // writes a project file at all. Check the registry (and, failing
         // that, the tool's live Ingress) before falling back to the project
         // file, or any tool onboarded after that migration is permanently
@@ -1187,7 +1187,7 @@ class SsoWireCommand extends Command
     }
 
     /**
-     * Persist the OIDC credentials to Synapse's OIDC Secret (so `chat:init`
+     * Persist the OIDC credentials to Synapse's OIDC Secret (so `matrix:init`
      * re-renders the oidc_providers: block on re-run) and apply them to
      * Synapse's homeserver.yaml Secret. Preserves any existing `email:` block.
      * Issues a rollout restart so Synapse picks up the new config immediately.
@@ -1208,7 +1208,7 @@ class SsoWireCommand extends Command
             return false;
         }
 
-        // 1. Persist credentials to Synapse's OIDC Secret so chat:init can
+        // 1. Persist credentials to Synapse's OIDC Secret so matrix:init can
         //    re-render the oidc_providers: block on a re-run.
         Kubectl::fromPrefix($kubectl)->putSecret($ns, $chat->secret(SecretKind::OIDC), [
             'issuer' => $issuer,
@@ -1226,7 +1226,7 @@ class SsoWireCommand extends Command
             'client_secret' => $clientSecret,
             'name' => 'Zitadel',
         ];
-        // If chat:init has already activated MAS-delegated auth (the OIDC Secret
+        // If matrix:init has already activated MAS-delegated auth (the OIDC Secret
         // was absent when it ran), a plain `sso:wire chat` re-run must not
         // silently regress it back to
         // classic oidc_providers: — renderSynapseConfig() always prefers
@@ -1274,7 +1274,7 @@ class SsoWireCommand extends Command
             return;
         }
 
-        // Delete the OIDC credential Secret first so chat:init won't
+        // Delete the OIDC credential Secret first so matrix:init won't
         // re-render the oidc_providers: block on the next run.
         Process::run("{$kubectl} delete secret {$chat->secret(SecretKind::OIDC)} -n {$ns} --ignore-not-found");
 
@@ -1460,7 +1460,7 @@ class SsoWireCommand extends Command
     {
         $netbirdPat = $this->readClusterSecretKey($kubectl, $ns, $this->vpnSecret($kubectl), 'pat');
         if ($netbirdPat === null) {
-            $this->laraKubeError('NetBird admin token not found — re-run `larakube vpn:init` to bootstrap auth.');
+            $this->laraKubeError('NetBird admin token not found — re-run `larakube netbird:init` to bootstrap auth.');
 
             return false;
         }
@@ -1497,9 +1497,9 @@ class SsoWireCommand extends Command
 
             // Per ADR 0018 the values above reach the Deployment through
             // valueFrom, so the running pod keeps its old env until restarted.
-            // Only meaningful once vpn:init has actually deployed the
+            // Only meaningful once netbird:init has actually deployed the
             // dashboard — on a first wire it does not exist yet, and the next
-            // vpn:init creates it with these values already in place.
+            // netbird:init creates it with these values already in place.
             $this->withSpin('Restarting the NetBird dashboard...', fn () => Process::run(
                 "{$kubectl} rollout restart deployment/".$this->vpnDeployment($kubectl, 'dashboard')." -n {$ns} >/dev/null 2>&1",
             ));
@@ -1522,7 +1522,7 @@ class SsoWireCommand extends Command
      * `domain=''`, gateway on 100.116.x and the phone on 100.122.x.
      *
      * Deleting it is the only supported repair. The next login — SSO, or the
-     * embedded-IdP admin, whose address vpn:init now puts inside the SSO domain
+     * embedded-IdP admin, whose address netbird:init now puts inside the SSO domain
      * — creates an account that carries the domain, and every login after that
      * matches it.
      *
@@ -1549,7 +1549,7 @@ class SsoWireCommand extends Command
 
         $this->laraKubeNewLine();
         $this->line('  <fg=yellow>⚠ This NetBird account cannot host SSO logins.</>');
-        $this->line('  <fg=gray>It was created by vpn:init before SSO existed, so it carries no email domain —</>');
+        $this->line('  <fg=gray>It was created by netbird:init before SSO existed, so it carries no email domain —</>');
         $this->line('  <fg=gray>and no API can add one. Every SSO sign-in would land in a separate account with</>');
         $this->line('  <fg=gray>its own /16, unable to reach this cluster. Deleting it is the only repair.</>');
         $this->newLine();
@@ -1566,7 +1566,7 @@ class SsoWireCommand extends Command
 
         // NetBird permits account deletion to the OWNER only — an admin service
         // user gets 403, and cannot even mint a token for the owner to borrow.
-        // vpn:init keeps the owner's token for exactly this.
+        // netbird:init keeps the owner's token for exactly this.
         $ownerPat = $this->readClusterSecretKey($kubectl, $ns, $this->vpnSecret($kubectl), 'owner-pat') ?? $pat;
 
         if (! $this->deleteVpnAccount($toolHost, $ownerPat, $accountId)) {
@@ -1582,7 +1582,7 @@ class SsoWireCommand extends Command
         // Restart so the manager re-evaluates with zero accounts: the mode is
         // decided once at process start, and it is only with no account left
         // that a login's real domain claim survives to reach the account it
-        // creates. The domain itself is vpn:init's literal — nothing to write
+        // creates. The domain itself is netbird:init's literal — nothing to write
         // here.
         $this->withSpin('Restarting NetBird Management...', function () use ($kubectl, $ns): void {
             Process::run("{$kubectl} rollout restart deployment/".$this->vpnDeployment($kubectl)." -n {$ns}");
@@ -1603,7 +1603,7 @@ class SsoWireCommand extends Command
         $this->line('     <fg=blue>https://'.$toolHost.'/oauth2/auth?client_id=netbird-dashboard&amp;response_type=code&amp;scope=openid+profile+email&amp;redirect_uri=https://'.$toolHost.'/nb-auth</>');
         $this->line('  <fg=gray>2.</> Mint a token: <fg=gray>Team → Users → your user → Access Tokens, then</>');
         $this->line('     <fg=blue>larakube vpn:setup-key <env> --pat=…</>');
-        $this->line('  <fg=gray>3.</> <fg=blue>larakube vpn:init <env></> <fg=gray>— recreates the service user, groups and gateway key.</>');
+        $this->line('  <fg=gray>3.</> <fg=blue>larakube netbird:init <env></> <fg=gray>— recreates the service user, groups and gateway key.</>');
         $this->newLine();
     }
 

@@ -129,7 +129,7 @@ test('only tools that can bundle their own storage advertise --no-plex', functio
 
 test('command name helpers spell the canonical tool:action shape', function (): void {
     ssoRegistered();
-    expect(ClusterTool::FLOW->initCommand())->toBe('flow:init')
+    expect(ClusterTool::FLOW->initCommand())->toBe('n8n:init')
         ->and(ClusterTool::FLOW->removeCommand())->toBe('flow:remove')
         ->and(ClusterTool::FLOW->showCommand())->toBe('flow:show')
         ->and(ClusterTool::PASSWORDS->removeCommand())->toBe('passwords:remove');
@@ -147,7 +147,7 @@ test('deploymentName() matches the actual Deployment name each tool\'s own manif
     // SharedClusterService::presenceProbe() and the tools' own manifests,
     // not just re-asserting whatever the enum currently says.
     expect(ClusterTool::SSO->deploymentName())->toBe('zitadel');
-    expect(ClusterTool::ERRORS->deploymentName())->toBe('glitchtip-web')
+    expect(ClusterTool::ERRORS->deploymentName())->toBe('glitchtip')
         ->and(ClusterTool::VPN->deploymentName())->toBe('netbird');
 });
 
@@ -244,6 +244,12 @@ test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance
         ClusterTool::ANALYTICS, ClusterTool::UMAMI, ClusterTool::PLAUSIBLE,
         ClusterTool::SHEETS, ClusterTool::TEABLE,
         ClusterTool::TASKS, ClusterTool::PLANKA,
+        ClusterTool::UPTIME, ClusterTool::KUMA,
+        ClusterTool::INSIGHTS, ClusterTool::METABASE,
+        ClusterTool::ERRORS, ClusterTool::GLITCHTIP,
+        ClusterTool::SUPPORT, ClusterTool::CHATWOOT,
+        ClusterTool::RECORD, ClusterTool::SENDREC,
+        ClusterTool::RESUME,
     ];
 
     foreach (ClusterTool::cases() as $tool) {
@@ -294,7 +300,7 @@ test('vpnMiddlewareTarget() never produces a -main suffix for the default (no-in
     // matching CRM's pure host-derived convention) without updating
     // ensureVpnMiddleware()'s own default to match — so any of the ~28
     // `*:init --vpn-only` callers that omit $instance (all of them except
-    // CrmInitCommand, which always computes its own) would have silently
+    // TwentyInitCommand, which always computes its own) would have silently
     // produced a second, wrongly-suffixed Middleware
     // ("analytics-vpn-only-main" instead of "analytics-vpn-only") the next
     // time --vpn-only was used — a real access-control regression, not just

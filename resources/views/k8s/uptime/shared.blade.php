@@ -1,30 +1,46 @@
+@php
+    // Every name comes from ToolInstance (ADR 0021).
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::UPTIME->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::UPTIME, $instance);
+    $deploymentName = $names->deployment();
+    $volume = $names->volume();
+    $labels = '';
+    foreach ($names->labels() as $key => $value) {
+        $labels .= "\n    {$key}: {$value}";
+    }
+    $podLabels = str_replace("\n    ", "\n        ", $labels);
+@endphp
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: uptime-kuma-storage
+  name: {{ $volume }}
   namespace: larakube-shared
+  labels:{!! $labels !!}
 spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: {{ $volumeSize('uptime-kuma-storage', '2Gi', true) }}
+      storage: {{ $volumeSize($volume, '2Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: uptime-kuma
+  name: {{ $deploymentName }}
   namespace: larakube-shared
+  labels:{!! $labels !!}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: uptime-kuma
+      app: {{ $deploymentName }}
   template:
     metadata:
       labels:
-        app: uptime-kuma
+        app: {{ $deploymentName }}
     spec:
       containers:
         - name: uptime-kuma
@@ -57,20 +73,21 @@ spec:
       volumes:
         - name: uptime-kuma-volume
           persistentVolumeClaim:
-            claimName: uptime-kuma-storage
+            claimName: {{ $volume }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: uptime-kuma
+  name: {{ $deploymentName }}
   namespace: larakube-shared
+  labels:{!! $labels !!}
 spec:
   selector:
-    app: uptime-kuma
+    app: {{ $deploymentName }}
   ports:
     - protocol: TCP
       port: 3001
       targetPort: 3001
   type: ClusterIP
 ---
-@include('k8s.uptime.ingress')
+@include('k8s.uptime.ingress', ['instance' => $instance])

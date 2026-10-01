@@ -33,32 +33,9 @@ use function Laravel\Prompts\text;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class DataInitCommand extends Command
+abstract class DataInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithData, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSecrets, InteractsWithVolumeSizing, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
-
-    protected $signature = 'data:init
-        {environment? : Environment this install targets — "local" (default) or cloud.}
-        {--engine=   : Target data engine — "pocketbase" (default) or "directus"}
-        {--context=  : Target a specific kube-context}
-        {--domain=   : Base domain OR full host for Data (example.com → prefix.example.com). Omit to target/update the default instance; pass a different host to deploy an ADDITIONAL instance there — the host you give IS its identity}
-        {--alias=*    : Additional domain alias(es) to register on this instance\'s Ingress}
-        {--admin-email= : Email for the primary admin account}
-        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG_DEFAULT_ON;
-
-    protected $description = 'Deploy a Data / Headless CMS stack (PocketBase or Directus) into larakube-shared';
-
-    public function handle(): int
-    {
-        $engine = $this->resolveEngine();
-        $target = $engine === 'directus' ? 'directus:init' : 'pocketbase:init';
-        $this->laraKubeWarn("[DEPRECATION] 'data:init' is deprecated. Forwarding to '{$target}'. Please update your scripts.");
-
-        $this->renderHeader();
-
-        return $this->deployData();
-    }
 
     protected function deployData(): int
     {
@@ -78,7 +55,7 @@ class DataInitCommand extends Command
         // SEPARATE resolveInstanceForDomain($domainOption) for $instance)
         // could drift apart: DATA's default host can be pocket.luchtech.dev
         // while the service hostPrefix is 'data', so a plain re-run of
-        // data:init without --domain used to derive the slug
+        // directus:init without --domain used to derive the slug
         // 'pocket-luchtech-dev', deploy a SECOND PocketBase from scratch
         // (data-pocketbase-{slug}) and register it as a duplicate row
         // (confirmed live 2026-08-09).

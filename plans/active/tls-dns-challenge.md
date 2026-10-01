@@ -4,7 +4,7 @@
 
 **Phase 1 deviations from this plan:**
 - **Managed (DOKS) clusters are refused for now.** Their Traefik install path never re-renders an existing install, so there is no safe apply path yet. Both templates already render the DNS challenge.
-- **No tool-registry row.** `dns:init` doesn't register one either; `tls:show` is the status view.
+- **No tool-registry row.** `external-dns:init` doesn't register one either; `tls:show` is the status view.
 - **Every cloud Traefik re-render keeps the cluster's own ACME email** (read from the running Deployment) over the operator's global config.
 **Walkthrough:** `plans/active/tls-dns-challenge-testing.md`
 
@@ -24,13 +24,13 @@ The **DNS challenge** proves domain control by writing a temporary
 the server, so it works for proxied and DNS-only hosts alike, and allows
 wildcard certificates.
 
-## Relationship to `dns:init`
+## Relationship to `external-dns:init`
 
-None, apart from the credential. `dns:init` runs ExternalDNS, which creates
+None, apart from the credential. `external-dns:init` runs ExternalDNS, which creates
 A/CNAME records from ingresses. Certificates are Traefik's job. Both need a
 Cloudflare token that can edit DNS, so `tls:init` **reuses** a token
-`dns:init` stored when there is one, and asks for one when there isn't.
-`tls:init` never requires `dns:init`, and `dns:init` never touches Traefik.
+`external-dns:init` stored when there is one, and asks for one when there isn't.
+`tls:init` never requires `external-dns:init`, and `external-dns:init` never touches Traefik.
 
 ## Commands
 
@@ -40,13 +40,13 @@ Cloudflare DNS challenge.
 
 1. **Refuse `local`.** Local clusters use the LaraKube Local CA, not ACME.
 2. **Resolve the token** (never through argv):
-   - **`dns:init` has run**, i.e. `larakube-shared/cloudflare-token-*` Secrets
+   - **`external-dns:init` has run**, i.e. `larakube-shared/cloudflare-token-*` Secrets
      exist:
-     - One Secret: "Reuse the Cloudflare token from `dns:init` (group
+     - One Secret: "Reuse the Cloudflare token from `external-dns:init` (group
        `luchtech-dev`: zones …)?" Confirm, or enter a different token.
      - Several: a picker by group, listing each group's zones. Non-interactive
        runs require `--group=`.
-   - **`dns:init` has never run** (no stored token):
+   - **`external-dns:init` has never run** (no stored token):
      - Explain that ExternalDNS is **not** required. DNS records can stay
        hand-managed; this only writes short-lived `_acme-challenge` TXT records.
      - Say what the token needs (Zone → Zone → Read, Zone → DNS → Edit, for
@@ -77,7 +77,7 @@ Cloudflare DNS challenge.
    restart of a few seconds (single replica). Destructive confirmation.
 6. **Store the token in Traefik's own namespace** as `traefik/traefik-acme-cloudflare`
    (key `token`). A pod can't reference a Secret in another namespace, so even
-   a reused `dns:init` token is copied. Re-running `tls:init` re-syncs the copy
+   a reused `external-dns:init` token is copied. Re-running `tls:init` re-syncs the copy
    after a token rotation.
 7. **Re-render and apply Traefik** through the same render path `cloud:init`
    uses (below). Wait for the rollout.
@@ -92,7 +92,7 @@ Switches back to the HTTP challenge.
   those hosts. Their renewals would start failing.
 - Re-render Traefik with the HTTP challenge, delete
   `traefik/traefik-acme-cloudflare`, unregister.
-- Never touches `larakube-shared/cloudflare-token-*` (that's `dns:init`'s).
+- Never touches `larakube-shared/cloudflare-token-*` (that's `external-dns:init`'s).
 - Certificates in `acme.json` are kept.
 
 ### `tls:show {environment}`
@@ -166,7 +166,7 @@ verification, preflight, commands, tests.
 - **Render path:** `cloud:init`/`traefik:setup` re-render keeps the DNS
   challenge when the Secret exists.
 - **Token resolution:**
-  - one stored `dns:init` token → reuse prompt;
+  - one stored `external-dns:init` token → reuse prompt;
   - several → picker, `--group=` when non-interactive;
   - none → `password()` prompt;
   - none + non-interactive → reads `LARAKUBE_CLOUDFLARE_TOKEN`, errors naming
@@ -209,7 +209,7 @@ has no preconditions.
   renewals request certificates.
 - **Restart.** Single-replica Traefik with hostPorts means a few seconds of
   downtime on apply.
-- **Token rotation.** Rotating the `dns:init` token leaves Traefik's copy
+- **Token rotation.** Rotating the `external-dns:init` token leaves Traefik's copy
   stale. Re-run `tls:init`; `tls:show` should flag when the copy differs from
   the group it came from.
 - **One Cloudflare credential per Traefik.** The Cloudflare DNS provider reads

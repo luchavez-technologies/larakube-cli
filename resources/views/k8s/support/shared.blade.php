@@ -1,22 +1,43 @@
-@php($dbName ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::SUPPORT, $host)->database())
+@php
+    // Every name comes from ToolInstance (ADR 0021).
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::SUPPORT->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::SUPPORT, $instance);
+    $dbName ??= $names->database();
+    $webName = $names->deployment();
+    $workerName = $names->deployment('worker');
+    $secretName = $names->secret();
+    $smtpSecret = $names->secret(\App\Enums\SecretKind::SMTP);
+    $oidcSecret = $names->secret(\App\Enums\SecretKind::OIDC);
+    $labelsFor = function (?string $component = null) use ($names): string {
+        $out = '';
+        foreach ($names->labels($component) as $key => $value) {
+            $out .= "\n    {$key}: {$value}";
+        }
+
+        return $out;
+    };
+    $podLabelsFor = fn (?string $component = null): string => str_replace("\n    ", "\n        ", $labelsFor($component));
+@endphp
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: support-chatwoot
+  name: {{ $webName }}
   namespace: larakube-shared
   labels:
-    app: support-chatwoot
+    app: {{ $webName }}{!! $labelsFor() !!}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: support-chatwoot
+      app: {{ $webName }}
   template:
     metadata:
       labels:
-        app: support-chatwoot
+        app: {{ $webName }}
     spec:
       containers:
         - name: chatwoot
@@ -32,12 +53,12 @@ spec:
             - name: SECRET_KEY_BASE
               valueFrom:
                 secretKeyRef:
-                  name: support-secrets
+                  name: {{ $secretName }}
                   key: secret-key-base
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: support-secrets
+                  name: {{ $secretName }}
                   key: db-password
             - name: POSTGRES_DATABASE
               value: "{{ $dbName }}"
@@ -67,41 +88,41 @@ spec:
             - name: SMTP_ADDRESS
               valueFrom:
                 secretKeyRef:
-                  name: support-smtp
+                  name: {{ $smtpSecret }}
                   key: SMTP_ADDRESS
                   optional: true
             - name: SMTP_PORT
               valueFrom:
                 secretKeyRef:
-                  name: support-smtp
+                  name: {{ $smtpSecret }}
                   key: SMTP_PORT
                   optional: true
             - name: SMTP_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: support-smtp
+                  name: {{ $smtpSecret }}
                   key: SMTP_USERNAME
                   optional: true
             - name: SMTP_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: support-smtp
+                  name: {{ $smtpSecret }}
                   key: SMTP_PASSWORD
                   optional: true
             - name: MAILER_SENDER_EMAIL
               valueFrom:
                 secretKeyRef:
-                  name: support-smtp
+                  name: {{ $smtpSecret }}
                   key: MAILER_SENDER_EMAIL
                   optional: true
             - name: SMTP_DOMAIN
               valueFrom:
                 secretKeyRef:
-                  name: support-smtp
+                  name: {{ $smtpSecret }}
                   key: SMTP_DOMAIN
                   optional: true
             # mail:wire sets this as a plain literal (kubectl set env
-            # NAME=value), never through the support-smtp Secret —
+            # NAME=value), never through the SMTP Secret —
             # must stay a literal here too, or a future kubectl apply
             # conflicts with mail:wire's live value (see ClusterTool::SUPPORT's
             # smtpEnv()).
@@ -111,19 +132,19 @@ spec:
             - name: OIDC_ISSUER
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-oidc
+                  name: {{ $oidcSecret }}
                   key: OIDC_ISSUER
                   optional: true
             - name: OIDC_CLIENT_ID
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-oidc
+                  name: {{ $oidcSecret }}
                   key: OIDC_CLIENT_ID
                   optional: true
             - name: OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-oidc
+                  name: {{ $oidcSecret }}
                   key: OIDC_CLIENT_SECRET
                   optional: true
           startupProbe:
@@ -159,21 +180,21 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: support-chatwoot-worker
+  name: {{ $workerName }}
   namespace: larakube-shared
   labels:
-    app: support-chatwoot-worker
+    app: {{ $workerName }}{!! $labelsFor('worker') !!}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: support-chatwoot-worker
+      app: {{ $workerName }}
   template:
     metadata:
       labels:
-        app: support-chatwoot-worker
+        app: {{ $workerName }}
     spec:
       containers:
         - name: sidekiq
@@ -190,12 +211,12 @@ spec:
             - name: SECRET_KEY_BASE
               valueFrom:
                 secretKeyRef:
-                  name: support-secrets
+                  name: {{ $secretName }}
                   key: secret-key-base
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: support-secrets
+                  name: {{ $secretName }}
                   key: db-password
             - name: POSTGRES_DATABASE
               value: "{{ $dbName }}"
@@ -211,41 +232,41 @@ spec:
             - name: SMTP_ADDRESS
               valueFrom:
                 secretKeyRef:
-                  name: support-smtp
+                  name: {{ $smtpSecret }}
                   key: SMTP_ADDRESS
                   optional: true
             - name: SMTP_PORT
               valueFrom:
                 secretKeyRef:
-                  name: support-smtp
+                  name: {{ $smtpSecret }}
                   key: SMTP_PORT
                   optional: true
             - name: SMTP_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: support-smtp
+                  name: {{ $smtpSecret }}
                   key: SMTP_USERNAME
                   optional: true
             - name: SMTP_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: support-smtp
+                  name: {{ $smtpSecret }}
                   key: SMTP_PASSWORD
                   optional: true
             - name: MAILER_SENDER_EMAIL
               valueFrom:
                 secretKeyRef:
-                  name: support-smtp
+                  name: {{ $smtpSecret }}
                   key: MAILER_SENDER_EMAIL
                   optional: true
             - name: SMTP_DOMAIN
               valueFrom:
                 secretKeyRef:
-                  name: support-smtp
+                  name: {{ $smtpSecret }}
                   key: SMTP_DOMAIN
                   optional: true
             # mail:wire sets this as a plain literal (kubectl set env
-            # NAME=value), never through the support-smtp Secret —
+            # NAME=value), never through the SMTP Secret —
             # must stay a literal here too, or a future kubectl apply
             # conflicts with mail:wire's live value (see ClusterTool::SUPPORT's
             # smtpEnv()).
@@ -255,19 +276,19 @@ spec:
             - name: OIDC_ISSUER
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-oidc
+                  name: {{ $oidcSecret }}
                   key: OIDC_ISSUER
                   optional: true
             - name: OIDC_CLIENT_ID
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-oidc
+                  name: {{ $oidcSecret }}
                   key: OIDC_CLIENT_ID
                   optional: true
             - name: OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: support-chatwoot-oidc
+                  name: {{ $oidcSecret }}
                   key: OIDC_CLIENT_SECRET
                   optional: true
           resources:
@@ -281,15 +302,16 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: support
+  name: {{ $webName }}
   namespace: larakube-shared
+  labels:{!! $labelsFor() !!}
 spec:
   selector:
-    app: support-chatwoot
+    app: {{ $webName }}
   ports:
     - protocol: TCP
       port: 80
       targetPort: 3000
   type: ClusterIP
 ---
-@include('k8s.support.ingress')
+@include('k8s.support.ingress', ['instance' => $instance])

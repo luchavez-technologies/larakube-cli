@@ -149,7 +149,7 @@ class PlexRotateCommand extends Command
 
         $this->line('  <fg=yellow>Literal rotation (OpenBao not bootstrapped).</> <fg=gray>New values are written</>');
         $this->line('  <fg=gray>into .env, so a redeploy IS required before anything uses them.</>');
-        $this->line('  <fg=gray>  Want clean rotation? Run</> <fg=blue>larakube secrets:init</> <fg=gray>first.</>');
+        $this->line('  <fg=gray>  Want clean rotation? Run</> <fg=blue>larakube openbao:init</> <fg=gray>first.</>');
     }
 
     /**
@@ -356,7 +356,9 @@ class PlexRotateCommand extends Command
             return false;
         }
 
-        $tool = ClusterTool::forCommonsResource($tenant);
+        $resolved = ClusterTool::resolveCommonsResource($tenant);
+        $tool = $resolved['tool'] ?? null;
+        $instance = $resolved['instance'] ?? null;
         $namespace = $allocation['namespace'] ?? $tool?->namespace();
         if ($namespace === null) {
             $this->line("  <fg=green>✔</> <fg=cyan>{$tenant}</> <fg=gray>rotated via OpenBao. Namespace unknown (joined before it was recorded) — restart its deployment(s) once ESO syncs the new value.</>");
@@ -364,7 +366,7 @@ class PlexRotateCommand extends Command
             return true;
         }
 
-        $deployment = $tool?->deploymentName() ?? 'web';
+        $deployment = $tool?->deploymentName($instance) ?? 'web';
 
         // Application Tenants' Laravel deployment always names its
         // ExternalSecret 'laravel-secrets-db'. A cluster tool wires its own
@@ -374,7 +376,7 @@ class PlexRotateCommand extends Command
         // SecretsWireCommand guards against (confirmed live 2026-07-30: it
         // took Documenso down a second time restarting before the sync
         // landed) — give an exact command instead of guessing.
-        $ref = $tool?->dbSecretRef();
+        $ref = $tool?->dbSecretRef($instance);
         $secretName = match (true) {
             $tool === null => 'laravel-secrets-db',
             $ref !== null => "{$ref['secret']}-db",

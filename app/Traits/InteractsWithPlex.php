@@ -112,7 +112,7 @@ trait InteractsWithPlex
 
     /**
      * Resolve which environment a Plex operation (plex:init, plex:join, ...)
-     * targets — same UX as every other {tool}:init (mail:init, secrets:init,
+     * targets — same UX as every other {tool}:init (stalwart:init, openbao:init,
      * ...): explicit positional wins, --no-interaction defaults to local,
      * otherwise a picker over local + this project's known cloud
      * environments. Unlike resolveToolEnvironment(), this has no ClusterTool
@@ -954,7 +954,7 @@ trait InteractsWithPlex
                 $this->line('       Database: <fg=blue>stalwart</> <fg=gray>(create it — see the psql command below)</>');
                 $this->line('       Username: <fg=blue>postgres</>');
                 $this->line("       Password: <fg=blue>{$pgPassword}</>");
-                $this->line('       <fg=gray>This is the Commons superuser. Run</> <fg=blue>larakube secrets:init</> <fg=gray>first to get a</>');
+                $this->line('       <fg=gray>This is the Commons superuser. Run</> <fg=blue>larakube openbao:init</> <fg=gray>first to get a</>');
                 $this->line('       <fg=gray>dedicated, rotatable "stalwart" role backed by an env var instead.</>');
             }
         }

@@ -26,29 +26,9 @@ use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class SupportInitCommand extends Command
+abstract class SupportInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSupport, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
-
-    protected $signature = 'support:init
-        {environment? : Environment this install targets — "local" (default) or cloud.}
-        {--context=  : Target a specific kube-context}
-        {--domain=   : Base domain OR full host for Support (example.com → prefix.example.com)}
-        {--app-name= : Custom branding name for Chatwoot (defaults to Support)}
-        {--logo-url= : Custom logo URL for Chatwoot}
-        {--admin-email= : Primary admin email for Chatwoot}
-        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy the Chatwoot helpdesk stack into larakube-shared';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'support:init' is deprecated. Forwarding to 'chatwoot:init'. Please update your scripts.");
-        $this->renderHeader();
-
-        return $this->deploySupport();
-    }
 
     protected function deploySupport(): int
     {
@@ -59,13 +39,14 @@ class SupportInitCommand extends Command
         $host = $this->resolveToolHost(SharedClusterService::SUPPORT, ClusterTool::SUPPORT, $env, $kubectl);
 
         $ns = $this->supportNamespace();
+        $names = ToolInstance::forHost(ClusterTool::SUPPORT, $host);
         $vpnOnly = (bool) $this->option('vpn-only');
 
         if ($vpnOnly && ! $this->assertVpnOnlySupported(ClusterTool::SUPPORT)) {
             return 1;
         }
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::SUPPORT, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::SUPPORT, $kubectl, $names->instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -76,17 +57,16 @@ class SupportInitCommand extends Command
             return 1;
         }
 
-        $adminEmail = $this->readSupportSecret($kubectl, $ns, 'admin-email') ?? $this->resolveAdminEmail($host);
-        $dbPassword = $this->readSupportSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
-        // support:init doesn't know or care whether OpenBao is installed —
+        $adminEmail = $this->readSupportSecret($kubectl, $ns, $names->secret(), 'admin-email') ?? $this->resolveAdminEmail($host);
+        $dbPassword = $this->readSupportSecret($kubectl, $ns, $names->secret(), 'db-password') ?? Str::random(24);
+        // chatwoot:init doesn't know or care whether OpenBao is installed —
         // only secrets:wire --tool=support may register this instance's database
         // static role. This is a READ-only exception: it defers to OpenBao's
         // current password when a PAST secrets:wire run already made it the
         // owner, so a re-run here never clobbers it back to a fresh local one.
-        $names = ToolInstance::forHost(ClusterTool::SUPPORT, $host);
         $dbName = $names->database();
         $dbPassword = $this->resolveManagedDbPassword($kubectl, $dbName, $dbPassword);
-        $secretKeyBase = $this->readSupportSecret($kubectl, $ns, 'secret-key-base') ?? bin2hex(random_bytes(32));
+        $secretKeyBase = $this->readSupportSecret($kubectl, $ns, $names->secret(), 'secret-key-base') ?? bin2hex(random_bytes(32));
 
         if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
             return 1;
@@ -98,14 +78,15 @@ class SupportInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $secretKeyBase, $adminEmail): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'support-secrets', ['db-password' => $dbPassword, 'secret-key-base' => $secretKeyBase, 'admin-email' => $adminEmail]);
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $names, $dbPassword, $secretKeyBase, $adminEmail): void {
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $names->secret(), ['db-password' => $dbPassword, 'secret-key-base' => $secretKeyBase, 'admin-email' => $adminEmail]);
         });
 
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::SUPPORT, ClusterTool::SUPPORT->instanceSlugFromHost($host));
 
         $manifest = view('k8s.support.shared', [
             'host' => $host,
+            'instance' => $names->instance,
             'appName' => $branding['appName'],
             'logoUrl' => $branding['logoUrl'],
             'plexNamespace' => $this->plexNamespace(),
@@ -117,12 +98,12 @@ class SupportInitCommand extends Command
         ])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();
-        $tmp = $temporaryDirectory->path('larakube-support-chatwoot.yaml');
+        $tmp = $temporaryDirectory->path('larakube-chatwoot.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Chatwoot manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'support-chatwoot', 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180),
         );
         $temporaryDirectory->delete();
 
@@ -130,7 +111,7 @@ class SupportInitCommand extends Command
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::SUPPORT, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
+        $this->registerDeployedTool(ClusterTool::SUPPORT, $kubectl, $host, $names->instance, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Chatwoot support stack is live.');

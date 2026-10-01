@@ -25,26 +25,9 @@ use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class PasswordsInitCommand extends Command
+abstract class PasswordsInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVault, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
-
-    protected $signature = 'passwords:init
-        {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the Vaultwarden host.}
-        {--context=  : Target a specific kube-context (defaults to current context)}
-        {--domain=   : Base domain OR full host for Vaultwarden (example.com → vault.example.com; vault.example.com used as-is)}
-        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy the cluster-wide Vaultwarden team password manager into larakube-vault';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'passwords:init' is deprecated. Forwarding to 'vaultwarden:init'. Please update your scripts.");
-        $this->renderHeader();
-
-        return $this->deployVault();
-    }
 
     protected function deployVault(): int
     {
@@ -72,7 +55,7 @@ class PasswordsInitCommand extends Command
         // Allocate Vaultwarden database in Plex Commons Postgres if available
         $dbPassword = Str::random(24);
 
-        // passwords:init doesn't know or care whether OpenBao exists on this
+        // vaultwarden:init doesn't know or care whether OpenBao exists on this
         // cluster — only secrets:wire --tool=passwords may register the
         // static role and hand rotation over to it. This is a
         // READ-only exception: it defers to OpenBao's current password when

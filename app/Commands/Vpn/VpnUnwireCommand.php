@@ -68,7 +68,7 @@ class VpnUnwireCommand extends Command
 
     protected function unwire(ClusterTool $tool, array $target, string $kubectl, string $env, string $domain = ''): int
     {
-        $reapplied = $this->call("{$tool->value}:init", array_filter([
+        $reapplied = $this->call("{$tool->initCommand()}", array_filter([
             'environment' => $env,
             '--domain' => $domain !== '' ? $domain : null,
             '--no-interaction' => true,
@@ -76,7 +76,7 @@ class VpnUnwireCommand extends Command
         ]));
 
         if ($reapplied !== 0) {
-            $this->laraKubeError("Could not re-apply {$tool->getLabel()}'s ingress — aborting before touching the Middleware. Run `larakube {$tool->value}:init {$env}` manually, then retry.");
+            $this->laraKubeError("Could not re-apply {$tool->getLabel()}'s ingress — aborting before touching the Middleware. Run `larakube {$tool->initCommand()} {$env}` manually, then retry.");
 
             return 1;
         }

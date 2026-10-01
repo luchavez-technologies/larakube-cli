@@ -94,7 +94,7 @@ Outline needs a login provider, so skip this unless Zitadel runs locally. A new
 `--domain` creates a separate instance; your existing one is untouched.
 
 ```bash
-larakube notes:init local --context=orbstack --domain=notes-check.test
+larakube outline:init local --context=orbstack --domain=notes-check.test
 ```
 
 - [ ] Installs and prints its Commons Redis slot

@@ -7,7 +7,7 @@ use App\Contracts\PlexProvisionable;
 /**
  * Commons-only backing services with no project-level equivalent: nothing
  * "chooses" a renderer the way a project chooses its database or cache. A tool
- * that needs one requests it from the Commons (`sign:init` → headless Chrome).
+ * that needs one requests it from the Commons (`documenso:init` → headless Chrome).
  */
 enum RenderDriver: string implements PlexProvisionable
 {

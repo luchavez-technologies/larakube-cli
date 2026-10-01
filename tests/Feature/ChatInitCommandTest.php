@@ -13,7 +13,7 @@ afterEach(function (): void {
     MockClient::destroyGlobal();
 });
 
-test('chat:init deploys matrix using plex commons postgres by default', function (): void {
+test('matrix:init deploys matrix using plex commons postgres by default', function (): void {
     ssoRegistered();
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
@@ -31,7 +31,7 @@ test('chat:init deploys matrix using plex commons postgres by default', function
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('chat:init local --no-interaction')
+    $this->artisan('matrix:init local --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying Matrix (Synapse + Element) manifests...')
         ->expectsOutputToContain('Matrix (Synapse + Element) is live.');
@@ -41,13 +41,13 @@ test('chat:init deploys matrix using plex commons postgres by default', function
     });
 });
 
-test('chat:init deploys MAS via resolveManagedDbPassword() (Commons Postgres path) when SSO is already installed', function (): void {
+test('matrix:init deploys MAS via resolveManagedDbPassword() (Commons Postgres path) when SSO is already installed', function (): void {
     ssoRegistered();
     // Regression guard: deployMas() calls resolveManagedDbPassword() (from
     // SyncsClusterSecrets) on the Commons-Postgres path (no --no-plex) — a
     // trait that was never added to this command's `use` list, so this call
     // fataled with "Call to undefined method" whenever SSO happened to
-    // already be installed. Every other chat:init test in this file either
+    // already be installed. Every other matrix:init test in this file either
     // passes --no-plex or leaves SSO absent, so deployMas() was never
     // actually reached until this test — the exact gap that let the bug
     // through phpstan (method.notFound is globally ignored for
@@ -89,7 +89,7 @@ test('chat:init deploys MAS via resolveManagedDbPassword() (Commons Postgres pat
         CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-1', 'clientId' => 'client-1', 'clientSecret' => 'secret-1']),
     ]);
 
-    $this->artisan('chat:init local --no-interaction')
+    $this->artisan('matrix:init local --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('Matrix (Synapse + Element) is live.')
         ->expectsOutputToContain('Element X (mobile):');
@@ -99,7 +99,7 @@ test('chat:init deploys MAS via resolveManagedDbPassword() (Commons Postgres pat
     });
 });
 
-test('chat:init restarts Synapse when MAS is already the active auth mode and its served config actually changed', function (): void {
+test('matrix:init restarts Synapse when MAS is already the active auth mode and its served config actually changed', function (): void {
     ssoRegistered();
     // Regression guard for a real live incident, 2026-08-24: Synapse fetches
     // MAS's own self-reported discovery metadata (issuer, endpoints) once
@@ -147,7 +147,7 @@ test('chat:init restarts Synapse when MAS is already the active auth mode and it
         CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-1', 'clientId' => 'client-1', 'clientSecret' => 'secret-1']),
     ]);
 
-    $this->artisan('chat:init local --no-interaction')
+    $this->artisan('matrix:init local --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain("Restarting Synapse to pick up Matrix Authentication Service's updated metadata...");
 
@@ -156,7 +156,7 @@ test('chat:init restarts Synapse when MAS is already the active auth mode and it
     });
 });
 
-test('chat:init aborts when the Commons S3 credentials are missing', function (): void {
+test('matrix:init aborts when the Commons S3 credentials are missing', function (): void {
     ssoRegistered();
     Process::fake([
         // Specific patterns first — the S3 keys read empty while everything
@@ -178,12 +178,12 @@ test('chat:init aborts when the Commons S3 credentials are missing', function ()
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('chat:init local --no-interaction')
+    $this->artisan('matrix:init local --no-interaction')
         ->assertExitCode(1)
         ->expectsOutputToContain('Commons S3 credentials not found');
 });
 
-test('chat:init deploys standalone matrix when --no-plex is passed', function (): void {
+test('matrix:init deploys standalone matrix when --no-plex is passed', function (): void {
     ssoRegistered();
     Process::fake([
         '*get secret synapse-secrets-*' => Process::result(output: '', exitCode: 1),
@@ -192,13 +192,13 @@ test('chat:init deploys standalone matrix when --no-plex is passed', function ()
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('chat:init local --no-plex --no-interaction')
+    $this->artisan('matrix:init local --no-plex --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying Matrix (Synapse + Element) manifests...')
         ->expectsOutputToContain('Matrix (Synapse + Element) is live.');
 });
 
-test('chat:init --vpn-only creates the Traefik Middleware before applying the manifests', function (): void {
+test('matrix:init --vpn-only creates the Traefik Middleware before applying the manifests', function (): void {
     ssoRegistered();
     Process::fake([
         '*get secret synapse-secrets-*' => Process::result(output: '', exitCode: 1),
@@ -207,13 +207,13 @@ test('chat:init --vpn-only creates the Traefik Middleware before applying the ma
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('chat:init local --no-plex --vpn-only --no-interaction')
+    $this->artisan('matrix:init local --no-plex --vpn-only --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('Ensuring VPN-only Middleware for Team Chat (Matrix)...')
         ->expectsOutputToContain('Matrix (Synapse + Element) is live.');
 });
 
-test('chat:init --vpn-only aborts when the Middleware apply fails', function (): void {
+test('matrix:init --vpn-only aborts when the Middleware apply fails', function (): void {
     ssoRegistered();
     Process::fake([
         '*get secret synapse-secrets-*' => Process::result(output: '', exitCode: 1),
@@ -221,7 +221,7 @@ test('chat:init --vpn-only aborts when the Middleware apply fails', function ():
         '*apply -f *' => Process::result(output: '', exitCode: 1),
     ]);
 
-    $this->artisan('chat:init local --no-plex --vpn-only --no-interaction')
+    $this->artisan('matrix:init local --no-plex --vpn-only --no-interaction')
         ->assertExitCode(1)
         ->expectsOutputToContain('Failed to create the VPN-only Middleware');
 });
@@ -251,7 +251,7 @@ test('Synapse takes its database password from its credentials Secret, so an Ope
         };
     });
 
-    $this->artisan('chat:init local --no-interaction')->assertExitCode(0);
+    $this->artisan('matrix:init local --no-interaction')->assertExitCode(0);
 
     $manifest = implode("\n---\n", $manifests);
     $homeserver = (string) preg_replace('/^.*?homeserver\.yaml: \|\n(.*?)\n---.*$/s', '$1', $manifest);

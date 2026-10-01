@@ -1,8 +1,21 @@
+@php
+    // Every name comes from ToolInstance (ADR 0021).
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::DESIGN->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::DESIGN, $instance);
+    $serviceName = $names->deployment('frontend');
+    $ingressLabels = '';
+    foreach ($names->labels('frontend') as $key => $value) {
+        $ingressLabels .= "\n    {$key}: {$value}";
+    }
+@endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ $serviceName ?? 'design' }}
+  name: {{ $serviceName }}
   namespace: larakube-shared
+  labels:{!! $ingressLabels !!}
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -12,8 +25,8 @@ metadata:
     external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
 @endif
 @endunless
-@if($vpnOnly ?? false)
-    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-design-vpn-only@kubernetescrd
+@if(($vpnOnly ?? false) && $names->vpnMiddleware() !== null)
+    traefik.ingress.kubernetes.io/router.middlewares: {{ $names->vpnMiddleware()->traefikMiddleware() }}
 @endif
 spec:
   rules:
@@ -24,7 +37,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ $serviceName ?? 'design' }}
+                name: {{ $serviceName }}
                 port:
                   number: 80
   tls:

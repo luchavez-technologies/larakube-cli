@@ -156,7 +156,7 @@ class SsoUnwireCommand extends Command
         Process::run("{$kubectl} delete secret {$appSecret} -n {$ssoNs} --ignore-not-found");
         Process::run("{$kubectl} delete secret {$schema['secret']} -n {$schema['namespace']} --ignore-not-found");
 
-        if (in_array($tool, [ClusterTool::CHAT, ClusterTool::MATRIX], true)) {
+        if ($tool->category() === ClusterTool::CHAT) {
             $this->unwireSynapseOidc($kubectl, $schema['namespace']);
             Process::run("{$kubectl} rollout restart deployment/{$schema['deployment']} -n {$schema['namespace']}");
             $this->laraKubeInfo("✅ {$tool->getLabel()} no longer uses Zitadel SSO.");
@@ -164,14 +164,14 @@ class SsoUnwireCommand extends Command
             return 0;
         }
 
-        if (in_array($tool, [ClusterTool::SECRETS, ClusterTool::OPENBAO], true)) {
+        if ($tool->category() === ClusterTool::SECRETS) {
             $this->unwireOpenBaoOidc($kubectl, $schema['namespace']);
             $this->laraKubeInfo("✅ {$tool->getLabel()} no longer uses Zitadel SSO.");
 
             return 0;
         }
 
-        if ($tool === ClusterTool::VPN) {
+        if ($tool->category() === ClusterTool::VPN) {
             if ($toolHost !== null) {
                 $this->unwireNetbirdOidc($kubectl, $schema['namespace'], $toolHost);
             }

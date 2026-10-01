@@ -8,7 +8,7 @@
 
 ## Why this exists
 
-Drive (`drive:init`) deploys oCIS — file storage/sync only, no document *creation* capability, unlike Google Drive/MS 365. This plan adds real document editing wired to the existing Drive instance.
+Drive (`ocis:init`) deploys oCIS — file storage/sync only, no document *creation* capability, unlike Google Drive/MS 365. This plan adds real document editing wired to the existing Drive instance.
 
 Two candidate WOPI editors were investigated: Collabora Online (mature, oCIS ships a first-party official example) and **Euro-Office DocumentServer**, which was chosen: a legitimate, officially-published open-source project (`github.com/Euro-Office`, AGPL-3.0, a hard fork of ONLYOFFICE, backed by a real European industry coalition — IONOS, Nextcloud, EuroStack, XWiki, OpenProject, Soverin, Abilian, BTactic, Office.EU, Open-Xchange — first stable release June 2026).
 
@@ -18,12 +18,12 @@ oCIS ships its own WOPI bridge as a built-in service (`collaboration`, started v
 
 ## Recommended command shape: `drive:office:init` / `remove` / `show`
 
-New subfolder `app/Commands/Drive/Office/` (PSR-4: `App\Commands\Drive\Office\OfficeInitCommand` etc.), mirroring the existing `drive:ext:*` family's naming (`app/Commands/Drive/DriveExt*Command.php`) rather than folding into `drive:init` as new flags. Reasoning: document editing is optional/detachable middleware layered onto an *already-working* Drive — an oCIS install is fully functional without it (unlike Chat's MAS, which is integral to a working Element X login) — so per `feedback_no_hidden_flag_commands` (operator's memory) this needs its own real command family, not flags bolted onto `drive:init`. It should never force existing Drive installs to change and stays fully decoupled from `DriveInitCommand`/`DriveShowCommand` in v1.
+New subfolder `app/Commands/Drive/Office/` (PSR-4: `App\Commands\Drive\Office\OfficeInitCommand` etc.), mirroring the existing `drive:ext:*` family's naming (`app/Commands/Drive/DriveExt*Command.php`) rather than folding into `ocis:init` as new flags. Reasoning: document editing is optional/detachable middleware layered onto an *already-working* Drive — an oCIS install is fully functional without it (unlike Chat's MAS, which is integral to a working Element X login) — so per `feedback_no_hidden_flag_commands` (operator's memory) this needs its own real command family, not flags bolted onto `ocis:init`. It should never force existing Drive installs to change and stays fully decoupled from `DriveInitCommand`/`DriveShowCommand` in v1.
 
 - `drive:office:init {environment?} {--context=} {--domain=} {--no-plex} {--vpn-only} {--force}` — refuses to run unless Drive itself is already installed. Deploys, in order, each with its own `kubectl apply` + `kubectl rollout status` wait (mirrors how `ChatInitCommand::deployChat()` deploys `synapse` then conditionally `mas`/`admin` as separate manifests, never merged — `app/Commands/Chat/ChatInitCommand.php`):
   1. `k8s.drive.collaboration` (new) — the WOPI bridge.
   2. `k8s.drive.documentserver` (new) — Euro-Office DocumentServer itself.
-  3. Re-render + re-apply the **existing** `k8s.drive.ocis` view with two new optional variables (secure-view-app registration + an `app-registry.yaml` ConfigMap mount, both `@if`-gated so a plain `drive:init` with no office layer renders byte-identical output to today), then roll `drive-ocis` — this is the step that actually activates document creation in the web UI.
+  3. Re-render + re-apply the **existing** `k8s.drive.ocis` view with two new optional variables (secure-view-app registration + an `app-registry.yaml` ConfigMap mount, both `@if`-gated so a plain `ocis:init` with no office layer renders byte-identical output to today), then roll `drive-ocis` — this is the step that actually activates document creation in the web UI.
 - `drive:office:remove {environment?} {--context=} {--purge}` — tears down the two new Deployments/Services/Ingress, **and** re-renders `k8s.drive.ocis` with the office variables unset so oCIS stops advertising an editor that no longer exists. PVCs/secrets survive by default, full wipe behind `--purge` (same posture as `DriveRemoveCommand`).
 - `drive:office:show {environment?} {--context=}` — live-cluster read only (no tool-registry dependency — `registerDeployedTool()` has no metadata slot, confirmed in `DriveInitCommand.php:150`), reports component status via Laravel Prompts `table()` per `feedback_laravel_prompts_table`.
 
@@ -52,7 +52,7 @@ This is enough for the generic backup scanner (`app/Traits/InteractsWithBackup.p
 
 - `resources/views/k8s/drive/collaboration.blade.php` — same `owncloud/ocis` image/tag already pinned for `drive-ocis` (no independent version to track), `command: ["ocis"], args: ["collaboration", "server"]`. Env: `COLLABORATION_HTTP_ADDR`/`COLLABORATION_GRPC_ADDR` (`0.0.0.0:9300`/`:9301`), `COLLABORATION_WOPI_SRC: http://drive-collaboration:9300`, `MICRO_REGISTRY_ADDRESS`/`GATEWAY_GRPC_ADDR`/`REVA_GATEWAY` pointing at `drive-ocis`'s internal gRPC ports (bare short Service DNS name, same namespace — mirrors `InteractsWithChat::readChatWiredMas()`'s `http://chat-mas:8080/` precedent), `COLLABORATION_APP_ADDR` set to the documentserver's public host, plus the new WOPI JWT trust secret. No PVC, internal-only Service — one line explaining *why* it reuses the oCIS image with a different command (no existing precedent for that in this repo, worth being explicit for the next reader).
 - `resources/views/k8s/drive/documentserver.blade.php` — `image: ghcr.io/euro-office/documentserver:<TAG>` (tag TBD, see spikes below). Env: `JWT_ENABLED=true`, `JWT_SECRET` (from the new secret), `WOPI_ENABLED=true`, `EXAMPLE_ENABLED=false`, `ALLOW_PRIVATE_IP_ADDRESS=true` (needed to fetch documents from the internal `drive-ocis` URL). PVCs for `/var/www/euro-office/Data` (secrets/keys — **must** persist) and `/var/lib/euro-office/documentserver` (document cache); `emptyDir` is fine for logs/config. `livenessProbe`/`readinessProbe` on `GET /healthcheck` port 80. Own Service + Ingress (`--vpn-only` supported, same middleware Drive already uses via `ensureVpnMiddleware(ClusterTool::DRIVE, ...)`).
-- `ocis.blade.php` changes — additive only, both gated behind new `@if`s so a plain `drive:init` is unaffected: the secure-view-app registration env var (exact name TBD, spike below) and a mounted `app-registry.yaml` ConfigMap (mechanism unconfirmed, spike below), following the exact ConfigMap-mount pattern the file already uses for `drive-ocis-csp`.
+- `ocis.blade.php` changes — additive only, both gated behind new `@if`s so a plain `ocis:init` is unaffected: the secure-view-app registration env var (exact name TBD, spike below) and a mounted `app-registry.yaml` ConfigMap (mechanism unconfirmed, spike below), following the exact ConfigMap-mount pattern the file already uses for `drive-ocis-csp`.
 
 ## Secrets
 
@@ -85,7 +85,7 @@ These gate real structural choices (which contracts `documentserver` implements,
 1. `drive:office:init` against the live cluster, confirm all three rollouts succeed and `drive-ocis` picks up the new env/ConfigMap without breaking existing SSO/WebDAV access.
 2. Create a blank document from the oCIS web UI, edit and save it, confirm the file lands correctly in storage (S3NG or POSIX per `--no-plex`).
 3. Restart the `drive-documentserver` pod and confirm the WOPI trust relationship survives (the exact regression the persistent `/var/www/euro-office/Data` volume exists to prevent).
-4. `drive:office:remove`, confirm oCIS stops advertising the editor and a plain re-`drive:init` still renders/applies cleanly.
+4. `drive:office:remove`, confirm oCIS stops advertising the editor and a plain re-`ocis:init` still renders/applies cleanly.
 5. `./vendor/bin/pest --parallel`, `./vendor/bin/pint`, `./vendor/bin/phpstan` per `cli/CLAUDE.md`.
 
 ## Full research trail

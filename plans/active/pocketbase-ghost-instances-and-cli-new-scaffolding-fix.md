@@ -4,7 +4,7 @@
 
 ### 1. PocketBase Ghost Duplicate Cards (3 cards instead of 2)
 - **ToolAddCommand (`cli/app/Commands/Tool/ToolAddCommand.php`)**:
-  When a tool like PocketBase was installed via `tool:add` (or the Desktop UI), it proxied to `pocketbase:init` (`data:init`). The initializer already registered the deployment with its specific instance name (`pocket-test`) and public ingress host (`pocket-test.larakube.app`).
+  When a tool like PocketBase was installed via `tool:add` (or the Desktop UI), it proxied to `pocketbase:init` (`directus:init`). The initializer already registered the deployment with its specific instance name (`pocket-test`) and public ingress host (`pocket-test.larakube.app`).
   However, line 80 in `ToolAddCommand.php` had a post-execution fallback:
   ```php
   $this->registerTool($kubectl, $tool);

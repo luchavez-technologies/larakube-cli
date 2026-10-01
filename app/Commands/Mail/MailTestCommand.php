@@ -56,7 +56,7 @@ class MailTestCommand extends Command
         $ns = $this->mailNamespace();
 
         if (! $this->isMailInstalled($kubectl, $ns)) {
-            $this->laraKubeError('Stalwart is not installed. Run `larakube mail:init` first.');
+            $this->laraKubeError('Stalwart is not installed. Run `larakube stalwart:init` first.');
 
             return 1;
         }

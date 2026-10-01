@@ -32,7 +32,7 @@ Agreed priority, in order. Everything else waits.
 1. **Laravel** (`new`) — re-verify first; it is the only one with history and
    the most has changed around it.
 2. **WordPress** (`wordpress:new`) — Bedrock, official CLI.
-3. **Vite React + PocketBase backend** (`vite:new` + `data:init --engine=pocketbase`)
+3. **Vite React + PocketBase backend** (`vite:new` + `directus:init --engine=pocketbase`)
    — the one combination on this list that spans two commands.
 4. **Next.js fullstack** (`nextjs:new`).
 

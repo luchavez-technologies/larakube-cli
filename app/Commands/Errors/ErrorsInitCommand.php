@@ -25,30 +25,9 @@ use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class ErrorsInitCommand extends Command
+abstract class ErrorsInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithErrors, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
-
-    protected $signature = 'errors:init
-        {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the GlitchTip host.}
-        {--context=  : Target a specific kube-context (defaults to current context)}
-        {--domain=   : Base domain OR full host for GlitchTip (example.com → errors.example.com; errors.example.com used as-is)}
-        {--app-name= : Custom branding name for GlitchTip (defaults to Error Tracking)}
-        {--logo-url= : Custom logo URL for GlitchTip}
-        {--admin-email= : Primary administrator email for GlitchTip}
-        {--no-plex   : Bypass Plex Commons and deploy dedicated database/cache pods instead}
-        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy the cluster-wide GlitchTip error tracking stack into larakube-shared';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'errors:init' is deprecated. Forwarding to 'glitchtip:init'. Please update your scripts.");
-        $this->renderHeader();
-
-        return $this->deployErrors();
-    }
 
     protected function deployErrors(): int
     {
@@ -58,6 +37,7 @@ class ErrorsInitCommand extends Command
         $kubectl = Kubectl::forContext($context)->prefix();
         $host = $this->resolveToolHost(SharedClusterService::ERRORS, ClusterTool::ERRORS, $env, $kubectl);
         $ns = $this->errorsNamespace();
+        $names = ToolInstance::forHost(ClusterTool::ERRORS, $host);
 
         $noPlex = (bool) $this->option('no-plex');
 
@@ -68,12 +48,11 @@ class ErrorsInitCommand extends Command
         }
 
         // Read or generate database credentials
-        $dbPassword = $this->readExistingDbPassword($kubectl, $ns);
+        $dbPassword = $this->readExistingDbPassword($kubectl, $ns, $names->secret());
         if ($dbPassword === null) {
             $dbPassword = Str::random(24);
         }
 
-        $names = ToolInstance::forHost(ClusterTool::ERRORS, $host);
         $dbName = $names->database();
         $redisIndex = null;
 
@@ -92,7 +71,7 @@ class ErrorsInitCommand extends Command
         }
 
         // Read or generate admin credentials
-        $adminPassword = $this->readErrorsAdminPassword($kubectl, $ns);
+        $adminPassword = $this->readErrorsAdminPassword($kubectl, $ns, $names->secret());
         if ($adminPassword === null) {
             $adminPassword = Str::random(16);
         }
@@ -103,11 +82,11 @@ class ErrorsInitCommand extends Command
         ));
 
         // Delete any existing migrations job first because Job specs are immutable
-        Process::run("{$kubectl} delete job glitchtip-db-migrations -n {$ns} --ignore-not-found");
+        Process::run("{$kubectl} delete job {$names->name('migrations')} -n {$ns} --ignore-not-found");
 
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::ERRORS, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::ERRORS, $kubectl, $names->instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -117,6 +96,7 @@ class ErrorsInitCommand extends Command
 
         $manifest = view('k8s.errors.shared', [
             'dbName' => $dbName,
+            'instance' => $names->instance,
             'redisIndex' => $redisIndex,
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
@@ -132,7 +112,7 @@ class ErrorsInitCommand extends Command
         ])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();
-        $tmp = $temporaryDirectory->path('larakube-errors.yaml');
+        $tmp = $temporaryDirectory->path('larakube-glitchtip.yaml');
         file_put_contents($tmp, $manifest);
 
         // Multiple resources to verify in sequence (db/cache/job/web/worker),
@@ -156,39 +136,39 @@ class ErrorsInitCommand extends Command
         }
 
         if ($noPlex) {
-            if (! $this->withSpin('Waiting for local database...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/glitchtip-db -n {$ns} --timeout=120s")->successful())) {
-                $this->laraKubeError('glitchtip-db never became Ready.');
+            if (! $this->withSpin('Waiting for local database...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/{$names->deployment('db')} -n {$ns} --timeout=120s")->successful())) {
+                $this->laraKubeError("{$names->deployment('db')} never became Ready.");
 
                 return 1;
             }
-            if (! $this->withSpin('Waiting for local cache...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/glitchtip-cache -n {$ns} --timeout=120s")->successful())) {
-                $this->laraKubeError('glitchtip-cache never became Ready.');
+            if (! $this->withSpin('Waiting for local cache...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/{$names->deployment('cache')} -n {$ns} --timeout=120s")->successful())) {
+                $this->laraKubeError("{$names->deployment('cache')} never became Ready.");
 
                 return 1;
             }
         }
 
-        if (! $this->withSpin('Waiting for database migrations...', fn () => Process::timeout(130)->run("{$kubectl} wait --for=condition=complete job/glitchtip-db-migrations -n {$ns} --timeout=120s")->successful())) {
-            $this->laraKubeError('glitchtip-db-migrations never completed.');
+        if (! $this->withSpin('Waiting for database migrations...', fn () => Process::timeout(130)->run("{$kubectl} wait --for=condition=complete job/{$names->name('migrations')} -n {$ns} --timeout=120s")->successful())) {
+            $this->laraKubeError("{$names->name('migrations')} never completed.");
 
             return 1;
         }
 
-        if (! $this->withSpin('Waiting for GlitchTip Web...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/glitchtip-web -n {$ns} --timeout=120s")->successful())) {
-            $this->laraKubeError('glitchtip-web never became Ready.');
+        if (! $this->withSpin('Waiting for GlitchTip Web...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/{$names->deployment()} -n {$ns} --timeout=120s")->successful())) {
+            $this->laraKubeError("{$names->deployment()} never became Ready.");
 
             return 1;
         }
 
-        if (! $this->withSpin('Waiting for GlitchTip Worker...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/glitchtip-worker -n {$ns} --timeout=120s")->successful())) {
-            $this->laraKubeError('glitchtip-worker never became Ready.');
+        if (! $this->withSpin('Waiting for GlitchTip Worker...', fn () => Process::timeout(130)->run("{$kubectl} rollout status deploy/{$names->deployment('worker')} -n {$ns} --timeout=120s")->successful())) {
+            $this->laraKubeError("{$names->deployment('worker')} never became Ready.");
 
             return 1;
         }
 
-        $adminEmail = $this->readClusterSecretKey($kubectl, $ns, 'errors-secrets', 'admin-email') ?? $this->resolveAdminEmail($host);
+        $adminEmail = $this->readClusterSecretKey($kubectl, $ns, $names->secret(), 'admin-email') ?? $this->resolveAdminEmail($host);
 
-        $this->registerDeployedTool(ClusterTool::ERRORS, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
+        $this->registerDeployedTool(ClusterTool::ERRORS, $kubectl, $host, $names->instance, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ GlitchTip stack is live.');
@@ -202,26 +182,26 @@ class ErrorsInitCommand extends Command
     }
 
     /** Check if database-url points locally or to Plex Commons */
-    protected function isErrorsDatabaseLocal(string $kubectl, string $ns): bool
+    protected function isErrorsDatabaseLocal(string $kubectl, string $ns, ToolInstance $names): bool
     {
-        $url = $this->readClusterSecretKey($kubectl, $ns, 'errors-secrets', 'database-url');
+        $url = $this->readClusterSecretKey($kubectl, $ns, $names->secret(), 'database-url');
 
-        return $url !== null && str_contains($url, 'glitchtip-db');
+        return $url !== null && str_contains($url, $names->deployment('db'));
     }
 
     /**
-     * Parse database user password from existing errors-secrets Secret.
+     * Parse the database password from the existing credentials Secret.
      */
-    protected function readExistingDbPassword(string $kubectl, string $ns): ?string
+    protected function readExistingDbPassword(string $kubectl, string $ns, string $secret): ?string
     {
-        $url = $this->readClusterSecretKey($kubectl, $ns, 'errors-secrets', 'database-url');
+        $url = $this->readClusterSecretKey($kubectl, $ns, $secret, 'database-url');
 
         if ($url === null) {
             return null;
         }
 
-        // Pattern: postgres://glitchtip:<password>@...
-        if (preg_match('/^postgres:\/\/glitchtip:([^@]+)@/', $url, $matches)) {
+        // Pattern: postgres://<tenant>:<password>@...
+        if (preg_match('/^postgres:\/\/[^:]+:([^@]+)@/', $url, $matches)) {
             return $matches[1];
         }
 

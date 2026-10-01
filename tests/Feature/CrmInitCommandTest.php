@@ -1,12 +1,12 @@
 <?php
 
-use App\Commands\Crm\CrmInitCommand;
 use App\Commands\Crm\CrmRemoveCommand;
 use App\Commands\Crm\CrmShowCommand;
+use App\Commands\Twenty\TwentyInitCommand;
 use App\Enums\ClusterTool;
 use Illuminate\Support\Facades\Process;
 
-test('crm:init deploys Twenty CRM using commons postgres and redis', function (): void {
+test('twenty:init deploys Twenty CRM using commons postgres and redis', function (): void {
     Process::fake([
         '*plex-commons*' => json_encode([
             'version' => 1,
@@ -26,7 +26,7 @@ test('crm:init deploys Twenty CRM using commons postgres and redis', function ()
         '*get secret*' => Process::result(output: '', exitCode: 1),
     ]);
 
-    $this->artisan(CrmInitCommand::class, [
+    $this->artisan(TwentyInitCommand::class, [
         'environment' => 'local',
         '--no-interaction' => true,
     ])
@@ -34,7 +34,7 @@ test('crm:init deploys Twenty CRM using commons postgres and redis', function ()
         ->expectsOutputToContain('Twenty CRM stack is live.');
 });
 
-test('crm:init detects MinIO rather than assuming SeaweedFS when that\'s what plex:init actually provisioned', function (): void {
+test('twenty:init detects MinIO rather than assuming SeaweedFS when that\'s what plex:init actually provisioned', function (): void {
     // Regression: the Commons S3 backend is an operator choice at plex:init
     // (StorageDriver has 3 options), not a fixed SeaweedFS install — an
     // earlier version of this wiring hardcoded StorageDriver::SEAWEEDFS.
@@ -57,7 +57,7 @@ test('crm:init detects MinIO rather than assuming SeaweedFS when that\'s what pl
         '*get secret*' => Process::result(output: '', exitCode: 1),
     ]);
 
-    $this->artisan(CrmInitCommand::class, [
+    $this->artisan(TwentyInitCommand::class, [
         'environment' => 'local',
         '--no-interaction' => true,
     ])
@@ -162,7 +162,7 @@ test('crm does not claim OIDC wiring — Twenty paywalls SSO behind its paid Org
         ->and(ClusterTool::CRM->hasSsoWire())->toBeFalse();
 });
 
-test('crm:init errors instead of guessing when multiple instances are already registered and --domain is omitted', function (): void {
+test('twenty:init errors instead of guessing when multiple instances are already registered and --domain is omitted', function (): void {
     // Regression guard for the confirmed live 2026-08-14 duplicate-registration
     // bug: a no-flag re-run's registry lookup under the default 'main' instance
     // never matched CRM's always-derived-slug entries, so it silently derived
@@ -175,7 +175,7 @@ test('crm:init errors instead of guessing when multiple instances are already re
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan(CrmInitCommand::class, [
+    $this->artisan(TwentyInitCommand::class, [
         'environment' => 'local',
         '--no-interaction' => true,
     ])->run();

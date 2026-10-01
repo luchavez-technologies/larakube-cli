@@ -68,7 +68,7 @@ test('chat no longer ships an SFU — that belongs to the meet tool', function (
     $rendered = chatManifest();
 
     // Both stacks hostPort 7881/7882, so on a single node they can never
-    // coexist: leaving either here would make meet:init unschedulable.
+    // coexist: leaving either here would make livekit:init unschedulable.
     expect($rendered)
         ->not->toContain('chat-livekit')
         ->not->toContain('chat-lk-jwt')

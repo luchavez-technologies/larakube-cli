@@ -142,7 +142,7 @@ enum SharedClusterService: string
      * (catch-all SMTP for dev), the Console (a local dev tool), and the Traefik
      * dashboard (not exposed on prod) are local-only; Grafana — and any future
      * cluster-wide metrics/status/observability UI that replaces it — also
-     * belongs on cloud clusters (monitor:init runs everywhere).
+     * belongs on cloud clusters (grafana:init runs everywhere).
      *
      * Declared per case rather than `$this !== GRAFANA` so swapping the metrics
      * UI, or adding a new cloud-eligible global (Uptime Kuma, a status page), is
@@ -221,21 +221,21 @@ enum SharedClusterService: string
             // (prometheus-{instance}), and `prometheus` alone would also match
             // an unrelated Prometheus someone installed.
             self::GRAFANA => 'deployment -l larakube.io/tool=monitor -n larakube-shared',
-            self::UPTIME_KUMA => 'deployment uptime-kuma -n larakube-shared',
+            self::UPTIME_KUMA => 'deployment -l larakube.io/tool=uptime -n larakube-shared',
             // Vaultwarden's Deployment is named per instance, so a probe on a
             // bare name never matches; select on the identity label instead.
             self::VAULT => 'deployment -l larakube.io/tool=passwords -n larakube-vault',
             // By label: NetBird's management Deployment is per-instance
             // (netbird-{instance}), and a bare name matches nothing.
             self::VPN => 'deployment -l larakube.io/tool=vpn -n larakube-vpn',
-            self::ERRORS => 'deployment glitchtip-web -n larakube-shared',
+            self::ERRORS => 'deployment -l larakube.io/tool=errors,larakube.io/component=glitchtip -n larakube-shared',
             // By label: OpenBao's Deployment is named per instance.
             self::SECRETS => 'deployment -l larakube.io/tool=secrets -n larakube-secrets',
             self::FORGEJO => 'deployment -l larakube.io/tool=git -n larakube-shared',
             self::FLOW => 'deployment -l larakube-tool=flow -n larakube-shared',
             self::SHEET => 'deployment -l larakube-tool=sheets -n larakube-shared',
             self::DRIVE => 'deployment drive-ocis -n larakube-shared',
-            self::INSIGHTS => 'deployment insights-metabase -n larakube-shared',
+            self::INSIGHTS => 'deployment -l larakube.io/tool=insights -n larakube-shared',
             // By label: Stalwart's Deployment is named per instance.
             self::MAIL => 'deployment -l larakube.io/tool=mail -n larakube-shared',
             // Synapse is named per instance, so a probe on a bare name never
@@ -251,20 +251,20 @@ enum SharedClusterService: string
             self::TASKS => 'deployment -l larakube-tool=tasks -n larakube-shared',
 
             self::SIGN => 'deployment -l larakube-tool=sign -n larakube-shared',
-            self::SUPPORT => 'deployment support-chatwoot -n larakube-shared',
+            self::SUPPORT => 'deployment -l larakube.io/tool=support,larakube.io/component=chatwoot -n larakube-shared',
             self::LINK => 'deployment -l larakube-tool=link -n larakube-shared',
             // CRM's Deployments are named per instance, so a probe on a bare
             // name never matches; select on the identity label instead.
             self::CRM => 'deployment -l larakube.io/tool=crm -n larakube-shared',
             self::DATA => 'deployment data-directus -n larakube-shared',
-            self::RECORD => 'deployment record-sendrec -n larakube-shared',
+            self::RECORD => 'deployment -l larakube.io/tool=record -n larakube-shared',
             self::DASHBOARD => 'deployment dashboard-headlamp -n larakube-shared',
             // LiveKit's Deployment is named per instance, so a probe on a bare
             // name never matches — select on the identity label instead.
             self::MEET => 'deployment -l larakube.io/tool=meet -n larakube-shared',
-            self::DESIGN => 'deployment design-penpot-backend -n larakube-shared',
-            self::RESUME => 'deployment resume-reactive -n larakube-shared',
-            self::PASTE => 'deployment paste-yopass -n larakube-shared',
+            self::DESIGN => 'deployment -l larakube.io/tool=design -n larakube-shared',
+            self::RESUME => 'deployment -l larakube.io/tool=resume -n larakube-shared',
+            self::PASTE => 'deployment -l larakube.io/tool=paste -n larakube-shared',
         };
     }
 

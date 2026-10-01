@@ -17,19 +17,14 @@ trait InteractsWithDesign
         return ClusterTool::DESIGN->namespace();
     }
 
-    protected function isDesignInstalled(string $kubectl, string $ns, ?string $instance = null): bool
+    protected function isDesignInstalled(string $kubectl, string $ns): bool
     {
-        $deployment = ClusterTool::DESIGN->deploymentName($instance);
-
-        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, $deployment);
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=design');
     }
 
-    protected function readDesignSecret(string $kubectl, string $ns, string $key, ?string $instance = null): ?string
+    protected function readDesignSecret(string $kubectl, string $ns, string $key, string $secret): ?string
     {
-        $ref = ClusterTool::DESIGN->dbSecretRef($instance);
-        $secretName = $ref['secret'] ?? (($instance === null || $instance === '') ? 'design-secrets' : "design-secrets-{$instance}");
-
-        return $this->readClusterSecretKey($kubectl, $ns, $secretName, $key);
+        return $this->readClusterSecretKey($kubectl, $ns, $secret, $key);
     }
 
     protected function resolveDesignHostReadOnly(string $env, ?ConfigData $config): ?string

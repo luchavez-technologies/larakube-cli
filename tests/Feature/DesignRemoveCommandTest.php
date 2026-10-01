@@ -7,8 +7,8 @@ use Illuminate\Support\Facades\Process;
  * ChatRemoveCommandTest for the full rationale.
  */
 test('design:remove deletes the same resource set as before the component refactor', function (): void {
-    Process::fake([...registeredToolRemoveFakes('design:remove'),
-        '*get secret design-secrets*' => Process::result(output: 'design-secrets   Opaque   1   10d'),
+    Process::fake([...registeredToolRemoveFakes('design:remove', 'design-example-com', 'design.example.com'),
+        '*get secret penpot-backend-secrets-design-example-com*' => Process::result(output: 'penpot-backend-secrets-design-example-com   Opaque   1   10d'),
         '*delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
@@ -19,7 +19,7 @@ test('design:remove deletes the same resource set as before the component refact
 
     $deleteCommand = null;
     Process::assertRan(function ($process) use (&$deleteCommand) {
-        if (str_contains($process->command, 'kubectl delete') && str_contains($process->command, 'design-penpot-backend')) {
+        if (str_contains($process->command, 'kubectl delete') && str_contains($process->command, 'penpot-backend')) {
             $deleteCommand = $process->command;
 
             return true;
@@ -35,16 +35,16 @@ test('design:remove deletes the same resource set as before the component refact
 
     sort($resources);
     $expected = [
-        'deployment/design-penpot-backend',
-        'deployment/design-penpot-frontend',
-        'deployment/design-penpot-exporter',
-        'service/design',
-        'service/design-backend',
-        'service/design-exporter',
-        'ingress/design',
-        'secret/design-secrets',
-        'secret/design-smtp',
-        'secret/design-oidc',
+        'deployment/penpot-backend-design-example-com',
+        'deployment/penpot-frontend-design-example-com',
+        'deployment/penpot-exporter-design-example-com',
+        'service/penpot-backend-design-example-com',
+        'service/penpot-frontend-design-example-com',
+        'service/penpot-exporter-design-example-com',
+        'ingress/penpot-frontend-design-example-com',
+        'secret/penpot-backend-secrets-design-example-com',
+        'secret/penpot-backend-smtp-design-example-com',
+        'secret/penpot-backend-oidc-design-example-com',
     ];
     sort($expected);
 

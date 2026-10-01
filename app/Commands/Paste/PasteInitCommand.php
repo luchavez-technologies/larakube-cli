@@ -2,6 +2,7 @@
 
 namespace App\Commands\Paste;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
@@ -30,34 +31,16 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  * feature is wired to Commons SeaweedFS/MinIO/Garage only when one is
  * enabled, mirroring MailInitCommand's own conditional store wiring.
  */
-class PasteInitCommand extends Command
+abstract class PasteInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPaste, InteractsWithPlex, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
-    protected $signature = 'paste:init
-        {environment? : Environment this install targets — "local" (default) or a cloud env.}
-        {--context=  : Target a specific kube-context}
-        {--domain=   : Base domain OR full host for Yopass (example.com → paste.example.com)}
-        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting — WARNING: this tool exists to receive a paste from an external, unauthenticated partner; --vpn-only blocks exactly that. Only use it for an internal-scratchpad-only install.}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy Yopass (secure, one-time-read paste sharing) into larakube-shared';
-
-    public function handle(): int
+    protected function deployPaste(): int
     {
-        $this->laraKubeWarn("[DEPRECATION] 'paste:init' is deprecated. Forwarding to 'yopass:init'. Please update your scripts.");
-
         if ($this->refuseUnshippedTool(ClusterTool::PASTE)) {
             return 1;
         }
 
-        $this->renderHeader();
-
-        return $this->deployPaste();
-    }
-
-    protected function deployPaste(): int
-    {
         $env = $this->resolveToolEnvironment(ClusterTool::PASTE);
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
@@ -74,7 +57,7 @@ class PasteInitCommand extends Command
             return 1;
         }
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::PASTE, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::PASTE, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -114,7 +97,7 @@ class PasteInitCommand extends Command
         ])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();
-        $tmp = $temporaryDirectory->path('larakube-paste-yopass.yaml');
+        $tmp = $temporaryDirectory->path('larakube-yopass.yaml');
         file_put_contents($tmp, $manifest);
 
         $deploymentName = ClusterTool::PASTE->deploymentName($instance);
@@ -175,7 +158,7 @@ class PasteInitCommand extends Command
             }
 
             $this->withSpin('Syncing S3 file-storage credentials...', function () use ($kubectl, $ns, $instance, $s3Creds): void {
-                Kubectl::fromPrefix($kubectl)->putSecret($ns, "paste-yopass-secrets-{$instance}", ['s3-access-key' => $s3Creds['access'], 's3-secret-key' => $s3Creds['secret']]);
+                Kubectl::fromPrefix($kubectl)->putSecret($ns, ToolInstance::forInstance(ClusterTool::PASTE, $instance)->secret(), ['s3-access-key' => $s3Creds['access'], 's3-secret-key' => $s3Creds['secret']]);
             });
 
             return [

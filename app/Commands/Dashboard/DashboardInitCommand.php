@@ -23,28 +23,9 @@ use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class DashboardInitCommand extends Command
+abstract class DashboardInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithDashboard, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
-
-    protected $signature = 'dashboard:init
-        {environment? : Environment this install targets — "local" (default) or cloud.}
-        {--context=  : Target a specific kube-context}
-        {--domain=   : Base domain OR full host for Dashboard (example.com → dashboard.example.com)}
-        {--app-name= : Custom branding name for Headlamp}
-        {--logo-url= : Custom logo URL for Headlamp}
-        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy the CNCF Headlamp Kubernetes web control plane into larakube-shared';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'dashboard:init' is deprecated. Forwarding to 'headlamp:init'. Please update your scripts.");
-        $this->renderHeader();
-
-        return $this->deployDashboard();
-    }
 
     protected function deployDashboard(): int
     {

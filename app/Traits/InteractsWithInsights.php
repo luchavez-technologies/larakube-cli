@@ -21,14 +21,14 @@ trait InteractsWithInsights
     /** Insights (metabase) Deployment present? */
     protected function isInsightsInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'insights-metabase');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=insights');
     }
 
     /** Read database password. */
-    protected function readInsightsDbPassword(string $kubectl, string $ns): ?string
+    protected function readInsightsDbPassword(string $kubectl, string $ns, string $secret): ?string
     {
         $out = trim(Process::run(
-            "{$kubectl} get secret insights-secrets -n {$ns} -o jsonpath='{.data.db-password}'",
+            "{$kubectl} get secret {$secret} -n {$ns} -o jsonpath='{.data.db-password}'",
         )->output());
 
         return $out !== '' ? (string) base64_decode($out) : null;

@@ -7,7 +7,7 @@ use Saloon\Traits\Plugins\AcceptsJson;
 
 /**
  * Stalwart's JMAP endpoint is only reachable inside the cluster (no public
- * exposure when mail:init --vpn-only is set) — callers resolve a local port
+ * exposure when stalwart:init --vpn-only is set) — callers resolve a local port
  * via `kubectl port-forward` first and pass it in here. $authHeader is the
  * full header value (either "Bearer {api-key}" or "Basic {base64}") as
  * already computed by InteractsWithStalwartApi::stalwartAuthHeader() — kept

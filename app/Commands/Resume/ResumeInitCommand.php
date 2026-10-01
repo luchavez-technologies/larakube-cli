@@ -55,9 +55,10 @@ class ResumeInitCommand extends Command
         $host = $this->resolveToolHost(SharedClusterService::RESUME, ClusterTool::RESUME, $env, $kubectl);
 
         $ns = $this->resumeNamespace();
+        $names = ToolInstance::forHost(ClusterTool::RESUME, $host);
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::RESUME, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::RESUME, $kubectl, $names->instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -89,7 +90,6 @@ class ResumeInitCommand extends Command
             return 1;
         }
         $s3Driver = StorageDriver::from($s3Service);
-        $names = ToolInstance::forHost(ClusterTool::RESUME, $host);
         $s3Bucket = $names->bucket();
         if (! $this->allocateStorageBucket($s3Driver, $s3Bucket)) {
             return 1;
@@ -97,8 +97,8 @@ class ResumeInitCommand extends Command
 
         $s3Endpoint = $this->resolveCommonsS3Endpoints($s3Driver, 'Reactive Resume')['public'];
 
-        $dbPassword = $this->readResumeSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
-        $authSecret = $this->readResumeSecret($kubectl, $ns, 'auth-secret') ?? Str::random(32);
+        $dbPassword = $this->readResumeSecret($kubectl, $ns, $names->secret(), 'db-password') ?? Str::random(24);
+        $authSecret = $this->readResumeSecret($kubectl, $ns, $names->secret(), 'auth-secret') ?? Str::random(32);
 
         $dbName = $names->database();
         // Once OpenBao's database secrets engine already owns this static
@@ -116,8 +116,8 @@ class ResumeInitCommand extends Command
         ));
 
         $clusterEnv = $env === 'local' ? 'dev' : $env;
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $authSecret, $clusterEnv): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'resume-reactive-secrets', ['db-password' => $dbPassword, 'auth-secret' => $authSecret]);
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $names, $dbPassword, $authSecret, $clusterEnv): void {
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $names->secret(), ['db-password' => $dbPassword, 'auth-secret' => $authSecret]);
 
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
                 // Rotation is wired by `secrets:wire`, which also creates the ExternalSecret
@@ -131,6 +131,7 @@ class ResumeInitCommand extends Command
 
         $manifest = view('k8s.resume.shared', [
             'host' => $host,
+            'instance' => $names->instance,
             'plexNamespace' => $this->plexNamespace(),
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
@@ -143,12 +144,12 @@ class ResumeInitCommand extends Command
         ])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();
-        $tmp = $temporaryDirectory->path('larakube-resume-reactive.yaml');
+        $tmp = $temporaryDirectory->path('larakube-reactive.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Reactive Resume manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'resume-reactive', 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180),
         );
         $temporaryDirectory->delete();
 
@@ -156,7 +157,7 @@ class ResumeInitCommand extends Command
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::RESUME, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::RESUME, $kubectl, $host, $names->instance);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Reactive Resume is live.');

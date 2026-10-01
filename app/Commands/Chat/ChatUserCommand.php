@@ -55,7 +55,7 @@ class ChatUserCommand extends Command
         $ns = $this->chatNamespace();
 
         if (! $this->isChatInstalled($kubectl, $ns)) {
-            $this->laraKubeError('Chat is not installed. Run `larakube chat:init` first.');
+            $this->laraKubeError('Chat is not installed. Run `larakube matrix:init` first.');
 
             return 1;
         }
@@ -69,7 +69,7 @@ class ChatUserCommand extends Command
 
         $adminToken = $this->matrixAdminToken($kubectl, $ns, $host);
         if ($adminToken === null) {
-            $this->laraKubeError('Could not reach Matrix\'s automation credentials — check the Synapse credentials Secret has a registration-secret (re-run `larakube chat:init` if needed).');
+            $this->laraKubeError('Could not reach Matrix\'s automation credentials — check the Synapse credentials Secret has a registration-secret (re-run `larakube matrix:init` if needed).');
 
             return 1;
         }

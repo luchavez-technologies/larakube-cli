@@ -33,28 +33,9 @@ use function Laravel\Prompts\text;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class SsoInitCommand extends Command
+abstract class SsoInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithSecrets, InteractsWithSso, InteractsWithVolumeSizing, InteractsWithZitadelApi, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
-
-    protected $signature = 'sso:init
-        {environment? : Environment this install targets — "local" (default) or cloud.}
-        {--context=  : Target a specific kube-context}
-        {--domain=      : Base domain OR full host for Zitadel (example.com → prefix.example.com)}
-        {--admin-email= : Console admin login email (default: your operator email, or admin@<host>)}
-        {--no-plex      : Bypass Plex Commons and bundle a dedicated Postgres}
-        {--vpn-only     : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy Zitadel — a self-hosted OIDC/SAML identity provider — into its own larakube-sso namespace';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'sso:init' is deprecated. Forwarding to 'zitadel:init'. Please update your scripts.");
-        $this->renderHeader();
-
-        return $this->deploySso();
-    }
 
     protected function deploySso(): int
     {
@@ -224,7 +205,7 @@ class SsoInitCommand extends Command
         if (! $machinePatCaptured) {
             $this->line('  <fg=yellow>⚠ Automation token not captured yet.</> `larakube sso:wire` and');
             $this->line('  `larakube mail:create --sso` use it to talk to Zitadel\'s API. Re-run');
-            $this->line("  <fg=blue>larakube sso:init {$env}</> once the pod is fully ready; if it keeps");
+            $this->line("  <fg=blue>larakube zitadel:init {$env}</> once the pod is fully ready; if it keeps");
             $this->line('  missing, you can still wire tools by hand in the Zitadel console.');
             $this->newLine();
         }

@@ -23,7 +23,7 @@ class WebmailShowCommand extends AbstractToolShowCommand
     protected function rows(?string $host, string $env, string $kubectl, string $instance = ''): array
     {
         if ($instance === '') {
-            return [['Webmail UI (Bulwark)', "<fg=gray>not installed — run larakube webmail:init {$env}</>"]];
+            return [['Webmail UI (Bulwark)', "<fg=gray>not installed — run larakube bulwark:init {$env}</>"]];
         }
 
         $names = ToolInstance::forInstance(ClusterTool::WEBMAIL, $instance);
@@ -35,7 +35,7 @@ class WebmailShowCommand extends AbstractToolShowCommand
                 'Webmail UI (Bulwark)',
                 $host !== null
                     ? "https://{$host}"
-                    : "<fg=gray>host not configured — run larakube webmail:init {$env}</>",
+                    : "<fg=gray>host not configured — run larakube bulwark:init {$env}</>",
             ],
         ];
 

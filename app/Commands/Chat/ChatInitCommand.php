@@ -32,7 +32,7 @@ use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class ChatInitCommand extends Command
+abstract class ChatInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSso, InteractsWithVolumeSizing, InteractsWithZitadelApi, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, SchedulesCronJobs, StreamsProcessOutput, SyncsClusterSecrets;
 
@@ -41,28 +41,6 @@ class ChatInitCommand extends Command
      * captured 2026-08-21 from https://github.com/element-hq/matrix-authentication-service/releases.
      */
     protected const MAS_IMAGE = 'ghcr.io/element-hq/matrix-authentication-service:1.23.0';
-
-    protected $signature = 'chat:init
-        {environment? : Environment this install targets — "local" (default) or cloud.}
-        {--context=  : Target a specific kube-context}
-        {--domain=   : Base domain OR full host for Chat (example.com → prefix.example.com)}
-        {--app-name= : Custom branding name for the Element Web UI (defaults to Chat)}
-        {--logo-url= : Custom logo URL for the Element Web UI}
-        {--no-plex   : Bypass Plex Commons and bundle dedicated storage}
-        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--no-host-port : Skip hostPort on Coturn — use on managed K8s with a real LoadBalancer}
-        {--media-retention=30d : Keep media local for this long after last access; older files live only in S3 (s, h, d, m, y)}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy the Team Chat stack (Matrix / Synapse) into larakube-shared';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'chat:init' is deprecated. Forwarding to 'matrix:init'. Please update your scripts.");
-        $this->renderHeader();
-
-        return $this->deployChat();
-    }
 
     protected function deployChat(): int
     {
@@ -211,7 +189,7 @@ class ChatInitCommand extends Command
         // — MAS with no upstream IdP configured would just sit idle.
         // resolveSsoHostReadOnly() reads the LIVE cluster-registered host
         // first when $kubectl is given, only falling back to local project
-        // config — passing null here (chat:init loads no ConfigData of its
+        // config — passing null here (matrix:init loads no ConfigData of its
         // own) is safe rather than a missing-context bug.
         $ssoHost = $this->resolveSsoHostReadOnly($env, null, $kubectl);
         $masDeployed = false;
@@ -221,7 +199,7 @@ class ChatInitCommand extends Command
             // Fresh install (or one already off classic OIDC): MAS just
             // became available for the FIRST time this run and nothing else
             // occupies the auth slot, so activate it immediately — a fresh
-            // cluster reaches full MAS-native auth in ONE chat:init run,
+            // cluster reaches full MAS-native auth in ONE matrix:init run,
             // never needing a separate migration concept at all. Re-runs
             // where MAS was already active skip this (steady state, no
             // pointless restart); an existing install still on classic OIDC
@@ -248,7 +226,7 @@ class ChatInitCommand extends Command
         // On a cloud VPS, punch Coturn's raw UDP/TCP ports through both
         // firewall layers (DO cloud edge + host UFW) — klipper binds them via
         // hostPort, but both default-deny, so TURN silently never connects.
-        // The SFU's own ports belong to `meet:init`.
+        // The SFU's own ports belong to `livekit:init`.
         $this->openToolPorts(SharedClusterService::CHAT, $env);
 
         $this->laraKubeNewLine();
@@ -282,7 +260,7 @@ class ChatInitCommand extends Command
             // install ever passes through.
             $this->line('  <fg=gray>Element X (mobile):</> <fg=blue>MAS deployed, pending manual migration off classic SSO</>');
         } else {
-            $this->line('  <fg=gray>Element X (mobile):</> <fg=blue>needs Zitadel — run `larakube sso:init` first</>');
+            $this->line('  <fg=gray>Element X (mobile):</> <fg=blue>needs Zitadel — run `larakube zitadel:init` first</>');
         }
 
         if ($adminDeployed) {
@@ -306,7 +284,7 @@ class ChatInitCommand extends Command
      * incompatible with Synapse's own oidc_providers: callback, and MAS is a
      * completely separate auth consumer from Synapse itself).
      *
-     * Idempotent and safe on every chat:init re-run: it never touches
+     * Idempotent and safe on every matrix:init re-run: it never touches
      * Synapse's own auth mode itself — the caller (deployChat()) decides
      * whether to activate it, via activateMasAuthMode() below, based on
      * whether classic OIDC is already occupying that slot. Returns whether
@@ -363,7 +341,7 @@ class ChatInitCommand extends Command
         // 3. Register MAS itself as an independent Zitadel OIDC client.
         $pat = $this->readSsoSecret($kubectl, $this->ssoNamespace(), 'machine-pat');
         if ($pat === null) {
-            $this->laraKubeLine('  <fg=gray>Skipping Matrix Authentication Service — could not reach Zitadel\'s automation credentials (re-run `larakube sso:init` to recapture them).</>');
+            $this->laraKubeLine('  <fg=gray>Skipping Matrix Authentication Service — could not reach Zitadel\'s automation credentials (re-run `larakube zitadel:init` to recapture them).</>');
 
             return false;
         }
@@ -533,7 +511,7 @@ class ChatInitCommand extends Command
      * admin privileges the account already holds. Its Ingress is VPN-only
      * unconditionally (see admin.blade.php's own comment on why), so this
      * must ensure the shared VPN Middleware exists even on installs that
-     * never passed chat:init --vpn-only — a Traefik router referencing a
+     * never passed matrix:init --vpn-only — a Traefik router referencing a
      * missing Middleware 500s every request, not a harmless no-op.
      */
     protected function deployAdmin(string $kubectl, string $ns, string $host, ToolInstance $names, string $env): bool

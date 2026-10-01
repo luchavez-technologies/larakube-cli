@@ -2,6 +2,7 @@
 
 namespace App\Commands\Uptime;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
@@ -22,40 +23,23 @@ use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class UptimeInitCommand extends Command
+abstract class UptimeInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithTraefik, InteractsWithUptime, InteractsWithVolumeSizing, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
-    protected $signature = 'uptime:init
-        {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted, like plex:init. A non-local env prompts for + persists the Uptime Kuma host.}
-        {--context=  : Target a specific kube-context (defaults to current context)}
-        {--domain=   : Base domain OR full host for Uptime Kuma (example.com → status.example.com; status.example.com used as-is)}
-        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy the cluster-wide Uptime Kuma status page stack into larakube-shared';
-
-    public function handle(): int
+    protected function deployUptime(): int
     {
-        $this->laraKubeWarn("[DEPRECATION] 'uptime:init' is deprecated. Forwarding to 'kuma:init'. Please update your scripts.");
-
         if ($this->refuseUnshippedTool(ClusterTool::UPTIME)) {
             return 1;
         }
 
-        $this->renderHeader();
-
-        return $this->deployUptime();
-    }
-
-    protected function deployUptime(): int
-    {
         $env = $this->resolveEnvironment();
         $context = $this->resolveToolContext($env, $this->option('context'));
         $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->uptimeNamespace();
 
         $host = $this->resolveToolHost(SharedClusterService::UPTIME_KUMA, ClusterTool::UPTIME, $env, $kubectl);
+        $names = ToolInstance::forHost(ClusterTool::UPTIME, $host);
 
         // The local certificate is issued by registerDeployedTool() from this
         // tool's OWN host. It used to be done here from getProjectConfig(),
@@ -68,7 +52,7 @@ class UptimeInitCommand extends Command
 
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::UPTIME, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::UPTIME, $kubectl, $names->instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -77,18 +61,19 @@ class UptimeInitCommand extends Command
         $manifest = view('k8s.uptime.shared', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
+            'instance' => $names->instance,
             'isLocal' => $env === 'local',
             'proxied' => $this->resolveProxied($env === 'local'),
             'vpnOnly' => $vpnOnly,
         ])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();
-        $tmp = $temporaryDirectory->path('larakube-uptime.yaml');
+        $tmp = $temporaryDirectory->path('larakube-kuma.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Uptime Kuma manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'uptime-kuma', 120),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 120),
         );
         $temporaryDirectory->delete();
 
@@ -96,7 +81,7 @@ class UptimeInitCommand extends Command
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::UPTIME, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::UPTIME, $kubectl, $host, $names->instance);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Uptime Kuma stack is live.');

@@ -71,7 +71,7 @@ test('sso:wire errors when Zitadel is not installed', function (): void {
 });
 
 test('sso:wire resolves a cloud tool host from the cluster registry when .larakube.json has none', function (): void {
-    // Regression for a real live failure 2026-08-06: dashboard:init records
+    // Regression for a real live failure 2026-08-06: headlamp:init records
     // Headlamp's host via ResolvesToolHost::promptForCloudHost(), which
     // persists to the CLUSTER REGISTRY, not .larakube.json — the project
     // file's `hosts` map never gets a `dashboard` entry at all. sso:wire's
@@ -195,7 +195,7 @@ test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, ne
     // ADR 0018: sso_only_vars merged into $staticVars must land in the
     // Secret (reached via --from=secret) — a literal `set env KEY=value`
     // pass would desync kubectl apply's bookkeeping for the next
-    // monitor:init re-apply, exactly the bug this test guards against.
+    // grafana:init re-apply, exactly the bug this test guards against.
     Process::fake([
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment*grafana*' => Process::result(output: 'grafana-grafana-dev-test   1/1   1   1   10d'),
@@ -734,7 +734,7 @@ test('sso:wire aborts before registering an OIDC client if role-gating setup fai
 });
 
 test('sso:wire gates the ForwardAuth proxy with --allowed-group for a role-gated tool', function (): void {
-    ssoRegistered();
+    Tests\Support\FakeToolRegistry::install([openBaoRegistryRow(), ssoRegistryRow(), ['tool' => 'record', 'instance' => 'record-example-com', 'host' => 'record.example.com']]);
     // Record (Sendrec) has no native OIDC of its own — it's gated at the
     // ingress via the shared SSO proxy (ADR 0006). Added 2026-08-20: that
     // ADR's own "non-goals" section already named this gap
@@ -744,7 +744,7 @@ test('sso:wire gates the ForwardAuth proxy with --allowed-group for a role-gated
     $proxyManifest = null;
     Process::fake([
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
-        '*get deployment record-sendrec*' => Process::result(output: 'record-sendrec   1/1   1   1   10d'),
+        '*get deployment sendrec-record-example-com*' => Process::result(output: 'sendrec-record-example-com   1/1   1   1   10d'),
         '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get crd middlewares.traefik.io*' => Process::result(output: 'middlewares.traefik.io   2026-01-01T00:00:00Z'),
         '*get secret proxy-sso-sso-example-com*' => Process::result(output: '', exitCode: 1),
@@ -787,10 +787,10 @@ test('sso:wire gates the ForwardAuth proxy with --allowed-group for a role-gated
 });
 
 test('sso:wire aborts before deploying the ForwardAuth proxy if role-gating setup fails', function (): void {
-    ssoRegistered();
+    Tests\Support\FakeToolRegistry::install([openBaoRegistryRow(), ssoRegistryRow(), ['tool' => 'record', 'instance' => 'record-example-com', 'host' => 'record.example.com']]);
     Process::fake([
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
-        '*get deployment record-sendrec*' => Process::result(output: 'record-sendrec   1/1   1   1   10d'),
+        '*get deployment sendrec-record-example-com*' => Process::result(output: 'sendrec-record-example-com   1/1   1   1   10d'),
         '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get crd middlewares.traefik.io*' => Process::result(output: 'middlewares.traefik.io   2026-01-01T00:00:00Z'),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -1234,7 +1234,7 @@ test('sso:wire resolves the main DATA instance\'s own engine, not contaminated b
 });
 
 test('sso:wire also patches Penpot\'s frontend deployment with the same OIDC secret (also_patch)', function (): void {
-    ssoRegistered();
+    Tests\Support\FakeToolRegistry::install([openBaoRegistryRow(), ssoRegistryRow(), ['tool' => 'penpot', 'instance' => 'design-example-com', 'host' => 'design.example.com']]);
     // Regression test for the ClusterTool component refactor: DESIGN's
     // oidcEnv() used to carry a one-off 'frontend_deployment' key that only
     // this tool had; it's now the general 'also_patch' list derived from
@@ -1243,16 +1243,16 @@ test('sso:wire also patches Penpot\'s frontend deployment with the same OIDC sec
     // restart, exactly like the old special case did.
     Process::fake([
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
-        '*get deployment design-penpot-backend*' => Process::result(output: 'design-penpot-backend   1/1   1   1   10d'),
-        '*get deployment design-penpot-frontend*' => Process::result(output: 'design-penpot-frontend   1/1   1   1   10d'),
+        '*get deployment penpot-backend-design-example-com*' => Process::result(output: 'penpot-backend-design-example-com   1/1   1   1   10d'),
+        '*get deployment penpot-frontend-design-example-com*' => Process::result(output: 'penpot-frontend-design-example-com   1/1   1   1   10d'),
         '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*get secret design-penpot-backend-sso*' => Process::result(output: ''),
-        '*get secret design-oidc*' => Process::result(output: ''),
-        '*get secret design-smtp*' => Process::result(output: ''),
+        '*get secret penpot-backend-sso*' => Process::result(output: ''),
+        '*get secret penpot-backend-oidc-design-example-com*' => Process::result(output: ''),
+        '*get secret penpot-backend-smtp-design-example-com*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/design-penpot-backend*' => Process::result(output: 'deployment.apps/design-penpot-backend env updated'),
-        '*set env deployment/design-penpot-frontend*' => Process::result(output: 'deployment.apps/design-penpot-frontend env updated'),
+        '*set env deployment/penpot-backend-design-example-com*' => Process::result(output: 'deployment.apps/penpot-backend-design-example-com env updated'),
+        '*set env deployment/penpot-frontend-design-example-com*' => Process::result(output: 'deployment.apps/penpot-frontend-design-example-com env updated'),
         '*rollout restart*' => Process::result(output: 'restarted'),
     ]);
 
@@ -1275,13 +1275,13 @@ test('sso:wire also patches Penpot\'s frontend deployment with the same OIDC sec
 
     $this->artisan('sso:wire', ['--tool' => 'design', '--no-interaction' => true])
         ->assertExitCode(0)
-        ->expectsOutputToContain('Design & Prototyping (Penpot) is wired to Zitadel SSO');
+        ->expectsOutputToContain('Penpot (Design & Prototyping) is wired to Zitadel SSO');
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/design-penpot-backend')
-        && str_contains($process->command, '--from=secret/design-oidc'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/design-penpot-frontend')
-        && str_contains($process->command, '--from=secret/design-oidc'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/design-penpot-frontend'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/penpot-backend-design-example-com')
+        && str_contains($process->command, '--from=secret/penpot-backend-oidc-design-example-com'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/penpot-frontend-design-example-com')
+        && str_contains($process->command, '--from=secret/penpot-backend-oidc-design-example-com'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/penpot-frontend-design-example-com'));
 });
 
 test('sso:wire updates a legacy "Login with SSO" Forgejo source in place (rename to the canonical `zitadel` name)', function (): void {

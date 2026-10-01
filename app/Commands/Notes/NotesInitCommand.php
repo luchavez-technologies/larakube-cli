@@ -33,31 +33,12 @@ use function Laravel\Prompts\text;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class NotesInitCommand extends Command
+abstract class NotesInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithNotes, InteractsWithPlex, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     /** How Outline's OIDC credentials were resolved this run, for the summary. */
     protected string $oidcSource = 'existing';
-
-    protected $signature = 'notes:init
-        {environment? : Environment this install targets — "local" (default) or cloud.}
-        {--context=  : Target a specific kube-context}
-        {--domain=   : Base domain OR full host for Outline (example.com → prefix.example.com). Omit to target/update the default instance; pass a different host to deploy an ADDITIONAL instance there — the host you give IS its identity}
-        {--alias=*    : Additional domain alias(es) to register on this instance\'s Ingress}
-        {--admin-email= : Primary administrator email for Outline}
-        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy the Outline wiki / knowledge base stack into larakube-shared';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'notes:init' is deprecated. Forwarding to 'outline:init'. Please update your scripts.");
-        $this->renderHeader();
-
-        return $this->deployNotes();
-    }
 
     protected function deployNotes(): int
     {
@@ -232,7 +213,7 @@ class NotesInitCommand extends Command
      *  2. Zitadel is installed → register the OIDC app AND write the secret here,
      *     before the Outline Deployment exists. sso:wire can't do this — it
      *     requires the Deployment to already be running — and Outline can't
-     *     start without OIDC, so notes:init owns the bootstrap itself.
+     *     start without OIDC, so outline:init owns the bootstrap itself.
      *  3. External SSO → prompt for the five OIDC fields, create the secret.
      *
      * The secret keys are the Outline env-var names (OIDC_CLIENT_ID, …), which
@@ -258,8 +239,8 @@ class NotesInitCommand extends Command
         // ask, and the client secret must not travel as a flag.
         if ($this->cannotPrompt()) {
             $this->laraKubeError('Outline needs a login provider (OIDC), and none is set up.');
-            $this->line('  Run <fg=blue>larakube sso:init</> first (notes:init then wires Zitadel itself), or run');
-            $this->line('  <fg=blue>larakube notes:init</> interactively to enter an external provider.');
+            $this->line('  Run <fg=blue>larakube zitadel:init</> first (outline:init then wires Zitadel itself), or run');
+            $this->line('  <fg=blue>larakube outline:init</> interactively to enter an external provider.');
 
             return false;
         }
@@ -268,7 +249,7 @@ class NotesInitCommand extends Command
         $this->line('  <fg=yellow>Outline requires an OIDC provider for login.</>');
         $this->line('  No Zitadel installation detected. You can:');
         $this->newLine();
-        $this->line('    1. Install Zitadel:  <fg=blue>larakube sso:init</> (notes:init then wires it for you)');
+        $this->line('    1. Install Zitadel:  <fg=blue>larakube zitadel:init</> (outline:init then wires it for you)');
         $this->line('    2. Provide external OIDC details below');
         $this->newLine();
 
@@ -276,12 +257,12 @@ class NotesInitCommand extends Command
             label: 'How would you like to authenticate Outline?',
             options: [
                 'external' => 'I have an external OIDC provider',
-                'zitadel' => 'Install Zitadel first (run sso:init)',
+                'zitadel' => 'Install Zitadel first (run zitadel:init)',
             ],
         );
 
         if ($source === 'zitadel') {
-            $this->line('  Run <fg=blue>larakube sso:init</>, then re-run <fg=blue>larakube notes:init</> — it wires Zitadel automatically.');
+            $this->line('  Run <fg=blue>larakube zitadel:init</>, then re-run <fg=blue>larakube outline:init</> — it wires Zitadel automatically.');
 
             return false;
         }
@@ -315,14 +296,14 @@ class NotesInitCommand extends Command
 
         $ssoHost = $this->resolveSsoHostReadOnly($env, $config, $kubectl);
         if ($ssoHost === null) {
-            $this->laraKubeError("Zitadel is installed but its host for '{$env}' could not be resolved — re-run `larakube sso:init {$env}`.");
+            $this->laraKubeError("Zitadel is installed but its host for '{$env}' could not be resolved — re-run `larakube zitadel:init {$env}`.");
 
             return false;
         }
 
         $pat = $this->readSsoSecret($kubectl, $this->ssoNamespace(), 'machine-pat');
         if ($pat === null) {
-            $this->laraKubeError('Could not read Zitadel automation credentials — re-run `larakube sso:init`.');
+            $this->laraKubeError('Could not read Zitadel automation credentials — re-run `larakube zitadel:init`.');
 
             return false;
         }

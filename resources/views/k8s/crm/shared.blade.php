@@ -1,5 +1,5 @@
 @php
-    // Every name comes from ToolInstance (ADR 0021). Rendered by crm:init
+    // Every name comes from ToolInstance (ADR 0021). Rendered by twenty:init
     // (which passes the instance) and by anything that passes only the host.
     $instance = ($instance ?? '') !== ''
         ? $instance

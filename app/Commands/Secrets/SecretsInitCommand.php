@@ -23,26 +23,9 @@ use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class SecretsInitCommand extends Command
+abstract class SecretsInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithPlex, InteractsWithSecrets, InteractsWithVolumeSizing, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, RunsKubectlSteps, StreamsProcessOutput;
-
-    protected $signature = 'secrets:init
-        {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the secrets manager host.}
-        {--context=        : Target a specific kube-context (defaults to current context)}
-        {--domain=         : Base domain OR full host for secrets manager (example.com → secrets.example.com; secrets.example.com used as-is)}
-        {--vpn-only        : Restrict access via NetBird VPN IP whitelisting}
-        {--force           : Skip the confirmation prompt}';
-
-    protected $description = 'Deploy OpenBao secrets manager & External Secrets Operator into larakube-secrets';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'secrets:init' is deprecated. Forwarding to 'openbao:init'. Please update your scripts.");
-        $this->renderHeader();
-
-        return $this->deploySecrets();
-    }
 
     protected function deploySecrets(): int
     {
@@ -232,7 +215,7 @@ class SecretsInitCommand extends Command
      * no working path to initialization at all), then create the
      * ClusterSecretStore that wires ESO to OpenBao, then create ExternalSecrets
      * for every installed tool that has secrets in OpenBao. Idempotent:
-     * re-running secrets:init applies the same resources.
+     * re-running openbao:init applies the same resources.
      */
     protected function wireEsoToOpenBao(string $kubectl, string $ns): bool
     {
@@ -246,7 +229,7 @@ class SecretsInitCommand extends Command
         // A genuinely fresh OpenBao (unlike Vault's dev mode) has no secret/
         // KV mount at all — every pushClusterSecret()/KV-fallback write
         // across the whole CLI assumes it exists. Fatal, not a warning: with
-        // no KV backend, secrets:init would appear to succeed while quietly
+        // no KV backend, openbao:init would appear to succeed while quietly
         // breaking every tool that falls back to it.
         if (! $this->ensureKvSecretsEngineMounted($kubectl, $ns, $token)) {
             $this->laraKubeError('Could not mount the secret/ KV engine on OpenBao — check kubectl access to the cluster above and re-run.');

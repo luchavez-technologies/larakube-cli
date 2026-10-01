@@ -19,12 +19,12 @@ trait InteractsWithResume
 
     protected function isResumeInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'resume-reactive');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=resume');
     }
 
-    protected function readResumeSecret(string $kubectl, string $ns, string $key): ?string
+    protected function readResumeSecret(string $kubectl, string $ns, string $secret, string $key): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'resume-reactive-secrets', $key);
+        return $this->readClusterSecretKey($kubectl, $ns, $secret, $key);
     }
 
     protected function resolveResumeHostReadOnly(string $env, ?ConfigData $config): ?string

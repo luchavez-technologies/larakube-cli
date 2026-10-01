@@ -1,6 +1,6 @@
-# Startup OS Tools Expansion (`design:init` Penpot & `api:init` Hoppscotch) Plan
+# Startup OS Tools Expansion (`penpot:init` Penpot & `api:init` Hoppscotch) Plan
 
-**Status:** 🟡 PARTIAL — verified 2026-08-08. The shipped tools are real, but "`design:init` & `api:init` in progress" was not accurate: neither command exists in the CLI's 238-command surface, and neither has a `ClusterTool` case. They are ⛔ not started. Everything else here has landed.
+**Status:** 🟡 PARTIAL — verified 2026-08-08. The shipped tools are real, but "`penpot:init` & `api:init` in progress" was not accurate: neither command exists in the CLI's 238-command surface, and neither has a `ClusterTool` case. They are ⛔ not started. Everything else here has landed.
 **Created:** 2026-07-29
 **Updated:** 2026-08-03 (post grill-me gap analysis)
 **Target Version:** LaraKube CLI v1.2.0
@@ -15,18 +15,18 @@ LaraKube's "Startup OS" suite provides production-ready open-source tools design
 
 | # | Tool Slug | Product | CLI Command | Status | Storage / DB Backend | SSO Strategy |
 |---|-----------|---------|-------------|--------|----------------------|--------------|
-| 1 | `analytics` | Umami | `larakube analytics:init` | ✅ **Shipped** | Plex Commons Postgres | Native OIDC |
-| 2 | `tasks` | Planka / Plane | `larakube tasks:init` | ✅ **Shipped** | Plex Commons Postgres + Redis | Native OIDC |
-| 3 | `sign` | Documenso | `larakube sign:init` | ✅ **Shipped** | Plex Commons Postgres + S3 | Native OIDC |
-| 4 | `support` | Chatwoot | `larakube support:init` | ✅ **Shipped** | Plex Commons Postgres + Redis | Native OIDC |
-| 5 | `link` | Kutt | `larakube link:init` | ✅ **Shipped** | Plex Commons Postgres + Redis | Native OIDC |
-| 6 | `crm` | Twenty | `larakube crm:init` | ✅ **Shipped** | Plex Commons Postgres | Native OIDC |
-| 7 | `design` | Penpot | `larakube design:init` | ⏳ **Target v1.2** | Plex Commons Postgres + Redis + S3 (`design-assets`) | Native FREE OIDC |
+| 1 | `analytics` | Umami | `larakube umami:init` | ✅ **Shipped** | Plex Commons Postgres | Native OIDC |
+| 2 | `tasks` | Planka / Plane | `larakube planka:init` | ✅ **Shipped** | Plex Commons Postgres + Redis | Native OIDC |
+| 3 | `sign` | Documenso | `larakube documenso:init` | ✅ **Shipped** | Plex Commons Postgres + S3 | Native OIDC |
+| 4 | `support` | Chatwoot | `larakube chatwoot:init` | ✅ **Shipped** | Plex Commons Postgres + Redis | Native OIDC |
+| 5 | `link` | Kutt | `larakube kutt:init` | ✅ **Shipped** | Plex Commons Postgres + Redis | Native OIDC |
+| 6 | `crm` | Twenty | `larakube twenty:init` | ✅ **Shipped** | Plex Commons Postgres | Native OIDC |
+| 7 | `design` | Penpot | `larakube penpot:init` | ⏳ **Target v1.2** | Plex Commons Postgres + Redis + S3 (`design-assets`) | Native FREE OIDC |
 | 8 | `api` | Hoppscotch | `larakube api:init` | ⏳ **Target v1.2** | Plex Commons Postgres + Redis | Traefik ForwardAuth |
 
 ---
 
-## Component 1: `design:init` — Penpot (Figma & Canva Alternative)
+## Component 1: `penpot:init` — Penpot (Figma & Canva Alternative)
 
 ### 🎯 Objective
 
@@ -63,7 +63,7 @@ Deploy **Penpot** — the leading open-source design, prototyping, and whiteboar
 
 ### CLI Commands
 
-- `larakube design:init` — Deploys Penpot into `larakube-shared`
+- `larakube penpot:init` — Deploys Penpot into `larakube-shared`
 - `larakube design:show` — Displays Penpot deployment status, host, and database details
 - `larakube design:remove` — Teardowns Penpot workload and drops `penpot` database from Plex Commons
 
@@ -185,7 +185,7 @@ Executing `larakube sso:wire production --tool=design` registers a dedicated OID
 ## 🔐 OpenBao & Secrets Rotation (`secrets:wire`) Integration
 
 Per the **OpenBao Secrets Prioritization Standard**:
-1. When OpenBao is bootstrapped, `design:init` registers static database role credentials (`penpot` role in `plex-postgres`).
+1. When OpenBao is bootstrapped, `penpot:init` registers static database role credentials (`penpot` role in `plex-postgres`).
 2. `ClusterTool::DESIGN->dbSecretRef()` returns `['secret' => 'design-penpot-db', 'namespace' => 'larakube-shared', 'key' => 'password']`.
 3. Executing `larakube secrets:wire production --tool=design` hands database password rotation over to OpenBao (7-day automatic rotation via ExternalSecret controller).
 
@@ -237,7 +237,7 @@ Per the **OpenBao Secrets Prioritization Standard**:
 - [ ] Add `ClusterTool::API = 'api'` and `SharedClusterService::API = 'api'`
 - [ ] Add `commonsDatabases()` entries: `penpot` for `DESIGN`, `hoppscotch` for `API`
 - [ ] Implement `app/Traits/InteractsWithDesign.php`
-- [ ] Implement `app/Commands/Design/DesignInitCommand.php` (`larakube design:init`)
+- [ ] Implement `app/Commands/Design/DesignInitCommand.php` (`larakube penpot:init`)
 - [ ] Implement `app/Commands/Design/DesignShowCommand.php` (`larakube design:show`)
 - [ ] Implement `app/Commands/Design/DesignRemoveCommand.php` (`larakube design:remove`)
 - [ ] Implement `app/Commands/Api/ApiInitCommand.php` (`larakube api:init`)

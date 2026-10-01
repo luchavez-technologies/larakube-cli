@@ -27,7 +27,7 @@ test('ClusterTool deploymentName, commonsDatabases, and dbSecretRef support name
         ]);
 });
 
-test('notes:init deploys a named multi-instance with isolated DB and secrets', function (): void {
+test('outline:init deploys a named multi-instance with isolated DB and secrets', function (): void {
     ssoRegistered();
     // A bare, dot-less --domain so ClusterTool::instanceSlugFromHost() derives
     // exactly 'sister' (no dots to dash-ify) — keeps every fixture below
@@ -64,7 +64,7 @@ test('notes:init deploys a named multi-instance with isolated DB and secrets', f
         '*' => Process::result(output: 'success'),
     ]);
 
-    $this->artisan('notes:init', ['environment' => 'local', '--domain' => 'sister', '--admin-email' => 'admin@example.com', '--force' => true])
+    $this->artisan('outline:init', ['environment' => 'local', '--domain' => 'sister', '--admin-email' => 'admin@example.com', '--force' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('Outline wiki stack is live');
 });

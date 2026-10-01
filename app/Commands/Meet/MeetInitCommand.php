@@ -22,27 +22,9 @@ use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class MeetInitCommand extends Command
+abstract class MeetInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMeet, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
-
-    protected $signature = 'meet:init
-        {environment? : Environment this install targets — "local" (default) or cloud.}
-        {--context=  : Target a specific kube-context}
-        {--domain=   : Base domain OR full host for Meet (example.com → meet.example.com)}
-        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--no-host-port : Skip hostPort on LiveKit — use on managed K8s with a real LoadBalancer}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy the shared LiveKit SFU (Meet) into larakube-shared';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'meet:init' is deprecated. Forwarding to 'livekit:init'. Please update your scripts.");
-        $this->renderHeader();
-
-        return $this->deployMeet();
-    }
 
     protected function deployMeet(): int
     {

@@ -85,7 +85,7 @@ For applications running Solana smart contracts written in Rust (using **Anchor*
    * The transaction settles directly peer-to-peer in ~400ms for <$0.001.
 3. **Backend Event & Notification Ingestion**:
    * **Tier 1 (Helius Webhook + Laravel / n8n)**: Helius monitors the Anchor Program ID and POSTs webhooks to `https://app.example.com/api/webhooks/solana` or to `flow-n8n`.
-   * **Tier 2 (LaraKube Flow Pipelines)**: Ingests tip payload ➔ dispatches Telegram/Discord notifications + emails via Stalwart (`mail:init`) + logs to Teable (`sheet:init`).
+   * **Tier 2 (LaraKube Flow Pipelines)**: Ingests tip payload ➔ dispatches Telegram/Discord notifications + emails via Stalwart (`stalwart:init`) + logs to Teable (`sheet:init`).
 
 ---
 

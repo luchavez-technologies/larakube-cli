@@ -20,7 +20,7 @@ class VpnRotateCommand extends Command
 {
     use InteractsWithClusterContext, InteractsWithProjectConfig, InteractsWithVpn, LaraKubeOutput, ReadsClusterSecrets;
 
-    /** Days of life for the replacement credentials — matches vpn:init's own cap. */
+    /** Days of life for the replacement credentials — matches netbird:init's own cap. */
     protected const LIFETIME_DAYS = 365;
 
     protected $signature = 'vpn:rotate
@@ -40,7 +40,7 @@ class VpnRotateCommand extends Command
         $ns = $this->vpnNamespace();
 
         if (! $this->isVpnInstalled($kubectl, $ns)) {
-            $this->laraKubeError('NetBird is not installed. Run `larakube vpn:init` first.');
+            $this->laraKubeError('NetBird is not installed. Run `larakube netbird:init` first.');
 
             return 1;
         }

@@ -13,7 +13,7 @@ afterEach(function (): void {
     MockClient::destroyGlobal();
 });
 
-test('secrets:init deploys openbao and external secrets operator, unsealing an already-initialized instance', function (): void {
+test('openbao:init deploys openbao and external secrets operator, unsealing an already-initialized instance', function (): void {
     openBaoRegistered();
     Process::fake([
         '*get secret*root-token*' => Process::result(output: base64_encode('hvs.existing')),
@@ -43,7 +43,7 @@ test('secrets:init deploys openbao and external secrets operator, unsealing an a
         MockResponse::make([]),
     ]);
 
-    $this->artisan('secrets:init local --no-interaction')
+    $this->artisan('openbao:init local --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying OpenBao & External Secrets Operator manifests...')
         ->expectsOutputToContain('Waiting for OpenBao Backend...')
@@ -60,7 +60,7 @@ test('secrets:init deploys openbao and external secrets operator, unsealing an a
     // v0.16.2's CRD bundle exceeds the client-side apply size limit, and
     // switching an already-live install from client-side to server-side
     // ownership needs --force-conflicts or the first apply after upgrade
-    // fails outright — see SecretsInitCommand::deploySecrets()'s comment.
+    // fails outright — see OpenBaoInitCommand::deploySecrets()'s comment.
     // Server-side, and the whole bundle (CRDs + OpenBao + ESO) on stdin.
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply --server-side --field-manager=larakube --force-conflicts -f -')
         && str_contains((string) $process->input, 'kind: CustomResourceDefinition')
@@ -72,9 +72,9 @@ test('secrets:init deploys openbao and external secrets operator, unsealing an a
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout status deploy/external-secrets-webhook'));
 });
 
-test('secrets:init bootstraps a genuinely fresh, never-initialized OpenBao — no import file required', function (): void {
+test('openbao:init bootstraps a genuinely fresh, never-initialized OpenBao — no import file required', function (): void {
     openBaoRegistered();
-    // Regression guard for the real gap found live 2026-07-31: secrets:init
+    // Regression guard for the real gap found live 2026-07-31: openbao:init
     // used to deploy OpenBao but never initialize it, deferring that
     // entirely to secrets:import — which itself refuses to run without an
     // existing export file. A fresh cluster had no way out of that loop
@@ -111,7 +111,7 @@ test('secrets:init bootstraps a genuinely fresh, never-initialized OpenBao — n
         MockResponse::make([]),
     ]);
 
-    $this->artisan('secrets:init local --no-interaction')
+    $this->artisan('openbao:init local --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('OpenBao initialized and unsealed.')
         ->expectsOutputToContain('OpenBao stack & External Secrets Operator are live');
@@ -123,7 +123,7 @@ test('secrets:init bootstraps a genuinely fresh, never-initialized OpenBao — n
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
 });
 
-test('secrets:init creates a new userpass admin and prints the credentials once', function (): void {
+test('openbao:init creates a new userpass admin and prints the credentials once', function (): void {
     openBaoRegistered();
     Process::fake([
         '*get secret*root-token*' => Process::result(output: base64_encode('hvs.existing')),
@@ -153,7 +153,7 @@ test('secrets:init creates a new userpass admin and prints the credentials once'
         MockResponse::make([]),
     ]);
 
-    $this->artisan('secrets:init local --no-interaction')
+    $this->artisan('openbao:init local --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('OpenBao admin login created — save this now')
         ->expectsOutputToContain('Username:')
@@ -164,7 +164,7 @@ test('secrets:init creates a new userpass admin and prints the credentials once'
         && str_contains((string) $process->input, '"admin-password"'));
 });
 
-test('secrets:init reuses an existing userpass admin instead of rotating it, and does not reprint credentials', function (): void {
+test('openbao:init reuses an existing userpass admin instead of rotating it, and does not reprint credentials', function (): void {
     openBaoRegistered();
     Process::fake([
         '*get secret*root-token*' => Process::result(output: base64_encode('hvs.existing')),
@@ -189,7 +189,7 @@ test('secrets:init reuses an existing userpass admin instead of rotating it, and
         MockResponse::make([]),
     ]);
 
-    $this->artisan('secrets:init local --no-interaction')
+    $this->artisan('openbao:init local --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('OpenBao stack & External Secrets Operator are live');
 
@@ -202,7 +202,7 @@ test('secrets:init reuses an existing userpass admin instead of rotating it, and
         && $request->body()->get('password') === 'do-not-rotate-me');
 });
 
-test('secrets:init keeps deploying OpenBao even if the userpass admin setup fails', function (): void {
+test('openbao:init keeps deploying OpenBao even if the userpass admin setup fails', function (): void {
     openBaoRegistered();
     Process::fake([
         '*get secret*root-token*' => Process::result(output: base64_encode('hvs.existing')),
@@ -224,13 +224,13 @@ test('secrets:init keeps deploying OpenBao even if the userpass admin setup fail
         MockResponse::make(['errors' => ['denied']], 500),
     ]);
 
-    $this->artisan('secrets:init local --no-interaction')
+    $this->artisan('openbao:init local --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('Could not set up the baseline OpenBao admin login')
         ->expectsOutputToContain('OpenBao stack & External Secrets Operator are live');
 });
 
-test('secrets:init fails loudly if OpenBao bootstrap fails, instead of silently skipping ESO wiring', function (): void {
+test('openbao:init fails loudly if OpenBao bootstrap fails, instead of silently skipping ESO wiring', function (): void {
     openBaoRegistered();
     Process::fake([
         '*get secret*' => Process::result(output: '', exitCode: 1),
@@ -241,12 +241,12 @@ test('secrets:init fails loudly if OpenBao bootstrap fails, instead of silently 
         '*' => Process::result(),
     ]);
 
-    $this->artisan('secrets:init local --no-interaction')
+    $this->artisan('openbao:init local --no-interaction')
         ->assertExitCode(1)
         ->expectsOutputToContain('Could not initialize/unseal OpenBao');
 });
 
-test('secrets:init patches out a lingering v1alpha1 storedVersion before applying the new CRD bundle', function (): void {
+test('openbao:init patches out a lingering v1alpha1 storedVersion before applying the new CRD bundle', function (): void {
     openBaoRegistered();
     // ESO v0.16.0 dropped the v1alpha1 CRD API version entirely. A CRD
     // whose status.storedVersions still lists it would reject the new CRD
@@ -276,7 +276,7 @@ test('secrets:init patches out a lingering v1alpha1 storedVersion before applyin
         MockResponse::make([]),
     ]);
 
-    $this->artisan('secrets:init local --no-interaction')->assertExitCode(0);
+    $this->artisan('openbao:init local --no-interaction')->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'patch customresourcedefinition externalsecrets.external-secrets.io')
         && str_contains($process->command, '--subresource=status')

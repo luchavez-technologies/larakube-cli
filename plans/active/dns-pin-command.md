@@ -2,13 +2,13 @@
 
 ## Goal Description
 
-`dns:init` deploys ExternalDNS with `--policy=sync` (`resources/views/k8s/dns/zone.blade.php:90`), scoped to one zone via `--domain-filter`. Sync policy deletes any record in that zone ExternalDNS doesn't recognize as its own (tracked via its TXT ownership registry) — by design, so genuinely orphaned LaraKube-managed records get cleaned up when a tool is removed.
+`external-dns:init` deploys ExternalDNS with `--policy=sync` (`resources/views/k8s/dns/zone.blade.php:90`), scoped to one zone via `--domain-filter`. Sync policy deletes any record in that zone ExternalDNS doesn't recognize as its own (tracked via its TXT ownership registry) — by design, so genuinely orphaned LaraKube-managed records get cleaned up when a tool is removed.
 
 The problem: **any record added to the zone through a channel other than ExternalDNS itself is "unrecognized" and gets deleted on the next sync**, regardless of whether it's legitimate. Confirmed live 2026-08-16: AWS SES's Easy DKIM CNAME records for `luchtech.dev` (3 records, manually added to Cloudflare when SES relay was first set up) were silently deleted — AWS's own health notification reported the DKIM DNS records missing for 5+ days before flagging the domain as DKIM-unverified, which in turn caused every outbound message relayed through SES to external (non-`luchtech.dev`) recipients to bounce with `554 Message rejected: Email address is not verified`.
 
 `mail:relay` (which wires Stalwart to SES) never created these records in the first place — SES's Easy DKIM setup was done manually in the AWS console, which is the normal/expected way to obtain the 3 CNAME tokens SES generates. There's no LaraKube CLI code path that provisions them today.
 
-**Current state (2026-08-16): the 3 DKIM CNAME records were re-added manually to Cloudflare as a stopgap.** They are NOT protected — the next `dns:init`/ExternalDNS sync cycle that doesn't recognize them will delete them again. This plan is the durable fix; it hasn't been started.
+**Current state (2026-08-16): the 3 DKIM CNAME records were re-added manually to Cloudflare as a stopgap.** They are NOT protected — the next `external-dns:init`/ExternalDNS sync cycle that doesn't recognize them will delete them again. This plan is the durable fix; it hasn't been started.
 
 ## Why a generic `dns:pin`, not `dns:dkim` or `mail:dkim`
 
@@ -31,7 +31,7 @@ apiVersion: externaldns.k8s.io/v1alpha1
 kind: DNSEndpoint
 metadata:
   name: <deterministic-slug-from-name-and-type>
-  namespace: <dns:init's namespace>
+  namespace: <external-dns:init's namespace>
   labels:
     larakube.dev/pinned-by: dns-pin
     larakube.dev/zone: <zone>
@@ -53,12 +53,12 @@ No confirmed sample of AWS SES's actual "Download .csv record set" column header
 
 If/when someone has a real sample CSV in hand, pin the parser to the exact format instead of the fuzzy matcher, and keep the fuzzy fallback only as a defensive check.
 
-### Prerequisites — `dns:init` changes required first
+### Prerequisites — `external-dns:init` changes required first
 
-None of these exist today; `dns:pin` cannot work until they ship, and **every existing `dns:init` installation needs a re-run** to pick them up (a live-cluster change, not just new code):
+None of these exist today; `dns:pin` cannot work until they ship, and **every existing `external-dns:init` installation needs a re-run** to pick them up (a live-cluster change, not just new code):
 
 1. Add `--source=crd` to ExternalDNS's args in `zone.blade.php`, alongside the existing `--source=ingress` (sources are additive — doesn't disturb Ingress-driven records).
-2. Apply the `DNSEndpoint` CRD definition (ExternalDNS's own upstream manifest) as part of `dns:init`.
+2. Apply the `DNSEndpoint` CRD definition (ExternalDNS's own upstream manifest) as part of `external-dns:init`.
 3. Add `get`/`list`/`watch` on `dnsendpoints.externaldns.k8s.io` to ExternalDNS's ClusterRole.
 
 ### Possible future integration (not in scope for the first pass)
@@ -69,8 +69,8 @@ None of these exist today; `dns:pin` cannot work until they ship, and **every ex
 
 - Pest test: fake `kubectl apply` for the `DNSEndpoint` manifest, assert the rendered YAML shape and deterministic naming for both CSV and ad-hoc modes.
 - Fixture CSV test cases: a well-formed 3-row DKIM-style CSV, a CSV with unrecognized/renamed columns (assert the loud failure, not a silent bad parse), a single-row ad-hoc invocation.
-- Live: re-run `dns:init` against `luchtech.dev`, confirm `--source=crd` and the CRD/RBAC land without disturbing existing Ingress-derived records, then `dns:pin` the 3 already-manually-added SES DKIM CNAMEs and confirm they survive an ExternalDNS sync cycle (currently they do NOT — that's the bug this closes).
+- Live: re-run `external-dns:init` against `luchtech.dev`, confirm `--source=crd` and the CRD/RBAC land without disturbing existing Ingress-derived records, then `dns:pin` the 3 already-manually-added SES DKIM CNAMEs and confirm they survive an ExternalDNS sync cycle (currently they do NOT — that's the bug this closes).
 
 ## Status
 
-Not started. Design only. The 3 DKIM CNAME records are live in Cloudflare (manual, 2026-08-16) but unprotected — a routine `dns:init` re-run or ExternalDNS restart is a real risk of silently breaking SES sending again before this ships.
+Not started. Design only. The 3 DKIM CNAME records are live in Cloudflare (manual, 2026-08-16) but unprotected — a routine `external-dns:init` re-run or ExternalDNS restart is a real risk of silently breaking SES sending again before this ships.

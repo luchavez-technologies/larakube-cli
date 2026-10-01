@@ -421,7 +421,7 @@ trait SyncsClusterSecrets
      * behind, OpenBao's own internal static-role management keeps enforcing
      * its stale cached password against whatever a LATER re-init sets,
      * silently reverting it — confirmed live 2026-08-02: Zitadel came back up
-     * fine after a fresh sso:init, then desynced again ~40 minutes later once
+     * fine after a fresh zitadel:init, then desynced again ~40 minutes later once
      * OpenBao "self-healed" the DB password back to a role from the PREVIOUS
      * (already torn down) instance. registerStaticRole() is idempotent and
      * treats an existing role as already-correct, so it never notices.

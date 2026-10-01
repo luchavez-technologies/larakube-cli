@@ -37,7 +37,7 @@ final class YopassTool implements ClusterToolVendor, HasCommonsBuckets, HasCommo
         // external, unauthenticated partner (see PasteInitCommand's
         // --vpn-only warning) — --vpn-only is still offered for a secondary
         // internal-scratchpad use case, but blocks that primary one.
-        $name = ($instance === null || $instance === '') ? 'paste-yopass-vpn-only' : "paste-yopass-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'yopass-vpn-only' : "yopass-vpn-only-{$instance}";
 
         return [
             'name' => $name,
@@ -58,7 +58,7 @@ final class YopassTool implements ClusterToolVendor, HasCommonsBuckets, HasCommo
     /** Base Redis tenant name; each instance gets its own via the enum's commonsRedisTenants(). */
     public function commonsRedisKeys(): array
     {
-        return ['paste_yopass'];
+        return ['yopass'];
     }
 
     /**

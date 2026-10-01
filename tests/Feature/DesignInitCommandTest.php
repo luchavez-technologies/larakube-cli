@@ -1,8 +1,8 @@
 <?php
 
-use App\Commands\Design\DesignInitCommand;
 use App\Commands\Design\DesignRemoveCommand;
 use App\Commands\Design\DesignShowCommand;
+use App\Commands\Penpot\PenpotInitCommand;
 use Illuminate\Support\Facades\Process;
 
 function designCommonsSpec(?string $s3Host = null): array
@@ -31,7 +31,7 @@ function fakeDesignInitProcess(?string $s3Host = null, ?string &$appliedManifest
         if (str_contains($cmd, 'apply -f')) {
             preg_match('/apply -f (\'[^\']*\'|"[^"]*"|\S+)/', $cmd, $m);
             $path = trim($m[1] ?? '', '\'"');
-            if ($path !== '' && file_exists($path) && str_contains($path, 'larakube-design-penpot')) {
+            if ($path !== '' && file_exists($path) && str_contains($path, 'larakube-penpot')) {
                 $appliedManifest = file_get_contents($path);
             }
 
@@ -43,17 +43,17 @@ function fakeDesignInitProcess(?string $s3Host = null, ?string &$appliedManifest
             str_contains($cmd, 'get configmap plex-registry') => Process::result(output: '', exitCode: 1),
             str_contains($cmd, 'S3_ACCESS_KEY') => Process::result(output: base64_encode('larakube')),
             str_contains($cmd, 'S3_SECRET_KEY') => Process::result(output: base64_encode('s3-secret')),
-            str_contains($cmd, 'rollout status') => Process::result(output: 'deployment "design-penpot-backend" successfully rolled out'),
+            str_contains($cmd, 'rollout status') => Process::result(output: 'deployment "penpot-backend-design-local" successfully rolled out'),
             default => Process::result(output: ''),
         };
     });
 }
 
-test('design:init deploys Penpot stack into larakube-shared with Postgres, Redis, and S3 endpoints', function (): void {
+test('penpot:init deploys Penpot stack into larakube-shared with Postgres, Redis, and S3 endpoints', function (): void {
     $appliedManifest = null;
     fakeDesignInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan(DesignInitCommand::class, [
+    $this->artisan(PenpotInitCommand::class, [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -68,7 +68,7 @@ test('design:init deploys Penpot stack into larakube-shared with Postgres, Redis
         ->and($appliedManifest)->toContain('https://files.example.com');
 });
 
-test('design:init allocates a real Commons Redis index instead of hardcoding 0', function (): void {
+test('penpot:init allocates a real Commons Redis index instead of hardcoding 0', function (): void {
     // Regression guard: PENPOT_REDIS_URI used to hardcode logical DB index 0
     // directly in the Blade template, bypassing allocateCommonsRedisIndex()
     // entirely — so it was never recorded in the tenant registry and could
@@ -85,7 +85,7 @@ test('design:init allocates a real Commons Redis index instead of hardcoding 0',
         if (str_contains($cmd, 'apply -f')) {
             preg_match('/apply -f (\'[^\']*\'|"[^"]*"|\S+)/', $cmd, $m);
             $path = trim($m[1] ?? '', '\'"');
-            if ($path !== '' && file_exists($path) && str_contains($path, 'larakube-design-penpot')) {
+            if ($path !== '' && file_exists($path) && str_contains($path, 'larakube-penpot')) {
                 $appliedManifest = file_get_contents($path);
             }
 
@@ -97,12 +97,12 @@ test('design:init allocates a real Commons Redis index instead of hardcoding 0',
             str_contains($cmd, 'get configmap plex-registry') => Process::result(output: json_encode($registry)),
             str_contains($cmd, 'S3_ACCESS_KEY') => Process::result(output: base64_encode('larakube')),
             str_contains($cmd, 'S3_SECRET_KEY') => Process::result(output: base64_encode('s3-secret')),
-            str_contains($cmd, 'rollout status') => Process::result(output: 'deployment "design-penpot-backend" successfully rolled out'),
+            str_contains($cmd, 'rollout status') => Process::result(output: 'deployment "penpot-backend-design-local" successfully rolled out'),
             default => Process::result(output: ''),
         };
     });
 
-    $this->artisan(DesignInitCommand::class, [
+    $this->artisan(PenpotInitCommand::class, [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -113,11 +113,11 @@ test('design:init allocates a real Commons Redis index instead of hardcoding 0',
         ->and($appliedManifest)->toContain('redis://redis.larakube-plex.svc.cluster.local:6379/1');
 });
 
-test('design:init includes penpot-exporter container when --with-exporter flag is set', function (): void {
+test('penpot:init includes penpot-exporter container when --with-exporter flag is set', function (): void {
     $appliedManifest = null;
     fakeDesignInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan(DesignInitCommand::class, [
+    $this->artisan(PenpotInitCommand::class, [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--with-exporter' => true,
@@ -129,7 +129,7 @@ test('design:init includes penpot-exporter container when --with-exporter flag i
         ->and($appliedManifest)->toContain('PENPOT_EXPORTER_URI');
 });
 
-test('design:init errors instead of guessing when multiple instances are already registered and --domain is omitted', function (): void {
+test('penpot:init errors instead of guessing when multiple instances are already registered and --domain is omitted', function (): void {
     // Regression guard for the 2026-08-17 incident: a no-flag re-run used to
     // silently derive a fresh instance slug and create a stray, conflicting
     // Deployment/Ingress alongside the real one. Now it must refuse outright
@@ -144,7 +144,7 @@ test('design:init errors instead of guessing when multiple instances are already
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan(DesignInitCommand::class, [
+    $this->artisan(PenpotInitCommand::class, [
         'environment' => 'local',
         '--no-interaction' => true,
     ])->run();

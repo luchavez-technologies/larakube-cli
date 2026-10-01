@@ -145,7 +145,7 @@ class CloudProvisionEksCommand extends Command
         }
 
         if (! $this->option('no-interaction') && confirm('Would you like to automate DNS records with Cloudflare for this cluster?')) {
-            $this->call('dns:init', ['environment' => $environment ?: 'production', '--context' => $context]);
+            $this->call('external-dns:init', ['environment' => $environment ?: 'production', '--context' => $context]);
         }
 
         return 0;

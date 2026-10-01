@@ -46,7 +46,7 @@ class GitRemoveCommand extends AbstractToolRemoveCommand
             Process::run("{$kubectl} delete middleware/{$vpnMiddleware['name']} -n {$vpnMiddleware['namespace']} --ignore-not-found 2>/dev/null");
         }
 
-        // Reverse git:init's port opening — a forge that is gone but whose SSH
+        // Reverse forgejo:init's port opening — a forge that is gone but whose SSH
         // port is still open is exposure with nothing behind it.
         $this->closeToolPorts(SharedClusterService::FORGEJO, (string) $this->argument('environment'));
 

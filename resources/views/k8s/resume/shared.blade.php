@@ -1,22 +1,38 @@
-@php($dbName ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::RESUME, $host)->database())
+@php
+    // Every name comes from ToolInstance (ADR 0021).
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::RESUME->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::RESUME, $instance);
+    $dbName ??= $names->database();
+    $deploymentName = $names->deployment();
+    $secretName = $names->secret();
+    $oidcSecret = $names->secret(\App\Enums\SecretKind::OIDC);
+    $smtpSecret = $names->secret(\App\Enums\SecretKind::SMTP);
+    $labels = '';
+    foreach ($names->labels() as $key => $value) {
+        $labels .= "\n    {$key}: {$value}";
+    }
+    $podLabels = str_replace("\n    ", "\n        ", $labels);
+@endphp
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: resume-reactive
+  name: {{ $deploymentName }}
   namespace: larakube-shared
   labels:
-    app: resume-reactive
+    app: {{ $deploymentName }}{!! $labels !!}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: resume-reactive
+      app: {{ $deploymentName }}
   template:
     metadata:
       labels:
-        app: resume-reactive
+        app: {{ $deploymentName }}
     spec:
       containers:
         - name: reactive-resume
@@ -34,12 +50,12 @@ spec:
             - name: AUTH_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: resume-reactive-secrets
+                  name: {{ $secretName }}
                   key: auth-secret
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: resume-reactive-secrets
+                  name: {{ $secretName }}
                   key: db-password
             - name: DATABASE_URL
               value: "postgresql://{{ $dbName }}:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/{{ $dbName }}"
@@ -66,49 +82,49 @@ spec:
             - name: OAUTH_CLIENT_ID
               valueFrom:
                 secretKeyRef:
-                  name: resume-reactive-oidc
+                  name: {{ $oidcSecret }}
                   key: OAUTH_CLIENT_ID
                   optional: true
             - name: OAUTH_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: resume-reactive-oidc
+                  name: {{ $oidcSecret }}
                   key: OAUTH_CLIENT_SECRET
                   optional: true
             - name: OAUTH_DISCOVERY_URL
               valueFrom:
                 secretKeyRef:
-                  name: resume-reactive-oidc
+                  name: {{ $oidcSecret }}
                   key: OAUTH_DISCOVERY_URL
                   optional: true
             - name: MAIL_SERVER
               valueFrom:
                 secretKeyRef:
-                  name: resume-reactive-smtp
+                  name: {{ $smtpSecret }}
                   key: MAIL_SERVER
                   optional: true
             - name: MAIL_PORT
               valueFrom:
                 secretKeyRef:
-                  name: resume-reactive-smtp
+                  name: {{ $smtpSecret }}
                   key: MAIL_PORT
                   optional: true
             - name: MAIL_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: resume-reactive-smtp
+                  name: {{ $smtpSecret }}
                   key: MAIL_USERNAME
                   optional: true
             - name: MAIL_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: resume-reactive-smtp
+                  name: {{ $smtpSecret }}
                   key: MAIL_PASSWORD
                   optional: true
             - name: MAIL_FROM
               valueFrom:
                 secretKeyRef:
-                  name: resume-reactive-smtp
+                  name: {{ $smtpSecret }}
                   key: MAIL_FROM
                   optional: true
           startupProbe:
@@ -143,15 +159,16 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: resume
+  name: {{ $deploymentName }}
   namespace: larakube-shared
+  labels:{!! $labels !!}
 spec:
   selector:
-    app: resume-reactive
+    app: {{ $deploymentName }}
   ports:
     - protocol: TCP
       port: 80
       targetPort: 3000
   type: ClusterIP
 ---
-@include('k8s.resume.ingress')
+@include('k8s.resume.ingress', ['instance' => $instance])

@@ -26,28 +26,9 @@ use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class WebmailInitCommand extends Command
+abstract class WebmailInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithBulwark, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithStalwartApi, InteractsWithVolumeSizing, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
-
-    protected $signature = 'webmail:init
-        {environment? : Environment this install targets — "local" (default) or cloud.}
-        {--context=   : Target a specific kube-context}
-        {--domain=    : Base domain OR full host for Bulwark webmail (example.com → prefix.example.com)}
-        {--app-name=  : Branding shown on the webmail login/app (default: "Webmail")}
-        {--vpn-only   : Restrict access via NetBird VPN IP whitelisting}
-        {--no-mail-restart : Skip the brief Stalwart restart that applies the CORS change}
-        {--force           : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy Bulwark — a JMAP webmail UI for Stalwart — into larakube-shared';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'webmail:init' is deprecated. Forwarding to 'bulwark:init'. Please update your scripts.");
-        $this->renderHeader();
-
-        return $this->deployWebmail();
-    }
 
     protected function deployWebmail(): int
     {
@@ -72,14 +53,14 @@ class WebmailInitCommand extends Command
         // Bulwark is a client for Stalwart — refuse if there's no Stalwart to
         // point it at, rather than deploy a webmail that can't reach a server.
         if (! $this->isMailInstalled($kubectl, $ns)) {
-            $this->laraKubeError('Stalwart is not installed. Run `larakube mail:init` first — Bulwark is a webmail client for it.');
+            $this->laraKubeError('Stalwart is not installed. Run `larakube stalwart:init` first — Bulwark is a webmail client for it.');
 
             return 1;
         }
 
         $mailHost = $this->resolveMailHostReadOnly($env, $config, $kubectl);
         if (! $mailHost) {
-            $this->laraKubeError("No Stalwart host is configured for '{$env}'. Run `larakube mail:init {$env}` first.");
+            $this->laraKubeError("No Stalwart host is configured for '{$env}'. Run `larakube stalwart:init {$env}` first.");
 
             return 1;
         }
@@ -121,7 +102,7 @@ class WebmailInitCommand extends Command
                 // the deeper "{env}/{KEY}" path, so it always syncs empty
                 // and, as an Owner-mode ExternalSecret with a 1m refresh,
                 // wipes the `create secret` above on its next reconcile.
-                // secrets:init's own sweep (tool-es.blade.php) is the
+                // openbao:init's own sweep (tool-es.blade.php) is the
                 // correct, working path.
             }
         });

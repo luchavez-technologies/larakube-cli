@@ -1,7 +1,7 @@
 <?php
 
 /**
- * The PAT and setup key vpn:init mints expire within milliseconds of each
+ * The PAT and setup key netbird:init mints expire within milliseconds of each
  * other, and an expired PAT cannot mint its own replacement — so the countdown
  * vpn:show prints is the only thing that turns vpn:rotate into a safety net
  * rather than something you have to remember unprompted.

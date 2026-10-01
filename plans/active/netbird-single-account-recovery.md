@@ -20,7 +20,7 @@ Verified 2026-08-28 against the live cluster and NetBird 0.77.1:
 That last point rules out row surgery. But none of it is needed: **`larakube vpn:remove`
 deletes the whole `larakube-vpn` namespace**, and both PVs are `Delete` reclaim policy, so
 the store is genuinely destroyed rather than merely unbound. `vpn-secrets` goes with it, so
-`bootstrapVpnAuth()` re-runs by itself on the next `vpn:init`.
+`bootstrapVpnAuth()` re-runs by itself on the next `netbird:init`.
 
 TLS survives: the Ingress uses Traefik's own `letsencrypt` certresolver, not cert-manager,
 so the certificate lives in Traefik's `acme.json` outside the namespace. No re-issuance, no
@@ -71,14 +71,14 @@ with the mode back on, lands in the correct account automatically.
 
 ```
 larakube vpn:remove <env> --context=<ctx>
-larakube vpn:init   <env> --context=<ctx>
+larakube netbird:init   <env> --context=<ctx>
 larakube sso:wire   vpn <env> --context=<ctx>
 ```
 
-Then sign in on the phone. No `vpn:setup-key` — a fresh `vpn:init` mints its own PAT and
+Then sign in on the phone. No `vpn:setup-key` — a fresh `netbird:init` mints its own PAT and
 setup key, and `netbird-client` enrols into the one account automatically.
 
-Build the CLI first: `vpn:init` now reports the single-account state, creates the
+Build the CLI first: `netbird:init` now reports the single-account state, creates the
 `larakube-cli` service user that owns the PAT, and creates `larakube-routers` /
 `larakube-people` so the gateway is grouped at enrolment.
 
@@ -115,7 +115,7 @@ can come into existence, and two of them were dead ends:
 
 | Route | Domain | Why |
 | --- | --- | --- |
-| `POST /api/setup` (what `vpn:init` used) | none | The bootstrap endpoint sets no domain, and single-account mode then copies that emptiness onto every later login — each SSO user gets their own isolated account. |
+| `POST /api/setup` (what `netbird:init` used) | none | The bootstrap endpoint sets no domain, and single-account mode then copies that emptiness onto every later login — each SSO user gets their own isolated account. |
 | Dashboard sign-in with zero accounts | n/a | The dashboard hard-gates on its first-run wizard before making any authenticated call. Verified live 2026-08-29: the Zitadel login completed and management logged *nothing at all*. |
 | First API call bearing an IdP JWT | derived | The one that works. |
 
@@ -135,10 +135,10 @@ The sequence for a clean cluster is therefore:
 
 ```
 larakube vpn:remove <env> --purge
-larakube vpn:init <env>
+larakube netbird:init <env>
 larakube sso:wire <env>        # retires the domain-less bootstrap account
 larakube vpn:sso-login <env>   # creates the shared, domained account
-larakube vpn:init <env>        # service user, groups, gateway key against it
+larakube netbird:init <env>        # service user, groups, gateway key against it
 ```
 
 A PAT cannot substitute for the JWT at step 2 — a PAT belongs to an account that must
@@ -184,12 +184,12 @@ suffix appended to peer names. Changing it to a real domain collides with public
 
 ## Correction: the gateway setup key was never minted (2026-08-30)
 
-Same run: `vpn:init` printed `Deploying NetBird Client ✓` while the DB held **0 setup keys
+Same run: `netbird:init` printed `Deploying NetBird Client ✓` while the DB held **0 setup keys
 and 0 peers**, and the client logged
 `PermissionDenied: no peer auth method provided, please use a setup key`.
 
 Key minting lived inside the `/api/setup` bootstrap block, so it only ever ran on a
-first-ever `vpn:init`. Once `vpn:sso-login` began creating the account, bootstrap
+first-ever `netbird:init`. Once `vpn:sso-login` began creating the account, bootstrap
 short-circuits on every subsequent run and nothing minted a key —
 `ensureVpnServiceIdentity()` had been lifted out of that gate, but the key had not. The tick
 was a rollout check, which a client that cannot enrol still passes.

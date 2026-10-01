@@ -80,14 +80,14 @@ class MailWireCommand extends Command
         $targets = $this->resolveTargets($kubectl);
 
         if (! $this->isMailInstalled($kubectl, $ns)) {
-            $this->laraKubeError('Stalwart is not installed. Run `larakube mail:init` first.');
+            $this->laraKubeError('Stalwart is not installed. Run `larakube stalwart:init` first.');
 
             return 1;
         }
 
         $mailHost = $this->resolveMailHostReadOnly($env, $config, $kubectl);
         if (! $mailHost) {
-            $this->laraKubeError("No Stalwart host is configured for '{$env}'. Run `larakube mail:init {$env}` first.");
+            $this->laraKubeError("No Stalwart host is configured for '{$env}'. Run `larakube stalwart:init {$env}` first.");
 
             return 1;
         }
@@ -142,7 +142,7 @@ class MailWireCommand extends Command
     {
         $capable = array_filter(
             ClusterTool::shippedCases(),
-            fn (ClusterTool $t) => $t->smtpEnv() !== null || $t === ClusterTool::SSO,
+            fn (ClusterTool $t) => $t->smtpEnv() !== null || $t->category() === ClusterTool::SSO,
         );
 
         $installed = array_values(array_filter(
@@ -165,7 +165,7 @@ class MailWireCommand extends Command
             if ($this->refuseUnshippedTool($tool)) {
                 return [];
             }
-            if ($tool->smtpEnv() === null && $tool !== ClusterTool::SSO) {
+            if ($tool->smtpEnv() === null && $tool->category() !== ClusterTool::SSO) {
                 $this->laraKubeError("'{$slug}' is not an SMTP-capable tool.");
 
                 return [];
@@ -318,17 +318,17 @@ class MailWireCommand extends Command
      */
     protected function wireTool(string $kubectl, ClusterTool $tool, array $endpoint, string $sender, string $appPassword, string $env): bool
     {
-        if ($tool === ClusterTool::SSO) {
+        if ($tool->category() === ClusterTool::SSO) {
             $pat = $this->readSsoSecret($kubectl, $this->ssoNamespace(), 'machine-pat');
             if ($pat === null) {
-                $this->laraKubeError('Could not read Zitadel automation PAT. Ensure sso:init has completed.');
+                $this->laraKubeError('Could not read Zitadel automation PAT. Ensure zitadel:init has completed.');
 
                 return false;
             }
 
             $ssoHost = $this->resolveSsoHostReadOnly($env, null, $kubectl);
             if ($ssoHost === null) {
-                $this->laraKubeError("Could not resolve Zitadel's host for '{$env}'. Re-run `larakube sso:init {$env}` so the host is persisted.");
+                $this->laraKubeError("Could not resolve Zitadel's host for '{$env}'. Re-run `larakube zitadel:init {$env}` so the host is persisted.");
 
                 return false;
             }
@@ -374,7 +374,7 @@ class MailWireCommand extends Command
         ];
 
         // Grafana combines host & port into a single GF_SMTP_HOST=host:port
-        if ($tool === ClusterTool::MONITOR) {
+        if ($tool->category() === ClusterTool::MONITOR) {
             $logical['host'] = $endpoint['host'].':'.$endpoint['port'];
         }
 
@@ -382,17 +382,17 @@ class MailWireCommand extends Command
         // per-host/port/user vars. Stalwart talks implicit TLS on 465, hence
         // smtp+ssl://, and the credentials must be percent-encoded (the
         // sender is an email address — an unencoded @ would break the URL).
-        if ($tool === ClusterTool::ERRORS) {
+        if ($tool->category() === ClusterTool::ERRORS) {
             $logical['email_url'] = 'smtp+ssl://'.rawurlencode($logical['user']).':'.rawurlencode($logical['password']).'@'.$logical['host'].':'.$logical['port'];
         }
 
         $staticVars = $schema['static'] ?? [];
-        $isPenpot = str_starts_with($deployment, 'design-penpot-backend');
-        // Instance suffix (e.g. '-design-luchtech-dev', or '' for the bare
+        $isPenpot = str_starts_with($deployment, 'penpot-backend');
+        // Instance suffix (e.g. '-penpot-luchtech-dev', or '' for the bare
         // legacy name) — derived from the deployment name so the oidc secret
         // and frontend deployment names below always match the same instance
         // $schema['secret']/$deployment already resolved to.
-        $penpotSuffix = $isPenpot ? substr($deployment, strlen('design-penpot-backend')) : '';
+        $penpotSuffix = $isPenpot ? substr($deployment, strlen('penpot-backend')) : '';
 
         // PENPOT_FLAGS is reconciled from scratch by ReconcilesPenpotFlags,
         // not carried through the generic static-var plumbing below — see
@@ -434,8 +434,8 @@ class MailWireCommand extends Command
             }
 
             if ($ok && $isPenpot) {
-                $penpotFlags = $this->resolveDesignPenpotFlags($kubectl, $ns, "design-oidc{$penpotSuffix}", $secret, null, $deployment);
-                $this->applyDesignPenpotFlags($kubectl, $ns, "design-oidc{$penpotSuffix}", $penpotFlags, $deployment, "design-penpot-frontend{$penpotSuffix}");
+                $penpotFlags = $this->resolveDesignPenpotFlags($kubectl, $ns, "penpot-backend-oidc{$penpotSuffix}", $secret, null, $deployment);
+                $this->applyDesignPenpotFlags($kubectl, $ns, "penpot-backend-oidc{$penpotSuffix}", $penpotFlags, $deployment, "penpot-frontend{$penpotSuffix}");
             }
 
             // Secondary components that share the PRIMARY's wiring secret
@@ -462,7 +462,7 @@ class MailWireCommand extends Command
 
     protected function isToolInstalledForMail(string $kubectl, ClusterTool $tool): bool
     {
-        if ($tool === ClusterTool::SSO) {
+        if ($tool->category() === ClusterTool::SSO) {
             return $this->isSsoInstalled($kubectl, $this->ssoNamespace());
         }
 
@@ -488,7 +488,7 @@ class MailWireCommand extends Command
      * ignore whatever string lands here entirely — every smtpEnv()
      * implementation except CRM's hardcodes its deployment name — so an
      * empty placeholder is safe for them. Host-derived tools (CRM, and DATA
-     * once data:init registers correctly) have no unsuffixed deployment at
+     * once directus:init registers correctly) have no unsuffixed deployment at
      * all; for those, the registry's real instance is the only name that
      * will ever match a live Deployment. Multiple registered instances is
      * genuinely ambiguous and needs an explicit --instance=, same as every
@@ -531,7 +531,7 @@ class MailWireCommand extends Command
 
     /**
      * Synapse reads mail settings from homeserver.yaml, not env: store them in
-     * Synapse's SMTP Secret (so chat:init re-renders the email: block) and re-render the
+     * Synapse's SMTP Secret (so matrix:init re-renders the email: block) and re-render the
      * config, keeping any OIDC/MAS wiring. Mirror of MailUnwireCommand's
      * unwireSynapseSmtp(). Credentials travel on stdin, never argv.
      */

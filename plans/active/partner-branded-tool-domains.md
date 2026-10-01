@@ -6,7 +6,7 @@ as their own branded webmail login URL, on the *same* shared Bulwark/Stalwart in
 ## Correction to this plan's own first two drafts
 
 Draft 1 proposed a new `webmail:domain` command doing a direct Cloudflare API write.
-Draft 2 corrected that to reuse `dns:init`/ExternalDNS instead of hand-writing DNS.
+Draft 2 corrected that to reuse `external-dns:init`/ExternalDNS instead of hand-writing DNS.
 Both drafts were still wrong about needing a **new command at all** — a generic
 "attach an extra hostname to an already-deployed tool, re-render its Ingress, let Traefik
 handle the cert" command already exists: **`tool:alias`**
@@ -44,17 +44,17 @@ gap, not specific to Webmail — it's just the one blocking this specific ask.
    (one in `spec.rules`, one in `spec.tls.hosts`), pointing at the same `webmail-bulwark`
    Service:80 backend as the primary host's rule. Mechanical, low-risk, matches an existing
    pattern exactly.
-2. Prerequisite unchanged from draft 2: `larakube dns:init production --zone=ourfridays.com
+2. Prerequisite unchanged from draft 2: `larakube external-dns:init production --zone=ourfridays.com
    --cloudflare-token=<token>` must already be running for ExternalDNS to pick up the new
    Ingress host and create the A record — `tool:alias` doesn't check this today (see below).
 3. Then: `larakube tool:alias webmail mail.ourfridays.com` — done, no new command.
 
 ### Small, optional hardening worth doing alongside this
-`ToolAliasCommand::handle()` never checks whether any `dns:init`-managed zone actually
+`ToolAliasCommand::handle()` never checks whether any `external-dns:init`-managed zone actually
 covers the new alias before applying it — reuse `installedDnsZones()`
 (`InteractsWithDnsZones.php`, already used by `dns:list`) to at least print a warning
 ("no ExternalDNS zone covers '{$aliasDomain}' — the record won't be created automatically,
-run `dns:init` first or add it manually") rather than applying silently. Not a hard
+run `external-dns:init` first or add it manually") rather than applying silently. Not a hard
 refusal — an operator using an alias under a zone managed *outside* this cluster entirely
 (e.g. manually) is a legitimate case, so warn, don't block.
 
@@ -70,13 +70,13 @@ raise it separately once this Webmail case is done and verified.
 
 ## Branding caveat (unchanged from draft 1)
 Per-domain branding *inside* Bulwark's own UI (different logo depending on which hostname a
-user lands on) is still a separate, unverified question — `webmail:init --app-name=` is one
+user lands on) is still a separate, unverified question — `bulwark:init --app-name=` is one
 global value for the shared instance, and Zitadel's own org-branding only skins Zitadel's
 login screen, not Bulwark's. Not addressed here.
 
 ## Verification (once built)
 - `pint`, `phpstan`, `pest --parallel`.
-- Live: `dns:init` for the zone, `tool:alias webmail mail.ourfridays.com`, confirm the
+- Live: `external-dns:init` for the zone, `tool:alias webmail mail.ourfridays.com`, confirm the
   Ingress actually gets the extra `rules`/`tls.hosts` entries, confirm ExternalDNS creates
   the A record, confirm Traefik issues a cert and login works end-to-end, confirm
   `tool:alias webmail mail.ourfridays.com --remove` cleans it back up.

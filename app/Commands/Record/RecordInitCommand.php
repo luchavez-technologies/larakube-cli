@@ -25,27 +25,9 @@ use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class RecordInitCommand extends Command
+abstract class RecordInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithRecord, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
-
-    protected $signature = 'record:init
-        {environment? : Environment this install targets — "local" (default) or cloud.}
-        {--context=  : Target a specific kube-context}
-        {--domain=   : Base domain OR full host for Sendrec (example.com → prefix.example.com)}
-        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--allow-registration : Open public sign-up (needed once to create the first account, then re-run without it)}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy the Sendrec async video platform stack into larakube-shared';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'record:init' is deprecated. Forwarding to 'sendrec:init'. Please update your scripts.");
-        $this->renderHeader();
-
-        return $this->deployRecord();
-    }
 
     protected function deployRecord(): int
     {
@@ -56,9 +38,10 @@ class RecordInitCommand extends Command
         $host = $this->resolveToolHost(SharedClusterService::RECORD, ClusterTool::RECORD, $env, $kubectl);
 
         $ns = $this->recordNamespace();
+        $names = ToolInstance::forHost(ClusterTool::RECORD, $host);
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::RECORD, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::RECORD, $kubectl, $names->instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -90,7 +73,6 @@ class RecordInitCommand extends Command
             return 1;
         }
         $s3Driver = StorageDriver::from($s3Service);
-        $names = ToolInstance::forHost(ClusterTool::RECORD, $host);
         $s3Bucket = $names->bucket();
         if (! $this->allocateStorageBucket($s3Driver, $s3Bucket)) {
             return 1;
@@ -105,8 +87,8 @@ class RecordInitCommand extends Command
         $s3Endpoint = $s3Endpoints['internal'];
         $s3PublicEndpoint = $s3Endpoints['public'];
 
-        $dbPassword = $this->readRecordSecret($kubectl, $ns, 'db-password') ?? Str::random(24);
-        $jwtSecret = $this->readRecordSecret($kubectl, $ns, 'jwt-secret') ?? bin2hex(random_bytes(32));
+        $dbPassword = $this->readRecordSecret($kubectl, $ns, $names->secret(), 'db-password') ?? Str::random(24);
+        $jwtSecret = $this->readRecordSecret($kubectl, $ns, $names->secret(), 'jwt-secret') ?? bin2hex(random_bytes(32));
 
         $dbName = $names->database();
         // Once OpenBao's database secrets engine already owns this static
@@ -124,8 +106,8 @@ class RecordInitCommand extends Command
         ));
 
         $clusterEnv = $env === 'local' ? 'dev' : $env;
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $jwtSecret, $clusterEnv): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'record-secrets', ['db-password' => $dbPassword, 'jwt-secret' => $jwtSecret]);
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $names, $dbPassword, $jwtSecret, $clusterEnv): void {
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $names->secret(), ['db-password' => $dbPassword, 'jwt-secret' => $jwtSecret]);
 
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
                 // Rotation is wired by `secrets:wire`, which also creates the ExternalSecret
@@ -140,13 +122,14 @@ class RecordInitCommand extends Command
                 // path "{env}" as one object, but every value above is at the
                 // deeper "{env}/{KEY}" path, so it always syncs empty and, as
                 // an Owner-mode ExternalSecret with a 1m refresh, wipes the
-                // `create secret` above on its next reconcile. secrets:init's
+                // `create secret` above on its next reconcile. openbao:init's
                 // own sweep (tool-es.blade.php) is the correct, working path.
             }
         });
 
         $manifest = view('k8s.record.shared', [
             'host' => $host,
+            'instance' => $names->instance,
             'plexNamespace' => $this->plexNamespace(),
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
@@ -158,7 +141,7 @@ class RecordInitCommand extends Command
             's3AccessKey' => $s3Creds['access'],
             's3SecretKey' => $s3Creds['secret'],
             // The blade reads this to set REGISTRATION_ENABLED. It was never
-            // passed, so it always fell back to false — and since record:init
+            // passed, so it always fell back to false — and since sendrec:init
             // seeds no admin and Sendrec's users table has no role column,
             // that shipped an instance with zero accounts and no way to make
             // one. Open it for the first sign-up, then re-run without the flag.
@@ -166,12 +149,12 @@ class RecordInitCommand extends Command
         ])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();
-        $tmp = $temporaryDirectory->path('larakube-record-sendrec.yaml');
+        $tmp = $temporaryDirectory->path('larakube-sendrec.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Sendrec manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'record-sendrec', 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180),
         );
         $temporaryDirectory->delete();
 
@@ -179,7 +162,7 @@ class RecordInitCommand extends Command
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::RECORD, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::RECORD, $kubectl, $host, $names->instance);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Sendrec async video platform stack is live.');

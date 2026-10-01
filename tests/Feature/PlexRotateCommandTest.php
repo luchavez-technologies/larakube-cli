@@ -204,26 +204,24 @@ test('plex:rotate finds a cluster-tool tenant under the BARE role name, never th
     // production: cluster tools (secrets:wire, RecordInit, SignInit, …)
     // register their static role under the bare tenant name, not "tenant-"
     // prefixed like plex:join's Application Tenants. Confirmed on the actual
-    // droplet: GET .../static-roles/tenant-record_sendrec → 404, GET
-    // .../static-roles/record_sendrec → 200. Checking only the prefixed name
+    // droplet: GET .../static-roles/tenant-sendrec_record_example_com → 404, GET
+    // .../static-roles/sendrec_record_example_com → 200. Checking only the prefixed name
     // and treating a miss as "not wired" would send an ALREADY OpenBao-wired
     // cluster tool through the legacy ALTER ROLE path — corrupting it.
     //
-    // record_sendrec also has no 'namespace' recorded on the registry (it
-    // predates that field), but resolves via ClusterTool::forCommonsResource()
-    // to RECORD regardless — namespace/deployment/ExternalSecret name are all
-    // derived from the enum, not left "unknown".
+    // The tenant carries the instance, so it resolves to RECORD AND to that
+    // instance's own Deployment and credentials Secret, not a bare name.
     Process::fake([
         '*get configmap plex-commons*' => Process::result(
             output: (string) json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]]),
         ),
         '*get configmap plex-registry*' => Process::result(
-            output: (string) json_encode(['tenants' => ['record_sendrec' => ['db' => 'record_sendrec', 'db_service' => 'postgres']]]),
+            output: (string) json_encode(['tenants' => ['sendrec_record_example_com' => ['db' => 'sendrec_record_example_com', 'db_service' => 'postgres']]]),
         ),
         '*get secret openbao-secrets-secrets-example-com*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
         '*exec *' => Process::result(output: 'ALTER ROLE'),
-        '*get deployment record-sendrec*' => Process::result(output: 'record-sendrec'),
+        '*get deployment sendrec-record-example-com*' => Process::result(output: 'sendrec-record-example-com'),
         '*rollout restart*' => Process::result(output: 'restarted'),
         '*].status}*' => Process::result(output: 'True'),
         '*].reason}*' => Process::result(output: 'SecretSynced'),
@@ -236,27 +234,27 @@ test('plex:rotate finds a cluster-tool tenant under the BARE role name, never th
 
     $requests = [];
     $responder = plexRotateOpenBaoResponder($requests, [
-        ['/database/static-roles/tenant-record_sendrec', ['errors' => ['no role found']], 404],
-        ['/database/static-roles/record_sendrec', ['data' => ['db_name' => 'plex-postgres']], 200],
+        ['/database/static-roles/tenant-sendrec_record_example_com', ['errors' => ['no role found']], 404],
+        ['/database/static-roles/sendrec_record_example_com', ['data' => ['db_name' => 'plex-postgres']], 200],
     ]);
     Saloon::fake([
         DynamicRequest::class => $responder,
         DynamicNoBodyRequest::class => $responder,
     ]);
 
-    $this->artisan('plex:rotate local --only=db --tenant=record_sendrec --force')
+    $this->artisan('plex:rotate local --only=db --tenant=sendrec_record_example_com --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('rotated via OpenBao and restarted in larakube-shared');
 
     $methodsAndUrls = collect($requests)->map(fn ($r) => $r[0].' '.$r[1]);
 
-    expect($methodsAndUrls->contains(fn ($s) => str_contains($s, 'GET') && str_contains($s, '/database/static-roles/tenant-record_sendrec')))->toBeTrue()
-        ->and($methodsAndUrls->contains(fn ($s) => str_contains($s, 'GET') && str_contains($s, '/database/static-roles/record_sendrec') && ! str_contains($s, 'tenant-')))->toBeTrue()
-        ->and($methodsAndUrls->contains(fn ($s) => str_contains($s, 'POST') && str_contains($s, '/database/rotate-role/record_sendrec') && ! str_contains($s, 'tenant-')))->toBeTrue();
+    expect($methodsAndUrls->contains(fn ($s) => str_contains($s, 'GET') && str_contains($s, '/database/static-roles/tenant-sendrec_record_example_com')))->toBeTrue()
+        ->and($methodsAndUrls->contains(fn ($s) => str_contains($s, 'GET') && str_contains($s, '/database/static-roles/sendrec_record_example_com') && ! str_contains($s, 'tenant-')))->toBeTrue()
+        ->and($methodsAndUrls->contains(fn ($s) => str_contains($s, 'POST') && str_contains($s, '/database/rotate-role/sendrec_record_example_com') && ! str_contains($s, 'tenant-')))->toBeTrue();
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'exec ')
         && str_contains($process->command, 'ALTER ROLE'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/record-sendrec -n larakube-shared'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/sendrec-record-example-com -n larakube-shared'));
 });
 
 test('the per-tenant cluster secret key is namespaced so two tenants never collide', function (): void {

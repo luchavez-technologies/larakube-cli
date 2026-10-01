@@ -2,12 +2,12 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('uptime:init refuses because Uptime Kuma is not yet shipped', function (): void {
+test('kuma:init refuses because Uptime Kuma is not yet shipped', function (): void {
     Process::fake([
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('uptime:init local')
+    $this->artisan('kuma:init local')
         ->assertExitCode(1)
         ->expectsOutputToContain('Status Pages (Uptime Kuma) is not yet shipped');
 

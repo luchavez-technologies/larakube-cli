@@ -38,7 +38,7 @@ const MAS_FIXTURE = [
 ];
 
 test('mas mode renders matrix_authentication_service, never oidc_providers, even when both are somehow passed', function (): void {
-    // The real safety invariant lives in ChatInitCommand (never computing
+    // The real safety invariant lives in MatrixInitCommand (never computing
     // $mas when $oidc is non-null) — this pins the render-layer half: IF
     // both ever reached this method together, $mas must still win, since
     // Synapse cannot run both auth mechanisms for the same users at once.

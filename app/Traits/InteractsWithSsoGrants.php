@@ -44,21 +44,21 @@ trait InteractsWithSsoGrants
         $ssoNs = $this->ssoNamespace();
 
         if (! $this->isSsoInstalled($kubectl, $ssoNs)) {
-            $this->laraKubeError('Zitadel is not installed. Run `larakube sso:init` first.');
+            $this->laraKubeError('Zitadel is not installed. Run `larakube zitadel:init` first.');
 
             return null;
         }
 
         $ssoHost = $this->resolveSsoHostReadOnly($env, $config, $kubectl);
         if ($ssoHost === null) {
-            $this->laraKubeError("No host is configured for Zitadel in '{$env}' — run `sso:init` first.");
+            $this->laraKubeError("No host is configured for Zitadel in '{$env}' — run `zitadel:init` first.");
 
             return null;
         }
 
         $pat = $this->readSsoSecret($kubectl, $ssoNs, 'machine-pat');
         if ($pat === null) {
-            $this->laraKubeError('Could not reach Zitadel\'s automation credentials — re-run `larakube sso:init` to recapture them.');
+            $this->laraKubeError('Could not reach Zitadel\'s automation credentials — re-run `larakube zitadel:init` to recapture them.');
 
             return null;
         }

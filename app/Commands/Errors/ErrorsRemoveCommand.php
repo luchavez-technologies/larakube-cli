@@ -3,7 +3,9 @@
 namespace App\Commands\Errors;
 
 use App\Commands\Tool\AbstractToolRemoveCommand;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
+use App\Enums\SecretKind;
 use App\Traits\ReadsClusterSecrets;
 
 class ErrorsRemoveCommand extends AbstractToolRemoveCommand
@@ -30,19 +32,22 @@ class ErrorsRemoveCommand extends AbstractToolRemoveCommand
      */
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
-        $url = $this->readClusterSecretKey($kubectl, $namespace, 'errors-secrets', 'database-url');
+        $names = ToolInstance::forInstance(ClusterTool::ERRORS, (string) $this->resolveInstance($kubectl));
+        $url = $this->readClusterSecretKey($kubectl, $namespace, $names->secret(), 'database-url');
 
-        return $url !== null && str_contains($url, 'glitchtip-db');
+        return $url !== null && str_contains($url, $names->deployment('db'));
     }
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
+        $names = ToolInstance::forInstance(ClusterTool::ERRORS, (string) $this->resolveInstance($kubectl));
+        [$web, $worker, $db, $cache] = [$names->deployment(), $names->deployment('worker'), $names->deployment('db'), $names->deployment('cache')];
+
         return $this->removeResources(
             'Removing GlitchTip resources...',
-            "{$kubectl} delete deploy/glitchtip-web deploy/glitchtip-worker "
-            .'deploy/glitchtip-db deploy/glitchtip-cache pvc/glitchtip-db-storage '
-            .'svc/glitchtip-web svc/glitchtip-db svc/glitchtip-cache '
-            .'ingress/glitchtip secret/errors-secrets job/glitchtip-db-migrations '
+            "{$kubectl} delete deploy/{$web} deploy/{$worker} deploy/{$db} deploy/{$cache} "
+            ."pvc/{$names->volume('storage', 'db')} svc/{$web} svc/{$db} svc/{$cache} "
+            ."ingress/{$web} secret/{$names->secret()} secret/{$names->secret(SecretKind::SMTP)} job/{$names->name('migrations')} "
             ."-n {$namespace} --ignore-not-found",
         );
     }

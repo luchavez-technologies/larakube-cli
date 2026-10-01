@@ -34,7 +34,7 @@ final class ResumeTool implements ClusterToolVendor, HasCommonsBuckets, HasCommo
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '') ? 'resume-vpn-only' : "resume-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'reactive-vpn-only' : "reactive-vpn-only-{$instance}";
 
         return [
             'name' => $name,
@@ -45,7 +45,7 @@ final class ResumeTool implements ClusterToolVendor, HasCommonsBuckets, HasCommo
     public function dbSecretRef(): ?array
     {
         return [
-            'secret' => 'resume-reactive-secrets',
+            'secret' => 'reactive-secrets',
             'key' => 'db-password',
         ];
     }
@@ -63,8 +63,8 @@ final class ResumeTool implements ClusterToolVendor, HasCommonsBuckets, HasCommo
     public function smtpEnv(?string $instance = null): ?array
     {
         return [
-            'deployment' => 'resume-reactive',
-            'secret' => 'resume-reactive-smtp',
+            'deployment' => 'reactive',
+            'secret' => 'reactive-smtp',
             'static' => [
                 'MAIL_SSL' => 'true',
             ],
@@ -81,8 +81,8 @@ final class ResumeTool implements ClusterToolVendor, HasCommonsBuckets, HasCommo
     public function oidcEnv(?string $instance = null): ?array
     {
         return [
-            'deployment' => 'resume-reactive',
-            'secret' => 'resume-reactive-oidc',
+            'deployment' => 'reactive',
+            'secret' => 'reactive-oidc',
             'static' => [
                 'OAUTH_PROVIDER_NAME' => 'Zitadel',
                 'OAUTH_SCOPES' => 'openid profile email',
@@ -125,7 +125,7 @@ final class ResumeTool implements ClusterToolVendor, HasCommonsBuckets, HasCommo
     public function openbaoSyncConfig(?string $instance = null): array
     {
         return [
-            'secret' => 'resume-reactive-secrets',
+            'secret' => 'reactive-secrets',
             'keys' => ['RESUME_DB_PASSWORD'],
         ];
     }

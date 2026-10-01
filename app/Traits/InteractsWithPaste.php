@@ -16,14 +16,12 @@ trait InteractsWithPaste
     }
 
     /**
-     * Is Yopass deployed? Label-based, not an exact deployment name — the
-     * Deployment itself is instance-suffixed now (a real, host-derived
-     * slug), but this stable `app.kubernetes.io/part-of: paste` label
-     * survives regardless.
+     * Is Yopass deployed? By identity label, not a Deployment name: the name
+     * carries the instance, the label never changes.
      */
     protected function isPasteInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'app.kubernetes.io/part-of=paste');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=paste');
     }
 
     protected function resolvePasteHostReadOnly(string $env, ?ConfigData $config): ?string

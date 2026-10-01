@@ -7,8 +7,8 @@
 ## Who it's for
 
 An operator who never creates apps. They want to: pick a cloud (AWS / GCP /
-DO / Hetzner), provision a server, then install Cluster Tools (`sso:init`,
-`mail:init`, `vpn:init`, …) onto it. `larakube setup --profile=remote` already
+DO / Hetzner), provision a server, then install Cluster Tools (`zitadel:init`,
+`stalwart:init`, `netbird:init`, …) onto it. `larakube setup --profile=remote` already
 cut their install down to kubectl + OpenTofu + a provider CLI. The desktop app
 removes the terminal completely.
 
@@ -231,7 +231,7 @@ extras.
   - Some `*:init` need more than `--domain`, and those fail with
     MissingFlagException in the run log. Per-tool install forms are follow-up
     work.
-- **Next:** Next-steps actions (`dns:init`, `tls:init`) need forms. Also
+- **Next:** Next-steps actions (`external-dns:init`, `tls:init`) need forms. Also
   structured progress events (`--output=ndjson`) to replace log-text matching
   in the stepper, and a fast `tool:list` mode.
 
@@ -277,7 +277,7 @@ extras.
      ConvertEmptyStringsToNull.
   3. Under `--no-interaction` the CLI accepts the harden/k3s/`larakube`-user/
      kubeconfig defaults (all "yes"). It **skips** the Cloudflare DNS
-     (`dns:init`) and TLS DNS-challenge (`tls:init`) offers. The app must
+     (`external-dns:init`) and TLS DNS-challenge (`tls:init`) offers. The app must
      offer those as explicit follow-up actions after a successful create.
   4. The CLI's closing "Next steps" text is terminal-oriented
      (`kubectl config use-context …`). The app should replace it with a

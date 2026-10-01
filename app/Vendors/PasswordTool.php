@@ -30,10 +30,10 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
     public function dbSecretRef(): ?array
     {
         return [
-            // Same Secret passwords:init already writes admin-token/plain-token
+            // Same Secret vaultwarden:init already writes admin-token/plain-token
             // into — secrets:wire's dynamic ExternalSecret uses creationPolicy:
             // Merge, so this key rides alongside those without conflicting.
-            // 'vaultwarden-secrets' never exists unless secrets:init's sweep
+            // 'vaultwarden-secrets' never exists unless openbao:init's sweep
             // happens to create it, which left DATABASE_URL's hard (non-optional)
             // dependency unresolvable on any cluster without OpenBao bootstrapped.
             'secret' => 'vault-secrets',

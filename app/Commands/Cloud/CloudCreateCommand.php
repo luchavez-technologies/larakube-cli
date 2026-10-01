@@ -594,7 +594,7 @@ class CloudCreateCommand extends Command
         $this->printVpsNextSteps($context, $environment);
 
         if (! $this->flag('no-interaction') && confirm('Would you like to automate DNS records with Cloudflare for this cluster?')) {
-            $this->call('dns:init', ['environment' => $environment ?: 'production', '--context' => $context]);
+            $this->call('external-dns:init', ['environment' => $environment ?: 'production', '--context' => $context]);
         }
 
         if (! $this->flag('no-interaction') && confirm('Would you like to enable the Cloudflare DNS challenge for SSL certificates (so proxied hosts keep renewing)?', default: true)) {

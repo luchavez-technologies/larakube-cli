@@ -19,12 +19,12 @@ trait InteractsWithSupport
 
     protected function isSupportInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'support-chatwoot');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=support,larakube.io/component=chatwoot');
     }
 
-    protected function readSupportSecret(string $kubectl, string $ns, string $key): ?string
+    protected function readSupportSecret(string $kubectl, string $ns, string $secret, string $key): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'support-secrets', $key);
+        return $this->readClusterSecretKey($kubectl, $ns, $secret, $key);
     }
 
     protected function resolveSupportHostReadOnly(string $env, ?ConfigData $config): ?string

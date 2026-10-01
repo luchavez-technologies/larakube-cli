@@ -2,7 +2,7 @@
     $ocisImage = 'owncloud/ocis:8.0.6';
 
     // Every name comes from ToolInstance (ADR 0021). Rendered both by
-    // drive:init (which passes the instance) and by the shared reconcile path
+    // ocis:init (which passes the instance) and by the shared reconcile path
     // (which passes only the host), so derive what is missing.
     $instance = ($instance ?? '') !== ''
         ? $instance

@@ -73,5 +73,5 @@ php vendor/bin/phpstan analyse --memory-limit=1G
 
 ### Manual Verification
 1. Re-build LaraKube CLI: `./build`
-2. Run `larakube crm:init production` (or target cluster context).
+2. Run `larakube twenty:init production` (or target cluster context).
 3. Monitor container startup via `kubectl get pods -n larakube-shared --watch` until `1/1 Running`.

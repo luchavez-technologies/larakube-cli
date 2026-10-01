@@ -41,14 +41,14 @@ warning did exactly that and reported a healthy teardown as a fault.
 
 ## What NetBird does now (the pattern to copy)
 
-1. **`vpn:init` aborts** rather than proceeding. `waitForTls()` returns a verdict; when this
+1. **`netbird:init` aborts** rather than proceeding. `waitForTls()` returns a verdict; when this
    machine cannot resolve the host, the caller prints the remedy and returns 1 without rolling
    anything back. It previously printed the right remedy and carried on anyway, which is what
    turned a clear diagnosis into a misleading error three steps later.
 2. **`vpn:remove` warns on the way out**, naming the host whose record it just removed and the
    flush command — the poisoning happens at teardown, so that is where it is cheapest to catch.
    It states plainly that the host no longer resolving is CORRECT, and frames the flush as
-   conditional on a later `vpn:init` failing to reach it. It hands over no check to run there,
+   conditional on a later `netbird:init` failing to reach it. It hands over no check to run there,
    because every check would correctly fail at that moment.
 3. **`DeploysClusterTool::hostResolvesLocally()`** is the shared check. `gethostbyname()`
    travels the same path the HTTP client will and returns the hostname unchanged on failure.

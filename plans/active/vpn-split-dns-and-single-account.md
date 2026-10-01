@@ -71,7 +71,7 @@ So the mode silently switches itself off as soon as a second account exists —
 no error, healthy pod, correct-looking spec. Confirmed by restarting management
 at two accounts and reading `single account mode disabled, accounts number 2`.
 
-**The bootstrap account is the second account.** `vpn:init` POSTs `/api/setup`
+**The bootstrap account is the second account.** `netbird:init` POSTs `/api/setup`
 to create a local owner non-interactively (this *is* NetBird's documented
 modern flow — built-in auth first, external OIDC added after — not a LaraKube
 deviation). That account is created with `domain: ""`, and:
@@ -142,10 +142,10 @@ current setup key and strands it.
 Per the repo's no-one-time-migration-code rule, this is a documented manual
 runbook — do not build drift detection for it.
 
-### The SSO decision belongs at `vpn:init` time
+### The SSO decision belongs at `netbird:init` time
 
 Whether a cluster uses SSO for VPN should be declared when the VPN is first
-stood up, before any peer exists. `vpn:init` can then converge to one account
+stood up, before any peer exists. `netbird:init` can then converge to one account
 immediately rather than unpicking it later.
 
 Running `sso:wire vpn` on a cluster that already has setup-key peers is the
@@ -227,7 +227,7 @@ be **false** — with exact hosts, search-domain appending only creates surprise
 `vpn:wire <tool>` already means "restrict this tool's ingress to VPN peers", so
 it is exactly the moment a host needs a DNS override:
 
-- **`vpn:init`** — deploy the resolver, create/reconcile the nameserver group.
+- **`netbird:init`** — deploy the resolver, create/reconcile the nameserver group.
 - **`vpn:wire <tool>`** — add the host to the resolver list and the group.
 - **`vpn:unwire <tool>`** — remove it.
 
@@ -240,7 +240,7 @@ inverse instead of orphaning DNS.
 `netbird-client-data` PVC; lose that (or `vpn:remove --purge`) and the peer
 rejoins on a different IP, silently breaking the nameserver group. Confirmed
 live — the gateway moved from `100.70.57.180` to `100.113.100.204` across one
-rebuild. `vpn:init` should re-read and reconcile every run.
+rebuild. `netbird:init` should re-read and reconcile every run.
 
 **Never key anything off the peer FQDN.** It is
 `netbird-client-<pod-hash>.netbird.selfhosted` and changes on every redeploy
@@ -329,7 +329,7 @@ for.
 
 ### Where it hooks in
 
-- `vpn:init` reconciles last, after the gateway is an enrolled peer with an
+- `netbird:init` reconciles last, after the gateway is an enrolled peer with an
   address to point at.
 - `vpn:wire` reconciles after restricting the ingress.
 - `vpn:unwire` reconciles after lifting it; the last host leaving deletes the
@@ -354,7 +354,7 @@ Nothing below has been run against a cluster yet.
 
 ### First live run, 2026-08-30 — the reconcile invalidated its own work
 
-`vpn:init` applied everything correctly and still left split-DNS pointing at a dead
+`netbird:init` applied everything correctly and still left split-DNS pointing at a dead
 peer:
 
 ```

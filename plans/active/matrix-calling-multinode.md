@@ -15,7 +15,7 @@ The names and two of the claims are stale:
 | this doc says | now |
 | --- | --- |
 | `chat-livekit-rtc` Service | **`meet-livekit-rtc`**, in the `meet` tool |
-| `chat:init --no-host-port` | **`meet:init --no-host-port`** for the SFU; chat's flag now only covers Coturn |
+| `matrix:init --no-host-port` | **`livekit:init --no-host-port`** for the SFU; chat's flag now only covers Coturn |
 | LiveKit + Coturn are one problem | **two tools**: Coturn stays with chat (legacy 1:1 `turn_uris`), the SFU is `meet` |
 
 **§1 claim 1 is half wrong.** It says the well-known key was "fixed in both spots" — Synapse's
@@ -39,13 +39,13 @@ since LB Services have no such collision.
 
 Three bugs found while debugging "Your homeserver does not support calling" on `chat.luchtech.dev` (single-node K3s VPS, context `larakube-159.89.205.239`):
 
-1. **Wrong well-known key** — Cinny v4.12.3 gates all calling UI on `org.matrix.msc4143.rtc_foci` (MSC4143 / MatrixRTC). `chat:init` was emitting the obsolete `org.matrix.msc3401.call1.livekit.service_url` shape in both Synapse's `well_known.client` block and Cinny's mounted `.well-known/matrix/client` file. Fixed in both spots in `resources/views/k8s/chat/matrix.blade.php`.
+1. **Wrong well-known key** — Cinny v4.12.3 gates all calling UI on `org.matrix.msc4143.rtc_foci` (MSC4143 / MatrixRTC). `matrix:init` was emitting the obsolete `org.matrix.msc3401.call1.livekit.service_url` shape in both Synapse's `well_known.client` block and Cinny's mounted `.well-known/matrix/client` file. Fixed in both spots in `resources/views/k8s/chat/matrix.blade.php`.
 2. **LiveKit RTC port mismatch** — `livekit.yaml` configured `rtc.port_range_start/end: 50000-50050` but only `hostPort: 7882` was ever opened; the two didn't agree. Switched to LiveKit's single-UDP-port mode (`rtc.udp_port: 7882`) — the SFU multiplexes all participants over one port via ICE-lite, so it only ever needs the one port that's actually exposed.
 3. **Coturn had no relay port range at all** — only signaling port 3478 was open; TURN's per-session relay allocations (coturn's default 49152-65535 range) had no path out of the pod. Added `min-port=49160`/`max-port=49179` (20 ports) to `turnserver.conf`, opened as matching `containerPort`/`hostPort` pairs in the Deployment and as a `Service`.
 
-All three are `hostPort`-based (single-node-only) by default. A new `--no-host-port` flag on `chat:init` (mirroring the existing one on `mail:init`) flips Coturn's `chat-coturn` Service and a new `chat-livekit-rtc` Service from `ClusterIP` to `LoadBalancer`, dropping the per-port `hostPort` entries — same toggle mechanism already proven in `resources/views/k8s/mail/stalwart.blade.php` / `MailInitCommand`.
+All three are `hostPort`-based (single-node-only) by default. A new `--no-host-port` flag on `matrix:init` (mirroring the existing one on `stalwart:init`) flips Coturn's `chat-coturn` Service and a new `chat-livekit-rtc` Service from `ClusterIP` to `LoadBalancer`, dropping the per-port `hostPort` entries — same toggle mechanism already proven in `resources/views/k8s/mail/stalwart.blade.php` / `MailInitCommand`.
 
-Verified so far: both manifest variants (`hostPort` true/false) render without Blade errors and pass `kubectl apply --dry-run=client` against the real cluster schema; `ChatInitCommandTest` suite still green. **Not yet verified**: an actual `chat:init --no-host-port` run against a real multi-node cluster, or a real call placed through it.
+Verified so far: both manifest variants (`hostPort` true/false) render without Blade errors and pass `kubectl apply --dry-run=client` against the real cluster schema; `ChatInitCommandTest` suite still green. **Not yet verified**: an actual `matrix:init --no-host-port` run against a real multi-node cluster, or a real call placed through it.
 
 ---
 
@@ -82,7 +82,7 @@ needs the LB-toggle treatment for multi-node, same as the UDP ports.
 
 ### Setup
 - [ ] Provision a real multi-node target (DOKS, ≥2 nodes) via `larakube cloud:create` / `cloud:configure` per the standard flow.
-- [ ] `larakube chat:init {env} --context=... --no-host-port` — confirm it completes and `chat-coturn` / `chat-livekit-rtc` Services show `type: LoadBalancer` with an assigned `EXTERNAL-IP` (not `<pending>` — if stuck pending, that's the DO UDP-support question in §3 surfacing immediately).
+- [ ] `larakube matrix:init {env} --context=... --no-host-port` — confirm it completes and `chat-coturn` / `chat-livekit-rtc` Services show `type: LoadBalancer` with an assigned `EXTERNAL-IP` (not `<pending>` — if stuck pending, that's the DO UDP-support question in §3 surfacing immediately).
 
 ### Signaling layer (should already work — same as single-node)
 - [ ] `curl -i https://chat.{domain}/.well-known/matrix/client` — confirm `org.matrix.msc4143.rtc_foci` is present and points at `https://meet.{domain}/jwt`. This is served from Synapse's `extra_well_known_client_content`; an empty response here means the focus never reached the client, whatever homeserver.yaml contains.

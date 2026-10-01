@@ -1,11 +1,36 @@
+@php
+    // Every name comes from ToolInstance (ADR 0021).
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::DESIGN->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::DESIGN, $instance);
+    $backendName = $names->deployment('backend');
+    $frontendName = $names->deployment('frontend');
+    $exporterName = $names->deployment('exporter');
+    $backendServiceName = $backendName;
+    $serviceName = $frontendName;
+    $exporterServiceName = $exporterName;
+    $ingressName = $frontendName;
+    $dbSecretName = $names->secret();
+    $smtpSecretName = $names->secret(\App\Enums\SecretKind::SMTP);
+    $oidcSecretName = $names->secret(\App\Enums\SecretKind::OIDC);
+    $labelsFor = function (string $component) use ($names): string {
+        $out = '';
+        foreach ($names->labels($component) as $key => $value) {
+            $out .= "\n    {$key}: {$value}";
+        }
+
+        return $out;
+    };
+    $podLabelsFor = fn (string $component): string => str_replace("\n    ", "\n        ", $labelsFor($component));
+@endphp
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ $backendName }}
   namespace: larakube-shared
   labels:
-    app: {{ $backendName }}
-    instance: {{ $instance }}
+    app: {{ $backendName }}{!! $labelsFor('backend') !!}
 spec:
   replicas: 1
   strategy:
@@ -16,8 +41,7 @@ spec:
   template:
     metadata:
       labels:
-        app: {{ $backendName }}
-        instance: {{ $instance }}
+        app: {{ $backendName }}{!! $podLabelsFor('backend') !!}
     spec:
       containers:
         - name: backend
@@ -176,7 +200,7 @@ metadata:
   name: {{ $backendServiceName }}
   namespace: larakube-shared
   labels:
-    app: {{ $backendName }}
+    app: {{ $backendName }}{!! $labelsFor('backend') !!}
 spec:
   ports:
     - port: 6060
@@ -191,8 +215,7 @@ metadata:
   name: {{ $frontendName }}
   namespace: larakube-shared
   labels:
-    app: {{ $frontendName }}
-    instance: {{ $instance }}
+    app: {{ $frontendName }}{!! $labelsFor('frontend') !!}
 spec:
   replicas: 1
   strategy:
@@ -203,8 +226,7 @@ spec:
   template:
     metadata:
       labels:
-        app: {{ $frontendName }}
-        instance: {{ $instance }}
+        app: {{ $frontendName }}{!! $podLabelsFor('frontend') !!}
     spec:
       containers:
         - name: frontend
@@ -245,7 +267,7 @@ metadata:
   name: {{ $serviceName }}
   namespace: larakube-shared
   labels:
-    app: {{ $frontendName }}
+    app: {{ $frontendName }}{!! $labelsFor('frontend') !!}
 spec:
   ports:
     - port: 80
@@ -261,7 +283,7 @@ metadata:
   name: {{ $exporterName }}
   namespace: larakube-shared
   labels:
-    app: {{ $exporterName }}
+    app: {{ $exporterName }}{!! $labelsFor('exporter') !!}
 spec:
   replicas: 1
   selector:
@@ -270,7 +292,7 @@ spec:
   template:
     metadata:
       labels:
-        app: {{ $exporterName }}
+        app: {{ $exporterName }}{!! $podLabelsFor('exporter') !!}
     spec:
       containers:
         - name: exporter
@@ -297,7 +319,7 @@ metadata:
   name: {{ $exporterServiceName }}
   namespace: larakube-shared
   labels:
-    app: {{ $exporterName }}
+    app: {{ $exporterName }}{!! $labelsFor('exporter') !!}
 spec:
   ports:
     - port: 6061
@@ -312,6 +334,7 @@ kind: Ingress
 metadata:
   name: {{ $ingressName }}
   namespace: larakube-shared
+  labels:{!! $labelsFor('frontend') !!}
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -321,8 +344,8 @@ metadata:
     external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
 @endif
 @endunless
-@if($vpnOnly)
-    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-design-vpn-only@kubernetescrd
+@if($vpnOnly && $names->vpnMiddleware() !== null)
+    traefik.ingress.kubernetes.io/router.middlewares: {{ $names->vpnMiddleware()->traefikMiddleware() }}
 @endif
 spec:
   rules:

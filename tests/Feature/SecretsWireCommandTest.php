@@ -172,12 +172,15 @@ test('secrets:wire --tool=link registers a static role for kutt and restarts kut
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/kutt-link-kube'));
 });
 
-test('secrets:wire --tool=support registers a static role for support_chatwoot and restarts support-chatwoot', function (): void {
-    openBaoRegistered();
+test('secrets:wire --tool=support registers a static role for chatwoot and restarts chatwoot', function (): void {
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
-        '*get secret support-secrets*' => Process::result(output: base64_encode('db-pw')),
-        '*get deployment support-chatwoot*' => Process::result(output: 'support-chatwoot'),
+        '*get secret chatwoot-secrets*' => Process::result(output: base64_encode('db-pw')),
+        '*get deployment chatwoot*' => Process::result(output: 'chatwoot-support-kube'),
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            openBaoRegistryRow(),
+            ['tool' => 'support', 'instance' => 'support-kube', 'host' => 'support.kube'],
+        ]))),
         '*port-forward*' => Process::result(output: ''),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout restart*' => Process::result(output: 'restarted'),
@@ -196,13 +199,13 @@ test('secrets:wire --tool=support registers a static role for support_chatwoot a
         ->expectsOutputToContain("Customer Support (Chatwoot)'s DB password is now rotated by OpenBao every 168h");
 
     Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
-        && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/support_chatwoot')
-        && ($request->body()->get('username') ?? null) === 'support_chatwoot'
+        && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/chatwoot_support_kube')
+        && ($request->body()->get('username') ?? null) === 'chatwoot_support_kube'
         && ($request->body()->get('db_name') ?? null) === 'plex-postgres');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret support-secrets-db'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/support-chatwoot'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'externalsecret chatwoot-secrets-support-kube-db'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/chatwoot-support-kube'));
 });
 
 test('secrets:wire --tool=tasks registers a static role for planka and restarts planka', function (): void {

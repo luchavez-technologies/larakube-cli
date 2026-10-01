@@ -24,7 +24,7 @@ plan. Fold a short pointer in there instead of the full content.
 ---
 
 ## Phase A — `dotenv:push` / `dotenv:pull`, no OpenBao (local, free)
-- [ ] On a project with **no** `secrets:init` run yet (no OpenBao on the target cluster), edit `.env.production` (or `.env` for local) and change/add a secret-shaped value, e.g. `AIRTABLE_API_KEY=key_live_test123`.
+- [ ] On a project with **no** `openbao:init` run yet (no OpenBao on the target cluster), edit `.env.production` (or `.env` for local) and change/add a secret-shaped value, e.g. `AIRTABLE_API_KEY=key_live_test123`.
 - [ ] `larakube dotenv:push production` — confirm it prints "OpenBao not detected on this cluster — writing directly to the cluster Secret," and exits 0.
 - [ ] `kubectl get secret laravel-secrets -n <app>-production -o json` — confirm `AIRTABLE_API_KEY` is present with the new value, and `laravel-config` was **not** touched (still only public keys).
 - [ ] Rotate the value again locally, re-run `dotenv:push production` — confirm only that one key changes in the cluster (spot-check another key's value is untouched — proves per-key granularity, not a full-file overwrite).
@@ -45,15 +45,15 @@ plan. Fold a short pointer in there instead of the full content.
 - [ ] Same two checks (no BASE64 env-blob variable, literal `echo` lines present) for the GitLab pipeline: `larakube cloud:configure production --only=ci` on a GitLab remote (or `cloud:configure:gitlab`), then inspect `.gitlab-ci.yml` and `glab variable list` / GitLab Settings → CI/CD → Variables.
 - [ ] `larakube pipeline:test production --job=build` (uses `act` locally) — confirm the build job runs successfully with no `ENV_FILE_BASE64`-shaped secret in the mock secrets file it generates, and the Vite build produces real (not empty) `VITE_*` values in the built assets.
 
-## Phase D — `dotenv:push` / `dotenv:pull` WITH OpenBao (needs `secrets:init` + `sso:init` on the target cluster)
-- [ ] With OpenBao installed (`larakube secrets:init` already run), edit a secret value locally and `larakube dotenv:push production --app=<name>` — confirm it prints "Pushing N secret key(s) to OpenBao" then "synced 'laravel-secrets'".
+## Phase D — `dotenv:push` / `dotenv:pull` WITH OpenBao (needs `openbao:init` + `zitadel:init` on the target cluster)
+- [ ] With OpenBao installed (`larakube openbao:init` already run), edit a secret value locally and `larakube dotenv:push production --app=<name>` — confirm it prints "Pushing N secret key(s) to OpenBao" then "synced 'laravel-secrets'".
 - [ ] Port-forward or `larakube shell secrets`-equivalent into OpenBao and inspect `secret/data/production/<name>/<KEY>` — confirm the pushed value is there under the app-scoped path (NOT a flat `secret/data/production/<KEY>` — the whole point of the app-scoping).
 - [ ] `kubectl get secret laravel-secrets -n <app>-production -o json` — confirm the value materialized into the native Secret (via the ExternalSecret the push wired).
 - [ ] `kubectl get externalsecret -n <app>-production laravel-secrets -o yaml` — confirm its `spec.data[]` list has one explicit `secretKey`/`remoteRef.key` entry per pushed key (this is the drive-by fix — the OLD `dataFrom.extract` shape would show here instead, and would never actually sync). Confirm `status.conditions` shows `Ready: True`.
 - [ ] Rotate the OpenBao root token or restart `openbao-backend`, then `larakube dotenv:pull production --app=<name>` — confirm it reads back the same values (round-trip proof), scoped to `<name>` only.
 - [ ] If a second app shares the same cluster/environment (or simulate with `--app=other-app`), push a DIFFERENT value under `other-app`, then `dotenv:pull production --app=<name>` again — confirm `<name>`'s pull is unaffected by `other-app`'s keys (proves the app-scoping actually isolates, not just labels).
 
-## Phase E — `secrets:grant` / `secrets:revoke` (needs `sso:init` + `secrets:init`, real Zitadel user)
+## Phase E — `secrets:grant` / `secrets:revoke` (needs `zitadel:init` + `openbao:init`, real Zitadel user)
 - [ ] `larakube secrets:grant production --app=<name> --role=developer --email=<a real Zitadel user's email>` — confirm success output shows the role key (`secrets-<name>-production-developer`) and the scope line (`secret/data/production/<name>/*`, read-write).
 - [ ] Have that user log into the OpenBao Web UI (`secrets.<domain>`) via SSO, selecting role `secrets-<name>-production-developer` at login — confirm they land in with access, and can read/write under `secret/data/production/<name>/` but get denied reading `secret/data/production/<other-app>/` or `secret/data/staging/<name>/`.
 - [ ] Same test with `--role=viewer` for a second user — confirm they can read but a write attempt (via the UI or `bao kv put`) is denied.

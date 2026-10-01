@@ -72,7 +72,7 @@ test('meet:wire deploys the bridge and points Synapse at it', function (): void 
         ->expectsOutputToContain('Team Chat is wired to Meet.')
         ->expectsOutputToContain('https://meet.example.com/jwt');
 
-    // The wiring must be recorded so a later chat:init re-render does not
+    // The wiring must be recorded so a later matrix:init re-render does not
     // silently drop calling.
     Process::assertRan(fn ($job) => (appliedSecret($job)['name'] ?? null) === 'synapse-meet-chat-example-com');
     Process::assertRan(fn ($job) => str_contains($job->command, 'rollout restart deployment/synapse-chat-example-com'));

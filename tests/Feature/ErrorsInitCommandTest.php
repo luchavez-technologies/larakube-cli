@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('errors:init deploys glitchtip using plex commons postgres and redis', function (): void {
+test('glitchtip:init deploys glitchtip using plex commons postgres and redis', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -20,7 +20,7 @@ test('errors:init deploys glitchtip using plex commons postgres and redis', func
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('errors:init local --admin-email=admin@example.com')
+    $this->artisan('glitchtip:init local --admin-email=admin@example.com')
         ->assertExitCode(0)
         // Per instance, from ToolInstance: never a fixed name every instance shares.
         ->expectsOutputToContain("Allocating database 'glitchtip_errors_")
@@ -31,7 +31,7 @@ test('errors:init deploys glitchtip using plex commons postgres and redis', func
         ->expectsOutputToContain('GlitchTip stack is live.');
 });
 
-test('errors:init deploys standalone glitchtip when --no-plex is passed', function (): void {
+test('glitchtip:init deploys standalone glitchtip when --no-plex is passed', function (): void {
     Process::fake([
         '*get secret*' => Process::result(output: '', exitCode: 1),
         '*delete job*' => Process::result(output: 'deleted'),
@@ -41,7 +41,7 @@ test('errors:init deploys standalone glitchtip when --no-plex is passed', functi
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('errors:init local --no-plex --admin-email=admin@example.com')
+    $this->artisan('glitchtip:init local --no-plex --admin-email=admin@example.com')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying GlitchTip manifests...')
         ->expectsOutputToContain('Waiting for local database...')
@@ -53,28 +53,28 @@ test('errors:init deploys standalone glitchtip when --no-plex is passed', functi
 });
 
 test('errors:remove --purge removes glitchtip resources and drops database from plex', function (): void {
-    Process::fake([...registeredToolRemoveFakes('errors:remove'),
-        '*get secret*' => Process::result(output: base64_encode('postgres://glitchtip@postgres.larakube-plex...')),
+    Process::fake([...registeredToolRemoveFakes('errors:remove', 'errors-example-com', 'errors.example.com'),
+        '*get secret*' => Process::result(output: base64_encode('postgres://glitchtip_errors_example_com@postgres.larakube-plex...')),
         '*exec *' => Process::result(output: 'success'),
         '*delete *' => Process::result(output: 'deleted'),
     ]);
 
     $this->artisan('errors:remove local --force --purge')
         ->assertExitCode(0)
-        ->expectsOutputToContain('Dropping database \'glitchtip\' from Plex Commons')
+        ->expectsOutputToContain('Dropping database \'glitchtip_errors_example_com\' from Plex Commons')
         ->expectsOutputToContain('Removing GlitchTip resources...')
         ->expectsOutputToContain('removed from larakube-shared');
 });
 
 test('errors:remove removes standalone glitchtip resources and skips plex database drop', function (): void {
-    Process::fake([...registeredToolRemoveFakes('errors:remove'),
-        '*get secret*' => Process::result(output: base64_encode('postgres://glitchtip@glitchtip-db...')),
+    Process::fake([...registeredToolRemoveFakes('errors:remove', 'errors-example-com', 'errors.example.com'),
+        '*get secret*' => Process::result(output: base64_encode('postgres://glitchtip_errors_example_com@glitchtip-db-errors-example-com...')),
         '*delete *' => Process::result(output: 'deleted'),
     ]);
 
     $this->artisan('errors:remove local --force')
         ->assertExitCode(0)
-        ->doesntExpectOutputToContain('Dropping database \'glitchtip\' from Plex Commons')
+        ->doesntExpectOutputToContain('Dropping database \'glitchtip_errors_example_com\' from Plex Commons')
         ->expectsOutputToContain('Removing GlitchTip resources...')
         ->expectsOutputToContain('removed from larakube-shared');
 });

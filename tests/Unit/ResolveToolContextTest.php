@@ -85,7 +85,7 @@ test('a managed cluster is reached by its recorded context name', function (): v
 });
 
 test('inside a project with nothing recorded, it captures the target once', function (): void {
-    // This is what makes `crm:init production` afterwards ask nothing: data:init
+    // This is what makes `twenty:init production` afterwards ask nothing: directus:init
     // records into .larakube.local.json, and every sibling tool reads it.
     $holder = resolveToolContextHolder(resolveToolContextProject(null), canPrompt: true);
 
@@ -99,7 +99,7 @@ test('inside a project with nothing recorded, it captures the target once', func
 });
 
 test('outside a project it refuses rather than using the current context', function (): void {
-    // The bug this closes: data:init production silently deployed a production
+    // The bug this closes: directus:init production silently deployed a production
     // tool onto the local orbstack cluster and printed success.
     Process::fake(['*config get-contexts*' => Process::result(output: '')]);
 

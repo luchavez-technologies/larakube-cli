@@ -105,7 +105,7 @@ trait InteractsWithChat
 
     /**
      * The Meet bridge URL wired by `meet:wire --tool=chat`, or null when Matrix
-     * calling is not connected to a Meet install. Read back on every `chat:init`
+     * calling is not connected to a Meet install. Read back on every `matrix:init`
      * so a re-run does not silently un-wire calling — same discipline as the
      * SMTP and OIDC read-backs either side of this.
      */
@@ -256,7 +256,7 @@ trait InteractsWithChat
     /**
      * Whether MAS is deployed AND currently the active auth mode for
      * Synapse, read from the SAME MAS credentials Secret
-     * `chat:init`'s own deployMas() writes when it deploys the component —
+     * `matrix:init`'s own deployMas() writes when it deploys the component —
      * no separate "cutover" marker Secret. `public_issuer` (MAS's own
      * public subdomain, needed for the org.matrix.msc2965.authentication
      * well-known key) is written there too, once, at deploy time.
@@ -267,7 +267,7 @@ trait InteractsWithChat
      * (ChatInitCommand::deployChat()), not here: it only ever passes this
      * method's result into rendering when readChatWiredOidc() is null. A
      * fresh install has no chat-oidc to begin with, so it activates MAS
-     * immediately, in the same chat:init run that first deploys it — no
+     * immediately, in the same matrix:init run that first deploys it — no
      * separate migration step exists or is needed for that case.
      *
      * @return array{endpoint: string, secret: string, public_issuer: string}|null
@@ -425,8 +425,8 @@ trait InteractsWithChat
 
     /**
      * Live-patch Synapse's homeserver.yaml to matrix_authentication_service:
-     * mode, record that choice (so chat:init never reverts it), and restart it.
-     * Called by chat:init on a fresh install and by `chat:use-mas` to switch
+     * mode, record that choice (so matrix:init never reverts it), and restart it.
+     * Called by matrix:init on a fresh install and by `chat:use-mas` to switch
      * an install off classic SSO.
      */
     protected function activateMasAuthMode(string $kubectl, string $ns, ?string $host): bool

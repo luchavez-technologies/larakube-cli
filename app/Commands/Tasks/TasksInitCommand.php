@@ -25,26 +25,9 @@ use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class TasksInitCommand extends Command
+abstract class TasksInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithTasks, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
-
-    protected $signature = 'tasks:init
-        {environment? : Environment this install targets — "local" (default) or cloud.}
-        {--context=  : Target a specific kube-context}
-        {--domain=   : Base domain OR full host for Tasks (example.com → prefix.example.com)}
-        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy the Planka task management stack into larakube-shared';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'tasks:init' is deprecated. Forwarding to 'planka:init'. Please update your scripts.");
-        $this->renderHeader();
-
-        return $this->deployTasks();
-    }
 
     protected function deployTasks(): int
     {
@@ -69,7 +52,7 @@ class TasksInitCommand extends Command
             return 1;
         }
 
-        // tasks:init doesn't know or care whether OpenBao is installed —
+        // planka:init doesn't know or care whether OpenBao is installed —
         // only secrets:wire --tool=tasks may register this instance's database
         // static role. This is a READ-only exception: it defers to OpenBao's
         // current password when a PAST secrets:wire run already made it the

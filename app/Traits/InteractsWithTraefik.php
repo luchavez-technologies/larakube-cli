@@ -263,7 +263,7 @@ trait InteractsWithTraefik
         // This is the LOCAL up path, so we reconcile only the services that target
         // the local environment (Mailpit, the Console, the Traefik dashboard, and
         // the local Grafana ingress). Cloud-targeting reconciles (prod Grafana)
-        // are driven by their own installers (monitor:init --context).
+        // are driven by their own installers (grafana:init --context).
         //
         // Each host is resolved through getSharedServiceHost(): a name-less GLOBAL
         // host on the developer's global TLD by default, but a .larakube.json

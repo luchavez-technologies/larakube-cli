@@ -35,15 +35,15 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
     // chat-synapse never gains an instance suffix, even when one is given.
     $expected = [
         'analytics' => 'umami', 'crm' => 'twenty',
-        'drive' => 'ocis', 'errors' => 'glitchtip-web',
-        'flow' => 'n8n', 'insights' => 'insights-metabase',
+        'drive' => 'ocis', 'errors' => 'glitchtip',
+        'flow' => 'n8n', 'insights' => 'metabase',
         'link' => 'kutt', 'mail' => 'stalwart', 'monitor' => 'grafana',
-        'notes' => 'outline', 'passwords' => 'vaultwarden', 'record' => 'record-sendrec',
+        'notes' => 'outline', 'passwords' => 'vaultwarden', 'record' => 'sendrec',
         'secrets' => 'openbao', 'sheets' => 'teable', 'sign' => 'documenso',
-        'sso' => 'zitadel', 'support' => 'support-chatwoot', 'tasks' => 'planka',
-        'uptime' => 'uptime-kuma', 'webmail' => 'bulwark',
+        'sso' => 'zitadel', 'support' => 'chatwoot', 'tasks' => 'planka',
+        'uptime' => 'kuma', 'webmail' => 'bulwark',
         'dns' => 'external-dns', 'dashboard' => 'headlamp', 'meet' => 'livekit',
-        'design' => 'design-penpot-backend',
+        'design' => 'penpot-backend',
     ];
 
     foreach ($expected as $value => $deployment) {
@@ -110,7 +110,7 @@ test('CHAT/GIT/DESIGN component lists match today\'s hand-written Blade/teardown
     expect($gitDeployments)->toBe(['forgejo-git-luchtech-dev', 'forgejo-runner-git-luchtech-dev']);
 
     $designDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::DESIGN->components());
-    expect($designDeployments)->toBe(['design-penpot-backend', 'design-penpot-frontend', 'design-penpot-exporter']);
+    expect($designDeployments)->toBe(['penpot-backend', 'penpot-frontend', 'penpot-exporter']);
 });
 
 test('only DESIGN\'s frontend, ERRORS\' worker, and CRM\'s worker components share the primary\'s wiring secret', function (): void {
@@ -120,7 +120,7 @@ test('only DESIGN\'s frontend, ERRORS\' worker, and CRM\'s worker components sha
 
         if ($tool === ClusterTool::DESIGN || $tool === ClusterTool::PENPOT) {
             expect($shared)->toHaveCount(1)
-                ->and($shared[0]->deployment)->toBe('design-penpot-frontend');
+                ->and($shared[0]->deployment)->toBe('penpot-frontend');
         } elseif ($tool === ClusterTool::ERRORS || $tool === ClusterTool::GLITCHTIP) {
             expect($shared)->toHaveCount(1)
                 ->and($shared[0]->deployment)->toBe('glitchtip-worker');
@@ -132,8 +132,8 @@ test('only DESIGN\'s frontend, ERRORS\' worker, and CRM\'s worker components sha
         }
     }
 
-    expect(ClusterTool::DESIGN->alsoPatchDeployments())->toBe(['design-penpot-frontend'])
-        ->and(ClusterTool::PENPOT->alsoPatchDeployments())->toBe(['design-penpot-frontend'])
+    expect(ClusterTool::DESIGN->alsoPatchDeployments())->toBe(['penpot-frontend'])
+        ->and(ClusterTool::PENPOT->alsoPatchDeployments())->toBe(['penpot-frontend'])
         ->and(ClusterTool::ERRORS->alsoPatchDeployments())->toBe(['glitchtip-worker'])
         ->and(ClusterTool::GLITCHTIP->alsoPatchDeployments())->toBe(['glitchtip-worker'])
         ->and(ClusterTool::CRM->alsoPatchDeployments())->toBe(['twenty-worker'])

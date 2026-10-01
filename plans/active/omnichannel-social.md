@@ -49,7 +49,7 @@ Postiz is the pick only if max-platform-coverage outweighs the RAM cost.
 ## 🧩 How it slots into LaraKube
 
 - **`social:init` → Mixpost** — Commons-backed (Postgres + Redis) shared tool in
-  `larakube-shared`, same shape as `desk:init`/`chat:init`. Host `social.<tld>`.
+  `larakube-shared`, same shape as `desk:init`/`matrix:init`. Host `social.<tld>`.
 - **Chat/inbox → Chatwoot** — either `inbox:init` or an engine under the existing
   `desk` family (FreeScout = email desk; Chatwoot = social desk). Commons-backed.
   Ship only if they actually want FB/IG *chat* — posting alone (Mixpost) may be

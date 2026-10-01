@@ -1,10 +1,11 @@
 <?php
 
-use App\Commands\Flow\FlowInitCommand;
+use App\Commands\N8n\N8nInitCommand;
+use App\Commands\Windmill\WindmillInitCommand;
 use Illuminate\Support\Facades\Process;
 
 /**
- * Fakes a cluster for flow:init. $secret seeds the instance's existing
+ * Fakes a cluster for n8n:init. $secret seeds the instance's existing
  * credentials Secret; $liveDeployments are Deployments already running.
  *
  * @param  array<string, string>  $secret
@@ -51,16 +52,15 @@ function fakeFlowInitCluster(?array &$seen, array $secret = [], array $liveDeplo
 
 function runFlowInit(string $engine = 'n8n'): Illuminate\Testing\PendingCommand
 {
-    return test()->artisan(FlowInitCommand::class, [
+    return test()->artisan($engine === 'windmill' ? WindmillInitCommand::class : N8nInitCommand::class, [
         'environment' => 'local',
-        '--engine' => $engine,
         '--domain' => 'flow.example.com',
         '--force' => true,
         '--no-interaction' => true,
     ]);
 }
 
-test('flow:init names every n8n resource after its host and pins the image from the N8n class', function (): void {
+test('n8n:init names every n8n resource after its host and pins the image from the N8n class', function (): void {
     fakeFlowInitCluster($seen);
 
     runFlowInit()->assertExitCode(0);
@@ -76,7 +76,7 @@ test('flow:init names every n8n resource after its host and pins the image from 
         ->and($seen['secret']['metadata']['name'] ?? null)->toBe('n8n-secrets-flow-example-com');
 });
 
-test('flow:init reuses the instance\'s encryption key and never puts it in argv', function (): void {
+test('n8n:init reuses the instance\'s encryption key and never puts it in argv', function (): void {
     fakeFlowInitCluster($seen, ['encryption-key' => 'kept-encryption-key', 'db-password' => 'kept-db-password']);
 
     runFlowInit()->assertExitCode(0);
@@ -85,7 +85,7 @@ test('flow:init reuses the instance\'s encryption key and never puts it in argv'
         ->and(base64_decode($seen['secret']['data']['db-password']))->toBe('kept-db-password')->and($seen['commands'])->each->not->toContain('kept-encryption-key');
 });
 
-test('flow:init refuses a second engine on a host that already runs one', function (): void {
+test('n8n:init refuses a second engine on a host that already runs one', function (): void {
     fakeFlowInitCluster($seen, liveDeployments: ['n8n-flow-example-com']);
 
     runFlowInit('windmill')
@@ -95,7 +95,7 @@ test('flow:init refuses a second engine on a host that already runs one', functi
     expect($seen['manifest'])->toBeNull();
 });
 
-test('flow:init windmill names its resources after its host too', function (): void {
+test('n8n:init windmill names its resources after its host too', function (): void {
     fakeFlowInitCluster($seen);
 
     runFlowInit('windmill')->assertExitCode(0);
@@ -107,10 +107,10 @@ test('flow:init windmill names its resources after its host too', function (): v
         ->not->toContain('flow-secrets');
 });
 
-test('flow:init deploys each engine locally at its default host using Plex Commons Postgres', function (string $engine, string $label): void {
+test('n8n:init deploys each engine locally at its default host using Plex Commons Postgres', function (string $engine, string $label): void {
     fakeFlowInitCluster($seen);
 
-    $this->artisan("flow:init local --engine={$engine}")
+    $this->artisan("{$engine}:init local")
         ->assertExitCode(0)
         ->expectsOutputToContain("Applying Flow ({$label}) manifests...")
         ->expectsOutputToContain("Flow ({$label}) stack is live.");
@@ -119,7 +119,7 @@ test('flow:init deploys each engine locally at its default host using Plex Commo
         ->toContain('postgres.larakube-plex.svc.cluster.local');
 })->with([['n8n', 'n8n'], ['windmill', 'Windmill']]);
 
-test('flow:init stops, instead of reporting it live, when the rollout fails', function (): void {
+test('n8n:init stops, instead of reporting it live, when the rollout fails', function (): void {
     fakeFlowInitCluster($seen, rolloutFails: true);
 
     runFlowInit()

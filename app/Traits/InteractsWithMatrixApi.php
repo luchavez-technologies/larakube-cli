@@ -32,7 +32,7 @@ trait InteractsWithMatrixApi
      * The larakube-automation admin's access token, bootstrapping the
      * account on first use via Synapse's shared-secret registration API
      * (registration_shared_secret, already stored as the registration-secret key of
-     * Synapse's credentials Secret by chat:init). Cached in that Secret so
+     * Synapse's credentials Secret by matrix:init). Cached in that Secret so
      * subsequent calls skip straight to using it.
      *
      * On a re-run where the account already exists, shared-secret

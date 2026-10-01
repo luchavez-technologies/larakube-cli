@@ -55,7 +55,7 @@ class ChatRemoveCommand extends AbstractToolRemoveCommand
             $this->teardownComponentsCommand($kubectl, $namespace, $this->resolveInstance($kubectl)),
         );
 
-        // Reverse chat:init's port opening — Coturn is gone, but its UDP/TCP
+        // Reverse matrix:init's port opening — Coturn is gone, but its UDP/TCP
         // ports left open on the cloud firewall are real exposure with nothing
         // behind them.
         $this->closeToolPorts(SharedClusterService::CHAT, (string) $this->argument('environment'));

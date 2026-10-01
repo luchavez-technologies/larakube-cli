@@ -81,7 +81,7 @@ class VpnWireCommand extends Command
         // tool's own *:init instead of duplicating its ingress-render logic.
         // --domain is passed through so a non-default instance's ingress is
         // the one re-applied, not always the tool's main installation.
-        $reapplied = $this->call("{$tool->value}:init", array_filter([
+        $reapplied = $this->call("{$tool->initCommand()}", array_filter([
             'environment' => $env,
             '--domain' => $domain !== '' ? $domain : null,
             '--vpn-only' => true,
@@ -90,7 +90,7 @@ class VpnWireCommand extends Command
         ]));
 
         if ($reapplied !== 0) {
-            $this->laraKubeError("Middleware created, but re-applying {$tool->getLabel()}'s ingress failed — run `larakube {$tool->value}:init {$env} --vpn-only` manually.");
+            $this->laraKubeError("Middleware created, but re-applying {$tool->getLabel()}'s ingress failed — run `larakube {$tool->initCommand()} {$env} --vpn-only` manually.");
 
             return 1;
         }

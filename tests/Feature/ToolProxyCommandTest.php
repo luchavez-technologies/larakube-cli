@@ -113,7 +113,7 @@ test('re-running {tool}:init without --proxied keeps the remembered choice', fun
     toolProxyCluster($annotations);
     toolProxyRegistry(proxied: true);
 
-    $command = app(App\Commands\Flow\FlowInitCommand::class);
+    $command = app(App\Commands\N8n\N8nInitCommand::class);
     $input = new Symfony\Component\Console\Input\ArrayInput([], $command->getDefinition());
     $command->setInput($input);
     $command->setOutput(new Illuminate\Console\OutputStyle($input, new Symfony\Component\Console\Output\BufferedOutput));

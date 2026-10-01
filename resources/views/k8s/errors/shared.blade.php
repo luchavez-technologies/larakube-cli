@@ -1,9 +1,35 @@
-@php($dbName ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::ERRORS, $host)->database())
+@php
+    // Every name comes from ToolInstance (ADR 0021).
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::ERRORS->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::ERRORS, $instance);
+    $dbName ??= $names->database();
+    $webName = $names->deployment();
+    $workerName = $names->deployment('worker');
+    $dbDeployment = $names->deployment('db');
+    $cacheName = $names->deployment('cache');
+    $secretName = $names->secret();
+    $smtpSecret = $names->secret(\App\Enums\SecretKind::SMTP);
+    $migrationsName = $names->name('migrations');
+    $dbVolume = $names->volume('storage', 'db');
+    // Identity labels per component; `pod` is the same set indented for a Pod template.
+    $labelsFor = function (?string $component = null) use ($names): string {
+        $out = '';
+        foreach ($names->labels($component) as $key => $value) {
+            $out .= "\n    {$key}: {$value}";
+        }
+
+        return $out;
+    };
+    $podLabelsFor = fn (?string $component = null): string => str_replace("\n    ", "\n        ", $labelsFor($component));
+@endphp
 apiVersion: v1
 kind: Secret
 metadata:
-  name: errors-secrets
+  name: {{ $secretName }}
   namespace: larakube-shared
+  labels:{!! $labelsFor() !!}
 type: Opaque
 data:
   password: {{ base64_encode($adminPassword) }}
@@ -13,8 +39,8 @@ data:
      an invalid YAML mapping. Keep directive tags at column 0; only literal
      YAML content is indented. --}}
 @if ($noPlex)
-  database-url: {{ base64_encode("postgres://glitchtip:{$dbPassword}@glitchtip-db:5432/glitchtip") }}
-  redis-url: {{ base64_encode("redis://glitchtip-cache:6379/0") }}
+  database-url: {{ base64_encode("postgres://{$dbName}:{$dbPassword}@{$dbDeployment}:5432/{$dbName}") }}
+  redis-url: {{ base64_encode("redis://{$cacheName}:6379/0") }}
 @else
   database-url: {{ base64_encode("postgres://{$dbName}:{$dbPassword}@postgres.{$plexNamespace}.svc.cluster.local:5432/{$dbName}") }}
   redis-url: {{ base64_encode("redis://redis.{$plexNamespace}.svc.cluster.local:6379/{$redisIndex}") }}
@@ -24,10 +50,13 @@ data:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: glitchtip-db-migrations
+  name: {{ $migrationsName }}
   namespace: larakube-shared
+  labels:{!! $labelsFor() !!}
 spec:
   template:
+    metadata:
+      labels:{!! $podLabelsFor() !!}
     spec:
       restartPolicy: OnFailure
       containers:
@@ -38,35 +67,36 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: errors-secrets
+                  name: {{ $secretName }}
                   key: database-url
             - name: CELERY_BROKER_URL
               valueFrom:
                 secretKeyRef:
-                  name: errors-secrets
+                  name: {{ $secretName }}
                   key: redis-url
             - name: SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: errors-secrets
+                  name: {{ $secretName }}
                   key: secret-key
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: glitchtip-web
+  name: {{ $webName }}
   namespace: larakube-shared
+  labels:{!! $labelsFor() !!}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: glitchtip-web
+      app: {{ $webName }}
   template:
     metadata:
       labels:
-        app: glitchtip-web
+        app: {{ $webName }}{!! $podLabelsFor() !!}
     spec:
       containers:
         - name: web
@@ -78,17 +108,17 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: errors-secrets
+                  name: {{ $secretName }}
                   key: database-url
             - name: CELERY_BROKER_URL
               valueFrom:
                 secretKeyRef:
-                  name: errors-secrets
+                  name: {{ $secretName }}
                   key: redis-url
             - name: SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: errors-secrets
+                  name: {{ $secretName }}
                   key: secret-key
             - name: GLITCHTIP_DOMAIN
               value: "https://{{ $host }}"
@@ -101,7 +131,7 @@ spec:
             - name: GLITCHTIP_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: errors-secrets
+                  name: {{ $secretName }}
                   key: password
             # SMTP (mail:wire): GlitchTip reads a single composed
             # django-environ URL plus the from-address — EMAIL_URL is built
@@ -110,13 +140,13 @@ spec:
             - name: EMAIL_URL
               valueFrom:
                 secretKeyRef:
-                  name: glitchtip-smtp
+                  name: {{ $smtpSecret }}
                   key: EMAIL_URL
                   optional: true
             - name: DEFAULT_FROM_EMAIL
               valueFrom:
                 secretKeyRef:
-                  name: glitchtip-smtp
+                  name: {{ $smtpSecret }}
                   key: DEFAULT_FROM_EMAIL
                   optional: true
           readinessProbe:
@@ -129,11 +159,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: glitchtip-web
+  name: {{ $webName }}
   namespace: larakube-shared
+  labels:{!! $labelsFor() !!}
 spec:
   selector:
-    app: glitchtip-web
+    app: {{ $webName }}
   ports:
     - protocol: TCP
       port: 8000
@@ -143,17 +174,18 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: glitchtip-worker
+  name: {{ $workerName }}
   namespace: larakube-shared
+  labels:{!! $labelsFor('worker') !!}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: glitchtip-worker
+      app: {{ $workerName }}
   template:
     metadata:
       labels:
-        app: glitchtip-worker
+        app: {{ $workerName }}{!! $podLabelsFor('worker') !!}
     spec:
       containers:
         - name: worker
@@ -163,17 +195,17 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: errors-secrets
+                  name: {{ $secretName }}
                   key: database-url
             - name: CELERY_BROKER_URL
               valueFrom:
                 secretKeyRef:
-                  name: errors-secrets
+                  name: {{ $secretName }}
                   key: redis-url
             - name: SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: errors-secrets
+                  name: {{ $secretName }}
                   key: secret-key
             - name: GLITCHTIP_DOMAIN
               value: "https://{{ $host }}"
@@ -183,13 +215,13 @@ spec:
             - name: EMAIL_URL
               valueFrom:
                 secretKeyRef:
-                  name: glitchtip-smtp
+                  name: {{ $smtpSecret }}
                   key: EMAIL_URL
                   optional: true
             - name: DEFAULT_FROM_EMAIL
               valueFrom:
                 secretKeyRef:
-                  name: glitchtip-smtp
+                  name: {{ $smtpSecret }}
                   key: DEFAULT_FROM_EMAIL
                   optional: true
 ---
@@ -197,30 +229,32 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: glitchtip-db-storage
+  name: {{ $dbVolume }}
   namespace: larakube-shared
+  labels:{!! $labelsFor('db') !!}
 spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: {{ $volumeSize('glitchtip-db-storage', '2Gi', true) }}
+      storage: {{ $volumeSize($dbVolume, '2Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: glitchtip-db
+  name: {{ $dbDeployment }}
   namespace: larakube-shared
+  labels:{!! $labelsFor('db') !!}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: glitchtip-db
+      app: {{ $dbDeployment }}
   template:
     metadata:
       labels:
-        app: glitchtip-db
+        app: {{ $dbDeployment }}{!! $podLabelsFor('db') !!}
     spec:
       containers:
         - name: postgres
@@ -229,9 +263,9 @@ spec:
             - containerPort: 5432
           env:
             - name: POSTGRES_DB
-              value: glitchtip
+              value: {{ $dbName }}
             - name: POSTGRES_USER
-              value: glitchtip
+              value: {{ $dbName }}
             - name: POSTGRES_PASSWORD
               value: "{{ $dbPassword }}"
           volumeMounts:
@@ -240,16 +274,17 @@ spec:
       volumes:
         - name: storage
           persistentVolumeClaim:
-            claimName: glitchtip-db-storage
+            claimName: {{ $dbVolume }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: glitchtip-db
+  name: {{ $dbDeployment }}
   namespace: larakube-shared
+  labels:{!! $labelsFor('db') !!}
 spec:
   selector:
-    app: glitchtip-db
+    app: {{ $dbDeployment }}
   ports:
     - protocol: TCP
       port: 5432
@@ -259,17 +294,18 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: glitchtip-cache
+  name: {{ $cacheName }}
   namespace: larakube-shared
+  labels:{!! $labelsFor('cache') !!}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: glitchtip-cache
+      app: {{ $cacheName }}
   template:
     metadata:
       labels:
-        app: glitchtip-cache
+        app: {{ $cacheName }}{!! $podLabelsFor('cache') !!}
     spec:
       containers:
         - name: valkey
@@ -280,11 +316,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: glitchtip-cache
+  name: {{ $cacheName }}
   namespace: larakube-shared
+  labels:{!! $labelsFor('cache') !!}
 spec:
   selector:
-    app: glitchtip-cache
+    app: {{ $cacheName }}
   ports:
     - protocol: TCP
       port: 6379
@@ -292,4 +329,4 @@ spec:
   type: ClusterIP
 ---
 @endif
-@include('k8s.errors.ingress')
+@include('k8s.errors.ingress', ['instance' => $instance])

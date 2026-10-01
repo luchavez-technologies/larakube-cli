@@ -44,7 +44,7 @@ test('tls:remove re-renders Traefik with the HTTP challenge before deleting the 
         ->not->toContain('CF_DNS_API_TOKEN');
 
     Process::assertRan(fn (PendingProcess $process) => str_contains($process->command, 'delete secret traefik-acme-cloudflare -n traefik'));
-    // dns:init's own tokens are never touched.
+    // external-dns:init's own tokens are never touched.
     Process::assertNotRan(fn (PendingProcess $process) => str_contains($process->command, 'delete') && str_contains($process->command, 'cloudflare-token-'));
 });
 

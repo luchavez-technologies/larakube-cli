@@ -209,7 +209,7 @@ stringData:
      Element Call/Element X report the homeserver as unsupported with
      nothing in any log. Mirrors InteractsWithChat::renderSynapseCalling(),
      which is what meet:wire/meet:unwire patch on a LIVE instance without a
-     full chat:init re-render — keep both in lockstep. --}}
+     full matrix:init re-render — keep both in lockstep. --}}
 @if(($meetJwtUrl ?? null) || ($mas ?? null))
     extra_well_known_client_content:
 @if($meetJwtUrl ?? null)

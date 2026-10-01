@@ -352,7 +352,7 @@ a backend that has drifted from the Secret it feeds is visible too.
 
 ## 🔄 Migration complete — OpenBao has replaced Infisical
 
-The migration is done: `secrets:init` now deploys OpenBao directly (no Infisical
+The migration is done: `openbao:init` now deploys OpenBao directly (no Infisical
 operator, no Infisical CRDs, no Infisical app manifests). Existing secrets were
 re-pushed from `.env.{env}` files into OpenBao via the `pushClusterSecret` /
 `syncClusterSecretToNamespace` path. No data was lost.

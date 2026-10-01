@@ -2,8 +2,10 @@
 
 namespace App\Commands\Design;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
+use App\Enums\SecretKind;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
 use App\Services\Kubectl;
@@ -26,28 +28,9 @@ use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class DesignInitCommand extends Command
+abstract class DesignInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithDesign, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ReconcilesPenpotFlags, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
-
-    protected $signature = 'design:init
-        {environment? : Environment this install targets — "local" (default) or cloud.}
-        {--context=      : Target a specific kube-context}
-        {--domain=       : Base domain OR full host for Penpot (example.com → prefix.example.com)}
-        {--admin-email=  : Primary administrator email for Penpot}
-        {--with-exporter : Also deploy the Penpot Exporter (Playwright/Chromium) container for PDF/PNG exports}
-        {--vpn-only      : Restrict access via NetBird VPN IP whitelisting}
-        {--force         : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy the Penpot design & prototyping suite into larakube-shared';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'design:init' is deprecated. Forwarding to 'penpot:init'. Please update your scripts.");
-        $this->renderHeader();
-
-        return $this->deployDesign();
-    }
 
     protected function deployDesign(): int
     {
@@ -62,7 +45,7 @@ class DesignInitCommand extends Command
         $vpnOnly = (bool) $this->option('vpn-only');
         $withExporter = (bool) $this->option('with-exporter');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::DESIGN, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::DESIGN, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -102,27 +85,23 @@ class DesignInitCommand extends Command
 
         $s3Endpoint = $this->resolveCommonsS3Endpoints($s3Driver, 'Penpot')['public'];
 
-        $backendName = ClusterTool::DESIGN->deploymentName($instance);
-        $frontendName = "design-penpot-frontend-{$instance}";
-        $exporterName = "design-penpot-exporter-{$instance}";
-        $serviceName = "design-{$instance}";
-        $backendServiceName = "design-backend-{$instance}";
-        $exporterServiceName = "design-exporter-{$instance}";
-        $ingressName = $serviceName;
-        $dbSecretName = "design-secrets-{$instance}";
-        $smtpSecretName = "design-smtp-{$instance}";
-        $oidcSecretName = "design-oidc-{$instance}";
+        $names = ToolInstance::forInstance(ClusterTool::DESIGN, $instance);
+        $backendName = $names->deployment('backend');
+        $frontendName = $names->deployment('frontend');
+        $dbSecretName = $names->secret();
+        $smtpSecretName = $names->secret(SecretKind::SMTP);
+        $oidcSecretName = $names->secret(SecretKind::OIDC);
         $dbName = ClusterTool::DESIGN->commonsDatabases($instance)[0];
         $dbUser = $dbName;
 
-        $adminEmail = $this->readDesignSecret($kubectl, $ns, 'admin-email', $instance) ?? $this->resolveAdminEmail($host);
-        $dbPassword = $this->readDesignSecret($kubectl, $ns, 'password', $instance) ?? Str::random(24);
+        $adminEmail = $this->readDesignSecret($kubectl, $ns, 'admin-email', $dbSecretName) ?? $this->resolveAdminEmail($host);
+        $dbPassword = $this->readDesignSecret($kubectl, $ns, 'password', $dbSecretName) ?? Str::random(24);
         // Once OpenBao's database secrets engine already owns this static
         // role, defer to ITS current password instead of re-affirming a
         // locally-cached one that may predate OpenBao's own rotation — see
         // resolveManagedDbPassword()'s docblock.
         $dbPassword = $this->resolveManagedDbPassword($kubectl, $dbName, $dbPassword);
-        $secretKey = $this->readDesignSecret($kubectl, $ns, 'secret-key', $instance) ?? bin2hex(random_bytes(32));
+        $secretKey = $this->readDesignSecret($kubectl, $ns, 'secret-key', $dbSecretName) ?? bin2hex(random_bytes(32));
 
         if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
             return 1;
@@ -161,16 +140,6 @@ class DesignInitCommand extends Command
         $manifest = view('k8s.design.shared', [
             'host' => $host,
             'instance' => $instance,
-            'backendName' => $backendName,
-            'frontendName' => $frontendName,
-            'exporterName' => $exporterName,
-            'serviceName' => $serviceName,
-            'backendServiceName' => $backendServiceName,
-            'exporterServiceName' => $exporterServiceName,
-            'ingressName' => $ingressName,
-            'dbSecretName' => $dbSecretName,
-            'smtpSecretName' => $smtpSecretName,
-            'oidcSecretName' => $oidcSecretName,
             'dbUser' => $dbUser,
             'dbName' => $dbName,
             'redisIndex' => $redisIndex,
@@ -186,7 +155,7 @@ class DesignInitCommand extends Command
         ])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();
-        $tmp = $temporaryDirectory->path('larakube-design-penpot-'.$instance.'.yaml');
+        $tmp = $temporaryDirectory->path('larakube-penpot-'.$instance.'.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(

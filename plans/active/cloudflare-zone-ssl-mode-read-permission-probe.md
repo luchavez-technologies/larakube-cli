@@ -7,7 +7,7 @@
 
 ## 1. The problem (byte-proven on prod, read-only)
 
-`tls:init`/`dns:init` on prod (context `larakube-159.89.205.239`) warned:
+`tls:init`/`external-dns:init` on prod (context `larakube-159.89.205.239`) warned:
 
 > "Couldn't read {zone}'s SSL mode (the token needs Zone → Zone Settings → Read)."
 
@@ -27,7 +27,7 @@ token lacks **Zone → Zone Settings → Read**. The CLI warning was *accurate* 
 > **"I think better is tls:show"**
 
 Informing belongs in the **existing read-only `tls:show` verb** (on-demand, non-mutating), NOT
-store-time lectures in `tls:init`/`dns:init`. `tls:show` already exists, resolves the stored
+store-time lectures in `tls:init`/`external-dns:init`. `tls:show` already exists, resolves the stored
 token + managed zones, and now also **truthfully reports each zone's SSL mode** — with a
 per-zone three-way split so it never mislabels "no token" as "needs permission":
 
@@ -65,7 +65,7 @@ Dashboard permission edits alone do **not** clear the CLI warning (the CLI reads
 secret): re-store the token so the CLI picks up the reconciled permission:
 
 1. Cloudflare dashboard: grant the token **Zone → Zone Settings → Read**.
-2. Re-store: `larakube tls:init <env> --context=larakube-159.89.205.239` (or `dns:init`).
+2. Re-store: `larakube tls:init <env> --context=larakube-159.89.205.239` (or `external-dns:init`).
 3. Verify read-only truth: `larakube tls:show <env> --context=larakube-159.89.205.239`
    → each zone now renders its true SSL mode (`Full (strict) ✓`) with no 9109.
 

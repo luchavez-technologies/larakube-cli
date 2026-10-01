@@ -39,6 +39,6 @@ test('options() no longer advertises unshipped tools', function (): void {
 });
 
 test('reverse lookups still recognise unshipped tools so live installs stay manageable', function (): void {
-    expect(ClusterTool::forDeployment('umami'))->not->toBeNull()
-        ->and(ClusterTool::forDeployment('uptime-kuma'))->not->toBeNull();
+    expect(ClusterTool::forDeployment('umami-stats-example-com'))->not->toBeNull()
+        ->and(ClusterTool::forDeployment('kuma-status-example-com'))->not->toBeNull();
 });

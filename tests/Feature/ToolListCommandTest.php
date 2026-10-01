@@ -137,7 +137,7 @@ test('tool:list surfaces OpenBao KV secret sync status for wired and unwired too
 });
 
 test('tool:list also treats the dynamic "{secret}-db" ExternalSecret as synced, not just the bare legacy name', function (): void {
-    // Regression guard: secrets:init's static KV-mirror sweep deliberately
+    // Regression guard: openbao:init's static KV-mirror sweep deliberately
     // skips creating the bare-named ExternalSecret once a tool's dynamic
     // '{secret}-db' one exists (secrets:wire's own, to avoid racing it) — so
     // a properly secrets:wire'd tool only ever HAS the '-db' name. Checking
@@ -150,8 +150,8 @@ test('tool:list also treats the dynamic "{secret}-db" ExternalSecret as synced, 
                 ['tool' => 'penpot', 'instance' => 'design-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'design.luchtech.dev'],
             ])),
         ),
-        '*get externalsecret design-secrets-design-luchtech-dev-db*' => Process::result(output: 'design-secrets-design-luchtech-dev-db  1m  True  SecretSynced'),
-        '*get externalsecret design-secrets-design-luchtech-dev *' => Process::result(output: '', exitCode: 1),
+        '*get externalsecret penpot-backend-secrets-design-luchtech-dev-db*' => Process::result(output: 'penpot-backend-secrets-design-luchtech-dev-db  1m  True  SecretSynced'),
+        '*get externalsecret penpot-backend-secrets-design-luchtech-dev *' => Process::result(output: '', exitCode: 1),
         '*get secret openbao-secrets-secrets-example-com*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(output: ''),

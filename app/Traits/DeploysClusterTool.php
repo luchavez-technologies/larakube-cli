@@ -21,13 +21,13 @@ use Symfony\Component\Process\Exception\ProcessTimedOutException;
  * the env/context boilerplate was hand-copied into every command instead of
  * shared:
  *
- *   - monitor:init, secrets:init, errors:init, uptime:init, and git:init built
+ *   - grafana:init, openbao:init, glitchtip:init, kuma:init, and forgejo:init built
  *     their kubectl from the raw --context option ONLY, on both deploy and
  *     remove — never resolving it from the {environment} argument at all. So
- *     `monitor:init production` (no explicit --context) silently applied
+ *     `grafana:init production` (no explicit --context) silently applied
  *     manifests to whatever the ambient current kube-context happened to be,
  *     not production's actual saved cluster target.
- *   - insights:init got deploy right but skipped context
+ *   - metabase:init got deploy right but skipped context
  *     resolution entirely on --remove, same bug, narrower blast radius.
  *   - Every tool's remove path ran its steps via `withSpin(..., fn () =>
  *     Process::run(...))` with no return, so a failed step correctly painted
@@ -55,7 +55,7 @@ trait DeploysClusterTool
      * target (environments.{env}.cloud, read from .larakube.local.json) —
      * falling back to the ambient context only when no target was ever
      * captured for that environment, same as the tools that already got this
-     * right (mail:init, flow:init, sheets:init, passwords:init).
+     * right (stalwart:init, n8n:init, teable:init, vaultwarden:init).
      */
     protected function resolveToolContext(string $env, ?string $explicitContext = null): ?string
     {
@@ -88,8 +88,8 @@ trait DeploysClusterTool
             }
 
             // Nothing recorded yet: capture it ONCE, here, into the project.
-            // That is what makes `crm:init production` afterwards need no
-            // question — it reads what data:init just established.
+            // That is what makes `twenty:init production` afterwards need no
+            // question — it reads what directus:init just established.
             if ($this->canPromptForContext()) {
                 if ($chosen = $this->captureToolContext($config, $env, $projectPath)) {
                     return $chosen;
@@ -309,7 +309,7 @@ trait DeploysClusterTool
     /**
      * Add $host to the shared local certificate, if it is a local host.
      *
-     * A tool installed at a non-default host (`data:init --domain=`, which
+     * A tool installed at a non-default host (`directus:init --domain=`, which
      * ADR 0012 makes a first-class way to run a second instance) was never
      * covered: the SAN list is built from SharedClusterService's DEFAULT
      * prefixes, so the browser rejected the instance the command had just

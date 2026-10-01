@@ -106,7 +106,7 @@ test('the refusal names the command and the domain so the fix is copy-pasteable'
         envResolver([], ['domain' => 'example.com'])->resolve(ClusterTool::MAIL);
         $this->fail('expected AmbiguousEnvironmentException');
     } catch (AmbiguousEnvironmentException $e) {
-        expect($e->command)->toBe('mail:init')
+        expect($e->command)->toBe('stalwart:init')
             ->and($e->domain)->toBe('example.com');
     }
 });

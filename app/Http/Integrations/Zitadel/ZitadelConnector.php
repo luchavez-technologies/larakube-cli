@@ -10,7 +10,7 @@ use Saloon\Traits\Plugins\AcceptsJson;
  * Host is per-instance (each cluster's own Zitadel), so it's a constructor
  * argument, same shape as MatrixConnector/NetbirdConnector. Unlike those two,
  * every Zitadel call carries the machine PAT — there's no unauthenticated
- * bootstrap step here (the PAT itself comes from sso:init's own kubectl-based
+ * bootstrap step here (the PAT itself comes from zitadel:init's own kubectl-based
  * capture, not from a Zitadel API call).
  */
 class ZitadelConnector extends Connector

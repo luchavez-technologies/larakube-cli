@@ -30,33 +30,9 @@ use function Laravel\Prompts\multiselect;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class MonitorInitCommand extends Command
+abstract class MonitorInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMonitoring, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, RunsKubectlSteps, StreamsProcessOutput, SyncsClusterSecrets;
-
-    protected $signature = 'monitor:init
-        {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted, like plex:init. A non-local env prompts for + persists the Grafana host.}
-        {--context=   : Target a specific kube-context (defaults to current context)}
-        {--domain=    : Base domain OR full host for Grafana (example.com → grafana.example.com; grafana.example.com used as-is)}
-        {--app-name=  : Custom branding name for Grafana (defaults to Monitor)}
-        {--logo-url=  : Custom logo / favicon URL for Grafana}
-        {--vpn-only   : Restrict access via NetBird VPN IP whitelisting}
-        {--no-logs    : Skip deploying Loki + Promtail log aggregation (~300MB RAM saved)}
-        {--with-logs  : Force deploying Loki + Promtail log aggregation}
-        {--no-traces  : Skip deploying Tempo trace storage (~450MB RAM saved)}
-        {--with-traces : Force deploying Tempo trace storage}
-        {--no-plex   : Bypass Plex Commons — Grafana keeps its own database on a local PVC instead of Commons Postgres}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy the cluster-wide monitoring stack (Grafana, Prometheus, Loki, Tempo) into larakube-shared';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'monitor:init' is deprecated. Forwarding to 'grafana:init'. Please update your scripts.");
-        $this->renderHeader();
-
-        return $this->deployMonitoring();
-    }
 
     protected function deployMonitoring(): int
     {
@@ -106,7 +82,7 @@ class MonitorInitCommand extends Command
         // --no-plex is the fallback for a cluster with no Plex Commons at
         // all: still-persistent (a PVC survives pod recreation, unlike the
         // old ephemeral-only setup) but plain SQLite, uninvolved in any
-        // backup routine — mirrors git:init's own --no-plex story.
+        // backup routine — mirrors forgejo:init's own --no-plex story.
         $noPlex = (bool) $this->option('no-plex');
         $dbPassword = null;
 
@@ -124,7 +100,7 @@ class MonitorInitCommand extends Command
             // own rotation — see resolveManagedDbPassword()'s docblock (the
             // same gap took Forgejo down 2026-08-15). This is a READ, not a
             // write: it never registers anything with OpenBao itself — only
-            // `secrets:wire` does that. `monitor:init` doesn't know or care
+            // `secrets:wire` does that. `grafana:init` doesn't know or care
             // whether OpenBao exists otherwise; see ADR-adjacent note in
             // GitInitCommand — `{tool}:init` must never call
             // registerStaticRole()/isOpenBaoBootstrapped() to INITIATE
@@ -288,16 +264,16 @@ class MonitorInitCommand extends Command
         $this->line('  Dashboards: '.implode(', ', $dashboards).'.');
         $this->newLine();
         if ($removedLogs) {
-            $this->line('  <fg=yellow>Log aggregation (Loki + Promtail) removed — run <fg=cyan>larakube monitor:init --with-logs</> anytime to re-enable.</>');
+            $this->line('  <fg=yellow>Log aggregation (Loki + Promtail) removed — run <fg=cyan>larakube grafana:init --with-logs</> anytime to re-enable.</>');
         } elseif (! $withLogs) {
             $this->line('  <fg=yellow>Note:</> Log aggregation (Loki + Promtail) is disabled (~300MB RAM saved).');
-            $this->line('  Run <fg=yellow>larakube monitor:init --with-logs</> anytime to enable log search in Grafana.');
+            $this->line('  Run <fg=yellow>larakube grafana:init --with-logs</> anytime to enable log search in Grafana.');
         }
         if ($removedTraces) {
-            $this->line('  <fg=yellow>Tempo removed — run <fg=cyan>larakube monitor:init --with-traces</> anytime to re-enable.</>');
+            $this->line('  <fg=yellow>Tempo removed — run <fg=cyan>larakube grafana:init --with-traces</> anytime to re-enable.</>');
         } elseif (! $withTraces) {
             $this->line('  <fg=yellow>Note:</> Distributed tracing (Tempo) is disabled (~450MB RAM saved).');
-            $this->line('  Run <fg=yellow>larakube monitor:init --with-traces</> anytime to enable trace search in Grafana.');
+            $this->line('  Run <fg=yellow>larakube grafana:init --with-traces</> anytime to enable trace search in Grafana.');
         }
         $this->newLine();
         if ($env === 'local') {

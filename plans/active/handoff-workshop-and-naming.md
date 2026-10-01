@@ -40,9 +40,11 @@ State of `ClusterTool::resourceNaming()` (`app/Enums/ClusterTool.php`):
   Promtail, the RBAC and the Grafana ConfigMaps), GIT, NOTES, FLOW, SIGN, DATA,
   LINK, ANALYTICS, SHEETS, TASKS, DASHBOARD, MEET, WEBMAIL, DRIVE, VPN, CRM,
   PASSWORDS, CHAT, MAIL, SECRETS (OpenBao), SSO (Zitadel).
-- **AS_SHIPPED (not installed, code-only later):** RECORD, RESUME, SUPPORT.
-- **INSTANCE_SUFFIXED (not installed, code-only later):** DNS, ERRORS,
-  INSIGHTS, UPTIME, DESIGN, PASTE.
+- **CANONICAL in code only (not installed, so no live migration):** PASTE
+  (Yopass), UPTIME (Kuma), INSIGHTS (Metabase), DNS (ExternalDNS), ERRORS
+  (GlitchTip), SUPPORT (Chatwoot), RECORD (Sendrec), RESUME, DESIGN (Penpot).
+  Closed 2026-10-02: no `INSTANCE_SUFFIXED`/`AS_SHIPPED` tool is left that
+  anyone installs; nothing remains to migrate.
 
 **Live state, `larakube-159.89.205.239` (read 2026-10-02).** A sweep of every
 `larakube-*` namespace finds only plumbing (ESO, Reloader, Plex Commons, `eman`,
@@ -51,10 +53,10 @@ State of `ClusterTool::resourceNaming()` (`app/Enums/ClusterTool.php`):
 tools-registry rows all carry a host-derived instance; Zitadel has 11 projects,
 all named for their instance. The runbooks are in `plans/completed/`. Left:
 PVC `pocketbase-storage-data-luchtech-dev` (PocketBase is not registered; check it
-for data before deleting). Open code items: `forDeployment()` still matches bare,
-instance-less names such as `vaultwarden` (how a dead leftover Deployment aborted
-`backup:run`), and the category `<category>:init` commands go once the migration is
-closed (tool-named ones replace them).
+for data before deleting). Done 2026-10-02: `forDeployment()` no longer
+matches a canonical tool's bare name (a dead `stalwart` can't abort `backup:run`),
+and the 29 category `:init` commands are retired (the category classes are
+abstract bases; only `outline:init`, `zitadel:init`, ... exist).
 
 Plans for this: the order and recipe are the memory note
 `project_naming_convention_no_category` and the proven runbook

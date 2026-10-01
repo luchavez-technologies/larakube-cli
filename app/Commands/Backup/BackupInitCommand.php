@@ -166,7 +166,7 @@ class BackupInitCommand extends Command
     /**
      * Create the destination bucket via the Cloudflare API.
      *
-     * Mirrors dns:init's token handling: prompted for with the exact scope
+     * Mirrors external-dns:init's token handling: prompted for with the exact scope
      * required, and never persisted — it is used for this one call and
      * discarded. The backup itself authenticates with the S3 access keys, which
      * are a different, narrower credential.

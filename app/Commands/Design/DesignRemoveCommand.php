@@ -3,6 +3,7 @@
 namespace App\Commands\Design;
 
 use App\Commands\Tool\AbstractToolRemoveCommand;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use Illuminate\Support\Facades\Process;
 
@@ -22,10 +23,7 @@ class DesignRemoveCommand extends AbstractToolRemoveCommand
 
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
-        // The same per-instance name design:init writes; a bare `design-secrets`
-        // never exists, which made every purge skip the Commons entirely.
-        $instance = $this->resolveInstance($kubectl);
-        $secret = ($instance === null || $instance === '') ? 'design-secrets' : "design-secrets-{$instance}";
+        $secret = ToolInstance::forInstance(ClusterTool::DESIGN, (string) $this->resolveInstance($kubectl))->secret();
 
         return trim(Process::run(
             "{$kubectl} get secret {$secret} -n {$namespace} --ignore-not-found",

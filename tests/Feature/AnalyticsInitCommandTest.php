@@ -3,8 +3,8 @@
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 
-test('analytics:init refuses because Umami is unshipped', function (): void {
-    $this->artisan('analytics:init local --no-interaction')
+test('umami:init refuses because Umami is unshipped', function (): void {
+    $this->artisan('umami:init local --no-interaction')
         ->assertExitCode(1)
         ->expectsOutputToContain('Web Analytics (Umami) is not yet shipped');
 });

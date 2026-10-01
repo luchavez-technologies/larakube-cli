@@ -26,7 +26,7 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '') ? 'design-vpn-only' : "design-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'penpot-vpn-only' : "penpot-vpn-only-{$instance}";
 
         return [
             'name' => $name,
@@ -42,30 +42,31 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
             new ClusterToolComponentData(
                 key: 'backend',
                 role: ClusterToolComponentRole::PRIMARY,
-                deployment: $name('design-penpot-backend'),
+                deployment: $name('penpot-backend'),
+                container: 'backend',
                 resources: [
-                    ['kind' => 'service', 'name' => 'design-backend'],
-                    ['kind' => 'secret', 'name' => 'design-secrets'],
-                    ['kind' => 'secret', 'name' => 'design-smtp'],
-                    ['kind' => 'secret', 'name' => 'design-oidc'],
+                    ['kind' => 'service', 'name' => $name('penpot-backend')],
+                    ['kind' => 'secret', 'name' => $name('penpot-backend-secrets')],
+                    ['kind' => 'secret', 'name' => $name('penpot-backend-smtp')],
+                    ['kind' => 'secret', 'name' => $name('penpot-backend-oidc')],
                 ],
             ),
             new ClusterToolComponentData(
                 key: 'frontend',
                 role: ClusterToolComponentRole::INGRESS,
-                deployment: $name('design-penpot-frontend'),
+                deployment: $name('penpot-frontend'),
                 sharesPrimarySecret: true,
                 resources: [
-                    ['kind' => 'service', 'name' => 'design'],
-                    ['kind' => 'ingress', 'name' => 'design'],
+                    ['kind' => 'service', 'name' => $name('penpot-frontend')],
+                    ['kind' => 'ingress', 'name' => $name('penpot-frontend')],
                 ],
             ),
             new ClusterToolComponentData(
                 key: 'exporter',
                 role: ClusterToolComponentRole::WORKER,
-                deployment: $name('design-penpot-exporter'),
+                deployment: $name('penpot-exporter'),
                 resources: [
-                    ['kind' => 'service', 'name' => 'design-exporter'],
+                    ['kind' => 'service', 'name' => $name('penpot-exporter')],
                 ],
             ),
         ];
@@ -76,8 +77,8 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
         $suffix = ($instance === null || $instance === '') ? '' : "-{$instance}";
 
         return [
-            'deployment' => "design-penpot-backend{$suffix}",
-            'secret' => "design-smtp{$suffix}",
+            'deployment' => "penpot-backend{$suffix}",
+            'secret' => "penpot-backend-smtp{$suffix}",
             'static' => [
                 // PENPOT_FLAGS is deliberately absent — MailWireCommand
                 // reconciles it via ReconcilesPenpotFlags instead of the
@@ -101,8 +102,8 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
         $suffix = ($instance === null || $instance === '') ? '' : "-{$instance}";
 
         return [
-            'deployment' => "design-penpot-backend{$suffix}",
-            'secret' => "design-oidc{$suffix}",
+            'deployment' => "penpot-backend{$suffix}",
+            'secret' => "penpot-backend-oidc{$suffix}",
             'redirect_path' => '/api/auth/oidc/callback',
             'static' => [
                 // PENPOT_FLAGS is deliberately absent — SsoWireCommand::applyToolEnv
@@ -124,7 +125,7 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
     /** Not 'db-password' like every other tool — Penpot's own secret already established 'password'. */
     public function dbSecretRef(): ?array
     {
-        return ['secret' => 'design-secrets', 'key' => 'password'];
+        return ['secret' => 'penpot-backend-secrets', 'key' => 'password'];
     }
 
     public function commonsDatabaseList(): array
@@ -173,7 +174,7 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
     public function openbaoSyncConfig(?string $instance = null): array
     {
         return [
-            'secret' => 'design-secrets',
+            'secret' => 'penpot-backend-secrets',
             'keys' => ['DESIGN_DB_PASSWORD'],
         ];
     }

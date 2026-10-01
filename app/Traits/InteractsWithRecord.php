@@ -19,12 +19,12 @@ trait InteractsWithRecord
 
     protected function isRecordInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'record-sendrec');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=record');
     }
 
-    protected function readRecordSecret(string $kubectl, string $ns, string $key): ?string
+    protected function readRecordSecret(string $kubectl, string $ns, string $secret, string $key): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'record-secrets', $key);
+        return $this->readClusterSecretKey($kubectl, $ns, $secret, $key);
     }
 
     protected function resolveRecordHostReadOnly(string $env, ?ConfigData $config): ?string

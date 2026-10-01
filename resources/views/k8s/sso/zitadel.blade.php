@@ -148,7 +148,7 @@ spec:
             # Next.js container we don't run, so the console login 404s. Keep the
             # legacy Login V1 that's still bundled in this container (served at
             # /ui/login). DEFAULTINSTANCE = applied at instance-creation only, so
-            # an already-created instance needs `sso:init --remove` + re-init.
+            # an already-created instance needs `zitadel:init --remove` + re-init.
             - name: ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED
               value: "false"
             - name: ZITADEL_DATABASE_POSTGRES_HOST

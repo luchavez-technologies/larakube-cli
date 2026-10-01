@@ -93,7 +93,7 @@ test('re-wiring to a different Meet host replaces the old focus', function (): v
 
 test('MAS auth-discovery key and Meet focus coexist under the same shared well-known key', function (): void {
     // extra_well_known_client_content is the ONE thing meet:wire and
-    // ChatInitCommand's activateMasAuthMode() both write into — this is the
+    // MatrixInitCommand's activateMasAuthMode() both write into — this is the
     // "must not clobber each other" invariant both of them depend on.
     $parsed = Yaml::parse(callingRenderer()->render(
         BASE_HOMESERVER,

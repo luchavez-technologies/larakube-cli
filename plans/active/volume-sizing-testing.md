@@ -176,7 +176,7 @@ exactly the state a `storage:resize` leaves behind.
   EOF
   ```
 - [ ] Deploy the instance:
-  `./larakube data:init local --context=orbstack --engine=pocketbase --domain=resize-fixture.test --admin-email=admin@example.com --force`
+  `./larakube directus:init local --context=orbstack --engine=pocketbase --domain=resize-fixture.test --admin-email=admin@example.com --force`
   - Prints the growth-volume warning (OrbStack's default class cannot expand).
   - Ends with "✅ PocketBase Data / Headless CMS stack is live." and the summary line
     `PVC data-pocketbase-pvc-resize-fixture-test`. **If the PVC named there is different, stop** —
@@ -200,7 +200,7 @@ exactly the state a `storage:resize` leaves behind.
   EOF
   ```
   → **rejected** with a `Forbidden` error on the storage request.
-- [ ] **Idempotent:** re-run the same `data:init` command → succeeds, request still `5Gi`.
+- [ ] **Idempotent:** re-run the same `directus:init` command → succeeds, request still `5Gi`.
 
 ## Phase F — Cleanup (fixtures only)
 

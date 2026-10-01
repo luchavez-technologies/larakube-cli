@@ -1,23 +1,35 @@
-@php($suffix = ($instance ?? '') !== '' ? "-{$instance}" : '')
+@php
+    // Every name comes from ToolInstance (ADR 0021).
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::PASTE->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::PASTE, $instance);
+    $deploymentName = $names->deployment();
+    $secretName = $names->secret();
+    $labels = '';
+    foreach ($names->labels() as $key => $value) {
+        $labels .= "\n    {$key}: {$value}";
+    }
+    $podLabels = str_replace("\n    ", "\n        ", $labels);
+@endphp
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: paste-yopass{{ $suffix }}
+  name: {{ $deploymentName }}
   namespace: larakube-shared
   labels:
-    app: paste-yopass{{ $suffix }}
-    app.kubernetes.io/part-of: paste
+    app: {{ $deploymentName }}{!! $labels !!}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: paste-yopass{{ $suffix }}
+      app: {{ $deploymentName }}
   template:
     metadata:
       labels:
-        app: paste-yopass{{ $suffix }}
+        app: {{ $deploymentName }}{!! $podLabels !!}
     spec:
       containers:
         - name: yopass
@@ -46,12 +58,12 @@ spec:
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: paste-yopass-secrets{{ $suffix }}
+                  name: {{ $secretName }}
                   key: s3-access-key
             - name: AWS_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: paste-yopass-secrets{{ $suffix }}
+                  name: {{ $secretName }}
                   key: s3-secret-key
 @endif
           startupProbe:
@@ -77,15 +89,16 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: paste-yopass{{ $suffix }}
+  name: {{ $deploymentName }}
   namespace: larakube-shared
+  labels:{!! $labels !!}
 spec:
   selector:
-    app: paste-yopass{{ $suffix }}
+    app: {{ $deploymentName }}
   ports:
     - protocol: TCP
       port: 1337
       targetPort: 1337
   type: ClusterIP
 ---
-@include('k8s.paste.ingress')
+@include('k8s.paste.ingress', ['instance' => $instance])

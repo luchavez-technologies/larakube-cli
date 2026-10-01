@@ -1,6 +1,6 @@
 # Walkthrough: n8n on a cloud cluster, per instance
 
-Verifies `flow:init --engine=n8n` after the move to per-instance names
+Verifies `n8n:init --engine=n8n` after the move to per-instance names
 (`app/Tools/N8n.php`, `ToolInstance`), and that `flow:remove` keeps the
 encryption key. Do steps 1–4 **before** handing the instance to anyone: step 4
 removes and reinstalls it.
@@ -9,7 +9,7 @@ Replace `flow.example.com` with the real host. `--vpn-only` is optional.
 
 ## 1. Install
 ```bash
-larakube flow:init production --engine=n8n --domain=flow.example.com
+larakube n8n:init production --engine=n8n --domain=flow.example.com
 ```
 Expect: `✅ Flow (n8n) stack is live.` and the URL.
 
@@ -45,7 +45,7 @@ Invite** someone; the invite email arrives.
 
 ## 5. (Optional) a second instance
 ```bash
-larakube flow:init production --engine=n8n --domain=automation.example.com
+larakube n8n:init production --engine=n8n --domain=automation.example.com
 ```
 Both hosts work, each with its own owner and database
 (`n8n_flow_example_com`, `n8n_automation_example_com`). Then
@@ -54,7 +54,7 @@ removes only the second one; `flow.example.com` keeps working.
 
 ## 6. One engine per host
 ```bash
-larakube flow:init production --engine=windmill --domain=flow.example.com
+larakube n8n:init production --engine=windmill --domain=flow.example.com
 ```
 Expect a refusal naming `flow.example.com already runs n8n`, and no change.
 

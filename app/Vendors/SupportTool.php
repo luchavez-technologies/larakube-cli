@@ -6,13 +6,15 @@ use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasAdminEmailPrompt;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasCommonsRedisKeys;
-use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasWhiteLabel;
+use App\Contracts\HasWorkloadComponents;
+use App\Data\ClusterToolComponentData;
+use App\Enums\ClusterToolComponentRole;
 
 /** The single vendor backing the SUPPORT category — 'Customer Support'. Only Chatwoot. */
-final class SupportTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasCommonsRedisKeys, HasDeploymentBaseName, HasRotatableDatabasePassword, HasSmtpWiring, HasWhiteLabel
+final class SupportTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasCommonsRedisKeys, HasRotatableDatabasePassword, HasSmtpWiring, HasWhiteLabel, HasWorkloadComponents
 {
     public function getLabel(): string
     {
@@ -21,7 +23,7 @@ final class SupportTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCo
 
     public function dbSecretRef(): ?array
     {
-        return ['secret' => 'support-secrets', 'key' => 'db-password'];
+        return ['secret' => 'chatwoot-secrets', 'key' => 'db-password'];
     }
 
     public function adminEmailLabel(): string
@@ -29,21 +31,44 @@ final class SupportTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCo
         return 'Chatwoot';
     }
 
-    public function baseDeploymentName(): string
+    /**
+     * The Rails app and its Sidekiq worker, with every resource
+     * support/shared.blade.php declares, so teardown() can't drift from what is
+     * deployed. Nested names are composed here, not read back from ToolInstance.
+     *
+     * @return list<ClusterToolComponentData>
+     */
+    public function components(?string $instance = null, ?string $engine = null): array
     {
-        return 'support-chatwoot';
-    }
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
 
-    public function canonicalComponentName(): string
-    {
-        return 'chatwoot';
+        return [
+            new ClusterToolComponentData(
+                key: 'web',
+                role: ClusterToolComponentRole::PRIMARY,
+                deployment: $name('chatwoot'),
+                container: 'chatwoot',
+                resources: [
+                    ['kind' => 'service', 'name' => $name('chatwoot')],
+                    ['kind' => 'ingress', 'name' => $name('chatwoot')],
+                    ['kind' => 'secret', 'name' => $name('chatwoot-secrets')],
+                    ['kind' => 'secret', 'name' => $name('chatwoot-smtp')],
+                    ['kind' => 'secret', 'name' => $name('chatwoot-oidc')],
+                ],
+            ),
+            new ClusterToolComponentData(
+                key: 'worker',
+                role: ClusterToolComponentRole::WORKER,
+                deployment: $name('chatwoot-worker'),
+            ),
+        ];
     }
 
     public function smtpEnv(?string $instance = null): ?array
     {
         return [
-            'deployment' => 'support-chatwoot',
-            'secret' => 'support-smtp',
+            'deployment' => 'chatwoot',
+            'secret' => 'chatwoot-smtp',
             'static' => [
                 'SMTP_ENABLE_STARTTLS_AUTO' => 'true',
             ],
@@ -68,7 +93,7 @@ final class SupportTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCo
 
     public function commonsRedisKeys(): array
     {
-        return ['support_chatwoot'];
+        return ['chatwoot'];
     }
 
     public function commonsDatabaseList(): array

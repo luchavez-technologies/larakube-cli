@@ -3,6 +3,7 @@
 namespace App\Commands\Uptime;
 
 use App\Commands\Tool\AbstractToolRemoveCommand;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 
 class UptimeRemoveCommand extends AbstractToolRemoveCommand
@@ -21,9 +22,11 @@ class UptimeRemoveCommand extends AbstractToolRemoveCommand
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
+        $names = ToolInstance::forInstance(ClusterTool::UPTIME, (string) $this->resolveInstance($kubectl));
+
         return $this->removeResources(
             'Removing Uptime Kuma resources...',
-            "{$kubectl} delete deployment,svc,ingress,pvc uptime-kuma uptime-kuma-storage "
+            "{$kubectl} delete deployment,svc,ingress,pvc {$names->deployment()} {$names->volume()} "
             ."-n {$namespace} --ignore-not-found",
         );
     }

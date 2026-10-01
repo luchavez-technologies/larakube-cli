@@ -71,7 +71,7 @@ class DashboardTrustCommand extends Command
         $ssoNs = $this->ssoNamespace();
 
         if (! $this->isSsoInstalled($kubectl, $ssoNs)) {
-            $this->laraKubeError('Zitadel is not installed. Run `larakube sso:init` first.');
+            $this->laraKubeError('Zitadel is not installed. Run `larakube zitadel:init` first.');
 
             return 1;
         }

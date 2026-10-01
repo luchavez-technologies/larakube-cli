@@ -14,7 +14,7 @@ To protect existing production clusters that have not yet migrated, **all legacy
 2. **Lifecycle Verbs**: Full suite per tool (`*:init`, `*:remove`, `*:show`, `*:logs`, `*:shell`, `*:backup`, `*:restore` where applicable).
 3. **Naming Convention**: Short canonical brand names (`pocketbase`, `directus`, `kuma`, `vaultwarden`, `openbao`, `n8n`, `grafana`, `forgejo`, `matrix`, `twenty`, `livekit`, `external-dns`).
 4. **Category Descriptors**: Structured `ToolCategory` enum (`DATABASE`, `BACKEND`, `AUTH`, `SECURITY`, `COMMUNICATION`, `OBSERVABILITY`, `PRODUCTIVITY`, `DEVOPS`, `ANALYTICS`, `STORAGE`), allowing tools to define multiple categories.
-5. **Production Safety & Backward-Compatible Aliases**: Retain existing category commands (`data:init`, `chat:init`, `crm:init`, etc.) as backward-compatible wrappers that output a gentle deprecation notice and delegate directly to the new individual tool commands (`pocketbase:init`, `matrix:init`, `twenty:init`, etc.).
+5. **Production Safety & Backward-Compatible Aliases**: Retain existing category commands (`directus:init`, `matrix:init`, `twenty:init`, etc.) as backward-compatible wrappers that output a gentle deprecation notice and delegate directly to the new individual tool commands (`pocketbase:init`, `matrix:init`, `twenty:init`, etc.).
 6. **Multi-Instance Support**: Domain-as-identity (`--domain=blog.example.com` defines instance).
 7. **Bundled Stacks**: Branded by primary UI tool (e.g. `grafana:init` provisions the Grafana stack including Prometheus & Loki; `external-dns:init` provisions ExternalDNS).
 
@@ -40,9 +40,9 @@ graph TD
     end
 
     subgraph "Backward Compatibility Layer"
-        LEG_DATA["data:init / data:show"] -.->|"Forwards with deprecation notice"| PB
-        LEG_CHAT["chat:init"] -.->|"Forwards with deprecation notice"| MX
-        LEG_CRM["crm:init"] -.->|"Forwards with deprecation notice"| TW
+        LEG_DATA["directus:init / data:show"] -.->|"Forwards with deprecation notice"| PB
+        LEG_CHAT["matrix:init"] -.->|"Forwards with deprecation notice"| MX
+        LEG_CRM["twenty:init"] -.->|"Forwards with deprecation notice"| TW
     end
 
     subgraph "Cluster State & Migration"
@@ -115,7 +115,7 @@ graph TD
    - `ExternalDns`: `ExternalDnsInitCommand` (`external-dns:init`), `ExternalDnsRemoveCommand`, `ExternalDnsShowCommand`, `ExternalDnsLogsCommand`.
 2. **Backward-Compatible Wrappers for Old Commands**:
    - Turn `DataInitCommand`, `ChatInitCommand`, `CrmInitCommand`, etc. into backward-compatible wrappers:
-     - Output: `[DEPRECATION] 'data:init' is deprecated. Forwarding to 'pocketbase:init' (or 'directus:init'). Please update your scripts.`
+     - Output: `[DEPRECATION] 'directus:init' is deprecated. Forwarding to 'pocketbase:init' (or 'directus:init'). Please update your scripts.`
      - Forward options and arguments to the target individual tool command using `Artisan::call(...)`.
 
 ### Phase 4: LaraKube Desktop Overhaul (`desktop/`)

@@ -20,7 +20,7 @@ use function Laravel\Prompts\select;
 use LaravelZero\Framework\Commands\Command;
 
 /**
- * Remove one dns:init GROUP's ExternalDNS instance, or all of them.
+ * Remove one external-dns:init GROUP's ExternalDNS instance, or all of them.
  *
  * Per-group rather than all-or-nothing, because a cluster can run several
  * instances and tearing down the wrong one silently stops DNS reconciliation
@@ -117,7 +117,7 @@ class DnsRemoveCommand extends Command
         $this->laraKubeInfo('ExternalDNS removed for: '.implode(', ', $allZones));
         $this->newLine();
         $this->line('  <fg=gray>The DNS records it created still exist in Cloudflare. Delete them there</>');
-        $this->line('  <fg=gray>if you want them gone, or re-run</> <fg=blue>dns:init</> <fg=gray>to resume management.</>');
+        $this->line('  <fg=gray>if you want them gone, or re-run</> <fg=blue>external-dns:init</> <fg=gray>to resume management.</>');
         $this->newLine();
 
         return 0;
@@ -126,7 +126,7 @@ class DnsRemoveCommand extends Command
     /**
      * Collapse the flat per-zone rows installedDnsZones() returns into one
      * row per real instance — several zone rows can share the same slug
-     * (one dns:init group covering several zones on one token).
+     * (one external-dns:init group covering several zones on one token).
      *
      * @param  list<array{zone: string, slug: string, owner: string, ready: bool}>  $installed
      * @return list<array{slug: string, zones: list<string>}>
@@ -177,7 +177,7 @@ class DnsRemoveCommand extends Command
                     $others = implode(', ', array_diff($group['zones'], [$zone]));
                     $this->laraKubeError(
                         "'{$zone}' is part of the '{$group['slug']}' instance (also manages: {$others}) — ".
-                        "pass --group={$group['slug']} to remove the whole instance, or re-run dns:init ".
+                        "pass --group={$group['slug']} to remove the whole instance, or re-run external-dns:init ".
                         '--group='.$group['slug'].' with a reduced --zone= list to shrink it.',
                     );
 

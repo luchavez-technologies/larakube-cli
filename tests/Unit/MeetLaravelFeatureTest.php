@@ -70,7 +70,7 @@ test('other features are unaffected by the meet case', function (): void {
 });
 
 test('adding meet to a project does not fail when Meet is not installed', function (): void {
-    // `larakube add meet` must work offline / before meet:init. Falling back to
+    // `larakube add meet` must work offline / before livekit:init. Falling back to
     // the declared placeholders is correct; blowing up is not.
     Process::fake([
         '*-l larakube.io/tool=meet --no-headers*' => Process::result(output: ''),

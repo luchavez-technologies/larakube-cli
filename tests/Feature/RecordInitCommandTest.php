@@ -4,12 +4,12 @@
  * Regression coverage for the browser-facing S3 endpoint bug. Unlike Outline/
  * Documenso, Sendrec supports a genuine internal/public split (S3_ENDPOINT vs
  * S3_PUBLIC_ENDPOINT — confirmed against the binary's own recognised env var
- * names), so record:init must keep S3_ENDPOINT on the fast internal path AND
+ * names), so sendrec:init must keep S3_ENDPOINT on the fast internal path AND
  * set S3_PUBLIC_ENDPOINT for the presigned URLs it hands to the browser.
  * See resolveCommonsS3Endpoints() on InteractsWithPlex.
  */
 
-use App\Commands\Record\RecordInitCommand;
+use App\Commands\Sendrec\SendrecInitCommand;
 use Illuminate\Support\Facades\Process;
 
 function recordCommonsSpec(?string $s3Host): array
@@ -37,7 +37,7 @@ function fakeRecordInitProcess(?string $s3Host, ?string &$appliedManifest, int $
         if (str_contains($cmd, 'apply -f')) {
             preg_match('/apply -f (\'[^\']*\'|"[^"]*"|\S+)/', $cmd, $m);
             $path = trim($m[1] ?? '', '\'"');
-            if ($path !== '' && file_exists($path) && str_contains($path, 'larakube-record-sendrec')) {
+            if ($path !== '' && file_exists($path) && str_contains($path, 'larakube-sendrec')) {
                 $appliedManifest = file_get_contents($path);
             }
 
@@ -49,17 +49,17 @@ function fakeRecordInitProcess(?string $s3Host, ?string &$appliedManifest, int $
             str_contains($cmd, 'get configmap plex-registry') => Process::result(output: '', exitCode: 1),
             str_contains($cmd, 'S3_ACCESS_KEY') => Process::result(output: base64_encode('larakube')),
             str_contains($cmd, 'S3_SECRET_KEY') => Process::result(output: base64_encode('s3-secret')),
-            str_contains($cmd, 'rollout status') => Process::result(output: 'deployment "record-sendrec" successfully rolled out'),
+            str_contains($cmd, 'rollout status') => Process::result(output: 'deployment "sendrec" successfully rolled out'),
             default => Process::result(output: ''),
         };
     });
 }
 
-test('record:init keeps S3_ENDPOINT internal but signs S3_PUBLIC_ENDPOINT against the Commons public host', function (): void {
+test('sendrec:init keeps S3_ENDPOINT internal but signs S3_PUBLIC_ENDPOINT against the Commons public host', function (): void {
     $appliedManifest = null;
     fakeRecordInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan(RecordInitCommand::class, [
+    $this->artisan(SendrecInitCommand::class, [
         'environment' => 'local',
         '--no-interaction' => true,
     ])->assertExitCode(0);
@@ -73,11 +73,11 @@ test('record:init keeps S3_ENDPOINT internal but signs S3_PUBLIC_ENDPOINT agains
         ->and($public[1] ?? null)->toBe('https://files.example.com');
 });
 
-test('record:init falls back S3_PUBLIC_ENDPOINT to the internal endpoint when the Commons has no public host', function (): void {
+test('sendrec:init falls back S3_PUBLIC_ENDPOINT to the internal endpoint when the Commons has no public host', function (): void {
     $appliedManifest = null;
     fakeRecordInitProcess(null, $appliedManifest);
 
-    $this->artisan(RecordInitCommand::class, [
+    $this->artisan(SendrecInitCommand::class, [
         'environment' => 'local',
         '--no-interaction' => true,
     ])->assertExitCode(0);
@@ -91,11 +91,11 @@ test('record:init falls back S3_PUBLIC_ENDPOINT to the internal endpoint when th
         ->and($public[1] ?? null)->toBe('http://seaweedfs.larakube-plex.svc.cluster.local:8333');
 });
 
-test('record:init sets SMTP_TLS to "tls", not the stale "implicit" value that deadlocks SendRec against Stalwart', function (): void {
+test('sendrec:init sets SMTP_TLS to "tls", not the stale "implicit" value that deadlocks SendRec against Stalwart', function (): void {
     $appliedManifest = null;
     fakeRecordInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan(RecordInitCommand::class, [
+    $this->artisan(SendrecInitCommand::class, [
         'environment' => 'local',
         '--no-interaction' => true,
     ])->assertExitCode(0);
@@ -105,11 +105,11 @@ test('record:init sets SMTP_TLS to "tls", not the stale "implicit" value that de
     expect($m[1] ?? null)->toBe('tls');
 });
 
-test('record:init returns a failing exit code and does not claim success when kubectl apply is rejected', function (): void {
+test('sendrec:init returns a failing exit code and does not claim success when kubectl apply is rejected', function (): void {
     $appliedManifest = null;
     fakeRecordInitProcess('files.example.com', $appliedManifest, applyExitCode: 1);
 
-    $this->artisan(RecordInitCommand::class, [
+    $this->artisan(SendrecInitCommand::class, [
         'environment' => 'local',
         '--no-interaction' => true,
     ])

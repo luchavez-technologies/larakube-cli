@@ -4,7 +4,7 @@
 
 When attempting to deploy PocketBase to a remote VPS cluster using:
 ```bash
-larakube data:init --context=larakube-34.27.253.31 --domain=pocket-test.luchtech.dev
+larakube directus:init --context=larakube-34.27.253.31 --domain=pocket-test.luchtech.dev
 ```
 from a directory outside of a Laravel project (standalone mode), the command failed with:
 ```
@@ -14,18 +14,18 @@ from a directory outside of a Laravel project (standalone mode), the command fai
   A domain does not say which cluster to deploy to. Naming it explicitly
   avoids wiring a real hostname into a local-TLS ingress on the wrong cluster.
 
-  e.g. larakube data:init production --domain=pocket-test.luchtech.dev
+  e.g. larakube directus:init production --domain=pocket-test.luchtech.dev
 ```
 
 ### Full Codebase Audit
 A thorough inspection of `cli/app` revealed:
 - **46 commands** across the CLI use `ResolvesToolEnvironment`:
-  - **31 companion tool `:init` commands**: `data:init`, `crm:init`, `notes:init`, `sso:init`, `uptime:init`, `mail:init`, `flow:init`, `sheets:init`, `chat:init`, `design:init`, `desk:init`, `drive:init`, `office:init`, `errors:init`, `git:init`, `link:init`, `meet:init`, `monitor:init`, `passwords:init`, `paste:init`, `record:init`, `resume:init`, `sign:init`, `support:init`, `tasks:init`, `vpn:init`, `webmail:init`, `insights:init`, `analytics:init`, `secrets:init`, `dns:init`.
+  - **31 companion tool `:init` commands**: `directus:init`, `twenty:init`, `outline:init`, `zitadel:init`, `kuma:init`, `stalwart:init`, `n8n:init`, `teable:init`, `matrix:init`, `penpot:init`, `desk:init`, `ocis:init`, `office:init`, `glitchtip:init`, `forgejo:init`, `kutt:init`, `livekit:init`, `grafana:init`, `vaultwarden:init`, `yopass:init`, `sendrec:init`, `resume:init`, `documenso:init`, `chatwoot:init`, `planka:init`, `netbird:init`, `bulwark:init`, `metabase:init`, `umami:init`, `openbao:init`, `external-dns:init`.
   - **15 operational & wire commands**: `data:wire`, `meet:wire`, `meet:unwire`, `secrets:export`, `secrets:import`, `secrets:migrate`, `secrets:rotate`, `secrets:wire`, `backup:init`, `backup:run`, `dns:list`, `dns:remove`, `drive:ext:add`, `drive:ext:remove`, `drive:ext:show`.
 - **Root Cause A (`AmbiguousEnvironmentException` false-positive)**:
   `ResolvesToolEnvironment::resolveToolEnvironment()` previously inspected only `$this->argument('environment')` and `$this->option('domain')`. If `--domain` was given without a positional `{environment}`, it unconditionally threw `AmbiguousEnvironmentException`, stating *"A domain does not say which cluster to deploy to"*. It failed to realize that when `--context` is passed, the target cluster **is explicitly and unambiguously specified**.
 - **Root Cause B (Defaulting to `local` outside of a project)**:
-  If an operator omitted `--domain` and ran `larakube data:init --context=larakube-34.27.253.31` in standalone mode, `ResolvesToolEnvironment` found no project config (`$known = []`) and either defaulted to `'local'` (under `--no-interaction`) or prompted a `select` with only `'local'` as an option. In turn, `$env === 'local'` caused `isLocal` to evaluate to `true`, deploying self-signed local TLS certificates on a remote cloud VPS, skipping Let's Encrypt ACME registration, and saving credentials to `/v1/secret/data/local/...` instead of `production`.
+  If an operator omitted `--domain` and ran `larakube directus:init --context=larakube-34.27.253.31` in standalone mode, `ResolvesToolEnvironment` found no project config (`$known = []`) and either defaulted to `'local'` (under `--no-interaction`) or prompted a `select` with only `'local'` as an option. In turn, `$env === 'local'` caused `isLocal` to evaluate to `true`, deploying self-signed local TLS certificates on a remote cloud VPS, skipping Let's Encrypt ACME registration, and saving credentials to `/v1/secret/data/local/...` instead of `production`.
 - **Root Cause C (Missing `--context` in `SnapshotInitCommand`)**:
   `SnapshotInitCommand` lacked `{--context=}` in its signature and relied directly on `Kubectl::current()`.
 
@@ -39,7 +39,7 @@ A thorough inspection of `cli/app` revealed:
      - Otherwise, inspect the context with `Kubectl::isLocalContextName($context)`:
        - If **Local** (e.g. `orbstack`, `docker-desktop`, `minikube`, `kind`, `colima`, `k3s-larakube`) → resolve to `'local'`.
        - If **Remote / Cloud** (e.g. `larakube-<ip>`, `doks-*`, `gke_*`, `aks-*`, `eks-*`) → resolve to `'production'`.
-   - An explicit positional argument (e.g. `larakube data:init staging --context=...`) **always wins** over automatic deduction.
+   - An explicit positional argument (e.g. `larakube directus:init staging --context=...`) **always wins** over automatic deduction.
 
 2. **Standalone Interactive Kube-Context Prompting**:
    - When running interactively outside a project without `--context` or `--domain`:
@@ -114,4 +114,4 @@ A thorough inspection of `cli/app` revealed:
 2. Run PHPStan: `composer analyse`
 3. Run Pest: `composer test` (or `pest tests/Feature/ToolEnvironmentResolutionTest.php`)
 4. Prompt user to execute `./build` and test:
-   `larakube data:init --context=larakube-34.27.253.31 --domain=pocket-test.luchtech.dev`
+   `larakube directus:init --context=larakube-34.27.253.31 --domain=pocket-test.luchtech.dev`

@@ -29,7 +29,7 @@ class VpnShowCommand extends AbstractToolShowCommand
     /**
      * Surface how long the stored NetBird credentials have left.
      *
-     * vpn:init mints the PAT and the setup key in a single call, so they expire
+     * netbird:init mints the PAT and the setup key in a single call, so they expire
      * within milliseconds of each other — and an expired PAT cannot mint its own
      * replacement, so there is no API path back in. `vpn:rotate` fixes that, but
      * only if someone runs it in time; without a countdown somewhere the first

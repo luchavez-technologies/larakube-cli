@@ -128,7 +128,7 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             # 30 × 10s = 300s, matching the rollout-status timeout in
-            # sheets:init. A longer budget here just means the command reports a
+            # teable:init. A longer budget here just means the command reports a
             # timeout while Kubernetes is still patiently waiting.
             failureThreshold: 30
           readinessProbe:

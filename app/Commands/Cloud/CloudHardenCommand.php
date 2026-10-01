@@ -162,7 +162,7 @@ class CloudHardenCommand extends Command
 
     /**
      * Install NetBird on the VPS host and join it to the project's VPN,
-     * fetching the setup key `vpn:init` already bootstrapped. Returns the
+     * fetching the setup key `netbird:init` already bootstrapped. Returns the
      * NetBird overlay CIDR to allowlist on success, null on any failure (the
      * caller falls back to whatever $adminCidr already covers — a failed VPN
      * join never blocks hardening, it only means the VPN allow-rule is skipped).

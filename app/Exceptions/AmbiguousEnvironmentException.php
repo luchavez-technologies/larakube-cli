@@ -11,7 +11,7 @@ use Symfony\Component\Console\Output\OutputInterface;
  * "which cluster does this deploy to" has no safe answer.
  *
  * The old behaviour was to quietly assume `local`, which meant
- * `secrets:init --domain=example.com` wired a production hostname into a
+ * `openbao:init --domain=example.com` wired a production hostname into a
  * local-TLS ingress and applied it to whatever kube-context happened to be
  * current. Failing loudly is the only correct move: a domain is evidence the
  * operator meant a cloud environment, not evidence of which one.

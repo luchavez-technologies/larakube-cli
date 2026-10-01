@@ -502,6 +502,13 @@ enum ClusterTool: string implements HasWorkloadComponents
     public static function forDeployment(string $deploymentName): ?array
     {
         foreach (self::cases() as $tool) {
+            // A canonical tool's Deployments always carry their instance, so a
+            // bare name is some other workload (a dead `stalwart`, a stray
+            // `vaultwarden`) and must not resolve to it.
+            if ($tool->resourceNaming() === ResourceNaming::CANONICAL) {
+                continue;
+            }
+
             foreach ($tool->engineCandidates() as $engine) {
                 foreach ($tool->components(engine: $engine) as $component) {
                     if ($component->deployment === $deploymentName) {
@@ -680,7 +687,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     /** Canonical command names — the one place the `{tool}:{action}` shape is spelled out. */
     public function initCommand(): string
     {
-        return "{$this->value}:init";
+        return "{$this->canonicalTool()->value}:init";
     }
 
     public function removeCommand(): string
@@ -799,6 +806,33 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::PASTE => self::YOPASS,
             default => $this,
         };
+    }
+
+    /**
+     * The category case a tool-named case belongs to (ZITADEL → SSO, GRAFANA →
+     * MONITOR); a category case, or one with no category, is its own. For code that
+     * branches on "which kind of tool is this" and must give the same answer for
+     * `--tool=sso` and `--tool=zitadel`.
+     */
+    public function category(): self
+    {
+        if ($this->isLegacy()) {
+            return $this;
+        }
+
+        foreach (self::cases() as $case) {
+            if (! $case->isLegacy()) {
+                continue;
+            }
+
+            foreach ([null, 'pocketbase', 'windmill', 'plausible'] as $engine) {
+                if ($case->canonicalTool($engine) === $this) {
+                    return $case;
+                }
+            }
+        }
+
+        return $this;
     }
 
     /**
@@ -1238,7 +1272,7 @@ enum ClusterTool: string implements HasWorkloadComponents
      *    `LoadBalancer` (2222), same collision risk on a single-node cluster.
      *  - An architectural singleton: MAIL/SSO/SECRETS/MONITOR/VPN are each
      *    "the one X for this cluster" that every other tool's mail:wire/
-     *    sso:wire/SyncsClusterSecrets/monitor:init assumes exists exactly
+     *    sso:wire/SyncsClusterSecrets/grafana:init assumes exists exactly
      *    once. WEBMAIL is 1:1 bound to the one Stalwart. DASHBOARD is one
      *    view into the one cluster. DNS already has its own multi-tenancy
      *    scheme keyed by `--zone`, not this generic `--instance` mechanism.
@@ -1308,7 +1342,8 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::DATA, self::POCKETBASE, self::DIRECTUS, self::NOTES, self::OUTLINE, self::CRM, self::TWENTY,
             self::DESIGN, self::PENPOT, self::PASTE, self::YOPASS, self::SIGN, self::DOCUMENSO,
             self::FLOW, self::N8N, self::WINDMILL, self::LINK, self::KUTT, self::ANALYTICS, self::UMAMI, self::PLAUSIBLE,
-            self::SHEETS, self::TEABLE, self::TASKS, self::PLANKA => true,
+            self::SHEETS, self::TEABLE, self::TASKS, self::PLANKA, self::UPTIME, self::KUMA, self::INSIGHTS, self::METABASE,
+            self::ERRORS, self::GLITCHTIP, self::SUPPORT, self::CHATWOOT, self::RECORD, self::SENDREC, self::RESUME, self::DESIGN, self::PENPOT => true,
             default => false,
         };
     }
@@ -1463,7 +1498,7 @@ enum ClusterTool: string implements HasWorkloadComponents
      * larakube-shared-desk-vpn-only@kubernetescrd → name "desk-vpn-only" in
      * "larakube-shared"). NOT derivable from $this->value — several tools'
      * ingress partials reference their SharedClusterService label instead
-     * (errors→glitchtip-web, git→forgejo, sheets→sheet, uptime→uptime-kuma),
+     * (errors→glitchtip, git→forgejo, sheets→sheet, uptime→uptime-kuma),
      * confirmed by reading every ingress template rather than assumed. null
      * for tools with no --vpn-only flag (Dns, Vpn itself).
      *
@@ -1644,9 +1679,13 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::TEABLE, self::TASKS, self::PLANKA, self::DASHBOARD, self::HEADLAMP, self::MEET,
             self::LIVEKIT, self::WEBMAIL, self::BULWARK, self::DRIVE, self::OCIS, self::VPN, self::NETBIRD,
             self::CRM, self::TWENTY, self::PASSWORDS, self::VAULTWARDEN, self::CHAT, self::MATRIX, self::MAIL, self::STALWART,
-            self::SECRETS, self::OPENBAO, self::SSO, self::ZITADEL => ResourceNaming::CANONICAL,
+            self::SECRETS, self::OPENBAO, self::SSO, self::ZITADEL,
+            self::PASTE, self::YOPASS, self::UPTIME, self::KUMA, self::INSIGHTS, self::METABASE,
+            // ExternalDNS is keyed by a zone group, not a host: `external-dns-{group}` already is
+            // {component}-{instance}, so listing it changes no name.
+            self::DNS, self::EXTERNAL_DNS, self::ERRORS, self::GLITCHTIP, self::SUPPORT, self::CHATWOOT, self::RECORD, self::SENDREC, self::DESIGN, self::PENPOT => ResourceNaming::CANONICAL,
             self::RECORD,
-            self::SENDREC, self::RESUME, self::SUPPORT, self::CHATWOOT => ResourceNaming::AS_SHIPPED,
+            self::RESUME => ResourceNaming::CANONICAL,
             default => ResourceNaming::INSTANCE_SUFFIXED,
         };
     }
@@ -1727,13 +1766,43 @@ enum ClusterTool: string implements HasWorkloadComponents
      */
     public static function forCommonsResource(string $name): ?self
     {
+        return self::resolveCommonsResource($name)['tool'] ?? null;
+    }
+
+    /**
+     * The tool and instance a Commons database or bucket name belongs to: a bare
+     * name (`sendrec`) is the tool itself, an instanced one
+     * (`sendrec_record_example_com`, `yopass-storage-paste-example-com`) is the
+     * tool's base name plus the instance slug. Slugs hold only [a-z0-9-], so the
+     * underscore form of a database name maps back to exactly one slug. The
+     * longest matching base wins, so `forgejo-storage` is never read as another
+     * tool's `forgejo`.
+     *
+     * @return array{tool: self, instance: ?string}|null
+     */
+    public static function resolveCommonsResource(string $name): ?array
+    {
+        $best = null;
+
         foreach (self::cases() as $tool) {
             if (in_array($name, $tool->commonsDatabases(), true) || in_array($name, $tool->commonsBuckets(), true)) {
-                return $tool;
+                return ['tool' => $tool, 'instance' => null];
+            }
+
+            foreach ($tool->commonsDatabases() as $base) {
+                if (str_starts_with($name, "{$base}_") && ($best === null || strlen($base) > $best['length'])) {
+                    $best = ['tool' => $tool, 'instance' => str_replace('_', '-', substr($name, strlen($base) + 1)), 'length' => strlen($base)];
+                }
+            }
+
+            foreach ($tool->commonsBuckets() as $base) {
+                if (str_starts_with($name, "{$base}-") && ($best === null || strlen($base) > $best['length'])) {
+                    $best = ['tool' => $tool, 'instance' => substr($name, strlen($base) + 1), 'length' => strlen($base)];
+                }
             }
         }
 
-        return null;
+        return $best === null ? null : ['tool' => $best['tool'], 'instance' => $best['instance']];
     }
 
     /** `git-forgejo-runner-x` -> `forgejo-runner-x`: the category, dropped. */

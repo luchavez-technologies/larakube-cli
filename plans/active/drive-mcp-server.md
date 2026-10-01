@@ -8,7 +8,7 @@
 
 ## Why this exists
 
-Drive (`drive:init`) deploys oCIS. A follow-up question: can LaraKube CLI wire up [owncloud/ocis-mcp-server](https://github.com/owncloud/ocis-mcp-server) so Claude (or any MCP client) can manage the live oCIS instance — list/read/write files, spaces, shares — via natural language. The trigger was a direct comparison to Outline's MCP integration, where non-technical teammates get a one-click "Connect" experience with no local setup.
+Drive (`ocis:init`) deploys oCIS. A follow-up question: can LaraKube CLI wire up [owncloud/ocis-mcp-server](https://github.com/owncloud/ocis-mcp-server) so Claude (or any MCP client) can manage the live oCIS instance — list/read/write files, spaces, shares — via natural language. The trigger was a direct comparison to Outline's MCP integration, where non-technical teammates get a one-click "Connect" experience with no local setup.
 
 ## What's actually required (researched 2026-08-23/24, from the project's own docs/repo)
 
@@ -34,7 +34,7 @@ Per the operator's standing rule (ship official artifacts with a real auth story
 
 ## If/when item 1 gets built
 
-- New command family `drive:mcp:grant {environment?} {--context=} {--user=admin} {--expiration=8760h}` / `drive:mcp:revoke {environment?} {--context=} {--token-id=}` / `drive:mcp:show {environment?} {--context=}` — the grant/revoke shape mirrors this repo's `cluster:grant`/`cluster:revoke` reference pattern for a real standalone op (`feedback_no_hidden_flag_commands` in the operator's memory), not a flag on `drive:init`.
+- New command family `drive:mcp:grant {environment?} {--context=} {--user=admin} {--expiration=8760h}` / `drive:mcp:revoke {environment?} {--context=} {--token-id=}` / `drive:mcp:show {environment?} {--context=}` — the grant/revoke shape mirrors this repo's `cluster:grant`/`cluster:revoke` reference pattern for a real standalone op (`feedback_no_hidden_flag_commands` in the operator's memory), not a flag on `ocis:init`.
 - Do **not** persist the app token into OpenBao/Infisical or a k8s Secret — it's a personal MCP credential the operator copies once into their own local Claude Desktop/Claude Code config, same trust model as a GitHub personal access token, not Commons secret material.
 - Verify live before writing command code: confirm `ocis auth-app create` works out of the box against the deployed `owncloud/ocis:8.0.6` image in its current headless `command: ["ocis"], args: ["server"]` boot mode (the `auth-app` service being on by default in this specific config hasn't been confirmed).
 

@@ -38,30 +38,9 @@ use function Laravel\Prompts\confirm;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class MailInitCommand extends Command
+abstract class MailInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithRemoteSsh, InteractsWithSecrets, InteractsWithStalwartApi, InteractsWithTraefik, InteractsWithVolumeSizing, LaraKubeOutput, ManagesCloudFirewall, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
-
-    protected $signature = 'mail:init
-        {environment? : Environment this install targets — "local" (default) or cloud.}
-        {--context=  : Target a specific kube-context}
-        {--domain=   : Base domain OR full host for Stalwart (example.com → prefix.example.com)}
-        {--alias=*    : Additional domain alias(es) to register on the Ingress}
-        {--admin-email= : Primary postmaster / admin email address for Stalwart}
-        {--vpn-only  : Restrict the admin UI via NetBird VPN IP whitelisting}
-        {--host-port : Bind mail ports directly to the node (default on single-node k3s)}
-        {--no-host-port : Skip hostPort — use on managed K8s with a real LoadBalancer}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy the Stalwart mail server (SMTP/IMAP/JMAP) into larakube-shared';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'mail:init' is deprecated. Forwarding to 'stalwart:init'. Please update your scripts.");
-        $this->renderHeader();
-
-        return $this->deployMail();
-    }
 
     protected function deployMail(): int
     {
@@ -292,7 +271,7 @@ class MailInitCommand extends Command
         $this->line('  <fg=gray>Ports 25/465/587/993/4190 must be reachable.  Wire a tool:</> <fg=blue>larakube mail:wire</>');
         $this->newLine();
 
-        // Skip entirely once nothing is left to report: mail:init already
+        // Skip entirely once nothing is left to report: stalwart:init already
         // printed a real-time ✔ for every store it just configured above —
         // repeating "already configured" here would be pure noise. Still
         // shown when genuinely stuck on the old wizard-driven path, or when
@@ -315,9 +294,9 @@ class MailInitCommand extends Command
     }
 
     /**
-     * Offer to add the Bulwark webmail UI right after mail:init — the discovery
+     * Offer to add the Bulwark webmail UI right after stalwart:init — the discovery
      * hook, mirroring tool:add's offerMailWiring()/offerSsoWiring(). Opt-in and
-     * interactive-only: webmail is NOT bundled into mail:init (not every install
+     * interactive-only: webmail is NOT bundled into stalwart:init (not every install
      * wants a browser UI, and we don't couple the critical mail deploy to a
      * separate tool's failure modes), this just makes it discoverable.
      */
@@ -328,14 +307,14 @@ class MailInitCommand extends Command
         }
 
         if (! confirm(label: "Also deploy a browser webmail UI (Bulwark) so your team isn't limited to Apple Mail/Thunderbird?", default: false)) {
-            $this->laraKubeLine("  <fg=gray>You can add it later:</> <fg=blue>larakube webmail:init {$env}</>");
+            $this->laraKubeLine("  <fg=gray>You can add it later:</> <fg=blue>larakube bulwark:init {$env}</>");
 
             return;
         }
 
-        // webmail:init resolves its own host (local → webmail.{tld}; cloud →
+        // bulwark:init resolves its own host (local → webmail.{tld}; cloud →
         // prompt/persist) and handles the Stalwart CORS flip + restart itself.
-        $this->call('webmail:init', ['environment' => $env]);
+        $this->call('bulwark:init', ['environment' => $env]);
     }
 
     /**
@@ -525,7 +504,7 @@ class MailInitCommand extends Command
 
         if (! $this->secretsBackendAvailable($kubectl)) {
             $this->line('  <fg=gray>Skipped Postgres store auto-config: Secrets backend is not bootstrapped, so there is</>');
-            $this->line('  <fg=gray>  nowhere to sync STALWART_STORE_PASSWORD. Run</> <fg=blue>larakube secrets:init</><fg=gray>, or paste the</>');
+            $this->line('  <fg=gray>  nowhere to sync STALWART_STORE_PASSWORD. Run</> <fg=blue>larakube openbao:init</><fg=gray>, or paste the</>');
             $this->line('  <fg=gray>  password from the store details printed below straight into the wizard.</>');
 
             return;
@@ -642,7 +621,7 @@ class MailInitCommand extends Command
         // "production" as one object, but the value pushed above is at the
         // deeper "production/STALWART_STORE_PASSWORD" path, so it always
         // syncs empty and, as an Owner-mode ExternalSecret with a 1m
-        // refresh, wipes out the correct one secrets:init already maintains
+        // refresh, wipes out the correct one openbao:init already maintains
         // (tool-es.blade.php) on its next reconcile. Reconcile that existing
         // ExternalSecret instead of creating a second, conflicting one.
         $synced = $this->withSpin(
@@ -670,7 +649,7 @@ class MailInitCommand extends Command
 
         if (! $synced) {
             $this->laraKubeError('Stored the password in OpenBao, but the sync into the cluster did not confirm in time.');
-            $this->line('  <fg=gray>Check</> <fg=yellow>kubectl get externalsecret '.$dynamicSecretName.' -n '.$ns.'</> <fg=gray>— run</> <fg=blue>larakube secrets:init</> <fg=gray>if it is missing. Or use the password directly:</>');
+            $this->line('  <fg=gray>Check</> <fg=yellow>kubectl get externalsecret '.$dynamicSecretName.' -n '.$ns.'</> <fg=gray>— run</> <fg=blue>larakube openbao:init</> <fg=gray>if it is missing. Or use the password directly:</>');
             $this->line('  <fg=yellow>'.$password.'</>');
 
             return;

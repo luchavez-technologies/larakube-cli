@@ -18,7 +18,7 @@ use Throwable;
 
 /**
  * Thin, one-off wrapper over Cloudflare's DNS API — used for writes that
- * don't belong to ExternalDNS's ingress-reconciling model (dns:init), most
+ * don't belong to ExternalDNS's ingress-reconciling model (external-dns:init), most
  * notably Zitadel's org-domain-verification TXT challenge. Same v4 REST
  * envelope shape ({success, result, errors}) already consumed by
  * InteractsWithBackup::createR2Bucket() — this trait exists separately
@@ -69,7 +69,7 @@ trait InteractsWithCloudflareApi
     /**
      * Every zone this token can see — unfiltered `GET /zones`, paginated.
      * A token's own Cloudflare-side scope IS the authoritative zone list; this
-     * is what lets dns:init discover "which zones does this token cover"
+     * is what lets external-dns:init discover "which zones does this token cover"
      * instead of requiring the operator to retype a list that can drift out
      * of sync with the token's real scope.
      *

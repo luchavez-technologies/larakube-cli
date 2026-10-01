@@ -37,27 +37,9 @@ use Saloon\Exceptions\Request\FatalRequestException;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Throwable;
 
-class VpnInitCommand extends Command
+abstract class VpnInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithPlex, InteractsWithProjectConfig, InteractsWithVolumeSizing, InteractsWithVpn, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
-
-    protected $signature = 'vpn:init
-        {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the NetBird VPN host.}
-        {--context=  : Target a specific kube-context (defaults to current context)}
-        {--domain=   : Base domain OR full host for NetBird VPN (example.com → vpn.example.com; vpn.example.com used as-is)}
-        {--sso-domain= : Email domain every SSO login is grouped under (defaults to the base domain of --domain)}
-        {--no-plex   : Keep NetBird on its own SQLite file instead of Commons Postgres}
-        {--force     : Skip the confirmation prompt}';
-
-    protected $description = 'Deploy the cluster-wide NetBird VPN stack into larakube-vpn';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'vpn:init' is deprecated. Forwarding to 'netbird:init'. Please update your scripts.");
-        $this->renderHeader();
-
-        return $this->deployVpn();
-    }
 
     protected function deployVpn(): int
     {
@@ -68,7 +50,7 @@ class VpnInitCommand extends Command
 
         $host = $this->resolveToolHost(SharedClusterService::VPN, ClusterTool::VPN, $env, $kubectl);
 
-        // Resolved from $host, not the registry: on a first install vpn:init
+        // Resolved from $host, not the registry: on a first install netbird:init
         // renders and waits on these resources before it registers the tool.
         $mgmt = $this->vpnDeploymentForHost($host);
         $signal = $this->vpnDeploymentForHost($host, 'signal');
@@ -107,7 +89,7 @@ class VpnInitCommand extends Command
             // DROP DATABASE IF EXISTS on a name that never existed reports
             // success, so the mismatch is invisible — confirmed live
             // 2026-08-29, where a --purge left the store fully intact and the
-            // next vpn:init hit "setup already completed".
+            // next netbird:init hit "setup already completed".
             $storeDb = ClusterTool::VPN->commonsDatabases(ClusterTool::VPN->instanceSlugFromHost($host))[0];
 
             $dbPassword = $this->readClusterSecretKey($kubectl, $ns, $storeSecret, 'db-password') ?? Str::random(24);
@@ -203,7 +185,7 @@ class VpnInitCommand extends Command
         if (! $this->waitForTls($kubectl, $ns, $host, $env === 'local')) {
             $this->reportStaleResolverCache($host);
             $this->newLine();
-            $this->line('  <fg=gray>Nothing was rolled back — re-run</> <fg=blue>larakube vpn:init '.$env.'</> <fg=gray>once it resolves.</>');
+            $this->line('  <fg=gray>Nothing was rolled back — re-run</> <fg=blue>larakube netbird:init '.$env.'</> <fg=gray>once it resolves.</>');
             $this->newLine();
 
             return 1;
@@ -276,7 +258,7 @@ class VpnInitCommand extends Command
         $this->line("  <fg=gray>NetBird Admin URL:</>            <fg=blue>https://{$host}</>");
 
         // The dashboard logs in against the EMBEDDED IdP, so this is the
-        // credential that actually opens it — print it like mail:init does,
+        // credential that actually opens it — print it like stalwart:init does,
         // rather than leaving the operator with a URL and no way in.
         $adminEmail = $this->readClusterSecretKey($kubectl, $ns, $this->vpnSecretForHost($host), 'admin-email');
         $adminPassword = $this->readClusterSecretKey($kubectl, $ns, $this->vpnSecretForHost($host), 'admin-password');
@@ -297,7 +279,7 @@ class VpnInitCommand extends Command
         // one moment the startup log is guaranteed to be fresh.
         //
         // A warning, not a failure: the deploy really did succeed, and failing
-        // would make vpn:init un-runnable on the very cluster that needs fixing.
+        // would make netbird:init un-runnable on the very cluster that needs fixing.
         $singleAccount = $this->vpnSingleAccountState($kubectl, $ns);
 
         if ($singleAccount !== null && ! $singleAccount['enabled']) {
@@ -449,7 +431,7 @@ class VpnInitCommand extends Command
                     break;
                 } catch (FatalRequestException $e) {
                     if ($attempt === $maxAttempts || app()->runningUnitTests()) {
-                        $this->laraKubeWarn('Could not reach NetBird management after multiple attempts — run `larakube vpn:init` again once the endpoint is reachable.');
+                        $this->laraKubeWarn('Could not reach NetBird management after multiple attempts — run `larakube netbird:init` again once the endpoint is reachable.');
 
                         return;
                     }
@@ -470,7 +452,7 @@ class VpnInitCommand extends Command
                 $this->line('  <fg=gray>The namespace was recreated but the Commons store survived (plain vpn:remove keeps it).</>');
                 $this->newLine();
                 $this->line('  <fg=gray>Start clean — drops the database too:</>');
-                $this->line('  <fg=blue>  larakube vpn:remove '.$env.' --purge</> <fg=gray>then</> <fg=blue>larakube vpn:init '.$env.'</>');
+                $this->line('  <fg=blue>  larakube vpn:remove '.$env.' --purge</> <fg=gray>then</> <fg=blue>larakube netbird:init '.$env.'</>');
                 $this->newLine();
                 $this->line('  <fg=gray>Or keep the existing account: mint a PAT in the dashboard</>');
                 $this->line('  <fg=gray>(Team → Users → your user → Access Tokens), then</>');
@@ -532,7 +514,7 @@ class VpnInitCommand extends Command
      * Ensure the stored PAT belongs to the larakube-cli service user, and that
      * both cluster-level groups exist, whatever account is current.
      *
-     * Quiet no-op on the normal path: after a first vpn:init the PAT already
+     * Quiet no-op on the normal path: after a first netbird:init the PAT already
      * belongs to the service user and the groups already exist, so every call
      * here is a lookup that finds what it wanted.
      */
@@ -570,9 +552,9 @@ class VpnInitCommand extends Command
      * Ensure a gateway setup key exists and is the one the client Deployment holds.
      *
      * This used to live inside the /api/setup bootstrap block, which meant it only
-     * ever ran on the very first vpn:init. Once vpn:sso-login started creating the
+     * ever ran on the very first netbird:init. Once vpn:sso-login started creating the
      * account instead, bootstrap short-circuits and no key was ever minted — the
-     * client came up, failed with "no peer auth method provided", and vpn:init
+     * client came up, failed with "no peer auth method provided", and netbird:init
      * still printed a tick because it only ever checked the rollout. Confirmed
      * live 2026-08-29: 0 setup keys, 0 peers, a healthy-looking 2/2 pod.
      *
@@ -627,7 +609,7 @@ class VpnInitCommand extends Command
      * service user, returning whichever token the caller should actually store.
      *
      * Best-effort by design: a NetBird that will not create the service user is
-     * still a working NetBird, and failing vpn:init over it would leave the
+     * still a working NetBird, and failing netbird:init over it would leave the
      * cluster with no VPN at all rather than one with a slightly worse token.
      * The warning says which of the two you ended up with.
      */
@@ -666,7 +648,7 @@ class VpnInitCommand extends Command
             return $servicePat;
         } catch (Throwable) {
             $this->laraKubeWarn('Could not create a NetBird service user — storing the owner\'s token instead.');
-            $this->line('  <fg=gray>Works today, but it dies with that user. Re-run vpn:init after fixing to move off it.</>');
+            $this->line('  <fg=gray>Works today, but it dies with that user. Re-run netbird:init after fixing to move off it.</>');
 
             return $ownerPat;
         }
@@ -700,7 +682,7 @@ class VpnInitCommand extends Command
     /**
      * Seed the PAT into OpenBao KV so it can later be rotated without the CLI.
      *
-     * VpnTool declares a KV sync for this key, which means secrets:init creates
+     * VpnTool declares a KV sync for this key, which means openbao:init creates
      * an ExternalSecret reading `{env}/VPN_{SLUG}_PAT`. With `creationPolicy:
      * Merge` an unpopulated key leaves the Secret's own value alone but parks the
      * ExternalSecret at SecretMissing forever — the same red noise this cluster
@@ -777,7 +759,7 @@ class VpnInitCommand extends Command
             }
 
             if (! $this->pollForDnsPropagation($host, 90)) {
-                $this->laraKubeWarn("DNS for {$host} hasn't propagated after 90s — proceeding anyway (auth bootstrap may fail; re-run `vpn:init` once DNS resolves).");
+                $this->laraKubeWarn("DNS for {$host} hasn't propagated after 90s — proceeding anyway (auth bootstrap may fail; re-run `netbird:init` once DNS resolves).");
 
                 return;
             }
@@ -797,7 +779,7 @@ class VpnInitCommand extends Command
                 return;
             }
 
-            $this->laraKubeWarn('TLS still not ready after DNS propagated and a forced retry — proceeding anyway (auth bootstrap may fail; re-run `vpn:init` if it does).');
+            $this->laraKubeWarn('TLS still not ready after DNS propagated and a forced retry — proceeding anyway (auth bootstrap may fail; re-run `netbird:init` if it does).');
         });
 
         return $resolvable;
@@ -868,7 +850,7 @@ class VpnInitCommand extends Command
      *
      * Best-effort and deliberately quiet: a cluster may run several zone
      * deployments or none at all, and none of that should fail a deploy. The
-     * label is what dns:init gives every zone controller it creates.
+     * label is what external-dns:init gives every zone controller it creates.
      */
     protected function nudgeExternalDns(string $kubectl): void
     {

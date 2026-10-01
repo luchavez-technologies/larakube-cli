@@ -5,7 +5,7 @@ namespace App\Traits;
 use Illuminate\Support\Facades\Process;
 
 /**
- * The Cloudflare tokens `dns:init` stored in `larakube-shared`, one per group.
+ * The Cloudflare tokens `external-dns:init` stored in `larakube-shared`, one per group.
  * `tls:init` reuses them rather than asking for the same credential twice.
  *
  * The using class provides readClusterSecretKey() (ReadsClusterSecrets).

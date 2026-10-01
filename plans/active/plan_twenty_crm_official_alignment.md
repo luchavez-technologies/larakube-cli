@@ -91,5 +91,5 @@ pest tests/Feature/CrmInitCommandTest.php
 
 ### Manual Verification
 1. Re-build LaraKube CLI: `./build`
-2. Deploy or update Twenty CRM instance: `larakube crm:init production`
+2. Deploy or update Twenty CRM instance: `larakube twenty:init production`
 3. Verify pod readiness and HTTP connectivity against official specs.

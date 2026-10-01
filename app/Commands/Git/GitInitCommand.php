@@ -32,7 +32,7 @@ use function Laravel\Prompts\text;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class GitInitCommand extends Command
+abstract class GitInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithGitForge, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
@@ -59,27 +59,6 @@ class GitInitCommand extends Command
      * install Debian's podman-remote client when it is missing.
      */
     protected const JOB_IMAGE = 'node:24-trixie';
-
-    protected $signature = 'git:init
-        {environment? : Environment this install targets — "local" (default) or a cloud env. Omit to be prompted. A non-local env prompts for + persists the Forgejo host.}
-        {--context=  : Target a specific kube-context (defaults to current context)}
-        {--domain=   : Base domain OR full host for Forgejo (example.com → git.example.com; git.example.com used as-is)}
-        {--app-name= : Custom branding name for Forgejo (defaults to Git)}
-        {--logo-url= : Custom logo URL for Forgejo}
-        {--admin-email= : Email for the Forgejo admin account (defaults to admin@<your domain>)}
-        {--no-plex   : Bypass Plex Commons and use local PVC storage instead}
-        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy the cluster-wide Forgejo forge, CI/CD runner, and package registry';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'git:init' is deprecated. Forwarding to 'forgejo:init'. Please update your scripts.");
-        $this->renderHeader();
-
-        return $this->deployGit();
-    }
 
     protected function deployGit(): int
     {
@@ -339,7 +318,7 @@ class GitInitCommand extends Command
             if ($registryToken === null) {
                 $this->laraKubeError(
                     'Could not mint the package registry token — Forgejo is up, but pushing packages '
-                    ."to it will fail. Re-run `larakube git:init {$env}` once the pod is healthy.",
+                    ."to it will fail. Re-run `larakube forgejo:init {$env}` once the pod is healthy.",
                 );
             }
         }
@@ -362,7 +341,7 @@ class GitInitCommand extends Command
                 // MUST be passed. `register` is idempotent but NOT label-preserving:
                 // called without --labels it rewrites the existing runner's
                 // agent_labels to empty. The daemon only declares its labels when
-                // it starts, so a re-run of git:init against an already-running
+                // it starts, so a re-run of forgejo:init against an already-running
                 // runner silently strips them — every job then queues forever on
                 // "Waiting for a runner with the following label: ubuntu-latest"
                 // while the runner sits there, online and idle.
@@ -422,7 +401,7 @@ class GitInitCommand extends Command
         // Forgejo never registered itself here — the only registry write it
         // ever got was an incidental side effect of resolveToolBranding()
         // saving a custom --app-name/--logo-url, which only fires when one
-        // was actually passed. Every plain `git:init` left the tool entirely
+        // was actually passed. Every plain `forgejo:init` left the tool entirely
         // absent from the registry: no host, so tool:list/tool:show and any
         // `git:` -domain targeting had nothing to find.
         $this->registerDeployedTool(ClusterTool::GIT, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);

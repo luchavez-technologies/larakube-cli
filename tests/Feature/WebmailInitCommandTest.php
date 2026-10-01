@@ -9,23 +9,23 @@ afterEach(function (): void {
     MockClient::destroyGlobal();
 });
 
-test('webmail:init is registered', function (): void {
+test('bulwark:init is registered', function (): void {
     $this->artisan('list')
         ->assertExitCode(0)
-        ->expectsOutputToContain('webmail:init');
+        ->expectsOutputToContain('bulwark:init');
 });
 
-test('webmail:init refuses when Stalwart is not installed', function (): void {
+test('bulwark:init refuses when Stalwart is not installed', function (): void {
     Process::fake([
         '*larakube.io/tool=mail*' => Process::result(output: '', exitCode: 1),
     ]);
 
-    $this->artisan('webmail:init local')
+    $this->artisan('bulwark:init local')
         ->assertExitCode(1)
         ->expectsOutputToContain('Stalwart is not installed');
 });
 
-test('webmail:init deploys Bulwark and enables CORS when Stalwart is present', function (): void {
+test('bulwark:init deploys Bulwark and enables CORS when Stalwart is present', function (): void {
     Process::fake([
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret bulwark-secrets-*' => Process::result(output: '', exitCode: 1),
@@ -42,7 +42,7 @@ test('webmail:init deploys Bulwark and enables CORS when Stalwart is present', f
         MockResponse::make(['methodResponses' => [['x:Http/set', ['updated' => ['singleton' => null]], 'c1']]]),
     ]);
 
-    $this->artisan('webmail:init local')
+    $this->artisan('bulwark:init local')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying Bulwark manifests...')
         ->expectsOutputToContain('Bulwark webmail is live.')
@@ -68,7 +68,7 @@ test('webmail bulwark manifest references standard secret keys', function (): vo
         ->not->toContain('webmail-bulwark');
 });
 
-test('webmail:init still succeeds but warns when the CORS flip fails', function (): void {
+test('bulwark:init still succeeds but warns when the CORS flip fails', function (): void {
     Process::fake([
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret bulwark-secrets-*' => Process::result(output: '', exitCode: 1),
@@ -85,13 +85,13 @@ test('webmail:init still succeeds but warns when the CORS flip fails', function 
         MockResponse::make(['errors' => ['internal error']], 500),
     ]);
 
-    $this->artisan('webmail:init local')
+    $this->artisan('bulwark:init local')
         ->assertExitCode(0)
         ->expectsOutputToContain('Bulwark webmail is live.')
         ->expectsOutputToContain('Could not auto-enable CORS on Stalwart.');
 });
 
-test('webmail:init --vpn-only creates the Traefik Middleware before applying the manifests', function (): void {
+test('bulwark:init --vpn-only creates the Traefik Middleware before applying the manifests', function (): void {
     Process::fake([
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret bulwark-secrets-*' => Process::result(output: '', exitCode: 1),
@@ -107,7 +107,7 @@ test('webmail:init --vpn-only creates the Traefik Middleware before applying the
         MockResponse::make(['methodResponses' => [['x:Http/set', ['updated' => ['singleton' => null]], 'c1']]]),
     ]);
 
-    $this->artisan('webmail:init local --vpn-only')
+    $this->artisan('bulwark:init local --vpn-only')
         ->assertExitCode(0)
         ->expectsOutputToContain('Ensuring VPN-only Middleware for Webmail UI (Bulwark)...')
         ->expectsOutputToContain('Bulwark webmail is live.');

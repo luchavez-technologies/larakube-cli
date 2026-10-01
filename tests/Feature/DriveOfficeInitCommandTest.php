@@ -45,7 +45,7 @@ test('drive:office:init refuses when Drive itself is not installed', function ()
 test('the oCIS manifest is unchanged when the office layer is absent', function (): void {
     $rendered = view('k8s.drive.ocis', driveOfficeViewData(office: false))->render();
 
-    // The whole point of the @if gates: a plain drive:init must not gain a
+    // The whole point of the @if gates: a plain ocis:init must not gain a
     // sidecar, a second Service, or any Collabora wiring.
     expect($rendered)
         ->not->toContain('collaboration')

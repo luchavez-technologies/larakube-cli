@@ -89,15 +89,18 @@ test('mail:wire local --tool=data configures PocketBase SMTP, not Directus, on a
 
 test('mail:wire local --tool=design configures Penpot SMTP via deployment secret', function (): void {
     Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
+            ['tool' => 'penpot', 'instance' => 'design-example-com', 'host' => 'design.example.com'],
+        ]))),
         '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
-        '*get deployment design-penpot-backend*' => Process::result(output: 'design-penpot-backend   1/1   1   1   10d'),
+        '*get deployment penpot-backend-design-example-com*' => Process::result(output: 'penpot-backend-design-example-com   1/1   1   1   10d'),
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/design-penpot-backend*' => Process::result(output: 'updated'),
-        '*set env deployment/design-penpot-frontend*' => Process::result(output: 'updated'),
-        '*rollout restart deployment/design-penpot-backend*' => Process::result(output: 'restarted'),
-        '*rollout restart deployment/design-penpot-frontend*' => Process::result(output: 'restarted'),
+        '*set env deployment/penpot-backend-design-example-com*' => Process::result(output: 'updated'),
+        '*set env deployment/penpot-frontend-design-example-com*' => Process::result(output: 'updated'),
+        '*rollout restart deployment/penpot-backend-design-example-com*' => Process::result(output: 'restarted'),
+        '*rollout restart deployment/penpot-frontend-design-example-com*' => Process::result(output: 'restarted'),
     ]);
 
     $this->artisan('mail:wire local --tool=design')
@@ -106,34 +109,37 @@ test('mail:wire local --tool=design configures Penpot SMTP via deployment secret
     Process::assertRan(fn ($process) => isset(appliedSecret($process)['data']['PENPOT_SMTP_HOST']));
 });
 
-test('mail:wire local --tool=errors composes GlitchTip EMAIL_URL and patches the worker too', function (): void {
+test('mail:wire local --tool=<errors|glitchtip> composes GlitchTip EMAIL_URL and patches the worker too, whichever name is given', function (string $toolName): void {
     Process::fake([
         '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
-        '*get deployment glitchtip-web*' => Process::result(output: 'glitchtip-web   1/1   1   1   10d'),
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
+            ['tool' => 'errors', 'instance' => 'errors-example-com', 'host' => 'errors.example.com'],
+        ]))),
+        '*get deployment glitchtip-errors-example-com*' => Process::result(output: 'glitchtip-errors-example-com   1/1   1   1   10d'),
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/glitchtip-web*' => Process::result(output: 'updated'),
-        '*set env deployment/glitchtip-worker*' => Process::result(output: 'updated'),
-        '*rollout restart deployment/glitchtip-web*' => Process::result(output: 'restarted'),
-        '*rollout restart deployment/glitchtip-worker*' => Process::result(output: 'restarted'),
+        '*set env deployment/glitchtip-errors-example-com*' => Process::result(output: 'updated'),
+        '*set env deployment/glitchtip-worker-errors-example-com*' => Process::result(output: 'updated'),
+        '*rollout restart deployment/glitchtip-errors-example-com*' => Process::result(output: 'restarted'),
+        '*rollout restart deployment/glitchtip-worker-errors-example-com*' => Process::result(output: 'restarted'),
     ]);
 
-    $this->artisan('mail:wire local --tool=errors')
-        ->expectsOutputToContain('Wired to Stalwart: Error Tracking (GlitchTip)');
+    $this->artisan("mail:wire local --tool={$toolName}")
+        ->expectsOutputToContain('Wired to Stalwart:');
 
     // GlitchTip reads one composed django-environ URL, not per-host vars —
     // credentials must be percent-encoded (the sender's @ would break it).
-    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'glitchtip-smtp')
+    Process::assertRan(fn ($process) => (appliedSecret($process)['name'] ?? '') === 'glitchtip-smtp-errors-example-com'
         && isset(appliedSecret($process)['data']['DEFAULT_FROM_EMAIL'])
         && str_starts_with(appliedSecret($process)['data']['EMAIL_URL'] ?? '', 'smtp+ssl://noreply%40luchtech.dev:noreply%40luchtech.dev@'));
 
     // The worker sends the actual alert emails, so it shares the primary's
     // SMTP secret via also_patch.
-    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/glitchtip-worker')
-        && str_contains($process->command, '--from=secret/glitchtip-smtp'));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/glitchtip-worker'));
-});
+    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/glitchtip-worker-errors-example-com')
+        && str_contains($process->command, '--from=secret/glitchtip-smtp-errors-example-com'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/glitchtip-worker-errors-example-com'));
+})->with(['errors', 'glitchtip']);
 
 test('mail:wire local --tool=crm resolves the real host-derived instance from the registry and patches the worker too', function (): void {
     // Regression: CRM has no 'main' deployment at all (pure host-derived
@@ -215,5 +221,5 @@ test('mail:wire for a tool with no instance at all says how to install it', func
     Process::fake(mailWireRegistryFakes([]));
 
     $this->artisan('mail:wire production --tool=flow --domain=flow.example.com')
-        ->expectsOutputToContain('is not installed. Run `larakube flow:init production` first.');
+        ->expectsOutputToContain('is not installed. Run `larakube n8n:init production` first.');
 });

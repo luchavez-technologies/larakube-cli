@@ -17,7 +17,7 @@ one-level host (e.g. `notes-check.luchtech.dev`), and `--dry-run` where offered.
 - [ ] `larakube plex:show production`: every tenant name matches what the
   tool's `:init` would allocate (no fixed `link_kutt`/`teable`/`stalwart` left
   after re-running those tools' `:init`).
-- [ ] Scratch pair: `paste:init production --domain=paste-a.luchtech.dev` and
+- [ ] Scratch pair: `yopass:init production --domain=paste-a.luchtech.dev` and
   `--domain=paste-b.luchtech.dev`. `plex:show` lists two Redis tenants with
   different indexes and two buckets.
 - [ ] `paste:remove production --domain=paste-a.luchtech.dev --purge`: only A's

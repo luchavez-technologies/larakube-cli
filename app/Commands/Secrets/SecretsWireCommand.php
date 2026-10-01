@@ -58,7 +58,7 @@ class SecretsWireCommand extends Command
         $rotationPeriod = (string) ($this->option('rotation-period') ?: '168h');
 
         if (! $this->secretsBackendAvailable($kubectl)) {
-            $this->laraKubeWarn('OpenBao is not deployed. Run `larakube secrets:init` first.');
+            $this->laraKubeWarn('OpenBao is not deployed. Run `larakube openbao:init` first.');
 
             return 1;
         }

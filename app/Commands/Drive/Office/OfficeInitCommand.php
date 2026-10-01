@@ -32,9 +32,9 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  *   2. oCIS's own `collaboration` service — the WOPI bridge between the two.
  *      It is NOT deployed here: it ships in the same oCIS image and has to share
  *      oCIS's network namespace (see the sidecar comment in
- *      k8s/drive/ocis.blade.php), so `drive:init` owns rendering it and this
+ *      k8s/drive/ocis.blade.php), so `ocis:init` owns rendering it and this
  *      command re-runs that command once CODE exists. That keeps one source of
- *      truth for the oCIS manifest and means a later plain `drive:init`
+ *      truth for the oCIS manifest and means a later plain `ocis:init`
  *      preserves the office layer instead of silently stripping it.
  */
 class OfficeInitCommand extends Command
@@ -74,7 +74,7 @@ class OfficeInitCommand extends Command
         $names = ToolInstance::forHost(ClusterTool::DRIVE, $host);
 
         if (! $this->driveIsInstalled($kubectl, $ns, $names)) {
-            $this->laraKubeError('Drive is not installed on this cluster — run `larakube drive:init` first.');
+            $this->laraKubeError('Drive is not installed on this cluster — run `larakube ocis:init` first.');
 
             return 1;
         }
@@ -127,7 +127,7 @@ class OfficeInitCommand extends Command
             610,
         ));
 
-        $this->laraKubeInfo('Re-running drive:init to add the WOPI bridge to oCIS...');
+        $this->laraKubeInfo('Re-running ocis:init to add the WOPI bridge to oCIS...');
         $this->newLine();
 
         $driveArgs = ['environment' => $env, '--force' => true];
@@ -135,9 +135,9 @@ class OfficeInitCommand extends Command
             $driveArgs['--context'] = $context;
         }
 
-        $exit = $this->call('drive:init', $driveArgs);
+        $exit = $this->call('ocis:init', $driveArgs);
         if ($exit !== 0) {
-            $this->laraKubeError('CODE is up, but drive:init failed to wire the WOPI bridge — see the output above.');
+            $this->laraKubeError('CODE is up, but ocis:init failed to wire the WOPI bridge — see the output above.');
 
             return $exit;
         }

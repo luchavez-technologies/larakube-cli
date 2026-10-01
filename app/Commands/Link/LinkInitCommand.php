@@ -24,28 +24,9 @@ use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class LinkInitCommand extends Command
+abstract class LinkInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithLink, InteractsWithPlex, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
-
-    protected $signature = 'link:init
-        {environment? : Environment this install targets — "local" (default) or cloud.}
-        {--context=  : Target a specific kube-context}
-        {--domain=   : Base domain OR full host for Link (example.com → prefix.example.com)}
-        {--app-name= : Custom branding name for Kutt (defaults to Links)}
-        {--logo-url= : Custom logo URL for Kutt}
-        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG_DEFAULT_ON;
-
-    protected $description = 'Deploy the Kutt link shortener stack into larakube-shared';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'link:init' is deprecated. Forwarding to 'kutt:init'. Please update your scripts.");
-        $this->renderHeader();
-
-        return $this->deployLink();
-    }
 
     protected function deployLink(): int
     {

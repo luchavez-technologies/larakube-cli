@@ -15,13 +15,13 @@ The site still loads and logs in.
 
 ## 2. Re-running init keeps it
 ```bash
-larakube flow:init production --engine=n8n --domain=flow.luchtech.dev
+larakube n8n:init production --engine=n8n --domain=flow.luchtech.dev
 ```
 No `--proxied`: the Ingress keeps `cloudflare-proxied: "true"`
 (`kubectl get ingress -n larakube-shared -o yaml | grep cloudflare-proxied`, read-only).
 
 ## 3. Refusals (nothing changes)
-- `larakube git:init production --proxied` → refused: Git serves SSH.
+- `larakube forgejo:init production --proxied` → refused: Git serves SSH.
 - `larakube tool:proxy production --domain=<a VPN-only tool's host>` → refused.
 - A host two labels below its zone with `--proxied` → refused (edge certificate).
 

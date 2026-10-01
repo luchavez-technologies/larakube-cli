@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('meet:init deploys the shared LiveKit SFU', function (): void {
+test('livekit:init deploys the shared LiveKit SFU', function (): void {
     Process::fake([
         '*get secret livekit-secrets-*' => Process::result(output: '', exitCode: 1),
         '*larakube.io/component=lk-jwt*' => Process::result(output: ''),
@@ -12,7 +12,7 @@ test('meet:init deploys the shared LiveKit SFU', function (): void {
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('meet:init local --no-interaction')
+    $this->artisan('livekit:init local --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying LiveKit (Meet) manifests...')
         ->expectsOutputToContain('LiveKit (Meet) is live.');
@@ -20,7 +20,7 @@ test('meet:init deploys the shared LiveKit SFU', function (): void {
     Process::assertRan(fn ($job) => str_contains($job->command, 'apply -f'));
 });
 
-test('a fresh meet:init points you at the wire command instead of pretending it is usable', function (): void {
+test('a fresh livekit:init points you at the wire command instead of pretending it is usable', function (): void {
     Process::fake([
         '*get secret livekit-secrets-*' => Process::result(output: '', exitCode: 1),
         '*larakube.io/component=lk-jwt*' => Process::result(output: ''),
@@ -30,7 +30,7 @@ test('a fresh meet:init points you at the wire command instead of pretending it 
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('meet:init local --no-interaction')
+    $this->artisan('livekit:init local --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('meet:wire local --tool=chat');
 });
@@ -67,7 +67,7 @@ test('meet:remove aborts when a delete step fails', function (): void {
         ->expectsOutputToContain('failed to remove');
 });
 
-test('meet:init fails when LiveKit never becomes Ready instead of announcing it is live', function (): void {
+test('livekit:init fails when LiveKit never becomes Ready instead of announcing it is live', function (): void {
     // LiveKit binds its RTC ports with hostPort, so a second pod on the same
     // node can never schedule — the failure mode a rename walks straight into.
     Process::fake([
@@ -79,7 +79,7 @@ test('meet:init fails when LiveKit never becomes Ready instead of announcing it 
         '*rollout status*' => Process::result(output: 'error: timed out waiting for the condition', exitCode: 1),
     ]);
 
-    $this->artisan('meet:init local --no-interaction')
+    $this->artisan('livekit:init local --no-interaction')
         ->assertExitCode(1)
         ->expectsOutputToContain('LiveKit did not become Ready')
         ->doesntExpectOutputToContain('LiveKit (Meet) is live.');

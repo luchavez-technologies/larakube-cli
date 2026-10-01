@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
@@ -19,17 +20,17 @@ trait InteractsWithErrors
         return ClusterTool::ERRORS->namespace();
     }
 
-    /** GlitchTip web Deployment present? A cheap "is GlitchTip installed" probe. */
+    /** GlitchTip web Deployment present? A cheap "is GlitchTip installed" probe, by identity label. */
     protected function isErrorsInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'glitchtip-web');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=errors,larakube.io/component=glitchtip');
     }
 
     /** Decrypt and read the GlitchTip admin password from the larakube Secret. */
-    protected function readErrorsAdminPassword(string $kubectl, string $ns): ?string
+    protected function readErrorsAdminPassword(string $kubectl, string $ns, string $secret): ?string
     {
         $out = trim(Process::run(
-            "{$kubectl} get secret errors-secrets -n {$ns} -o jsonpath='{.data.password}'",
+            "{$kubectl} get secret {$secret} -n {$ns} -o jsonpath='{.data.password}'",
         )->output());
 
         return $out !== '' ? (string) base64_decode($out) : null;
@@ -68,7 +69,7 @@ trait InteractsWithErrors
 
         return [
             'host' => $this->resolveErrorsHostReadOnly($env, $config),
-            'password' => $this->readErrorsAdminPassword($kubectl, $ns),
+            'password' => ($names = ToolInstance::first($kubectl, ClusterTool::ERRORS)) === null ? null : $this->readErrorsAdminPassword($kubectl, $ns, $names->secret()),
             'label' => 'GlitchTip',
         ];
     }

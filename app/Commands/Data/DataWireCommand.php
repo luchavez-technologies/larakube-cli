@@ -56,7 +56,7 @@ class DataWireCommand extends Command
         [, $host] = $picked;
 
         if ($host === null) {
-            $this->laraKubeError("No Data / Headless CMS host found for '{$env}'. Run `larakube data:init {$env}` first.");
+            $this->laraKubeError("No Data / Headless CMS host found for '{$env}'. Run `larakube directus:init {$env}` first.");
 
             return 1;
         }

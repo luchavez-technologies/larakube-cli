@@ -10,7 +10,7 @@ afterEach(function (): void {
     MockClient::destroyGlobal();
 });
 
-test('monitor:init --no-logs deploys metrics-only stack without loki, promtail and tempo', function (): void {
+test('grafana:init --no-logs deploys metrics-only stack without loki, promtail and tempo', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -25,7 +25,7 @@ test('monitor:init --no-logs deploys metrics-only stack without loki, promtail a
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('monitor:init local --no-logs')
+    $this->artisan('grafana:init local --no-logs')
         ->assertExitCode(0)
         ->expectsOutputToContain('Waiting for Prometheus...')
         ->doesntExpectOutputToContain('Waiting for Loki...')
@@ -34,9 +34,9 @@ test('monitor:init --no-logs deploys metrics-only stack without loki, promtail a
         ->doesntExpectOutputToContain('Waiting for Promtail...')
         ->doesntExpectOutputToContain('Waiting for Tempo...')
         ->expectsOutputToContain('Log aggregation (Loki + Promtail) is disabled (~300MB RAM saved).')
-        ->expectsOutputToContain('Run larakube monitor:init --with-logs anytime to enable log search in Grafana.')
+        ->expectsOutputToContain('Run larakube grafana:init --with-logs anytime to enable log search in Grafana.')
         ->expectsOutputToContain('Distributed tracing (Tempo) is disabled (~450MB RAM saved).')
-        ->expectsOutputToContain('Run larakube monitor:init --with-traces anytime to enable trace search in Grafana.')
+        ->expectsOutputToContain('Run larakube grafana:init --with-traces anytime to enable trace search in Grafana.')
         ->expectsOutputToContain('Dashboards: Cluster Overview, Nodes, Pods.');
 
     Process::assertRan(fn ($p) => str_contains($p->command, 'create configmap grafana-dashboards'));
@@ -44,7 +44,7 @@ test('monitor:init --no-logs deploys metrics-only stack without loki, promtail a
     Process::assertNotRan('*delete *');
 });
 
-test('monitor:init --with-logs deploys full stack including loki and promtail', function (): void {
+test('grafana:init --with-logs deploys full stack including loki and promtail', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -59,7 +59,7 @@ test('monitor:init --with-logs deploys full stack including loki and promtail', 
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('monitor:init local --with-logs')
+    $this->artisan('grafana:init local --with-logs')
         ->assertExitCode(0)
         ->expectsOutputToContain('Waiting for Prometheus...')
         ->expectsOutputToContain('Waiting for Loki...')
@@ -73,7 +73,7 @@ test('monitor:init --with-logs deploys full stack including loki and promtail', 
     Process::assertNotRan('*rollout restart*');
 });
 
-test('monitor:init --with-traces --with-logs deploys the full stack including tempo', function (): void {
+test('grafana:init --with-traces --with-logs deploys the full stack including tempo', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -88,7 +88,7 @@ test('monitor:init --with-traces --with-logs deploys the full stack including te
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('monitor:init local --with-traces --with-logs')
+    $this->artisan('grafana:init local --with-traces --with-logs')
         ->assertExitCode(0)
         ->expectsOutputToContain('Waiting for Loki...')
         ->expectsOutputToContain('Waiting for Promtail...')
@@ -100,7 +100,7 @@ test('monitor:init --with-traces --with-logs deploys the full stack including te
     Process::assertNotRan('*delete *');
 });
 
-test('monitor:init defaults to metrics-only in non-interactive mode', function (): void {
+test('grafana:init defaults to metrics-only in non-interactive mode', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -115,7 +115,7 @@ test('monitor:init defaults to metrics-only in non-interactive mode', function (
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('monitor:init local --no-interaction')
+    $this->artisan('grafana:init local --no-interaction')
         ->assertExitCode(0)
         ->doesntExpectOutputToContain('Waiting for Loki...')
         ->doesntExpectOutputToContain('Waiting for Promtail...')
@@ -124,7 +124,7 @@ test('monitor:init defaults to metrics-only in non-interactive mode', function (
         ->expectsOutputToContain('Distributed tracing (Tempo) is disabled (~450MB RAM saved).');
 });
 
-test('monitor:init --no-logs removes a previously deployed log aggregation stack and restarts grafana', function (): void {
+test('grafana:init --no-logs removes a previously deployed log aggregation stack and restarts grafana', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -154,7 +154,7 @@ test('monitor:init --no-logs removes a previously deployed log aggregation stack
     // test's expectations non-deterministic across environments. --force
     // pins it to the same bypass path every time; the removal itself (not
     // the confirmation UX) is what this test is about.
-    $this->artisan('monitor:init local --no-logs --force')
+    $this->artisan('grafana:init local --no-logs --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing Loki...')
         ->expectsOutputToContain('Removing Promtail...')
@@ -168,7 +168,7 @@ test('monitor:init --no-logs removes a previously deployed log aggregation stack
     Process::assertNotRan('*delete deployment,svc,configmap,pvc tempo*');
 });
 
-test('monitor:init --no-traces removes a previously deployed tempo stack and restarts grafana', function (): void {
+test('grafana:init --no-traces removes a previously deployed tempo stack and restarts grafana', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -190,7 +190,7 @@ test('monitor:init --no-traces removes a previously deployed tempo stack and res
 
     // See the --no-logs test above for why --force (not a scripted confirm)
     // is what keeps this deterministic across TTY/non-TTY runners.
-    $this->artisan('monitor:init local --no-traces --force')
+    $this->artisan('grafana:init local --no-traces --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing Tempo...')
         ->expectsOutputToContain('Restarting Grafana to load the updated data sources...')
@@ -201,7 +201,7 @@ test('monitor:init --no-traces removes a previously deployed tempo stack and res
     Process::assertNotRan('*delete deployment,svc,configmap,pvc loki*');
 });
 
-test('monitor:init re-running with matching flags is a no-op — no deletions, no grafana restart', function (): void {
+test('grafana:init re-running with matching flags is a no-op — no deletions, no grafana restart', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -219,7 +219,7 @@ test('monitor:init re-running with matching flags is a no-op — no deletions, n
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('monitor:init local --with-logs --with-traces')
+    $this->artisan('grafana:init local --with-logs --with-traces')
         ->assertExitCode(0)
         ->doesntExpectOutputToContain('Removing Loki...')
         ->doesntExpectOutputToContain('Removing Tempo...')
@@ -229,8 +229,8 @@ test('monitor:init re-running with matching flags is a no-op — no deletions, n
     Process::assertNotRan('*rollout restart*');
 });
 
-test('monitor:init allocates a real Commons Postgres database for Grafana instead of leaving it on ephemeral SQLite', function (): void {
-    // Previously monitor:init never touched Postgres at all — Grafana's own
+test('grafana:init allocates a real Commons Postgres database for Grafana instead of leaving it on ephemeral SQLite', function (): void {
+    // Previously grafana:init never touched Postgres at all — Grafana's own
     // database (UI-created dashboards, folders, alert rules, users) lived
     // only in its built-in SQLite on the pod's ephemeral filesystem, wiped
     // on every pod recreation. Confirmed live 2026-08-18 — a teammate's
@@ -250,7 +250,7 @@ test('monitor:init allocates a real Commons Postgres database for Grafana instea
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('monitor:init local --no-logs')
+    $this->artisan('grafana:init local --no-logs')
         ->assertExitCode(0)
         ->expectsOutputToContain("Allocating database 'grafana_grafana_kube' in the Commons");
 
@@ -259,14 +259,14 @@ test('monitor:init allocates a real Commons Postgres database for Grafana instea
         && str_contains($p->command, 'deploy/postgres'));
 });
 
-test('monitor:init never registers an OpenBao static role itself — only secrets:wire may hand rotation over', function (): void {
+test('grafana:init never registers an OpenBao static role itself — only secrets:wire may hand rotation over', function (): void {
     // Same design principle as GitInitCommandTest's sibling: {tool}:init
     // must not know or care whether OpenBao is installed — it just writes
     // the locally-generated password directly into monitor-secrets (see
     // the Deployment template's db-password key, rendered from the PHP
     // variable). Only secrets:wire may register a tool's DB password as an
     // OpenBao static role. This test previously asserted the OPPOSITE
-    // (monitor:init reconciling monitor-secrets-db itself) — that assertion
+    // (grafana:init reconciling monitor-secrets-db itself) — that assertion
     // encoded the exact bug this design principle exists to prevent.
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
@@ -294,16 +294,16 @@ test('monitor:init never registers an OpenBao static role itself — only secret
         ], default: ['data' => []]),
     ]);
 
-    $this->artisan('monitor:init local --no-logs')
+    $this->artisan('grafana:init local --no-logs')
         ->assertExitCode(0);
 
     Process::assertNotRan(fn ($p) => str_contains($p->command, 'externalsecret'));
     Saloon::assertNotSent(fn ($request) => str_contains($request->resolveEndpoint(), '/v1/database/static-roles/'));
 });
 
-test('monitor:init --no-plex skips Commons Postgres entirely and uses a local PVC for SQLite instead', function (): void {
+test('grafana:init --no-plex skips Commons Postgres entirely and uses a local PVC for SQLite instead', function (): void {
     // The fallback for a cluster with no Plex Commons at all — mirrors
-    // git:init's own --no-plex story. Still genuinely persistent (a PVC
+    // forgejo:init's own --no-plex story. Still genuinely persistent (a PVC
     // survives pod recreation, unlike the pre-fix ephemeral-only setup),
     // just not backed by Commons Postgres or its nightly backup.
     Process::fake([
@@ -315,7 +315,7 @@ test('monitor:init --no-plex skips Commons Postgres entirely and uses a local PV
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('monitor:init local --no-logs --no-plex')
+    $this->artisan('grafana:init local --no-logs --no-plex')
         ->assertExitCode(0)
         ->expectsOutputToContain('SQLite on a local PVC')
         ->doesntExpectOutputToContain("Allocating database 'grafana' in the Commons");
@@ -343,7 +343,7 @@ test('monitoring shared blade view conditionally renders optional components bas
         ->toContain('app: grafana-grafana-dev-test')
         ->toContain('name: grafana-dashboard-provider')
         // Grafana's own DB must be Commons Postgres, not left on ephemeral
-        // SQLite — see monitor:init's dedicated allocation test.
+        // SQLite — see grafana:init's dedicated allocation test.
         ->toContain('GF_DATABASE_TYPE')
         ->toContain('value: postgres')
         ->toContain('db-password')

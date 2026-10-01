@@ -43,7 +43,7 @@ test('paste manifest wires optional S3 file storage to Commons SeaweedFS only wh
         ->toContain('--file-store-s3-endpoint=http://seaweedfs.larakube-plex.svc.cluster.local:8333')
         ->toContain('--file-store-s3-region=us-east-1')
         ->toContain('name: AWS_ACCESS_KEY_ID')
-        ->toContain('name: paste-yopass-secrets');
+        ->toContain('name: yopass-secrets-paste-example-test');
 });
 
 test('paste ingress applies the vpn-only middleware referencing the exact name PasteTool declares', function (): void {
@@ -57,11 +57,11 @@ test('paste ingress applies the vpn-only middleware referencing the exact name P
         'proxied' => false,
     ])->render();
 
-    expect($manifest)->toContain('larakube-shared-paste-yopass-vpn-only@kubernetescrd');
+    expect($manifest)->toContain('larakube-shared-yopass-vpn-only-paste-example-test@kubernetescrd');
 });
 
 /**
- * Every registry save paste:init makes, in order. `plex-registry` is re-read
+ * Every registry save yopass:init makes, in order. `plex-registry` is re-read
  * from $current on each call, so later saves see earlier allocations.
  */
 function pasteInitRegistryFakes(array &$saved): array
@@ -90,11 +90,11 @@ function pasteInitRegistryFakes(array &$saved): array
     ];
 }
 
-test('paste:init gives each instance its own Commons Redis tenant and bucket', function (): void {
+test('yopass:init gives each instance its own Commons Redis tenant and bucket', function (): void {
     $saved = [];
     Process::fake(pasteInitRegistryFakes($saved));
 
-    $this->artisan('paste:init local --domain=paste.check.example.com --force --no-interaction')->run();
+    $this->artisan('yopass:init local --domain=paste.check.example.com --force --no-interaction')->run();
 
     $tenants = end($saved)['tenants'] ?? [];
 

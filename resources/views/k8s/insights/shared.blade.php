@@ -1,36 +1,52 @@
-@php($dbName ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::INSIGHTS, $host)->database())
+@php
+    // Every name comes from ToolInstance (ADR 0021).
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::INSIGHTS->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::INSIGHTS, $instance);
+    $deploymentName = $names->deployment();
+    $secretName = $names->secret();
+    $volume = $names->volume();
+    $dbName ??= $names->database();
+    $labels = '';
+    foreach ($names->labels() as $key => $value) {
+        $labels .= "\n    {$key}: {$value}";
+    }
+    $podLabels = str_replace("\n    ", "\n        ", $labels);
+@endphp
 @if($noPlex)
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: insights-storage
+  name: {{ $volume }}
   namespace: larakube-shared
+  labels:{!! $labels !!}
 spec:
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: {{ $volumeSize('insights-storage', '5Gi', true) }}
+      storage: {{ $volumeSize($volume, '5Gi', true) }}
 ---
 @endif
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: insights-metabase
+  name: {{ $deploymentName }}
   namespace: larakube-shared
   labels:
-    app: insights-metabase
+    app: {{ $deploymentName }}{!! $labels !!}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: insights-metabase
+      app: {{ $deploymentName }}
   template:
     metadata:
       labels:
-        app: insights-metabase
+        app: {{ $deploymentName }}{!! $podLabels !!}
     spec:
       containers:
         - name: metabase
@@ -39,7 +55,7 @@ spec:
             - name: MB_ENCRYPTION_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: insights-secrets
+                  name: {{ $secretName }}
                   key: encryption-key
 @if($appName ?? null)
             - name: MB_SITE_NAME
@@ -66,7 +82,7 @@ spec:
             - name: MB_DB_PASS
               valueFrom:
                 secretKeyRef:
-                  name: insights-secrets
+                  name: {{ $secretName }}
                   key: db-password
 @endif
           ports:
@@ -100,7 +116,7 @@ spec:
         - name: storage
 @if($noPlex)
           persistentVolumeClaim:
-            claimName: insights-storage
+            claimName: {{ $volume }}
 @else
           emptyDir: {}
 @endif
@@ -108,15 +124,16 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: insights-metabase
+  name: {{ $deploymentName }}
   namespace: larakube-shared
+  labels:{!! $labels !!}
 spec:
   selector:
-    app: insights-metabase
+    app: {{ $deploymentName }}
   ports:
     - protocol: TCP
       port: 3000
       targetPort: 3000
   type: ClusterIP
 ---
-@include('k8s.insights.ingress')
+@include('k8s.insights.ingress', ['instance' => $instance])

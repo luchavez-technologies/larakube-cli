@@ -15,9 +15,9 @@ test('every name comes from the same ClusterTool derivation :init and :remove us
     $instance = ToolInstance::forHost(ClusterTool::PASTE, 'paste.example.com');
 
     expect($instance->deployment())->toBe(ClusterTool::PASTE->deploymentName('paste-example-com'))
-        ->and($instance->commonsRedisTenants())->toBe(['paste_yopass_paste-example-com'])
-        ->and($instance->commonsBuckets())->toBe(['paste-yopass-paste-example-com'])
-        ->and($instance->vpnMiddleware())->toEqual(new ResourceRef('Middleware', 'paste-yopass-vpn-only-paste-example-com', 'larakube-shared'));
+        ->and($instance->commonsRedisTenants())->toBe(['yopass_paste_example_com'])
+        ->and($instance->commonsBuckets())->toBe(['yopass-storage-paste-example-com'])
+        ->and($instance->vpnMiddleware())->toEqual(new ResourceRef('Middleware', 'yopass-vpn-only-paste-example-com', 'larakube-shared'));
 });
 
 test('two hosts never share a name', function (): void {

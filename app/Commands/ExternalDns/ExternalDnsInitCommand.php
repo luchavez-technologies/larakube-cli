@@ -19,7 +19,9 @@ class ExternalDnsInitCommand extends DnsInitCommand
 
     public function handle(): int
     {
-        return parent::handle();
+        $this->renderHeader();
+
+        return $this->deployDns();
     }
 
     protected function tool(): ClusterTool

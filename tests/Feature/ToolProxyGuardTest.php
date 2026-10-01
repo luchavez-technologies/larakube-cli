@@ -1,6 +1,6 @@
 <?php
 
-use App\Commands\Flow\FlowInitCommand;
+use App\Commands\N8n\N8nInitCommand;
 use App\Enums\ClusterTool;
 use App\Http\Integrations\Cloudflare\Requests\GetZoneSettingRequest;
 use App\Http\Integrations\Cloudflare\Requests\ListZonesRequest;
@@ -15,9 +15,9 @@ use Symfony\Component\Console\Output\BufferedOutput;
 /**
  * `{tool}:init --proxied` gets cloud:proxy's checks before anything deploys,
  * and tools that can't sit behind Cloudflare refuse it. Exercised through
- * flow:init, which has both --proxied and --vpn-only like most tools.
+ * n8n:init, which has both --proxied and --vpn-only like most tools.
  */
-function proxyGuardCommand(array $options, string $class = FlowInitCommand::class): object
+function proxyGuardCommand(array $options, string $class = N8nInitCommand::class): object
 {
     $command = app($class);
     $input = new ArrayInput($options, $command->getDefinition());
@@ -109,7 +109,7 @@ test('local installs are never checked or proxied', function (): void {
 test('a tool whose proxy is on by default falls back to DNS-only instead of failing', function (): void {
     proxyGuardCluster(dnsChallenge: false);
     // No --proxied on the command line: Link's default of 1 applies.
-    $command = proxyGuardCommand([], App\Commands\Link\LinkInitCommand::class);
+    $command = proxyGuardCommand([], App\Commands\Kutt\KuttInitCommand::class);
 
     guardProxy($command, 'link.example.com', ClusterTool::LINK);
 

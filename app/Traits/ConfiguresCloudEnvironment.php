@@ -908,7 +908,7 @@ trait ConfiguresCloudEnvironment
     }
 
     /**
-     * The package-registry credentials `git:init` minted for a LaraKube-managed
+     * The package-registry credentials `forgejo:init` minted for a LaraKube-managed
      * Forgejo, read from the env's cluster. Null when that forge isn't one.
      *
      * @return array{username: string, token: string}|null

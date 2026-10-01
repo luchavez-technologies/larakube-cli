@@ -49,12 +49,12 @@ class UptimeShowCommand extends Command
 
         if ($access === null) {
             $this->warn('  Uptime Kuma is not installed in '.$this->uptimeNamespace().'.');
-            $this->line('  Run <fg=yellow>larakube uptime:init</> to deploy it.');
+            $this->line('  Run <fg=yellow>larakube kuma:init</> to deploy it.');
 
             return 1;
         }
 
-        $uptimeUrl = $access['host'] ? "https://{$access['host']}" : '<fg=gray>host not configured — run uptime:init '.$env.'</>';
+        $uptimeUrl = $access['host'] ? "https://{$access['host']}" : '<fg=gray>host not configured — run kuma:init '.$env.'</>';
 
         table(['Component', 'Access'], [
             ['Uptime Kuma', $uptimeUrl],

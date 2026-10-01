@@ -28,7 +28,7 @@ function fakeResumeInitProcess(?string $s3Host, ?string &$appliedManifest, int $
         if (str_contains($cmd, 'apply -f')) {
             preg_match('/apply -f (\'[^\']*\'|"[^"]*"|\S+)/', $cmd, $m);
             $path = trim($m[1] ?? '', '\'"');
-            if ($path !== '' && file_exists($path) && str_contains($path, 'larakube-resume-reactive')) {
+            if ($path !== '' && file_exists($path) && str_contains($path, 'larakube-reactive')) {
                 $appliedManifest = file_get_contents($path);
             }
 
@@ -40,7 +40,7 @@ function fakeResumeInitProcess(?string $s3Host, ?string &$appliedManifest, int $
             str_contains($cmd, 'get configmap plex-registry') => Process::result(output: '', exitCode: 1),
             str_contains($cmd, 'S3_ACCESS_KEY') => Process::result(output: base64_encode('larakube')),
             str_contains($cmd, 'S3_SECRET_KEY') => Process::result(output: base64_encode('s3-secret')),
-            str_contains($cmd, 'rollout status') => Process::result(output: 'deployment "resume-reactive" successfully rolled out'),
+            str_contains($cmd, 'rollout status') => Process::result(output: 'deployment "reactive-resume-example-com" successfully rolled out'),
             default => Process::result(output: ''),
         };
     });

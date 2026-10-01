@@ -222,17 +222,17 @@ trait InteractsWithSecrets
      * with a single key share (threshold 1) only if not already initialized,
      * otherwise reads the stored bootstrap credentials and unseals if needed.
      *
-     * Shared between secrets:init and secrets:import (moved here from
+     * Shared between openbao:init and secrets:import (moved here from
      * SecretsImportCommand 2026-07-31). secrets:import was previously the
      * ONLY place that called this — meaning a genuinely fresh cluster with
      * no prior export file had no working bootstrap path at all:
-     * secrets:init deployed OpenBao but left it uninitialized and told the
+     * openbao:init deployed OpenBao but left it uninitialized and told the
      * operator to "import secrets first"; secrets:export then refused
-     * ("not bootstrapped, run secrets:init first"); secrets:import refused
+     * ("not bootstrapped, run openbao:init first"); secrets:import refused
      * too (no export file exists yet to import) — a real circular trap with
      * no way out through the documented commands, undiscovered until now
      * because every actual run so far started from an existing cluster with
-     * a real export file already in hand. secrets:init calling this
+     * a real export file already in hand. openbao:init calling this
      * directly closes that gap; secrets:import calling it is now a
      * redundant-but-harmless idempotent safety net, not the only path.
      */
@@ -385,14 +385,14 @@ trait InteractsWithSecrets
      * Why this exists: OpenBao previously had NO non-SSO login path at all
      * besides the raw root token — unlike Grafana, which ships a genuine
      * local admin/password by default. A deployment that never runs
-     * sso:init had no way in except pulling the root token via kubectl
+     * zitadel:init had no way in except pulling the root token via kubectl
      * (full, unscoped access, no UI path to retrieve it). SSO was always
      * meant to be additive on top of a working baseline, not a
      * precondition for having one at all — confirmed as the intended
      * design 2026-07-31, not just a nice-to-have.
      *
      * Idempotent and non-rotating by design: once created, the same
-     * username/password persist across repeated secrets:init runs (stored
+     * username/password persist across repeated openbao:init runs (stored
      * in the credentials Secret, merged in via `kubectl patch --type merge` so
      * root-token/unseal-key are never touched — a plain `kubectl apply`
      * with a partial Secret manifest would 3-way-merge those keys OUT,

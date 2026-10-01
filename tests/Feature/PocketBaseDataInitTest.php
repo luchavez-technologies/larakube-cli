@@ -11,7 +11,7 @@ beforeEach(function (): void {
     @unlink(getcwd().'/.larakube.json');
 });
 
-test('data:init --engine=pocketbase deploys pocketbase stack and creates pvc', function (): void {
+test('pocketbase:init deploys pocketbase stack and creates pvc', function (): void {
     Process::fake([
         '*create namespace*' => Process::result(output: 'created'),
         '*get secret*' => Process::result(output: ''),
@@ -20,13 +20,13 @@ test('data:init --engine=pocketbase deploys pocketbase stack and creates pvc', f
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:init local --engine=pocketbase --admin-email=admin@example.com --force')
+    $this->artisan('pocketbase:init local --admin-email=admin@example.com --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying PocketBase manifests...')
         ->expectsOutputToContain('PocketBase Data / Headless CMS stack is live.');
 });
 
-test('data:init uses engine label override when prompting for host', function (): void {
+test('directus:init uses engine label override when prompting for host', function (): void {
     Process::fake([
         '*create namespace*' => Process::result(output: 'created'),
         '*get secret*' => Process::result(output: ''),
@@ -35,13 +35,13 @@ test('data:init uses engine label override when prompting for host', function ()
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:init production --context=ctx --domain=pocket.luchtech.dev --engine=pocketbase --admin-email=admin@example.com --force')
+    $this->artisan('pocketbase:init production --context=ctx --domain=pocket.luchtech.dev --admin-email=admin@example.com --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying PocketBase manifests...')
         ->expectsOutputToContain('PocketBase Data / Headless CMS stack is live.');
 });
 
-test('data:init --engine=directus deploys directus stack using commons postgres', function (): void {
+test('directus:init deploys directus stack using commons postgres', function (): void {
     Process::fake([
         '*plex-commons*' => Process::result(output: '{"services":{"postgres":{"enabled":true},"redis":{"enabled":true},"seaweedfs":{"enabled":true}}}'),
         '*plex-registry*' => Process::result(output: '{"tenants":{}}'),
@@ -58,13 +58,13 @@ test('data:init --engine=directus deploys directus stack using commons postgres'
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:init local --engine=directus --admin-email=admin@example.com --force')
+    $this->artisan('directus:init local --admin-email=admin@example.com --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying Directus manifests...')
         ->expectsOutputToContain('Directus Data / Headless CMS stack is live.');
 });
 
-test('data:init records which engine an instance runs in the cluster registry', function (): void {
+test('directus:init records which engine an instance runs in the cluster registry', function (): void {
     // Nothing about a Data instance's host or URL reveals which engine it
     // runs — data:show/tool:list --json need this recorded, not just baked
     // into the manifest's env vars.
@@ -89,7 +89,7 @@ test('data:init records which engine an instance runs in the cluster registry', 
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:init local --engine=pocketbase --admin-email=admin@example.com --force')->assertExitCode(0);
+    $this->artisan('pocketbase:init local --admin-email=admin@example.com --force')->assertExitCode(0);
 
     expect($captured)->not->toBeNull();
     $dataEntry = collect($captured)->first(fn ($e) => in_array($e['tool'] ?? null, ['data', 'pocketbase'], true));
@@ -97,11 +97,11 @@ test('data:init records which engine an instance runs in the cluster registry', 
         ->and($dataEntry['engine'])->toBe('pocketbase');
 });
 
-test('data:init without --domain errors instead of guessing when an instance is already registered', function (): void {
-    // data:init now resolves host+instance via resolveInstanceAwareHost()
+test('directus:init without --domain errors instead of guessing when an instance is already registered', function (): void {
+    // directus:init now resolves host+instance via resolveInstanceAwareHost()
     // (the same pattern CRM/Design/Notes already use) instead of the old
     // split resolveToolHost()+resolveInstanceForDomain() two-step. That old
-    // split is what let a plain re-run of data:init silently derive the
+    // split is what let a plain re-run of directus:init silently derive the
     // wrong slug and duplicate-register (confirmed live 2026-08-09: DATA's
     // default host is pocket.luchtech.dev but the service hostPrefix is
     // 'data', so a no-flag re-run derived 'pocket-luchtech-dev', deployed a
@@ -119,11 +119,11 @@ test('data:init without --domain errors instead of guessing when an instance is 
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:init production --context=ctx --engine=pocketbase --admin-email=admin@example.com --force --no-interaction')
+    $this->artisan('pocketbase:init production --context=ctx --admin-email=admin@example.com --force --no-interaction')
         ->run();
 })->throws(RuntimeException::class, 'pass --domain=<host>');
 
-test('data:init --domain re-targets an already-registered instance in place, never spawning a derived duplicate', function (): void {
+test('directus:init --domain re-targets an already-registered instance in place, never spawning a derived duplicate', function (): void {
     // Regression guard (confirmed live 2026-08-09): DATA's default host is
     // pocket.luchtech.dev but the service hostPrefix is 'data', so deriving
     // a slug from the host alone used to yield 'pocket-luchtech-dev' — a
@@ -153,7 +153,7 @@ test('data:init --domain re-targets an already-registered instance in place, nev
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:init production --context=ctx --domain=pocket.luchtech.dev --engine=pocketbase --admin-email=admin@example.com --force --no-interaction')
+    $this->artisan('pocketbase:init production --context=ctx --domain=pocket.luchtech.dev --admin-email=admin@example.com --force --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying PocketBase manifests...');
 
@@ -169,7 +169,7 @@ test('data:init --domain re-targets an already-registered instance in place, nev
         ->and($dataEntries->first()['host'])->toBe('pocket.luchtech.dev');
 });
 
-test('data:init --domain resolves a distinct instance from the given host, not main\'s', function (): void {
+test('directus:init --domain resolves a distinct instance from the given host, not main\'s', function (): void {
     // Regression guard for the incident that started this whole pass
     // (2026-08-08): PocketBase and Directus both defaulted straight to
     // 'main' and collided on the same host. --domain now means "this exact
@@ -184,13 +184,13 @@ test('data:init --domain resolves a distinct instance from the given host, not m
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:init local --engine=pocketbase --domain=blog.example.com --admin-email=admin@example.com --force')
+    $this->artisan('pocketbase:init local --domain=blog.example.com --admin-email=admin@example.com --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('https://blog.example.com')
         ->doesntExpectOutputToContain('https://data.');
 });
 
-test('data:init --alias registers an additional hostname on the same instance\'s Ingress', function (): void {
+test('directus:init --alias registers an additional hostname on the same instance\'s Ingress', function (): void {
     Process::fake([
         '*create namespace*' => Process::result(output: 'created'),
         '*get secret*' => Process::result(output: ''),
@@ -199,15 +199,15 @@ test('data:init --alias registers an additional hostname on the same instance\'s
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:init local --engine=pocketbase --alias=alt.example.com --admin-email=admin@example.com --force')
+    $this->artisan('pocketbase:init local --alias=alt.example.com --admin-email=admin@example.com --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('https://alt.example.com');
 });
 
-test('data:remove --domain derives the same instance data:init would have, not main\'s', function (): void {
+test('data:remove --domain derives the same instance directus:init would have, not main\'s', function (): void {
     // The --domain given here must resolve to the SAME instance identifier
     // (via ClusterTool::instanceSlugFromHost() — the full host, dashed, no
-    // auto-prefixing) that data:init would have derived from the identical
+    // auto-prefixing) that directus:init would have derived from the identical
     // value, so removal always targets what you actually meant, not the
     // default instance.
     Process::fake([
@@ -287,7 +287,7 @@ test('data:remove tears down pocketbase\'s own Service and Ingress, not just Dir
     // ever deleted service/data + ingress/data (Directus's actual names) and
     // service/data-{instance} + ingress/data-{instance} — never PocketBase's
     // real names (service/data-pocketbase, ingress/data-pocketbase-ingress).
-    // Every past data:remove left those orphaned, and the next data:init for
+    // Every past data:remove left those orphaned, and the next directus:init for
     // either engine collided with them on the shared Data host.
     Process::fake([...registeredToolRemoveFakes('data:remove', 'tool-example-com'),
         '*delete*' => Process::result(output: 'deleted'),

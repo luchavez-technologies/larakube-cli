@@ -24,34 +24,16 @@ use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class AnalyticsInitCommand extends Command
+abstract class AnalyticsInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithAnalytics, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
-    protected $signature = 'analytics:init
-        {environment? : Environment this install targets — "local" (default) or cloud.}
-        {--context=  : Target a specific kube-context}
-        {--domain=   : Base domain OR full host for Umami (example.com → prefix.example.com)}
-        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy the Umami web analytics stack into larakube-shared';
-
-    public function handle(): int
+    protected function deployAnalytics(): int
     {
-        $this->laraKubeWarn("[DEPRECATION] 'analytics:init' is deprecated. Forwarding to 'umami:init'. Please update your scripts.");
-
         if ($this->refuseUnshippedTool(ClusterTool::ANALYTICS)) {
             return 1;
         }
 
-        $this->renderHeader();
-
-        return $this->deployAnalytics();
-    }
-
-    protected function deployAnalytics(): int
-    {
         $env = $this->resolveEnvironment();
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;

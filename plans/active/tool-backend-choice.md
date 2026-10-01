@@ -12,8 +12,8 @@ commands — and it is wrong in three separate ways.
 which backend was chosen. So:
 
 ```
-larakube git:init production --no-plex   # Forgejo on PVC storage
-larakube git:init production             # ← silently switches LFS to S3
+larakube forgejo:init production --no-plex   # Forgejo on PVC storage
+larakube forgejo:init production             # ← silently switches LFS to S3
 ```
 
 The second run takes the Commons branch unconditionally, allocates a bucket,
@@ -169,7 +169,7 @@ The resolved choice is recorded on the tool's registry entry. A re-run without
 flags **honours the recorded choice**. A re-run whose flag contradicts the
 record is **refused**, naming `{tool}:storage` as the way to change it.
 
-This closes the `git:init` trap above, and it is the one stage that must not
+This closes the `forgejo:init` trap above, and it is the one stage that must not
 be skipped — everything else is ergonomics.
 
 ### Stage 4 — `{tool}:storage`
@@ -205,10 +205,10 @@ recommends keeping in separate buckets. Backups explicitly do not include files
 already moved to S3 (though on LaraKube those objects are still covered, since
 `backup:run` archives SeaweedFS whole).
 
-So `data:init --storage=commons` for PocketBase is a post-deploy API call, the
+So `directus:init --storage=commons` for PocketBase is a post-deploy API call, the
 same shape as `stalwartSetPermissiveCors()`. Consequences:
 
-- An admin can turn it off again in the UI. `data:init` sets it; `data:show`
+- An admin can turn it off again in the UI. `directus:init` sets it; `data:show`
   reports the drift. It does not re-enforce on every run and fight the admin.
 - Flipping it on for an **existing** install does not move files already on the
   PVC. Init-only, with a warning on re-init, and `data:storage` for the real
@@ -218,7 +218,7 @@ same shape as `stalwartSetPermissiveCors()`. Consequences:
 
 1. Stage 0 (registry owner model + `plex:allocate`) — unblocks everything and
    fixes a live `plex:evict` hazard.
-2. Stage 3 (durability) — closes the `git:init` data trap. Deliberately ahead
+2. Stage 3 (durability) — closes the `forgejo:init` data trap. Deliberately ahead
    of the ergonomics.
 3. Stage 1 (capability declaration).
 4. Stage 2 (three flags + three-way prompt) — one tool at a time, starting with

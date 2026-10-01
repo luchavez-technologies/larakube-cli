@@ -16,8 +16,8 @@ test('a bare component name is deliberately NOT matched', function (): void {
     expect(ClusterTool::forInstancedDeployment('ocis'))->toBeNull()
         ->and(ClusterTool::forInstancedDeployment('chat-synapse'))->toBeNull()
         ->and(ClusterTool::forInstancedDeployment('documenso'))->toBeNull()
-        // ...even though the permissive lookup still maps them.
-        ->and(ClusterTool::forDeployment('ocis'))->not->toBeNull();
+        // ...and so is the permissive lookup, for a migrated tool.
+        ->and(ClusterTool::forDeployment('ocis'))->toBeNull();
 });
 
 test('the longest matching component wins', function (): void {

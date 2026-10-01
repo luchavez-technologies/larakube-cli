@@ -305,7 +305,7 @@ larakube setup          # Phase 1
 larakube new <app>       # Phase 1 (scaffolding path)
 larakube up --build      # Phase 1 (sideload path)
 larakube cloud:deploy production   # Phase 2
-larakube git:init        # Phase 3, only after Phase 0 spike passes
+larakube forgejo:init        # Phase 3, only after Phase 0 spike passes
 ```
 
 ---

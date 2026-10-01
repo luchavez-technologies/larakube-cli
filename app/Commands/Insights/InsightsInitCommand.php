@@ -26,30 +26,9 @@ use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class InsightsInitCommand extends Command
+abstract class InsightsInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithInsights, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
-
-    protected $signature = 'insights:init
-        {environment? : Environment this install targets — "local" (default) or cloud.}
-        {--context=  : Target a specific kube-context}
-        {--domain=   : Base domain OR full host for Insights (example.com → prefix.example.com)}
-        {--app-name= : Custom branding name for Metabase (defaults to Insights)}
-        {--logo-url= : Custom logo URL for Metabase}
-        {--admin-email= : Primary administrator email for Metabase}
-        {--no-plex   : Bypass Plex Commons and deploy a dedicated database}
-        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy the Metabase BI stack into larakube-shared';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'insights:init' is deprecated. Forwarding to 'metabase:init'. Please update your scripts.");
-        $this->renderHeader();
-
-        return $this->deployInsights();
-    }
 
     protected function deployInsights(): int
     {
@@ -59,11 +38,12 @@ class InsightsInitCommand extends Command
         $kubectl = Kubectl::forContext($context)->prefix();
         $host = $this->resolveToolHost(SharedClusterService::INSIGHTS, ClusterTool::INSIGHTS, $env, $kubectl);
 
+        $names = ToolInstance::forHost(ClusterTool::INSIGHTS, $host);
         $ns = $this->insightsNamespace();
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::INSIGHTS, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::INSIGHTS, $kubectl, $names->instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -75,11 +55,11 @@ class InsightsInitCommand extends Command
             }
         }
 
-        $adminEmail = $this->readClusterSecretKey($kubectl, $ns, 'insights-secrets', 'admin-email') ?? $this->resolveAdminEmail($host);
-        $dbPassword = $this->readInsightsDbPassword($kubectl, $ns) ?? Str::random(24);
-        $encryptionKey = $this->readInsightsEncryptionKey($kubectl, $ns) ?? Str::random(64);
+        $adminEmail = $this->readClusterSecretKey($kubectl, $ns, $names->secret(), 'admin-email') ?? $this->resolveAdminEmail($host);
+        $dbPassword = $this->readInsightsDbPassword($kubectl, $ns, $names->secret()) ?? Str::random(24);
+        $encryptionKey = $this->readInsightsEncryptionKey($kubectl, $ns, $names->secret()) ?? Str::random(64);
 
-        $dbName = ToolInstance::forHost(ClusterTool::INSIGHTS, $host)->database();
+        $dbName = $names->database();
 
         if (! $noPlex) {
             if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
@@ -91,14 +71,15 @@ class InsightsInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $encryptionKey, $adminEmail): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'insights-secrets', ['db-password' => $dbPassword, 'encryption-key' => $encryptionKey, 'admin-email' => $adminEmail]);
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $names, $dbPassword, $encryptionKey, $adminEmail): void {
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $names->secret(), ['db-password' => $dbPassword, 'encryption-key' => $encryptionKey, 'admin-email' => $adminEmail]);
         });
 
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::INSIGHTS, ClusterTool::INSIGHTS->instanceSlugFromHost($host));
 
         $manifest = view('k8s.insights.shared', [
             'dbName' => $dbName,
+            'instance' => $names->instance,
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'appName' => $branding['appName'],
@@ -112,12 +93,12 @@ class InsightsInitCommand extends Command
         ])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();
-        $tmp = $temporaryDirectory->path('larakube-insights.yaml');
+        $tmp = $temporaryDirectory->path('larakube-metabase.yaml');
         file_put_contents($tmp, $manifest);
 
         $rolledOut = $this->withSpin(
             'Applying Insights (Metabase) manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'insights-metabase', 120),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 120),
         );
         $temporaryDirectory->delete();
 
@@ -125,7 +106,7 @@ class InsightsInitCommand extends Command
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::INSIGHTS, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
+        $this->registerDeployedTool(ClusterTool::INSIGHTS, $kubectl, $host, $names->instance, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Insights (Metabase) stack is live.');
@@ -142,9 +123,9 @@ class InsightsInitCommand extends Command
         return $this->resolveToolEnvironment(ClusterTool::INSIGHTS);
     }
 
-    protected function readInsightsEncryptionKey(string $kubectl, string $ns): ?string
+    protected function readInsightsEncryptionKey(string $kubectl, string $ns, string $secret): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'insights-secrets', 'encryption-key');
+        return $this->readClusterSecretKey($kubectl, $ns, $secret, 'encryption-key');
     }
 
     /** Resolve the admin email for Metabase */

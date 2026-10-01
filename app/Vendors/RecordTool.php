@@ -24,7 +24,7 @@ final class RecordTool implements ClusterToolVendor, HasClusterSecretDbKey, HasC
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = ($instance === null || $instance === '') ? 'record-vpn-only' : "record-vpn-only-{$instance}";
+        $name = ($instance === null || $instance === '') ? 'sendrec-vpn-only' : "sendrec-vpn-only-{$instance}";
 
         return [
             'name' => $name,
@@ -45,8 +45,8 @@ final class RecordTool implements ClusterToolVendor, HasClusterSecretDbKey, HasC
     public function smtpEnv(?string $instance = null): ?array
     {
         return [
-            'deployment' => 'record-sendrec',
-            'secret' => 'record-smtp',
+            'deployment' => 'sendrec',
+            'secret' => 'sendrec-smtp',
             // SendRec defaults to STARTTLS, which deadlocks on Stalwart's
             // 465 (implicit TLS) listener: plaintext EHLO vs a waiting TLS
             // handshake, 30s read timeout. Stalwart exposes no 587 listener,
@@ -86,15 +86,15 @@ final class RecordTool implements ClusterToolVendor, HasClusterSecretDbKey, HasC
         // do not expect an SSO button on its login screen: the gate
         // authorises access, the app still keeps its own accounts.
         return [
-            'deployment' => 'record-sendrec',
-            'secret' => 'record-oidc',
+            'deployment' => 'sendrec',
+            'secret' => 'sendrec-oidc',
             'redirect_path' => '/oauth2/callback',
         ];
     }
 
     public function dbSecretRef(): ?array
     {
-        return ['secret' => 'record-secrets', 'key' => 'db-password'];
+        return ['secret' => 'sendrec-secrets', 'key' => 'db-password'];
     }
 
     public function commonsDatabaseList(): array

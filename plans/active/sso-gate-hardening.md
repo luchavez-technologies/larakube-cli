@@ -79,7 +79,7 @@ Also required: the roles must actually be asserted into the token —
 proxy app, and a project role (e.g. `larakube-user`) must exist and be granted.
 
 ### Steps
-1. Add a project role + grant flow to `sso:init` (or a `sso:role` command).
+1. Add a project role + grant flow to `zitadel:init` (or a `sso:role` command).
 2. Set `idTokenRoleAssertion` on the proxy's OIDC app.
 3. Add `--allowed-groups=` to the proxy manifest, driven by a new
    `sso:wire --allowed-group=` option (default: unset = current behaviour, so

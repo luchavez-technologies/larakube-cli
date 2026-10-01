@@ -1,4 +1,4 @@
-# Component Plan: `design:init` — Penpot Prototyping & Design Suite
+# Component Plan: `penpot:init` — Penpot Prototyping & Design Suite
 
 **Status:** 🟢 READY (Target CLI v1.2.0) — revised 2026-08-09: this plan was written against the OLD `--instance=<name>` flag, which has since been eradicated cluster-CLI-wide. Rewritten below to `--domain=` + host-as-identity, and the `vpnMiddlewareTarget()`/`dbSecretRef()` snippets corrected to their real current signatures. Nothing implemented yet — see [ADR 0012](file:///Users/jsluchavez/Codes/Ideas/laravel-k8s/cli/docs/decisions/0012-cluster-tool-registry-redesign.md) for the pattern this must follow.  
 **Created:** 2026-08-09  
@@ -8,14 +8,14 @@
 > `--instance=` flag anywhere in this CLI anymore. `--domain=` is both the
 > instance's host AND its identity; the Kubernetes-resource-naming slug is
 > derived automatically via `ClusterTool::instanceSlugFromHost()`, never
-> operator-supplied. If `design:init` supports multiple instances, it is only
+> operator-supplied. If `penpot:init` supports multiple instances, it is only
 > the **third** tool to build real multi-instance *creation* flows (after
-> `data:init` and `notes:init`) — every other multi-instance-capable tool
+> `directus:init` and `outline:init`) — every other multi-instance-capable tool
 > only gets `--domain=` on `:remove`/`:show` via the shared base classes, with
 > no `:init`-side instance selection at all. That's real, non-trivial scope
 > DATA/NOTES needed to get right (see `DataInitCommand::tearDownOtherEngineForInstance()`,
 > and `NotesInitCommand`'s `serviceName` instance-suffixing) — confirm with
-> the user whether v1 actually needs it, or whether shipping `design:init`
+> the user whether v1 actually needs it, or whether shipping `penpot:init`
 > single-instance-only (like Analytics/Chat/CRM/Drive/... — 15 of 17
 > multi-instance-*capable* tools have no creation-side instance flow at all)
 > is the right scope for a brand-new tool.
@@ -148,11 +148,11 @@ Executing `larakube vpn:wire production --tool=design` restricts `design.{domain
 * **Multi-Domain**: Ingress host is resolved dynamically via `SharedClusterService::DESIGN->hostFor($domain)` (default: `design.{domain}`).
 * **Multi-Instance** (see the scope note at the top of this document before building this): `ClusterTool::DESIGN->supportsMultipleInstances() => true`.
   There is no `--instance=<name>` flag. `--domain=` IS the instance's
-  identity — `design:init` with no `--domain=` targets/updates the default
+  identity — `penpot:init` with no `--domain=` targets/updates the default
   instance (`'main'`); any other host given via `--domain=` deploys or
   updates a DIFFERENT instance, keyed by that host:
   ```
-  design:init  --domain=team2.example.com     # deploys/updates the instance AT that host
+  penpot:init  --domain=team2.example.com     # deploys/updates the instance AT that host
   design:remove --domain=team2.example.com    # targets the same instance, by the same host
   design:show   --domain=team2.example.com    # ditto; --domain=all lists every instance
   ```
@@ -166,7 +166,7 @@ Executing `larakube vpn:wire production --tool=design` restricts `design.{domain
   *and* Ingress, not just Deployment — must be suffixed by that slug:
   * Ingress: `design-{slug}.{domain}` where `{slug}` ≠ `'main'` (e.g. `design-team2-example-com.dev.test`)
   * Deployments: `design-penpot-backend-{slug}`, `design-penpot-frontend-{slug}`
-  * Service (frontend): must NOT default to a bare `'design'` name the way `notes:init`'s did before ADR 0012 fixed it — a second instance's `kubectl apply` would silently steal the first instance's Service selector and Ingress host rule. Pass an explicit, instance-suffixed `serviceName` to the manifest, always.
+  * Service (frontend): must NOT default to a bare `'design'` name the way `outline:init`'s did before ADR 0012 fixed it — a second instance's `kubectl apply` would silently steal the first instance's Service selector and Ingress host rule. Pass an explicit, instance-suffixed `serviceName` to the manifest, always.
   * PostgreSQL DB: `penpot_{slug}` (`commonsDatabases($instance)` already suffixes with `_`)
   * S3 Bucket: `design-assets-{slug}` (`commonsBuckets($instance)` already suffixes with `-`)
 
@@ -196,12 +196,12 @@ Executing `larakube vpn:wire production --tool=design` restricts `design.{domain
 
 ## Implementation Checklist
 
-- [ ] Confirm with the user whether `design:init` ships with real multi-instance support in v1, or single-instance-only like 15 of the 17 other multi-instance-*capable* tools (see the scope note at the top of this document)
+- [ ] Confirm with the user whether `penpot:init` ships with real multi-instance support in v1, or single-instance-only like 15 of the 17 other multi-instance-*capable* tools (see the scope note at the top of this document)
 - [ ] Add `ClusterTool::DESIGN = 'design'` and `SharedClusterService::DESIGN = 'design'`
 - [ ] Add `commonsDatabases()` entry `penpot` and `commonsS3Buckets()` entry `design-assets`
 - [ ] Implement `app/Traits/InteractsWithDesign.php`
-- [ ] Implement `app/Commands/Design/DesignInitCommand.php` (`larakube design:init`) — use `ResolvesToolHost::sanitizeDomainInput()` + `ClusterTool::instanceSlugFromHost()` if multi-instance, `resolveToolHost()` if not
-- [ ] `DesignInitCommand` MUST call `$this->registerDeployedTool(ClusterTool::DESIGN, $kubectl, $host, ...)` on success — the one thing `git:init` shipped without (see ADR 0012); without it the tool is invisible to `tool:list`/`tool:show`/`--domain=` targeting even though it's deployed
+- [ ] Implement `app/Commands/Design/DesignInitCommand.php` (`larakube penpot:init`) — use `ResolvesToolHost::sanitizeDomainInput()` + `ClusterTool::instanceSlugFromHost()` if multi-instance, `resolveToolHost()` if not
+- [ ] `DesignInitCommand` MUST call `$this->registerDeployedTool(ClusterTool::DESIGN, $kubectl, $host, ...)` on success — the one thing `forgejo:init` shipped without (see ADR 0012); without it the tool is invisible to `tool:list`/`tool:show`/`--domain=` targeting even though it's deployed
 - [ ] `DesignRemoveCommand`/`DesignShowCommand` need no custom instance handling if built on `AbstractToolRemoveCommand`/`AbstractToolShowCommand` — `--domain=` is already wired generically there
 - [ ] Create Blade templates `k8s.design.backend`, `k8s.design.frontend`, `k8s.design.ingress`, `k8s.design.exporter` — pass an explicit, instance-suffixed `serviceName`/`deploymentName` to every one of them if multi-instance (see the Service/Ingress note above)
 - [ ] Create Pest test `tests/Feature/DesignInitCommandTest.php`

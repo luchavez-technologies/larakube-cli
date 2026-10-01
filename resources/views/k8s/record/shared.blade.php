@@ -1,22 +1,37 @@
-@php($dbName ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::RECORD, $host)->database())
+@php
+    // Every name comes from ToolInstance (ADR 0021).
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::RECORD->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::RECORD, $instance);
+    $dbName ??= $names->database();
+    $deploymentName = $names->deployment();
+    $secretName = $names->secret();
+    $smtpSecret = $names->secret(\App\Enums\SecretKind::SMTP);
+    $labels = '';
+    foreach ($names->labels() as $key => $value) {
+        $labels .= "\n    {$key}: {$value}";
+    }
+    $podLabels = str_replace("\n    ", "\n        ", $labels);
+@endphp
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: record-sendrec
+  name: {{ $deploymentName }}
   namespace: larakube-shared
   labels:
-    app: record-sendrec
+    app: {{ $deploymentName }}{!! $labels !!}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: record-sendrec
+      app: {{ $deploymentName }}
   template:
     metadata:
       labels:
-        app: record-sendrec
+        app: {{ $deploymentName }}
     spec:
       containers:
         - name: sendrec
@@ -32,14 +47,14 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: record-secrets
+                  name: {{ $secretName }}
                   key: db-password
             - name: DATABASE_URL
               value: "postgres://{{ $dbName }}:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/{{ $dbName }}?sslmode=disable"
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: record-secrets
+                  name: {{ $secretName }}
                   key: jwt-secret
             - name: S3_ENDPOINT
               value: "{{ $s3Endpoint }}"
@@ -64,51 +79,52 @@ spec:
             - name: SMTP_HOST
               valueFrom:
                 secretKeyRef:
-                  name: record-smtp
+                  name: {{ $smtpSecret }}
                   key: SMTP_HOST
                   optional: true
             - name: SMTP_PORT
               valueFrom:
                 secretKeyRef:
-                  name: record-smtp
+                  name: {{ $smtpSecret }}
                   key: SMTP_PORT
                   optional: true
             - name: SMTP_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: record-smtp
+                  name: {{ $smtpSecret }}
                   key: SMTP_USERNAME
                   optional: true
             - name: SMTP_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: record-smtp
+                  name: {{ $smtpSecret }}
                   key: SMTP_PASSWORD
                   optional: true
             - name: EMAIL_FROM_ADDRESS
               valueFrom:
                 secretKeyRef:
-                  name: record-smtp
+                  name: {{ $smtpSecret }}
                   key: EMAIL_FROM_ADDRESS
                   optional: true
           # NOTE: no OIDC_* env vars here on purpose. SendRec's SSO is
           # WORKSPACE-level and configured inside the app (its .env.example
           # declares no OIDC variables at all), so env-based wiring is inert.
           # A previous revision injected OIDC_ENABLED/CLIENT_ID/CLIENT_SECRET/
-          # ISSUER from a `record-oidc` Secret — those were invented and
+          # ISSUER from an OIDC Secret — those were invented and
           # did nothing. See plans/active/sendrec-native-sso.md.
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: record
+  name: {{ $deploymentName }}
   namespace: larakube-shared
+  labels:{!! $labels !!}
 spec:
   selector:
-    app: record-sendrec
+    app: {{ $deploymentName }}
   ports:
     - port: 80
       targetPort: 8080
       name: http
 ---
-@include('k8s.record.ingress')
+@include('k8s.record.ingress', ['instance' => $instance])

@@ -43,7 +43,7 @@ class MailShowCommand extends Command
             $context = $this->environmentContextOrCurrent($config, $env);
         }
 
-        // Same as mail:init — printPlexHint() reads the Commons through
+        // Same as stalwart:init — printPlexHint() reads the Commons through
         // plexKubectl(), which needs this or it inspects the wrong cluster.
         $this->plexContext = $context;
 
@@ -51,7 +51,7 @@ class MailShowCommand extends Command
         $ns = $this->mailNamespace();
 
         if (! $this->isMailInstalled($kubectl, $ns)) {
-            $this->laraKubeError('Stalwart is not installed. Run `larakube mail:init` first.');
+            $this->laraKubeError('Stalwart is not installed. Run `larakube stalwart:init` first.');
 
             return 1;
         }
@@ -119,7 +119,7 @@ class MailShowCommand extends Command
      * Reconstruct a printPlexHint()-shaped storeBootstrap array from LIVE
      * server state, for installs deployed via the local wizard-skip path
      * (MailInitCommand::bootstrapStalwartStoreForLocal()). mail:show has no
-     * access to the array mail:init built at deploy time, so it detects the
+     * access to the array stalwart:init built at deploy time, so it detects the
      * same thing a different way: the 'stalwart-config' ConfigMap only
      * exists on that path (it's what pre-seeds config.json and skips
      * bootstrap mode), so its presence is the signal; the actual per-store

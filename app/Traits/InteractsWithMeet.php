@@ -28,7 +28,7 @@ trait InteractsWithMeet
     /**
      * The always-present bootstrap consumer. livekit-server refuses to start at
      * all on an empty `keys:` map ("one of key-file or keys must be provided"),
-     * so a registry with no consumers — a fresh `meet:init`, or the last
+     * so a registry with no consumers — a fresh `livekit:init`, or the last
      * `meet:unwire` — would CrashLoopBackOff the SFU. Reserved name; a project
      * or tool can never be called this because consumers are slugs.
      */
@@ -70,7 +70,7 @@ trait InteractsWithMeet
 
     /**
      * The whole consumer registry, keyed by consumer slug ('chat', or a project
-     * name). Missing/!unparseable Secret reads as empty so a first `meet:init`
+     * name). Missing/!unparseable Secret reads as empty so a first `livekit:init`
      * on a clean cluster is not a special case.
      *
      * @return array<string, array{key: string, secret: string, roomPrefix: string, webhookUrl: ?string}>
@@ -128,7 +128,7 @@ trait InteractsWithMeet
      * Persist the registry. Sorted so an unchanged registry always serializes
      * byte-identically — the config-checksum that forces a LiveKit rollout is
      * derived from this string, and unstable ordering would restart the SFU
-     * (dropping every live call) on every unrelated `meet:init`.
+     * (dropping every live call) on every unrelated `livekit:init`.
      *
      * The system key is seeded here rather than at any call site so no caller
      * can persist a registry that would refuse to boot.

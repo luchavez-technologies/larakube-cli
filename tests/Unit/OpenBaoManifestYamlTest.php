@@ -114,7 +114,7 @@ test('openbao runs under its own ServiceAccount with a system:auth-delegator bin
         ->and($deployment['spec']['template']['spec']['serviceAccountName'] ?? null)->toBe('openbao-secrets-example-com');
 });
 
-test('openbao has no auto-unseal hook when autoUnseal is omitted (safe default for other callers of this view — SecretsInitCommand always passes it explicitly)', function (): void {
+test('openbao has no auto-unseal hook when autoUnseal is omitted (safe default for other callers of this view — OpenBaoInitCommand always passes it explicitly)', function (): void {
     openBaoRegistered();
     $rendered = view('k8s.secrets.openbao', [
         'namespace' => 'larakube-secrets',
@@ -159,7 +159,7 @@ test('openbao gets an auto-unseal postStart hook when autoUnseal is true', funct
     $volumes = $deployment['spec']['template']['spec']['volumes'] ?? [];
     $bootstrap = collect($volumes)->firstWhere('name', 'bootstrap');
     expect($bootstrap)->not->toBeNull();
-    // optional: true — a fresh install (before secrets:init creates
+    // optional: true — a fresh install (before openbao:init creates
     // openbao-secrets-secrets-example-com) must still start; the hook just no-ops.
     expect($bootstrap['secret']['optional'] ?? null)->toBeTrue();
     expect($bootstrap['secret']['secretName'] ?? null)->toBe('openbao-secrets-secrets-example-com');

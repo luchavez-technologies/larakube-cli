@@ -4,12 +4,12 @@
  * Regression coverage for the browser-facing S3 endpoint bug: Outline hands
  * presigned upload/download URLs straight to the browser, signed against
  * whatever AWS_S3_UPLOAD_BUCKET_URL is set to. Signing against the
- * cluster-internal SeaweedFS DNS name (what notes:init used to do
+ * cluster-internal SeaweedFS DNS name (what outline:init used to do
  * unconditionally) makes every attachment upload fail — the browser can
  * never resolve it. See resolveCommonsS3Endpoints() on InteractsWithPlex.
  */
 
-use App\Commands\Notes\NotesInitCommand;
+use App\Commands\Outline\OutlineInitCommand;
 use Illuminate\Support\Facades\Process;
 
 function notesCommonsSpec(?string $s3Host): array
@@ -59,11 +59,11 @@ function fakeNotesInitProcess(?string $s3Host, ?string &$appliedManifest, int $a
     });
 }
 
-test('notes:init signs Outline\'s S3 endpoint against the Commons public host, not cluster-internal DNS', function (): void {
+test('outline:init signs Outline\'s S3 endpoint against the Commons public host, not cluster-internal DNS', function (): void {
     $appliedManifest = null;
     fakeNotesInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan(NotesInitCommand::class, [
+    $this->artisan(OutlineInitCommand::class, [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -74,16 +74,16 @@ test('notes:init signs Outline\'s S3 endpoint against the Commons public host, n
         ->and($appliedManifest)->not->toContain('seaweedfs.larakube-plex.svc.cluster.local');
 });
 
-test('notes:init wires REDIS_COLLABORATION_URL to the same Commons Redis as REDIS_URL, and pins WEB_CONCURRENCY so it doesn\'t OOM the pod', function (): void {
+test('outline:init wires REDIS_COLLABORATION_URL to the same Commons Redis as REDIS_URL, and pins WEB_CONCURRENCY so it doesn\'t OOM the pod', function (): void {
     // Regression guard for a real incident (2026-08-05): Outline only forces
     // 1 worker process (throng) when REDIS_COLLABORATION_URL is ABSENT.
     // Setting it without also pinning WEB_CONCURRENCY=1 let throng fork one
     // Node process per CPU core on the host, which OOMKilled this 512Mi pod
-    // on the very next real notes:init run.
+    // on the very next real outline:init run.
     $appliedManifest = null;
     fakeNotesInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan(NotesInitCommand::class, [
+    $this->artisan(OutlineInitCommand::class, [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -98,11 +98,11 @@ test('notes:init wires REDIS_COLLABORATION_URL to the same Commons Redis as REDI
         ->and($concurrency[1] ?? null)->toBe('1');
 });
 
-test('notes:init registers itself in the cluster tool registry, including the admin email', function (): void {
-    // Regression guard: notes:init called the low-level registerTool()
+test('outline:init registers itself in the cluster tool registry, including the admin email', function (): void {
+    // Regression guard: outline:init called the low-level registerTool()
     // directly with 'extra' => [...] as a literal metadata key instead of
     // going through registerDeployedTool() (which flattens 'extra' the way
-    // every other tool's registry entry expects — see git:init's identical
+    // every other tool's registry entry expects — see forgejo:init's identical
     // fix). On the live cluster this meant Outline had NO registry entry at
     // all (confirmed 2026-08-18: tool:list showed it as "not installed"
     // despite the pod running healthy).
@@ -136,7 +136,7 @@ test('notes:init registers itself in the cluster tool registry, including the ad
         };
     });
 
-    $this->artisan(NotesInitCommand::class, [
+    $this->artisan(OutlineInitCommand::class, [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -150,11 +150,11 @@ test('notes:init registers itself in the cluster tool registry, including the ad
         ->and($notesEntry)->not->toHaveKey('extra');
 });
 
-test('notes:init falls back to the internal S3 endpoint when the Commons has no public host', function (): void {
+test('outline:init falls back to the internal S3 endpoint when the Commons has no public host', function (): void {
     $appliedManifest = null;
     fakeNotesInitProcess(null, $appliedManifest);
 
-    $this->artisan(NotesInitCommand::class, [
+    $this->artisan(OutlineInitCommand::class, [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -164,9 +164,9 @@ test('notes:init falls back to the internal S3 endpoint when the Commons has no 
         ->and($appliedManifest)->toContain('http://seaweedfs.larakube-plex.svc.cluster.local:8333');
 });
 
-test('notes:init scopes the Service/Ingress name by instance so a second instance cannot steal main\'s', function (): void {
+test('outline:init scopes the Service/Ingress name by instance so a second instance cannot steal main\'s', function (): void {
     // Regression guard: the manifest's Service/Ingress default to the bare
-    // 'notes' name when serviceName isn't passed. notes:init never passed
+    // 'notes' name when serviceName isn't passed. outline:init never passed
     // it, so deploying a SECOND instance would kubectl-apply straight over
     // main's Service selector and Ingress host rule instead of getting its
     // own — the exact class of collision this whole --domain= pass exists
@@ -174,7 +174,7 @@ test('notes:init scopes the Service/Ingress name by instance so a second instanc
     $appliedManifest = null;
     fakeNotesInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan(NotesInitCommand::class, [
+    $this->artisan(OutlineInitCommand::class, [
         'environment' => 'local',
         '--domain' => 'blog.example.com',
         '--admin-email' => 'admin@example.com',
@@ -186,7 +186,7 @@ test('notes:init scopes the Service/Ingress name by instance so a second instanc
         ->and($appliedManifest)->not->toContain("name: notes\n");
 });
 
-test('notes:init returns a failing exit code and does not claim success when kubectl apply is rejected', function (): void {
+test('outline:init returns a failing exit code and does not claim success when kubectl apply is rejected', function (): void {
     // Regression guard: withSpin()'s success check is `!== false`, and the
     // old runStreaming() call returned an int exit code — never `=== false`
     // — so a rejected kubectl apply still printed a green check and "Outline
@@ -194,7 +194,7 @@ test('notes:init returns a failing exit code and does not claim success when kub
     $appliedManifest = null;
     fakeNotesInitProcess('files.example.com', $appliedManifest, applyExitCode: 1);
 
-    $this->artisan(NotesInitCommand::class, [
+    $this->artisan(OutlineInitCommand::class, [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -203,7 +203,7 @@ test('notes:init returns a failing exit code and does not claim success when kub
         ->doesntExpectOutputToContain('Outline wiki stack is live');
 });
 
-test('notes:init errors instead of guessing when multiple instances are already registered and --domain is omitted', function (): void {
+test('outline:init errors instead of guessing when multiple instances are already registered and --domain is omitted', function (): void {
     // Same class of bug as the 2026-08-17 Design incident: a no-flag re-run
     // used to derive a fresh instance slug via raw instanceSlugFromHost()
     // instead of recognizing an already-registered instance.
@@ -215,13 +215,13 @@ test('notes:init errors instead of guessing when multiple instances are already 
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan(NotesInitCommand::class, [
+    $this->artisan(OutlineInitCommand::class, [
         'environment' => 'local',
         '--no-interaction' => true,
     ])->run();
 })->throws(RuntimeException::class, 'pass --domain=<host>');
 
-test('notes:init unattended with no login provider refuses with the fix, instead of crashing on a prompt', function (): void {
+test('outline:init unattended with no login provider refuses with the fix, instead of crashing on a prompt', function (): void {
     $spec = notesCommonsSpec(null);
     Process::fake(function ($process) use ($spec) {
         $cmd = (string) $process->command;
@@ -236,7 +236,7 @@ test('notes:init unattended with no login provider refuses with the fix, instead
         };
     });
 
-    $this->artisan(NotesInitCommand::class, [
+    $this->artisan(OutlineInitCommand::class, [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,

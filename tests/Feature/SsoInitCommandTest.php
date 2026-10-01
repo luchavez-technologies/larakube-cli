@@ -1,6 +1,6 @@
 <?php
 
-use App\Commands\Sso\SsoInitCommand;
+use App\Commands\Zitadel\ZitadelInitCommand;
 use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
 use App\Http\Integrations\OpenBao\Requests\DynamicRequest;
 use Illuminate\Support\Facades\Http;
@@ -13,7 +13,7 @@ afterEach(function (): void {
     MockClient::destroyGlobal();
 });
 
-test('sso:init deploys zitadel using plex commons postgres by default', function (): void {
+test('zitadel:init deploys zitadel using plex commons postgres by default', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -29,14 +29,14 @@ test('sso:init deploys zitadel using plex commons postgres by default', function
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('sso:init local --admin-email=admin@example.com')
+    $this->artisan('zitadel:init local --admin-email=admin@example.com')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying Zitadel manifests (first boot runs schema setup)...')
         ->expectsOutputToContain('Zitadel is live.')
         ->expectsOutputToContain('admin@');
 });
 
-test('sso:init deploys standalone zitadel when --no-plex is passed', function (): void {
+test('zitadel:init deploys standalone zitadel when --no-plex is passed', function (): void {
     Process::fake([
         '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
@@ -44,13 +44,13 @@ test('sso:init deploys standalone zitadel when --no-plex is passed', function ()
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('sso:init local --no-plex --admin-email=admin@example.com')
+    $this->artisan('zitadel:init local --no-plex --admin-email=admin@example.com')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying Zitadel manifests (first boot runs schema setup)...')
         ->expectsOutputToContain('Zitadel is live.');
 });
 
-test('sso:init keeps the cached automation token when it rewrites the credentials Secret', function (): void {
+test('zitadel:init keeps the cached automation token when it rewrites the credentials Secret', function (): void {
     // The Secret is rewritten with `kubectl apply`, which deletes a key the manifest
     // no longer lists: dropping `machine-pat` leaves every later API call a 401, and
     // only a fresh Zitadel instance can mint another.
@@ -65,7 +65,7 @@ test('sso:init keeps the cached automation token when it rewrites the credential
         '*' => Process::result(),
     ]);
 
-    $this->artisan('sso:init local --admin-email=admin@example.com')->assertExitCode(0);
+    $this->artisan('zitadel:init local --admin-email=admin@example.com')->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'zitadel-secrets-sso-')
         && (appliedSecret($process)['data']['machine-pat'] ?? null) === 'cached-pat');
@@ -95,7 +95,7 @@ test('sso:remove aborts when the namespace delete fails', function (): void {
         ->expectsOutputToContain('failed to remove');
 });
 
-test('sso:init registers zitadel as a static role when the OpenBao DB engine is mounted', function (): void {
+test('zitadel:init registers zitadel as a static role when the OpenBao DB engine is mounted', function (): void {
     Saloon::fake([
         DynamicRequest::class => MockResponse::make([], 204),
         DynamicNoBodyRequest::class => MockResponse::make([], 204),
@@ -118,13 +118,13 @@ test('sso:init registers zitadel as a static role when the OpenBao DB engine is 
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('sso:init local --admin-email=admin@example.com')
+    $this->artisan('zitadel:init local --admin-email=admin@example.com')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying Zitadel manifests (first boot runs schema setup)...')
         ->expectsOutputToContain('Zitadel is live.');
 });
 
-test('sso:init falls back to KV push when the OpenBao DB engine is not mounted', function (): void {
+test('zitadel:init falls back to KV push when the OpenBao DB engine is not mounted', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -147,14 +147,14 @@ test('sso:init falls back to KV push when the OpenBao DB engine is not mounted',
         DynamicNoBodyRequest::class => MockResponse::make(['data' => ['secret/' => ['type' => 'kv']]]),
     ]);
 
-    $this->artisan('sso:init local --admin-email=admin@example.com')
+    $this->artisan('zitadel:init local --admin-email=admin@example.com')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying Zitadel manifests (first boot runs schema setup)...')
         ->expectsOutputToContain('Zitadel is live.');
 });
 
 test('generated Zitadel admin password always satisfies the default complexity policy', function (): void {
-    $cmd = app(SsoInitCommand::class);
+    $cmd = app(ZitadelInitCommand::class);
 
     $generate = new ReflectionMethod($cmd, 'generateZitadelAdminPassword');
     $generate->setAccessible(true);
@@ -172,7 +172,7 @@ test('generated Zitadel admin password always satisfies the default complexity p
     expect($isComplex->invoke($cmd, 'Abcdefgh12345678'))->toBeFalse();
 });
 
-test('sso:init wires Zitadel outbound email to Stalwart when the sender is cached', function (): void {
+test('zitadel:init wires Zitadel outbound email to Stalwart when the sender is cached', function (): void {
     Http::fake([
         // The public-host readiness poll must succeed so wiring proceeds.
         '*/.well-known/openid-configuration' => Http::response(['issuer' => 'https://sso.test'], 200),
@@ -191,7 +191,7 @@ test('sso:init wires Zitadel outbound email to Stalwart when the sender is cache
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('sso:init local --no-plex --admin-email=admin@example.com')
+    $this->artisan('zitadel:init local --no-plex --admin-email=admin@example.com')
         ->assertExitCode(0)
         ->expectsOutputToContain('larakube mail:wire --tool=sso');
 });

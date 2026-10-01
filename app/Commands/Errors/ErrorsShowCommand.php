@@ -42,13 +42,13 @@ class ErrorsShowCommand extends Command
 
         if ($access === null) {
             $this->warn('  GlitchTip is not installed in '.$this->errorsNamespace().'.');
-            $this->line('  Run <fg=yellow>larakube errors:init</> to deploy it.');
+            $this->line('  Run <fg=yellow>larakube glitchtip:init</> to deploy it.');
 
             return 1;
         }
 
-        $errorsUrl = $access['host'] ? "https://{$access['host']}" : '<fg=gray>host not configured — run errors:init '.$env.'</>';
-        $password = $access['password'] !== null ? $access['password'] : '<fg=gray>unknown (errors-secrets secret missing)</>';
+        $errorsUrl = $access['host'] ? "https://{$access['host']}" : '<fg=gray>host not configured — run glitchtip:init '.$env.'</>';
+        $password = $access['password'] !== null ? $access['password'] : '<fg=gray>unknown (credentials Secret missing)</>';
 
         table(['Component', 'Access'], [
             ['GlitchTip URL', $errorsUrl],

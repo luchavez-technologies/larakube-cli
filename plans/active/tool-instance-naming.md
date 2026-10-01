@@ -19,7 +19,7 @@ Data), 22 are on `toolNamingKnownDrift()`, 5 on `toolNamingHarnessPending()`.
 - Design: init hand-builds `design-backend-`, `design-secrets-`, `design-oidc-`
   names that remove never deletes; its Commons tenants aren't freed.
 - Real bugs found, outside naming: `desk:init` calls a `flagOrPrompt()` it
-  doesn't have; `notes:init` crashes non-interactively (select() with no default).
+  doesn't have; `outline:init` crashes non-interactively (select() with no default).
 
 **Stage 0 deviation:** `ToolInstance` only exposes names that already have one
 source (workloads, Commons tenants, VPN middleware, DB secret). `secret()`,

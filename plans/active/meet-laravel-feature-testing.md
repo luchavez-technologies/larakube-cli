@@ -6,7 +6,7 @@
 
 ## Context
 
-`meet:init` / `meet:wire` are live and verified — Matrix calling works through
+`livekit:init` / `meet:wire` are live and verified — Matrix calling works through
 `meet.luchtech.dev`, sessions hold for minutes instead of rejoining every ~15s. The Laravel-app
 half shipped the same day but **no Laravel project has ever run it**. Everything below is
 unverified against reality; the unit tests only prove the I/O-free paths and a faked cluster.
@@ -50,9 +50,9 @@ which is deliberately not built.
 ## Prerequisites
 
 1. `cd cli && ./build` — the working build predates the media-prune CronJob and this feature.
-2. `larakube chat:init --env=production` — deploys `chat-media-prune`, still not live.
+2. `larakube matrix:init --env=production` — deploys `chat-media-prune`, still not live.
 3. Meet must be installed on whichever cluster the test project targets. On **local** that means
-   `larakube meet:init` first; `onPostInstall()` degrades to empty placeholders when Meet is
+   `larakube livekit:init` first; `onPostInstall()` degrades to empty placeholders when Meet is
    absent, which looks like a bug but is the designed fallback.
 
 Use a scratch project, not the existing test app.
@@ -133,7 +133,7 @@ above.
   a cluster where `meet` is unregistered, the local default sticks.
 - **A stale build.** `larakube add meet` runs from the compiled phar, so an un-rebuilt binary
   will not have this feature at all.
-- **`meet:init` wiping the app's key** — fixed by `5372177` (jsonpath escaping), but if an app's
+- **`livekit:init` wiping the app's key** — fixed by `5372177` (jsonpath escaping), but if an app's
   credentials ever stop working, check `meet:show` before anything else.
 
 ## Definition of done

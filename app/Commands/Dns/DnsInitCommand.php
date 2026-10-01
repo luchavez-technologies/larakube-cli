@@ -24,13 +24,13 @@ use function Laravel\Prompts\text;
 use LaravelZero\Framework\Commands\Command;
 
 /**
- * Deploy one ExternalDNS instance per dns:init GROUP — a stable name covering
+ * Deploy one ExternalDNS instance per external-dns:init GROUP — a stable name covering
  * one or more Cloudflare zones that share a single API token.
  *
  * Previously a singleton: fixed resource names, no `--domain-filter`, and a
  * hardcoded `--txt-owner-id=larakube`. Three consequences, all real:
  *
- *   1. A second `dns:init` overwrote the first, so one cluster could only ever
+ *   1. A second `external-dns:init` overwrote the first, so one cluster could only ever
  *      manage one zone — and only with one Cloudflare account's token.
  *   2. With no domain filter and `--policy=sync`, ExternalDNS managed every
  *      zone the token could see and DELETED records it didn't recognise.
@@ -54,7 +54,7 @@ use LaravelZero\Framework\Commands\Command;
  * State lives in the cluster, never in a project file: DNS is cluster
  * infrastructure and has nothing to do with any Laravel app.
  */
-class DnsInitCommand extends Command
+abstract class DnsInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithCloudflareApi,
         InteractsWithClusterContext, InteractsWithClusterIdentity, InteractsWithDnsZones,
@@ -63,21 +63,8 @@ class DnsInitCommand extends Command
 
     private const CLOUDFLARE_TOKEN_ENV = 'LARAKUBE_CLOUDFLARE_TOKEN';
 
-    protected $signature = 'dns:init
-        {environment?        : Environment this install targets (a cloud env — ExternalDNS is not supported locally)}
-        {--cloudflare-token= : API token — every zone it can see is discovered and managed, unless --zone= narrows that. Or set LARAKUBE_CLOUDFLARE_TOKEN}
-        {--zone=*            : Optional — restrict to a subset of what the token can see. Omit to manage every zone the token has access to.}
-        {--group=            : Stable name for this instance. Default: the sole zone\'s own slug (unchanged single-zone behavior) — required when 2+ zones are in scope}
-        {--context=          : Target a specific kube-context}
-        {--force             : Skip the confirmation prompt}';
-
-    protected $description = 'Deploy an ExternalDNS instance for one or more Cloudflare zones sharing a token';
-
-    public function handle(): int
+    protected function deployDns(): int
     {
-        $this->laraKubeWarn("[DEPRECATION] 'dns:init' is deprecated. Forwarding to 'external-dns:init'. Please update your scripts.");
-        $this->renderHeader();
-
         $env = $this->resolveToolEnvironment(ClusterTool::DNS);
 
         if ($env === 'local') {
@@ -172,7 +159,7 @@ class DnsInitCommand extends Command
         $this->line("  <fg=gray>Instance:</>   <fg=blue>external-dns-{$groupSlug}</>");
         $this->newLine();
         $this->line('  <fg=gray>A zone with a different Cloudflare account (different token) needs its own group:</>');
-        $this->line("  <fg=blue>larakube dns:init {$env} --cloudflare-token=…</>");
+        $this->line("  <fg=blue>larakube external-dns:init {$env} --cloudflare-token=…</>");
         $this->line('  <fg=gray>See everything this cluster manages:</> <fg=blue>larakube dns:list '.$env.'</>');
         $this->newLine();
 
@@ -222,7 +209,7 @@ class DnsInitCommand extends Command
             throw new MissingFlagException(
                 'cloudflare-token',
                 'the Cloudflare API token for the zone(s) to manage',
-                'larakube dns:init production --cloudflare-token=…',
+                'larakube external-dns:init production --cloudflare-token=…',
             );
         }
 
@@ -300,7 +287,7 @@ class DnsInitCommand extends Command
             throw new MissingFlagException(
                 'group',
                 'a stable name for this multi-zone instance ('.implode(', ', $zones).')',
-                'larakube dns:init production --group=shared --cloudflare-token=…',
+                'larakube external-dns:init production --group=shared --cloudflare-token=…',
             );
         }
 

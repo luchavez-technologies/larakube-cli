@@ -1,6 +1,6 @@
 @php
     // Every name comes from ToolInstance (ADR 0021). Rendered both by
-    // webmail:init (which passes the instance) and by the shared reconcile
+    // bulwark:init (which passes the instance) and by the shared reconcile
     // path (which passes only the host), so derive what is missing.
     $instance = ($instance ?? '') !== ''
         ? $instance
@@ -60,7 +60,7 @@ spec:
             # Setting JMAP_SERVER_URL skips Bulwark's interactive setup wizard
             # (headless deploy). This MUST be the PUBLIC Stalwart host, not the
             # in-cluster Service DNS: the browser connects to JMAP directly
-            # (hence the CORS flip in webmail:init), so it has to be a URL the
+            # (hence the CORS flip in bulwark:init), so it has to be a URL the
             # browser can actually resolve.
             - name: JMAP_SERVER_URL
               value: https://{{ $mailHost }}

@@ -49,7 +49,7 @@ class VpnRevokeCommand extends Command
 
         $pat = $this->fetchVpnPat($kubectl, $ns);
         if ($pat === null) {
-            $this->laraKubeError("No NetBird admin token found — re-run `larakube vpn:init {$env}` to bootstrap auth.");
+            $this->laraKubeError("No NetBird admin token found — re-run `larakube netbird:init {$env}` to bootstrap auth.");
 
             return 1;
         }

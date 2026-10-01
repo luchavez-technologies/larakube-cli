@@ -26,28 +26,9 @@ use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
 
-class FlowInitCommand extends Command
+abstract class FlowInitCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithFlow, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
-
-    protected $signature = 'flow:init
-        {environment? : Environment this install targets — "local" (default) or cloud.}
-        {--context=  : Target a specific kube-context}
-        {--domain=   : Base domain OR full host for Flow (example.com → prefix.example.com)}
-        {--no-plex   : Bypass Plex Commons and use local SQLite storage}
-        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--engine=   : The automation engine to deploy ("n8n" or "windmill")}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy a workflow automation stack (n8n or Windmill) into larakube-shared';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'flow:init' is deprecated. Please use 'n8n:init' or 'windmill:init' instead.");
-        $this->renderHeader();
-
-        return $this->deployFlow();
-    }
 
     protected function deployFlow(): int
     {

@@ -117,7 +117,7 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
                 ],
             ),
             // Matrix Authentication Service — deployed unconditionally by
-            // `chat:init` once Zitadel is available (Element X requires
+            // `matrix:init` once Zitadel is available (Element X requires
             // MSC3861/MAS-native OIDC; it does not speak the classic
             // oidc_providers: flow the `synapse` component above uses).
             // Stateless: its state lives entirely in its own Postgres tenant,

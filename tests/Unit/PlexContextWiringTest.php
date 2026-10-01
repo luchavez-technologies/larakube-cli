@@ -9,7 +9,7 @@
  *
  * That failure is silent and nasty: getCommonsSpec() just returns null, so
  * configureStalwartStore() and printPlexHint() no-op and the operator sees
- * nothing at all — which is exactly how mail:init stopped printing its Plex
+ * nothing at all — which is exactly how stalwart:init stopped printing its Plex
  * Commons connection details. Worse, on a teardown path it would drop a tenant
  * from the WRONG cluster's Commons.
  *

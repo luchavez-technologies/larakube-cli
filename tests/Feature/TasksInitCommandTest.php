@@ -45,7 +45,7 @@ test('tasks ToolInstance resolves canonical database, secrets, and deployment', 
         ->and($instance->database())->toBe('planka_tasks_example_test');
 });
 
-test('tasks:init provisions canonical resources and secret', function (): void {
+test('planka:init provisions canonical resources and secret', function (): void {
     Process::fake([
         '*plex-commons*' => Process::result(output: '{"services":{"postgres":{"enabled":true}}}'),
         '*plex-registry*' => Process::result(output: '{"tenants":{}}'),
@@ -57,7 +57,7 @@ test('tasks:init provisions canonical resources and secret', function (): void {
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('tasks:init local --force')
+    $this->artisan('planka:init local --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Planka tasks stack is live.');
 

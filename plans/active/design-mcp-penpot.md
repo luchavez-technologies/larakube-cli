@@ -8,9 +8,9 @@
 
 ## Why this exists
 
-`design:init` deploys Penpot (`docs/decisions/0012`-era tool). A follow-up investigation asked whether LaraKube CLI should also ship `design:mcp:init` — deploying a companion so Claude can read/edit designs in a shared, self-hosted Penpot instance, the way this project migrated off Figma + Google Stitch expecting to.
+`penpot:init` deploys Penpot (`docs/decisions/0012`-era tool). A follow-up investigation asked whether LaraKube CLI should also ship `design:mcp:init` — deploying a companion so Claude can read/edit designs in a shared, self-hosted Penpot instance, the way this project migrated off Figma + Google Stitch expecting to.
 
-An earlier attempt to just flip Penpot's `enable-mcp` flag on `design:init`'s baseline took down `design.luchtech.dev` in production (the flag assumes a companion container that was never deployed). That incident, and the fix to the flag-reconciliation logic, is documented in ADR 0013. This plan is the *separate* follow-up: is a real, deliberate, opt-in `design:mcp:init` command worth building.
+An earlier attempt to just flip Penpot's `enable-mcp` flag on `penpot:init`'s baseline took down `design.luchtech.dev` in production (the flag assumes a companion container that was never deployed). That incident, and the fix to the flag-reconciliation logic, is documented in ADR 0013. This plan is the *separate* follow-up: is a real, deliberate, opt-in `design:mcp:init` command worth building.
 
 ## What's actually required (verified 2026-08-10, ground-truth from the live container + source)
 

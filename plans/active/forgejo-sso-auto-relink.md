@@ -66,7 +66,7 @@ account + fresh `external_login_user` row. No operator intervention.
 ## Rollout
 
 1. `./build` (rebuild the CLI phar)
-2. `larakube git:init` — re-applies the manifest idempotently (secrets are
+2. `larakube forgejo:init` — re-applies the manifest idempotently (secrets are
    read-back before regenerate; admin creation is guarded by
    `admin user list`); the env change rolls the pod.
 3. eman logs in via SSO once — account links, lands on inv3ntor01.

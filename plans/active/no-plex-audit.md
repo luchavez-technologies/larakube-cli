@@ -1,7 +1,7 @@
 # Audit: `--no-plex` coverage + multi-instance `:wire` verification
 
 > **Status:** Not started — queued explicitly for a future session (raised 2026-08-18,
-> right after `monitor:init` gained `--no-plex` as part of the Grafana persistence fix).
+> right after `grafana:init` gained `--no-plex` as part of the Grafana persistence fix).
 > This file is the starting inventory + questions to resolve, not a finished design. Two
 > related-but-distinct audits live here — §2-5 cover `--no-plex`, §6 covers whether
 > `secrets:wire`/`sso:wire`/`mail:wire` actually work against a real multi-instance
@@ -9,14 +9,14 @@
 
 ## 1. Why this exists
 
-Tonight's Grafana fix (`monitor:init` defaulting to Commons Postgres, with `--no-plex`
+Tonight's Grafana fix (`grafana:init` defaulting to Commons Postgres, with `--no-plex`
 falling back to a PVC) surfaced a broader inconsistency: `--no-plex` — "bypass Plex
 Commons, use local PVC/bundled storage instead" — exists on some Commons-backed tools
 and not others, with no visible rule for which get it. Nobody has checked whether that's
 deliberate (a real architectural reason) or just organic drift (whoever built the tool
 remembered the flag or didn't).
 
-`git:init` is the reference implementation: `--no-plex` swaps Commons S3 buckets +
+`forgejo:init` is the reference implementation: `--no-plex` swaps Commons S3 buckets +
 Postgres for local PVC storage, cleanly, with its own `usesBundledStorage()` detection
 on the remove side so `--purge` doesn't try to drop a Commons tenant that was never
 allocated.
@@ -62,10 +62,10 @@ actual bucket status.
 1. **Does it make sense for this tool to run without Plex at all?** Some tools are
    arguably foundational enough (Mail, SSO) that "no Commons available" might mean "don't
    install yet" rather than "fall back to bundled storage" — worth deciding per tool, not
-   assuming `git:init`'s answer applies everywhere. (Note: SSO already has `--no-plex`,
+   assuming `forgejo:init`'s answer applies everywhere. (Note: SSO already has `--no-plex`,
    so at least that precedent exists for foundational tools.)
 2. **If yes, what does bundled/local storage look like for it?** A PVC for the DB (like
-   `git:init`'s `--no-plex`, and tonight's Grafana fallback)? A bundled sidecar DB
+   `forgejo:init`'s `--no-plex`, and tonight's Grafana fallback)? A bundled sidecar DB
    container (the `{tool}-db` pattern `usesBundledStorage()` checks for elsewhere, e.g.
    `chat-synapse-db`, `desk-freescout-db`)? Depends on whether the tool's own image
    supports an embedded DB story or needs a real Postgres/MySQL next to it.
@@ -75,12 +75,12 @@ actual bucket status.
    `--no-plex` install never allocated (a real footgun if the naming happens to collide
    with a DIFFERENT tool's or instance's tenant).
 4. **Buckets, not just databases** — a tool with `HasCommonsBuckets` and no `--no-plex`
-   has the same "S3 or bust" gap `git:init` solves for Forgejo's storage/packages/lfs
+   has the same "S3 or bust" gap `forgejo:init` solves for Forgejo's storage/packages/lfs
    buckets. Don't fix the DB half and leave buckets still hard-requiring Commons.
 5. **Is there a cheaper answer than a full audit-and-build pass?** e.g. a shared
    `EnsuresPlexOrFallback` trait that gives every `{tool}:init` the same `--no-plex`
-   behavior structurally, rather than 13 more hand-rolled copies of what `git:init`
-   and `monitor:init` each wrote inline tonight. Worth at least 30 minutes of design
+   behavior structurally, rather than 13 more hand-rolled copies of what `forgejo:init`
+   and `grafana:init` each wrote inline tonight. Worth at least 30 minutes of design
    thought before starting the mechanical per-tool work — 13 more inline copies is a
    lot of near-identical code to maintain and re-verify individually.
 
@@ -145,7 +145,7 @@ Zitadel/Documenso earlier this same week (see [[project_openbao_db_static_role_r
 ### Suggested verification
 
 1. Stand up a second instance of ONE multi-instance tool (Design is the best-understood
-   one from tonight — `design:init --domain=<second-host>`).
+   one from tonight — `penpot:init --domain=<second-host>`).
 2. Run `secrets:wire --tool=design --domain=<second-host>` and confirm: the correct
    instance-suffixed ExternalSecret/role get created, the FIRST instance's rotation is
    completely untouched (check its ExternalSecret's `refreshTime`/password didn't change),

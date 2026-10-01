@@ -81,7 +81,7 @@ class GitLoginCommand extends Command
 
         if ($hosts === []) {
             $this->laraKubeError("No Forgejo is registered on '{$env}'.");
-            $this->line("   <fg=gray>Run</> <fg=yellow>larakube git:init {$env}</> <fg=gray>first, or pass</> <fg=yellow>--domain=</><fg=gray>.</>");
+            $this->line("   <fg=gray>Run</> <fg=yellow>larakube forgejo:init {$env}</> <fg=gray>first, or pass</> <fg=yellow>--domain=</><fg=gray>.</>");
 
             return null;
         }

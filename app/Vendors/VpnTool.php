@@ -88,7 +88,7 @@ final class VpnTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploy
 
     /**
      * NetBird's own store — accounts, peers, groups, policies, setup keys and
-     * tokens, i.e. the entire VPN control plane. Only present when vpn:init ran
+     * tokens, i.e. the entire VPN control plane. Only present when netbird:init ran
      * without --no-plex; with it, NetBird stays on a SQLite file and there is no
      * Commons tenant to rotate.
      */
@@ -136,7 +136,7 @@ final class VpnTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploy
      *
      * Safe alongside the database's dynamic rotation because that targets a
      * DIFFERENT Secret (SecretKind::STORE) — the two never write the same
-     * key, so secrets:init's dynamic-beats-static guard has nothing to arbitrate.
+     * key, so openbao:init's dynamic-beats-static guard has nothing to arbitrate.
      */
     public function openbaoSyncConfig(?string $instance = null): array
     {

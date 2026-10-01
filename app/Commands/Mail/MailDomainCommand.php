@@ -22,7 +22,7 @@ use LaravelZero\Framework\Commands\Command;
  * admin-UI clicking, no Cloudflare dashboard access required (only the
  * zone's own API token).
  *
- * This is deliberately additive, not a replacement for mail:init's manual
+ * This is deliberately additive, not a replacement for stalwart:init's manual
  * first-domain setup: luchtech.dev's own domain stays exactly as configured.
  */
 class MailDomainCommand extends Command
@@ -58,7 +58,7 @@ class MailDomainCommand extends Command
         $ns = $this->mailNamespace();
 
         if (! $this->isMailInstalled($kubectl, $ns)) {
-            $this->laraKubeError('Stalwart is not installed. Run `larakube mail:init` first.');
+            $this->laraKubeError('Stalwart is not installed. Run `larakube stalwart:init` first.');
 
             return 1;
         }
@@ -152,7 +152,7 @@ class MailDomainCommand extends Command
     }
 
     /**
-     * The domain to onboard. Required — no default, matching dns:init's
+     * The domain to onboard. Required — no default, matching external-dns:init's
      * refusal to guess at a destructive per-zone action.
      */
     protected function resolveZone(): string
