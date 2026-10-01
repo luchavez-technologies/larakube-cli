@@ -124,23 +124,14 @@ class RecordInitCommand extends Command
         ));
 
         $clusterEnv = $env === 'local' ? 'dev' : $env;
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbName, $dbPassword, $jwtSecret, $clusterEnv): void {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $jwtSecret, $clusterEnv): void {
             Kubectl::fromPrefix($kubectl)->putSecret($ns, 'record-secrets', ['db-password' => $dbPassword, 'jwt-secret' => $jwtSecret]);
 
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
-                if ($this->databaseEngineMounted($kubectl)) {
-                    $this->registerStaticRole($kubectl, $dbName);
-
-                    // registerStaticRole() rotates the password as a side
-                    // effect the instant a role is FIRST created — the
-                    // literal $dbPassword the Secret above already has is
-                    // stale from that moment on. Confirmed live 2026-08-02
-                    // on Zitadel: worked once, desynced on next restart.
-                    $realPassword = $this->readStaticRolePassword($kubectl, $dbName);
-                    if ($realPassword !== null) {
-                        Kubectl::fromPrefix($kubectl)->patchSecret($ns, 'record-secrets', ['db-password' => $realPassword]);
-                    }
-                } else {
+                // Rotation is wired by `secrets:wire`, which also creates the ExternalSecret
+                // that carries each rotated password back into this Secret. Registering the
+                // role here would rotate it with nothing to sync the new password.
+                if (! $this->databaseEngineMounted($kubectl)) {
                     $this->pushClusterSecret($kubectl, 'RECORD_DB_PASSWORD', $dbPassword, $clusterEnv);
                 }
                 $this->pushClusterSecret($kubectl, 'RECORD_JWT_SECRET', $jwtSecret, $clusterEnv);

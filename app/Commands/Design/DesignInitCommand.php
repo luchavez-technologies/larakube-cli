@@ -144,13 +144,10 @@ class DesignInitCommand extends Command
             Kubectl::fromPrefix($kubectl)->putSecret($ns, $dbSecretName, ['password' => $dbPassword, 'secret-key' => $secretKey]);
 
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
-                if ($this->databaseEngineMounted($kubectl)) {
-                    $this->registerStaticRole($kubectl, $dbName);
-                    $realPassword = $this->readStaticRolePassword($kubectl, $dbName);
-                    if ($realPassword !== null) {
-                        Kubectl::fromPrefix($kubectl)->patchSecret($ns, $dbSecretName, ['password' => $realPassword]);
-                    }
-                } else {
+                // Rotation is wired by `secrets:wire`, which also creates the ExternalSecret
+                // that carries each rotated password back into this Secret. Registering the
+                // role here would rotate it with nothing to sync the new password.
+                if (! $this->databaseEngineMounted($kubectl)) {
                     $this->pushClusterSecret($kubectl, "DESIGN_DB_PASSWORD_{$dbName}", $dbPassword, $clusterEnv);
                 }
             }

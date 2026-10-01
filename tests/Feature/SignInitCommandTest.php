@@ -11,6 +11,13 @@
 
 use App\Commands\Sign\SignInitCommand;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
 
 function signCommonsSpec(?string $s3Host): array
 {
@@ -28,11 +35,11 @@ function signCommonsSpec(?string $s3Host): array
     ];
 }
 
-function fakeSignInitProcess(?string $s3Host, ?string &$appliedManifest, int $applyExitCode = 0): void
+function fakeSignInitProcess(?string $s3Host, ?string &$appliedManifest, int $applyExitCode = 0, bool $openBao = false): void
 {
     $spec = signCommonsSpec($s3Host);
 
-    Process::fake(function ($process) use ($spec, &$appliedManifest, $applyExitCode) {
+    Process::fake(function ($process) use ($spec, &$appliedManifest, $applyExitCode, $openBao) {
         $cmd = $process->command;
 
         if (str_contains($cmd, 'apply -f')) {
@@ -48,6 +55,7 @@ function fakeSignInitProcess(?string $s3Host, ?string &$appliedManifest, int $ap
         return match (true) {
             str_contains($cmd, 'get configmap plex-commons') => Process::result(output: json_encode($spec)),
             str_contains($cmd, 'get configmap plex-registry') => Process::result(output: '', exitCode: 1),
+            str_contains($cmd, 'get secret openbao-bootstrap') => Process::result(output: $openBao ? base64_encode('hvs.token') : ''),
             str_contains($cmd, 'get service headless-shell') => Process::result(output: '10.43.0.99'),
             str_contains($cmd, 'S3_ACCESS_KEY') => Process::result(output: base64_encode('larakube')),
             str_contains($cmd, 'S3_SECRET_KEY') => Process::result(output: base64_encode('s3-secret')),
@@ -244,4 +252,26 @@ test('sign:init stops when the Commons has no headless Chrome to point Documenso
         ->assertExitCode(1);
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'apply -f') && str_contains($process->command, 'larakube-sign-documenso'));
+});
+
+test('sign:init never puts the database role under OpenBao rotation; only secrets:wire does', function (): void {
+    // Registering the role here rotates its password at once and on a
+    // schedule, but the ExternalSecret that carries each new password into
+    // the Secret Documenso reads is created by secrets:wire. Init-registered
+    // rotation therefore leaves a Deployment holding a password Postgres has
+    // already replaced, and it crash-loops on "password authentication failed".
+    $appliedManifest = null;
+    fakeSignInitProcess('files.example.com', $appliedManifest, openBao: true);
+
+    Saloon::fake([
+        '*' => MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
+    ]);
+
+    $this->artisan(SignInitCommand::class, [
+        'environment' => 'local',
+        '--no-interaction' => true,
+    ])->assertExitCode(0);
+
+    Saloon::assertNotSent(fn ($request): bool => str_contains($request->resolveEndpoint(), 'static-roles')
+        || str_contains($request->resolveEndpoint(), 'rotate-role'));
 });

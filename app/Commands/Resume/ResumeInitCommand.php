@@ -116,18 +116,14 @@ class ResumeInitCommand extends Command
         ));
 
         $clusterEnv = $env === 'local' ? 'dev' : $env;
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbName, $dbPassword, $authSecret, $clusterEnv): void {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $authSecret, $clusterEnv): void {
             Kubectl::fromPrefix($kubectl)->putSecret($ns, 'resume-reactive-secrets', ['db-password' => $dbPassword, 'auth-secret' => $authSecret]);
 
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
-                if ($this->databaseEngineMounted($kubectl)) {
-                    $this->registerStaticRole($kubectl, $dbName);
-
-                    $realPassword = $this->readStaticRolePassword($kubectl, $dbName);
-                    if ($realPassword !== null) {
-                        Kubectl::fromPrefix($kubectl)->patchSecret($ns, 'resume-reactive-secrets', ['db-password' => $realPassword]);
-                    }
-                } else {
+                // Rotation is wired by `secrets:wire`, which also creates the ExternalSecret
+                // that carries each rotated password back into this Secret. Registering the
+                // role here would rotate it with nothing to sync the new password.
+                if (! $this->databaseEngineMounted($kubectl)) {
                     $this->pushClusterSecret($kubectl, 'RESUME_DB_PASSWORD', $dbPassword, $clusterEnv);
                 }
             }

@@ -137,18 +137,14 @@ class SignInitCommand extends Command
 
         $secret = $names->secret();
         $clusterEnv = $env === 'local' ? 'dev' : $env;
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secret, $dbName, $dbPassword, $nextauthSecret, $encryptionKey, $encryptionSecondaryKey, $s3Creds, $clusterEnv): void {
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $secret, $dbPassword, $nextauthSecret, $encryptionKey, $encryptionSecondaryKey, $s3Creds, $clusterEnv): void {
             Kubectl::fromPrefix($kubectl)->putSecret($ns, $secret, ['db-password' => $dbPassword, 'nextauth-secret' => $nextauthSecret, 'encryption-key' => $encryptionKey, 'encryption-secondary-key' => $encryptionSecondaryKey, 's3-access-key' => $s3Creds['access'], 's3-secret-key' => $s3Creds['secret']]);
 
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
-                if ($this->databaseEngineMounted($kubectl)) {
-                    $this->registerStaticRole($kubectl, $dbName);
-
-                    $realPassword = $this->readStaticRolePassword($kubectl, $dbName);
-                    if ($realPassword !== null) {
-                        Kubectl::fromPrefix($kubectl)->patchSecret($ns, $secret, ['db-password' => $realPassword]);
-                    }
-                } else {
+                // Rotation is wired by `secrets:wire`, which also creates the ExternalSecret
+                // that carries each rotated password back into this Secret. Registering the
+                // role here would rotate it with nothing to sync the new password.
+                if (! $this->databaseEngineMounted($kubectl)) {
                     $this->pushClusterSecret($kubectl, 'SIGN_DB_PASSWORD', $dbPassword, $clusterEnv);
                 }
                 $this->pushClusterSecret($kubectl, 'SIGN_NEXTAUTH_SECRET', $nextauthSecret, $clusterEnv);
