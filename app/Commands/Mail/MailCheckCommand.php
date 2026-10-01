@@ -94,7 +94,7 @@ class MailCheckCommand extends Command
         $this->report($mxOk ? 'ok' : 'fail', "DNS · MX for {$domain} → {$host}",
             "Add it: {$domain}  MX  10  {$host}   (external inbound mail needs this).");
 
-        $relayProvider = $this->readClusterSecretKey($kubectl, $ns, 'mail-relay', 'provider');
+        $relayProvider = $this->readMailRelay($kubectl, $ns, 'provider');
         $expectedSpf = match ($relayProvider) {
             'ses' => 'include:amazonses.com',
             'brevo' => 'include:spf.brevo.com',
@@ -142,7 +142,7 @@ class MailCheckCommand extends Command
         // a blocked submission port or a wrong login/key is silent otherwise.
         $this->newLine();
         $relayOn = trim(Process::run(
-            "{$kubectl} get secret mail-relay -n {$ns} --ignore-not-found -o name",
+            "{$kubectl} get secret {$this->mailRelaySecretName($kubectl)} -n {$ns} --ignore-not-found -o name",
         )->output()) !== '';
 
         if (! $relayOn) {
@@ -226,16 +226,16 @@ class MailCheckCommand extends Command
      */
     private function probeRelay(string $kubectl, string $ns): array
     {
-        $provider = $this->readClusterSecretKey($kubectl, $ns, 'mail-relay', 'provider') ?: 'relay';
-        $user = (string) $this->readClusterSecretKey($kubectl, $ns, 'mail-relay', 'username');
-        $pass = (string) $this->readClusterSecretKey($kubectl, $ns, 'mail-relay', 'password');
+        $provider = $this->readMailRelay($kubectl, $ns, 'provider') ?: 'relay';
+        $user = (string) $this->readMailRelay($kubectl, $ns, 'username');
+        $pass = (string) $this->readMailRelay($kubectl, $ns, 'password');
 
         // Host/port/TLS come from the Stalwart route itself — that's what
         // actually gets used for delivery (and honors any --port override).
         $route = $this->stalwartFindRoute($kubectl, $ns, $provider);
         if ($route === null) {
             return ['warn', ' (secret present, no Stalwart route)',
-                "The mail-relay secret exists but Stalwart has no '{$provider}' route. Re-run: larakube mail:relay {$provider} --env=<env>."];
+                "The relay credentials Secret exists but Stalwart has no '{$provider}' route. Re-run: larakube mail:relay {$provider} --env=<env>."];
         }
 
         $address = (string) ($route['address'] ?? '');

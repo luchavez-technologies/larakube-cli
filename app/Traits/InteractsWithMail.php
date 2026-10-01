@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
@@ -41,22 +42,33 @@ trait InteractsWithMail
     }
 
     /**
-     * Stalwart Deployment present? A stable, non-instance-suffixed label
-     * survives the rename to mail-stalwart-{instance} naming — matching
-     * InteractsWithBulwark::isBulwarkInstalled()'s fix, this avoids every
-     * caller needing to resolve the instance before it can even find the pod.
+     * Stalwart Deployment present? Found by its identity label, which avoids
+     * every caller needing to resolve the instance before it can even find the
+     * pod (the Deployment is named per instance).
      */
     protected function isMailInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'app=mail-stalwart');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=mail');
+    }
+
+    /**
+     * Every Mail resource name (ADR 0021) for the instance this host serves.
+     * $instance is optional: commands that read Mail state without knowing it
+     * fall back to the live registered one. Null only when Mail is not deployed.
+     */
+    protected function mailNames(string $kubectl, ?string $instance = null): ?ToolInstance
+    {
+        $instance ??= $this->resolveMailInstance($kubectl);
+
+        return $instance === '' ? null : ToolInstance::forInstance(ClusterTool::MAIL, $instance);
     }
 
     /**
      * MAIL's own resource-naming instance slug, resolved fresh from the tools
      * registry's currently-live host whenever a caller doesn't already have
      * it in hand — keeps every existing readMailSecret()/storeMailSecret()
-     * call site correct against the mail-secrets-{instance} rename without
-     * each one needing to independently resolve $env/$host/$instance itself.
+     * call site correct without each one needing to independently resolve
+     * $env/$host/$instance itself.
      * Callers that already computed it (MailInitCommand mid-deploy, before
      * it's even registered) should pass it explicitly instead.
      */
@@ -67,18 +79,45 @@ trait InteractsWithMail
         return ($host !== null && $host !== '') ? ClusterTool::MAIL->instanceSlugFromHost($host) : '';
     }
 
-    /** Read a key from the mail-secrets{-instance} secret. */
+    /** Stalwart's credentials Secret, or the bare stem when no instance is registered yet. */
+    protected function mailSecretsName(string $kubectl, ?string $instance = null): string
+    {
+        return $this->mailNames($kubectl, $instance)?->secret() ?? 'stalwart-secrets';
+    }
+
+    /** The cached relay credentials Secret (mail:relay). */
+    protected function mailRelaySecretName(string $kubectl): string
+    {
+        return $this->mailNames($kubectl)?->name('relay') ?? 'stalwart-relay';
+    }
+
+    /** The cached sender credentials Secret (mail:wire). */
+    protected function mailSenderSecretName(string $kubectl): string
+    {
+        return $this->mailNames($kubectl)?->name('sender') ?? 'stalwart-sender';
+    }
+
+    /** Read a key from Stalwart's credentials Secret. */
     protected function readMailSecret(string $kubectl, string $ns, string $key, ?string $instance = null): ?string
     {
-        $instance ??= $this->resolveMailInstance($kubectl);
-        $secret = $instance === '' ? 'mail-secrets' : "mail-secrets-{$instance}";
+        return $this->readClusterSecretKey($kubectl, $ns, $this->mailSecretsName($kubectl, $instance), $key);
+    }
 
-        return $this->readClusterSecretKey($kubectl, $ns, $secret, $key);
+    /** Read a key from the cached relay credentials Secret (mail:relay). */
+    protected function readMailRelay(string $kubectl, string $ns, string $key): ?string
+    {
+        return $this->readClusterSecretKey($kubectl, $ns, $this->mailRelaySecretName($kubectl), $key);
+    }
+
+    /** Read a key from the cached sender credentials Secret (mail:wire). */
+    protected function readMailSender(string $kubectl, string $ns, string $key): ?string
+    {
+        return $this->readClusterSecretKey($kubectl, $ns, $this->mailSenderSecretName($kubectl), $key);
     }
 
     /**
-     * Write (or overwrite) a key on the mail-secrets{-instance} secret — a
-     * plain k8s Secret patch. mail-secrets holds the mail server's OWN
+     * Write (or overwrite) a key on Stalwart's credentials Secret — a
+     * plain k8s Secret patch. That Secret holds the mail server's OWN
      * credentials (recovery admin, admin password, automation api-key), which
      * are deliberately k8s-only and never synced to the secrets backend: the
      * mail server is foundational infrastructure that other tools depend on,
@@ -90,10 +129,7 @@ trait InteractsWithMail
      */
     protected function storeMailSecret(string $kubectl, string $ns, string $key, string $value, ?string $instance = null): bool
     {
-        $instance ??= $this->resolveMailInstance($kubectl);
-        $secret = $instance === '' ? 'mail-secrets' : "mail-secrets-{$instance}";
-
-        return Kubectl::fromPrefix($kubectl)->patchSecret($ns, $secret, [$key => $value])->ok;
+        return Kubectl::fromPrefix($kubectl)->patchSecret($ns, $this->mailSecretsName($kubectl, $instance), [$key => $value])->ok;
     }
 
     /** Read-only Stalwart host for the given environment. */

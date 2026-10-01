@@ -1,34 +1,34 @@
 @php
-    // Every resource below except pvc/stalwart-data (live mail files) and the
-    // pod's own labels (a stable app=mail-stalwart selector, so every trait/
-    // command that looks up "the" Stalwart pod never needs to resolve the
-    // instance first — see InteractsWithMail::isMailInstalled()) carries this
-    // suffix, matching the 3-segment {tool}-{app}-{instance} convention
-    // 7b06359 established for webmail/dashboard/meet/paste.
-    $suffix = ($instance ?? '') !== '' ? "-{$instance}" : '';
-    $deploymentName = "mail-stalwart{$suffix}";
-    $mailSecretsName = "mail-secrets{$suffix}";
-    $configMapName = "mail-stalwart-config{$suffix}";
-    // dbSecretRef()'s enum wrapper suffixes THIS secret the same way — see
-    // ClusterTool::dbSecretRef(). Bare 'stalwart' stays correct only when
-    // $instance is empty (never true in production; only a defensive
-    // fallback if a caller somehow renders this without resolving one).
-    $openBaoSyncedSecretName = "stalwart{$suffix}";
+    // Every name comes from ToolInstance (ADR 0021).
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::MAIL->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::MAIL, $instance);
+    $deploymentName = $names->deployment();
+    $smtpServiceName = $names->name('mail');
+    $mailSecretsName = $names->secret();
+    $configMapName = $names->configMap('config');
+    // The OpenBao-synced store Secret: DB and S3 credentials that rotation rewrites.
+    $openBaoSyncedSecretName = $names->secret(\App\Enums\SecretKind::STORE);
+    $volume = $names->volume();
+    $labels = '';
+    foreach ($names->labels() as $key => $value) {
+        $labels .= "\n    {$key}: {$value}";
+    }
+    $podLabels = str_replace("\n    ", "\n        ", $labels);
 @endphp
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: stalwart-data
+  name: {{ $volume }}
   namespace: larakube-shared
-  labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: mail
+  labels:{!! $labels !!}
 spec:
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: {{ $volumeSize('stalwart-data', '5Gi', true) }}
+      storage: {{ $volumeSize($volume, '5Gi', true) }}
 ---
 @if($storeBootstrap ?? null)
 {{-- EXPERIMENTAL, local-only: pre-seeds Stalwart's DataStore config.json so
@@ -40,6 +40,7 @@ kind: ConfigMap
 metadata:
   name: {{ $configMapName }}
   namespace: larakube-shared
+  labels:{!! $labels !!}
 data:
   config.json: |
     {
@@ -57,8 +58,8 @@ kind: Deployment
 metadata:
   name: {{ $deploymentName }}
   namespace: larakube-shared
-  labels:
-    app: mail-stalwart
+  labels:{!! $labels !!}
+    app: {{ $deploymentName }}
   annotations:
     secret.reloader.stakater.com/reload: "{{ $openBaoSyncedSecretName }},{{ $mailSecretsName }}"
 spec:
@@ -67,11 +68,11 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: mail-stalwart
+      app: {{ $deploymentName }}
   template:
     metadata:
       labels:
-        app: mail-stalwart
+        app: {{ $deploymentName }}{!! $podLabels !!}
     spec:
       securityContext:
         # The image runs as the unprivileged 'stalwart' user (UID 2000); the
@@ -194,9 +195,8 @@ spec:
             # Persistent store: RocksDB (or Postgres-backed) config + data on a
             # standalone PVC. One claim serves both Stalwart's writable config
             # dir (/etc/stalwart) and its data dir (/var/lib/stalwart) via
-            # subPaths — no Commons, no ConfigMap. NOT instance-suffixed —
-            # this is Stalwart's live mail data; renaming the PVC would mean
-            # a brand-new empty volume, not the existing one.
+            # subPaths — no Commons, no ConfigMap. config.json here names the
+            # database, so the claim must be copied (not recreated) on a rename.
             - name: stalwart-data
               mountPath: /var/lib/stalwart
               subPath: data
@@ -216,7 +216,7 @@ spec:
       volumes:
         - name: stalwart-data
           persistentVolumeClaim:
-            claimName: stalwart-data
+            claimName: {{ $volume }}
 @if($storeBootstrap ?? null)
         - name: stalwart-config
           configMap:
@@ -229,9 +229,10 @@ kind: Service
 metadata:
   name: {{ $deploymentName }}
   namespace: larakube-shared
+  labels:{!! $labels !!}
 spec:
   selector:
-    app: mail-stalwart
+    app: {{ $deploymentName }}
   ports:
     - { protocol: TCP, port: 8080, targetPort: 8080, name: http }
   type: ClusterIP
@@ -242,11 +243,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: mail-stalwart-mail{{ $suffix }}
+  name: {{ $smtpServiceName }}
   namespace: larakube-shared
+  labels:{!! $labels !!}
 spec:
   selector:
-    app: mail-stalwart
+    app: {{ $deploymentName }}
   ports:
     - { protocol: TCP, port: 25, targetPort: 25, name: smtp }
     - { protocol: TCP, port: 587, targetPort: 587, name: submission }

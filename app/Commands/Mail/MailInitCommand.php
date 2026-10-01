@@ -3,8 +3,10 @@
 namespace App\Commands\Mail;
 
 use App\Data\ConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
+use App\Enums\SecretKind;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
 use App\Services\Kubectl;
@@ -74,6 +76,7 @@ class MailInitCommand extends Command
         // instance support, just giving its one real instance a real name
         // instead of an unsuffixed one.
         $resourceInstance = ClusterTool::MAIL->instanceSlugFromHost($host);
+        $names = ToolInstance::forInstance(ClusterTool::MAIL, $resourceInstance);
 
         $projectPath = getcwd();
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
@@ -101,7 +104,7 @@ class MailInitCommand extends Command
             return 1;
         }
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::MAIL, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::MAIL, $kubectl, $resourceInstance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -121,9 +124,9 @@ class MailInitCommand extends Command
         // enters bootstrap mode when it starts with no config.json present).
         // Deliberately scoped to $env === 'local' — cloud installs keep the
         // existing wizard-driven flow untouched; see bootstrapStalwartStoreForLocal().
-        $storeBootstrap = $this->bootstrapStalwartStoreForLocal($kubectl, $env);
+        $storeBootstrap = $this->bootstrapStalwartStoreForLocal($kubectl, $env, $names);
 
-        $mailSecretsName = $resourceInstance === '' ? 'mail-secrets' : "mail-secrets-{$resourceInstance}";
+        $mailSecretsName = $names->secret();
 
         $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $adminPassword, $adminEmail, $storeBootstrap, $mailSecretsName): void {
             $data = [
@@ -304,7 +307,7 @@ class MailInitCommand extends Command
             $this->printPlexHint($kubectl, $host, storeBootstrap: $storeBootstrap);
         }
 
-        $this->registerDeployedTool(ClusterTool::MAIL, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
+        $this->registerDeployedTool(ClusterTool::MAIL, $kubectl, $host, instance: $resourceInstance, extra: ['adminEmail' => $adminEmail]);
 
         $this->offerWebmail($env);
 
@@ -367,7 +370,7 @@ class MailInitCommand extends Command
      *
      * @return array{password: string, host: string, port: int, database: string, username: string, blob: array{backend: string, endpoint: string, bucket: string, accessKey: string, secretKey: string}|null, redis: array{url: string}|null, search: array{type: string, url?: string, key?: string}}|null
      */
-    protected function bootstrapStalwartStoreForLocal(string $kubectl, string $env): ?array
+    protected function bootstrapStalwartStoreForLocal(string $kubectl, string $env, ToolInstance $names): ?array
     {
         if ($env !== 'local') {
             return null;
@@ -381,9 +384,9 @@ class MailInitCommand extends Command
         $services = $this->enabledCommonsServices($spec);
         $ns = $this->plexNamespace();
 
-        $password = $this->resolveManagedDbPassword($kubectl, 'stalwart', Str::random(24));
+        $password = $this->resolveManagedDbPassword($kubectl, $names->database(), Str::random(24));
 
-        if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'stalwart', $password)) {
+        if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $names->database(), $password)) {
             return null;
         }
 
@@ -394,11 +397,11 @@ class MailInitCommand extends Command
             }
             $storageDriver = StorageDriver::tryFrom($candidate);
             $s3Creds = $this->readCommonsS3Credentials();
-            if ($storageDriver !== null && $s3Creds !== null && $this->allocateStorageBucket($storageDriver, 'stalwart')) {
+            if ($storageDriver !== null && $s3Creds !== null && $this->allocateStorageBucket($storageDriver, $names->bucket())) {
                 $blob = [
                     'backend' => $candidate,
                     'endpoint' => "http://{$candidate}.{$ns}.svc.cluster.local:8333",
-                    'bucket' => 'stalwart',
+                    'bucket' => $names->bucket(),
                     'accessKey' => $s3Creds['access'],
                     'secretKey' => $s3Creds['secret'],
                 ];
@@ -411,7 +414,7 @@ class MailInitCommand extends Command
         // tool (Forgejo, Design, Notes, CRM, ...) allocates its own index via
         // the shared registry; Stalwart follows the same convention (released
         // on mail:remove --purge via MailTool::commonsRedisKeys()).
-        $redisIndex = in_array('redis', $services, true) ? $this->allocateCommonsRedisIndex('stalwart') : null;
+        $redisIndex = in_array('redis', $services, true) ? $this->allocateCommonsRedisIndex($names->redisTenant()) : null;
         $redis = $redisIndex !== null
             ? ['url' => "redis://redis.{$ns}.svc.cluster.local:6379/{$redisIndex}"]
             : null;
@@ -425,8 +428,8 @@ class MailInitCommand extends Command
             'password' => $password,
             'host' => "postgres.{$ns}.svc.cluster.local",
             'port' => 5432,
-            'database' => 'stalwart',
-            'username' => 'stalwart',
+            'database' => $names->database(),
+            'username' => $names->database(),
             'blob' => $blob,
             'redis' => $redis,
             'search' => $search,
@@ -528,37 +531,18 @@ class MailInitCommand extends Command
             return;
         }
 
-        // Postgres database/role/OpenBao-role tenant name — deliberately
-        // stays BARE 'stalwart', never instance-suffixed, unlike every other
-        // resource this method names. Originally suffixed via the same
-        // generic commonsDatabases() every other tool's Commons tenant goes
-        // through, then reverted live 2026-08-23: Stalwart's Postgres
-        // connection details on a real (non-local, non-bootstrapped) install
-        // are NOT environment-variable-driven — host/port/database/username
-        // are persisted in Stalwart's own config on its PVC from whenever
-        // the setup wizard originally ran, and there is no live mechanism to
-        // update them short of Stalwart's own admin API, which itself needs
-        // the server already running to reach. Renaming the underlying
-        // Postgres identity out from under that persisted config took prod
-        // mail down for hours with `password authentication failed for user
-        // "stalwart"` — the persisted config kept expecting the OLD identity
-        // no matter what Postgres/OpenBao were renamed to. Keeping this bare
-        // is not a workaround, it's the correct permanent state matching
-        // that constraint — do not re-suffix without first solving the
-        // reconfigure-via-JMAP-before-renaming chicken-and-egg properly.
-        // The S3 bucket below is bare for a related but distinct reason:
-        // unlike a Postgres database, an S3 bucket has no in-place rename;
-        // renaming it would mean copying every object, a real data-migration
-        // decision never made either.
-        $tenant = ClusterTool::MAIL->commonsDatabases(null)[0];
-        $openbaoBookkeepingSecret = $instance === '' ? 'stalwart-openbao' : "stalwart-openbao-{$instance}";
-        // Matches dbSecretRef()'s own enum-level suffixing exactly (hyphens,
-        // NOT the underscores $tenant uses — these are two different strings
-        // for two different things: $tenant is the Postgres database/role
-        // name, this is the k8s Secret ESO syncs its password into).
-        $openBaoSyncedSecretName = $instance === '' ? 'stalwart' : "stalwart-{$instance}";
-        $dynamicSecretName = $instance === '' ? 'stalwart-db' : "stalwart-{$instance}-db";
-        $deployment = ClusterTool::MAIL->deploymentName($instance);
+        // Stalwart persists its own connection identity (host, database, role) in
+        // the config.json on its volume, and the SearchStore and BlobStore objects
+        // in its own store name the database and bucket too. Those are written once
+        // at install, so a name chosen here is the name Stalwart keeps; changing an
+        // existing install's identity means repointing all three, which is
+        // what its migration runbook does before this command is run again.
+        $names = ToolInstance::forInstance(ClusterTool::MAIL, $instance);
+        $tenant = $names->database();
+        $openbaoBookkeepingSecret = $names->name('openbao');
+        $openBaoSyncedSecretName = $names->secret(SecretKind::STORE);
+        $dynamicSecretName = "{$openBaoSyncedSecretName}-db";
+        $deployment = $names->deployment();
 
         $existingPassword = $this->readClusterSecretKey($kubectl, $ns, $openbaoBookkeepingSecret, 'STALWART_STORE_PASSWORD');
         $password = $existingPassword ?? Str::random(24);
@@ -577,12 +561,12 @@ class MailInitCommand extends Command
             return;
         }
 
-        // Auto-allocate S3 bucket 'stalwart' if S3 backend is enabled
+        // Auto-allocate the S3 bucket if an S3 backend is enabled
         foreach (['seaweedfs', 'minio', 'garage'] as $candidate) {
             if (in_array($candidate, $services, true)) {
                 $storageDriver = StorageDriver::tryFrom($candidate);
                 if ($storageDriver !== null) {
-                    $this->allocateStorageBucket($storageDriver, 'stalwart');
+                    $this->allocateStorageBucket($storageDriver, $names->bucket());
                 }
                 break;
             }

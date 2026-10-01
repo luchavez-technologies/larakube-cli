@@ -24,7 +24,7 @@ test('mail:relay is registered', function (): void {
 });
 
 test('mail:relay requires installed stalwart', function (): void {
-    Process::fake(['*app=mail-stalwart*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*larakube.io/tool=mail*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:relay', ['--provider' => 'brevo', '--username' => 'a@b.com', '--api-key' => 'k'])
         ->assertExitCode(1)
@@ -32,7 +32,7 @@ test('mail:relay requires installed stalwart', function (): void {
 });
 
 test('mail:relay rejects an unknown provider', function (): void {
-    Process::fake(['*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d')]);
+    Process::fake(['*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d')]);
 
     $this->artisan('mail:relay', ['--provider' => 'sendgrid'])
         ->assertExitCode(1)
@@ -41,10 +41,10 @@ test('mail:relay rejects an unknown provider', function (): void {
 
 test('mail:relay wires brevo as the outbound relay', function (): void {
     Process::fake([
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*get secret mail-relay*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic mail-relay*' => Process::result(output: 'secret/mail-relay created'),
-        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret stalwart-relay*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic stalwart-relay*' => Process::result(output: 'secret/stalwart-relay created'),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);
@@ -73,10 +73,10 @@ test('mail:relay wires brevo as the outbound relay', function (): void {
 
 test('mail:relay wires SES with a region-scoped host on port 2587', function (): void {
     Process::fake([
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*get secret mail-relay*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic mail-relay*' => Process::result(output: 'secret/mail-relay created'),
-        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret stalwart-relay*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic stalwart-relay*' => Process::result(output: 'secret/stalwart-relay created'),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);
@@ -102,10 +102,10 @@ test('mail:relay wires SES with a region-scoped host on port 2587', function ():
 
 test('mail:relay shows onboarding + pricing before prompting for fresh credentials', function (): void {
     Process::fake([
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*get secret mail-relay*' => Process::result(output: '', exitCode: 1),
-        '*create secret generic mail-relay*' => Process::result(output: 'secret/mail-relay created'),
-        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret stalwart-relay*' => Process::result(output: '', exitCode: 1),
+        '*create secret generic stalwart-relay*' => Process::result(output: 'secret/stalwart-relay created'),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);
@@ -147,8 +147,8 @@ test('mail:relay shows onboarding + pricing before prompting for fresh credentia
 
 test('mail:relay --remove is a no-op when no relay route exists', function (): void {
     Process::fake([
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);
@@ -164,10 +164,10 @@ test('mail:relay --remove is a no-op when no relay route exists', function (): v
 
 test('mail:relay --remove reverts to MX and deletes the route', function (): void {
     Process::fake([
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
-        '*delete secret mail-relay*' => Process::result(output: 'secret "mail-relay" deleted'),
+        '*delete secret stalwart-relay*' => Process::result(output: 'secret "stalwart-relay" deleted'),
         '*' => Process::result(),
     ]);
 
@@ -187,7 +187,7 @@ test('mail:relay --remove reverts to MX and deletes the route', function (): voi
 
 test('stalwartSetOutboundRoute sets outbound strategy route', function (): void {
     Process::fake([
-        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);
@@ -226,7 +226,7 @@ test('stalwartSetOutboundRoute sets outbound strategy route', function (): void 
 function captureRoutePatch(array $existingMatch, string $routeName, string $existingElse = "'mx'"): array
 {
     Process::fake([
-        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);

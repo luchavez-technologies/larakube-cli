@@ -17,12 +17,12 @@ use LaravelZero\Framework\Commands\Command;
  * Break-glass recovery for the mail server's automation credential.
  *
  * The CLI normally authenticates to Stalwart with a least-privilege API key
- * (mail-secrets/api-key). If that key is lost, revoked, or corrupted — or the
+ * (the credentials Secret, key api-key). If that key is lost, revoked, or corrupted — or the
  * account owning it was disturbed — every mail command loses access. This
  * command rotates it: authenticating as the pinned recovery admin (the only
  * credential guaranteed to work regardless of the API key or an OIDC directory),
  * it destroys the old keys and mints a fresh one, overwriting the single source
- * of truth — mail-secrets/api-key. There is deliberately no second copy: the key
+ * of truth — the credentials Secret key api-key. There is deliberately no second copy: the key
  * is CLI-internal and cheaply regenerable, so a mirror (e.g. in the secrets backend) would
  * only ever drift out of sync with no consumer to notice.
  *
@@ -67,7 +67,7 @@ class MailRecoverCommand extends Command
         }
 
         if ($this->readMailSecret($kubectl, $ns, 'admin-password') === null) {
-            $this->laraKubeError('No recovery-admin credential found in mail-secrets — cannot recover. The mail server may need STALWART_RECOVERY_ADMIN restored (see `larakube mail:init`).');
+            $this->laraKubeError('No recovery-admin credential found in the Stalwart credentials Secret — cannot recover. The mail server may need STALWART_RECOVERY_ADMIN restored (see `larakube mail:init`).');
 
             return 1;
         }

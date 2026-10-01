@@ -14,14 +14,14 @@ afterEach(function (): void {
 
 test('mail:wire --forget clears the cached sender and exits (no Stalwart needed)', function (): void {
     Process::fake([
-        '*delete secret mail-sender*' => Process::result(output: 'secret "mail-sender" deleted'),
+        '*delete secret stalwart-sender*' => Process::result(output: 'secret "stalwart-sender" deleted'),
     ]);
 
     $this->artisan('mail:wire --forget')
         ->assertExitCode(0)
         ->expectsOutputToContain('Cleared cached sender credentials');
 
-    Process::assertRan(fn ($process) => str_contains($process->command, 'delete secret mail-sender'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'delete secret stalwart-sender'));
 });
 
 test('mail:wire --tool=sso configures Zitadel SMTP via API', function (): void {
@@ -32,11 +32,11 @@ test('mail:wire --tool=sso configures Zitadel SMTP via API', function (): void {
     ]);
 
     Process::fake([
-        '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
+        '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
         '*get secret sso-secrets*' => Process::result(output: base64_encode('pat-token')),
         '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*exec deploy/mail-stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
     ]);
 
     $this->artisan('mail:wire local --tool=sso')
@@ -45,10 +45,10 @@ test('mail:wire --tool=sso configures Zitadel SMTP via API', function (): void {
 
 test('mail:wire local --tool=data configures Directus SMTP via deployment secret', function (): void {
     Process::fake([
-        '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
+        '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
         '*get deployment directus*' => Process::result(output: 'directus   1/1   1   1   10d'),
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*exec deploy/mail-stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/directus*' => Process::result(output: 'updated'),
         '*rollout restart deployment/directus*' => Process::result(output: 'restarted'),
@@ -66,11 +66,11 @@ test('mail:wire local --tool=data configures PocketBase SMTP, not Directus, on a
     // actually installed. A PocketBase-only install would previously have
     // tried to patch a nonexistent directus Deployment.
     Process::fake([
-        '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
+        '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
         '*get deployment pocketbase*' => Process::result(output: 'pocketbase   1/1   1   1   10d'),
         '*get deployment directus*' => Process::result(output: '', exitCode: 1),
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*exec deploy/mail-stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/pocketbase*' => Process::result(output: 'updated'),
         '*rollout restart deployment/pocketbase*' => Process::result(output: 'restarted'),
@@ -88,10 +88,10 @@ test('mail:wire local --tool=data configures PocketBase SMTP, not Directus, on a
 
 test('mail:wire local --tool=design configures Penpot SMTP via deployment secret', function (): void {
     Process::fake([
-        '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
+        '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
         '*get deployment design-penpot-backend*' => Process::result(output: 'design-penpot-backend   1/1   1   1   10d'),
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*exec deploy/mail-stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/design-penpot-backend*' => Process::result(output: 'updated'),
         '*set env deployment/design-penpot-frontend*' => Process::result(output: 'updated'),
@@ -107,10 +107,10 @@ test('mail:wire local --tool=design configures Penpot SMTP via deployment secret
 
 test('mail:wire local --tool=errors composes GlitchTip EMAIL_URL and patches the worker too', function (): void {
     Process::fake([
-        '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
+        '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
         '*get deployment glitchtip-web*' => Process::result(output: 'glitchtip-web   1/1   1   1   10d'),
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*exec deploy/mail-stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/glitchtip-web*' => Process::result(output: 'updated'),
         '*set env deployment/glitchtip-worker*' => Process::result(output: 'updated'),
@@ -140,13 +140,13 @@ test('mail:wire local --tool=crm resolves the real host-derived instance from th
     // pins that mail:wire finds it via the tool registry instead of probing
     // the never-existing unsuffixed 'twenty' deployment.
     Process::fake([
-        '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
+        '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'crm', 'instance' => 'crm-luchtech-dev', 'host' => 'crm.luchtech.dev'],
         ]))),
         '*get deployment twenty-crm-luchtech-dev*' => Process::result(output: 'twenty-crm-luchtech-dev   1/1   1   1   10d'),
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*exec deploy/mail-stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/twenty-crm-luchtech-dev*' => Process::result(output: 'updated'),
         '*set env deployment/twenty-worker-crm-luchtech-dev*' => Process::result(output: 'updated'),
@@ -171,11 +171,11 @@ test('mail:wire --domain targets that host\'s instance, even pasted as a URL', f
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'flow', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'engine' => 'n8n'],
         ]))),
-        '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@example.com')),
+        '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@example.com')),
         '*get deployment n8n-flow-example-com*' => Process::result(output: 'n8n-flow-example-com   1/1   1   1   1d'),
         '*get deployment windmill-*' => Process::result(output: '', exitCode: 1),
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*exec deploy/mail-stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*' => Process::result(output: ''),
     ]);
 
@@ -190,9 +190,9 @@ function mailWireRegistryFakes(array $rows): array
 {
     return [
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode($rows))),
-        '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@example.com')),
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*exec deploy/mail-stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
+        '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@example.com')),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*get deployment flow-*' => Process::result(output: '', exitCode: 1),
         '*' => Process::result(output: ''),
     ];

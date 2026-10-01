@@ -14,7 +14,7 @@ test('mail:recover is registered', function (): void {
 });
 
 test('mail:recover errors when stalwart is not installed', function (): void {
-    Process::fake(['*app=mail-stalwart*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*larakube.io/tool=mail*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:recover', ['--force' => true])
         ->assertExitCode(1)
@@ -23,13 +23,13 @@ test('mail:recover errors when stalwart is not installed', function (): void {
 
 test('mail:recover re-mints the automation API key via the recovery admin', function (): void {
     Process::fake([
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*get secret mail-secrets*admin-password*' => Process::result(output: base64_encode('recovery-pass')),
-        '*get secret mail-secrets*api-key*' => Process::result(output: '', exitCode: 1),
-        '*get secret mail-secrets*' => Process::result(output: base64_encode('recovery-pass')),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret stalwart-secrets*admin-password*' => Process::result(output: base64_encode('recovery-pass')),
+        '*get secret stalwart-secrets*api-key*' => Process::result(output: '', exitCode: 1),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('recovery-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
-        '*patch secret mail-secrets*' => Process::result(output: 'patched'),
+        '*patch secret stalwart-secrets*' => Process::result(output: 'patched'),
         '*' => Process::result(),
     ]);
 
@@ -47,5 +47,5 @@ test('mail:recover re-mints the automation API key via the recovery admin', func
         ->assertExitCode(0)
         ->expectsOutputToContain('Automation API key re-minted');
 
-    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret mail-secrets'));
+    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret stalwart-secrets'));
 });

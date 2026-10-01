@@ -42,7 +42,7 @@ class MailWireCommand extends Command
         {--context=     : Target a specific kube-context}
         {--sender=      : Sender/login address (default: noreply@<domain>)}
         {--app-password= : Stalwart application password for the sender}
-        {--forget       : Delete the cached sender credentials (mail-sender secret) and exit}';
+        {--forget       : Delete the cached sender credentials and exit}';
 
     protected $description = 'Point a tool (n8n, …) at the Stalwart mail server for outbound email';
 
@@ -71,8 +71,8 @@ class MailWireCommand extends Command
         // Clear the cached sender BEFORE the install check — a stale cache is
         // worth clearing even if Stalwart has since been removed.
         if ($this->option('forget')) {
-            Process::run("{$kubectl} delete secret mail-sender -n {$ns} --ignore-not-found");
-            $this->laraKubeInfo('✅ Cleared cached sender credentials (mail-sender). Next mail:wire asks fresh.');
+            Process::run("{$kubectl} delete secret {$this->mailSenderSecretName($kubectl)} -n {$ns} --ignore-not-found");
+            $this->laraKubeInfo('✅ Cleared cached sender credentials. Next mail:wire asks fresh.');
 
             return 0;
         }
@@ -218,15 +218,15 @@ class MailWireCommand extends Command
      * otherwise wire a tool with a credential that silently fails to send. On
      * failure it re-prompts (interactive) or aborts with null (scripted /
      * explicit --app-password). Only a VERIFIED pair is cached to the
-     * `mail-sender` secret. Explicit --sender/--app-password override the cache;
+     * sender Secret. Explicit --sender/--app-password override the cache;
      * `mail:wire --forget` clears it entirely.
      *
      * @return array{0: string, 1: string}|null
      */
     protected function resolveSenderCredentials(string $kubectl, string $ns, string $mailHost): ?array
     {
-        $cachedSender = $this->readClusterSecretKey($kubectl, $ns, 'mail-sender', 'sender');
-        $cachedPassword = $this->readClusterSecretKey($kubectl, $ns, 'mail-sender', 'app-password');
+        $cachedSender = $this->readMailSender($kubectl, $ns, 'sender');
+        $cachedPassword = $this->readMailSender($kubectl, $ns, 'app-password');
 
         $usingCache = $cachedSender !== null && $cachedPassword !== null
             && ! $this->option('sender') && ! $this->option('app-password');
@@ -279,7 +279,7 @@ class MailWireCommand extends Command
         // Cache only a VERIFIED pair.
         $env = (string) $this->argument('environment');
         $this->withSpin('Caching sender credentials...', function () use ($kubectl, $ns, $sender, $appPassword, $env): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'mail-sender', ['sender' => $sender, 'app-password' => $appPassword]);
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $this->mailSenderSecretName($kubectl), ['sender' => $sender, 'app-password' => $appPassword]);
 
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
                 $this->pushClusterSecret($kubectl, 'STALWART_MAIL_SENDER', $sender, $env);

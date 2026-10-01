@@ -2,6 +2,8 @@
 
 namespace App\Contracts;
 
+use App\Enums\SecretKind;
+
 /** The Kubernetes Secret + keys OpenBao syncs into for a vendor that stores its own credentials there. */
 interface HasOpenbaoSync
 {
@@ -20,7 +22,7 @@ interface HasOpenbaoSync
      * $instance lets a vendor put the instance slug in its KV key, so two
      * instances of one tool do not read the same entry.
      *
-     * @return array{secret: string, keys?: list<string>, keyMap?: array<string, string>}
+     * @return array{secret: string, kind?: SecretKind, keys?: list<string>, keyMap?: array<string, string>}
      */
     public function openbaoSyncConfig(?string $instance = null): array;
 }

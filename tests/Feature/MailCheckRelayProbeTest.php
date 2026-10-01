@@ -32,10 +32,10 @@ function fakeRelayEnv(string $opensslOutput, ?string $routeList = null): void
     $routeList ??= '[{"name":"brevo","address":"smtp-relay.brevo.com","port":2525,"implicitTls":false,"id":"rt1"}]';
 
     Process::fake([
-        '*mail-relay*provider*' => Process::result(output: base64_encode('brevo')),
-        '*mail-relay*username*' => Process::result(output: base64_encode('b262c1001@smtp-brevo.com')),
-        '*mail-relay*password*' => Process::result(output: base64_encode('xsmtpsib-fullkey')),
-        '*mail-secrets*' => Process::result(output: base64_encode('admin-pass')),
+        '*stalwart-relay*provider*' => Process::result(output: base64_encode('brevo')),
+        '*stalwart-relay*username*' => Process::result(output: base64_encode('b262c1001@smtp-brevo.com')),
+        '*stalwart-relay*password*' => Process::result(output: base64_encode('xsmtpsib-fullkey')),
+        '*stalwart-secrets*' => Process::result(output: base64_encode('admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*openssl s_client*' => Process::result(output: $opensslOutput),
         '*' => Process::result(),

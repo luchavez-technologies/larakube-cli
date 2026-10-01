@@ -73,7 +73,7 @@ test('storeBootstrap renders a config.json ConfigMap and mounts it, referencing 
     $deployment = null;
     foreach ($documents as $document) {
         $parsed = Yaml::parse($document);
-        if (($parsed['kind'] ?? null) === 'ConfigMap' && ($parsed['metadata']['name'] ?? null) === 'mail-stalwart-config') {
+        if (($parsed['kind'] ?? null) === 'ConfigMap' && ($parsed['metadata']['name'] ?? null) === 'stalwart-config-send-luchtech-dev') {
             $configMap = $parsed;
         }
         if (($parsed['kind'] ?? null) === 'Deployment') {
@@ -91,7 +91,7 @@ test('storeBootstrap renders a config.json ConfigMap and mounts it, referencing 
 
     $container = $deployment['spec']['template']['spec']['containers'][0];
     $storePasswordEnv = collect($container['env'])->firstWhere('name', 'STALWART_STORE_PASSWORD');
-    expect($storePasswordEnv['valueFrom']['secretKeyRef']['name'])->toBe('mail-secrets')
+    expect($storePasswordEnv['valueFrom']['secretKeyRef']['name'])->toBe('stalwart-secrets-send-luchtech-dev')
         ->and($storePasswordEnv['valueFrom']['secretKeyRef']['key'])->toBe('store-password');
 
     $configMount = collect($container['volumeMounts'])->firstWhere('mountPath', '/etc/stalwart/config.json');
@@ -101,7 +101,7 @@ test('storeBootstrap renders a config.json ConfigMap and mounts it, referencing 
         ->and(collect($container['env'])->firstWhere('name', 'STALWART_SEARCH_MEILI_KEY'))->toBeNull();
 });
 
-test('storeBootstrap with blob + meilisearch wires STALWART_S3_* and STALWART_SEARCH_MEILI_KEY from mail-secrets', function (): void {
+test('storeBootstrap with blob + meilisearch wires STALWART_S3_* and STALWART_SEARCH_MEILI_KEY from the credentials Secret', function (): void {
     $rendered = view('k8s.mail.stalwart', [
         'host' => 'send.test',
         'vpnOnly' => false,
@@ -146,16 +146,16 @@ test('storeBootstrap with blob + meilisearch wires STALWART_S3_* and STALWART_SE
     $env = collect($container['env']);
 
     $s3Key = $env->firstWhere('name', 'STALWART_S3_KEY_ID');
-    expect($s3Key['valueFrom']['secretKeyRef'])->toBe(['name' => 'mail-secrets', 'key' => 's3-access-key']);
+    expect($s3Key['valueFrom']['secretKeyRef'])->toBe(['name' => 'stalwart-secrets-send-test', 'key' => 's3-access-key']);
 
     $s3Secret = $env->firstWhere('name', 'STALWART_S3_SECRET_KEY');
-    expect($s3Secret['valueFrom']['secretKeyRef'])->toBe(['name' => 'mail-secrets', 'key' => 's3-secret-key']);
+    expect($s3Secret['valueFrom']['secretKeyRef'])->toBe(['name' => 'stalwart-secrets-send-test', 'key' => 's3-secret-key']);
 
     $meiliKey = $env->firstWhere('name', 'STALWART_SEARCH_MEILI_KEY');
-    expect($meiliKey['valueFrom']['secretKeyRef'])->toBe(['name' => 'mail-secrets', 'key' => 'search-meili-key']);
+    expect($meiliKey['valueFrom']['secretKeyRef'])->toBe(['name' => 'stalwart-secrets-send-test', 'key' => 'search-meili-key']);
 });
 
-test('without storeBootstrap, STALWART_STORE_PASSWORD still falls back to the optional stalwart secret', function (): void {
+test('without storeBootstrap, STALWART_STORE_PASSWORD still falls back to the optional OpenBao-synced store Secret', function (): void {
     $rendered = view('k8s.mail.stalwart', [
         'host' => 'send.luchtech.dev',
         'vpnOnly' => false,
@@ -181,6 +181,6 @@ test('without storeBootstrap, STALWART_STORE_PASSWORD still falls back to the op
 
     $container = $deployment['spec']['template']['spec']['containers'][0];
     $storePasswordEnv = collect($container['env'])->firstWhere('name', 'STALWART_STORE_PASSWORD');
-    expect($storePasswordEnv['valueFrom']['secretKeyRef']['name'])->toBe('stalwart')
+    expect($storePasswordEnv['valueFrom']['secretKeyRef']['name'])->toBe('stalwart-store-send-luchtech-dev')
         ->and($storePasswordEnv['valueFrom']['secretKeyRef']['optional'])->toBeTrue();
 });

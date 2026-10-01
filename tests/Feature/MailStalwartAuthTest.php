@@ -35,10 +35,10 @@ function apiKeyHarness(): object
 test('stalwartEnsureApiKey mints and stores a key, creating the automation principal', function (): void {
     Process::fake([
         // No key yet → bootstrap; recovery admin available for the mint's basic auth.
-        '*get secret mail-secrets*api-key*' => Process::result(output: '', exitCode: 1),
-        '*get secret mail-secrets*admin-password*' => Process::result(output: base64_encode('recovery-pass')),
+        '*get secret stalwart-secrets*api-key*' => Process::result(output: '', exitCode: 1),
+        '*get secret stalwart-secrets*admin-password*' => Process::result(output: base64_encode('recovery-pass')),
         '*port-forward*' => Process::result(output: ''),
-        '*patch secret mail-secrets*' => Process::result(output: 'patched'),
+        '*patch secret stalwart-secrets*' => Process::result(output: 'patched'),
         '*' => Process::result(),
     ]);
 
@@ -56,5 +56,5 @@ test('stalwartEnsureApiKey mints and stores a key, creating the automation princ
     ]);
 
     expect(apiKeyHarness()->ensure('kubectl', 'larakube-shared'))->toBe('API_MINTED');
-    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret mail-secrets'));
+    Process::assertRan(fn ($p) => str_contains($p->command, 'patch secret stalwart-secrets'));
 });

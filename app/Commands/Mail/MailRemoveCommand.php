@@ -47,31 +47,23 @@ class MailRemoveCommand extends AbstractToolRemoveCommand
             ? ToolInstance::forInstance(ClusterTool::WEBMAIL, $webmailInstance)->secret()
             : 'webmail-secrets';
 
-        // Mail's OWN resources are instance-suffixed too, same reasoning.
+        // Every resource Stalwart owns comes from the vendor's component list,
+        // so this can't drift from what the manifest deploys; the volume is in
+        // it, and Kubernetes holds the claim until its pod is gone.
         $instance = (string) ($this->getToolInstanceData($kubectl, ClusterTool::MAIL)?->instance ?? '');
-        $suffix = $instance !== '' ? "-{$instance}" : '';
-        $deployment = "mail-stalwart{$suffix}";
-        $mailSecrets = "mail-secrets{$suffix}";
-        $configMap = "mail-stalwart-config{$suffix}";
 
         $ok = $this->removeResources(
             'Removing Stalwart resources...',
-            "{$kubectl} delete deployment/{$deployment} service/{$deployment} service/mail-stalwart-mail{$suffix} "
-            ."ingress/{$deployment} secret/{$mailSecrets} secret/mail-sender secret/mail-relay "
-            ."secret/{$webmailSecret} configmap/{$configMap} -n {$namespace} --ignore-not-found",
+            $this->teardownComponentsCommand($kubectl, $namespace, $instance),
         );
 
-        // Wait for pods to fully terminate — PVCs can't be deleted while bound.
-        // Stable label (mail-stalwart), not instance-suffixed — see
-        // InteractsWithMail::isMailInstalled()'s same reasoning.
-        Process::run("{$kubectl} wait --for=delete pod -l app=mail-stalwart -n {$namespace} --timeout=60s 2>/dev/null || true");
-
-        // Standalone PVC — not garbage-collected with the Deployment. NOT
-        // instance-suffixed — this is Stalwart's live mail data.
         $ok = $this->removeResources(
-            'Removing Stalwart storage...',
-            "{$kubectl} delete pvc/stalwart-data -n {$namespace} --ignore-not-found",
+            'Removing the webmail credentials...',
+            "{$kubectl} delete secret/{$webmailSecret} -n {$namespace} --ignore-not-found",
         ) && $ok;
+
+        // Wait for the pod to fully terminate before reporting done.
+        Process::run("{$kubectl} wait --for=delete pod -l larakube.io/tool=mail -n {$namespace} --timeout=60s 2>/dev/null || true");
 
         // Mail-wire SMTP secrets (<tool>-smtp) — useless without Stalwart, and
         // they'd silently point a re-installed tool at a mail server that's gone.

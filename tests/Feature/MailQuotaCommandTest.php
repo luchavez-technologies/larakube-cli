@@ -17,7 +17,7 @@ test('mail:quota is registered', function (): void {
 });
 
 test('mail:quota requires installed stalwart', function (): void {
-    Process::fake(['*app=mail-stalwart*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*larakube.io/tool=mail*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:quota')
         ->assertExitCode(1)
@@ -26,8 +26,8 @@ test('mail:quota requires installed stalwart', function (): void {
 
 test('mail:quota sets quota', function (): void {
     Process::fake([
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);

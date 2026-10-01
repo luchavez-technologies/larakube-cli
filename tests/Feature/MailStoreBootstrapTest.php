@@ -36,15 +36,15 @@ test('mail:init local wires BlobStore, InMemoryStore, and SearchStore via JMAP w
         '*get secret plex-admin*S3_ACCESS_KEY*' => Process::result(output: base64_encode('larakube')),
         '*get secret plex-admin*S3_SECRET_KEY*' => Process::result(output: base64_encode('s3-secret')),
         '*get secret plex-admin*MEILI_MASTER_KEY*' => Process::result(output: base64_encode('meili-secret')),
-        '*get secret mail-secrets*api-key*' => Process::result(output: base64_encode('already-minted-key')),
-        '*get secret mail-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret stalwart-secrets*api-key*' => Process::result(output: base64_encode('already-minted-key')),
+        '*get secret stalwart-secrets*' => Process::result(output: '', exitCode: 1),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*port-forward*' => Process::result(output: ''),
         '*create namespace*' => Process::result(output: 'namespace created'),
-        '*create secret generic mail-secrets*' => Process::result(output: 'secret created'),
+        '*create secret generic stalwart-secrets*' => Process::result(output: 'secret created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1s'),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   1s'),
         '*exec *' => Process::result(output: 'success'),
         '*' => Process::result(),
     ]);
@@ -78,7 +78,7 @@ test('mail:init local wires BlobStore, InMemoryStore, and SearchStore via JMAP w
 
     $blob = $captured['x:BlobStore/set']['update']['singleton'];
     expect($blob['@type'])->toBe('S3')
-        ->and($blob['bucket'])->toBe('stalwart')
+        ->and($blob['bucket'])->toStartWith('stalwart-storage-')
         ->and($blob['accessKey'])->toBe('larakube')
         ->and($blob['secretKey'])->toBe(['@type' => 'EnvironmentVariable', 'variableName' => 'STALWART_S3_SECRET_KEY'])
         ->and($blob['region'])->toBe(['@type' => 'Custom', 'customEndpoint' => 'http://seaweedfs.larakube-plex.svc.cluster.local:8333', 'customRegion' => 'us-east-1']);
@@ -100,15 +100,15 @@ test('mail:init local falls back to SearchStore "Default" (reuse Data store) whe
             'version' => 1,
             'services' => ['postgres' => ['enabled' => true]],
         ]),
-        '*get secret mail-secrets*api-key*' => Process::result(output: base64_encode('already-minted-key')),
-        '*get secret mail-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret stalwart-secrets*api-key*' => Process::result(output: base64_encode('already-minted-key')),
+        '*get secret stalwart-secrets*' => Process::result(output: '', exitCode: 1),
         '*get secret openbao-bootstrap*' => Process::result(output: '', exitCode: 1),
         '*port-forward*' => Process::result(output: ''),
         '*create namespace*' => Process::result(output: 'namespace created'),
-        '*create secret generic mail-secrets*' => Process::result(output: 'secret created'),
+        '*create secret generic stalwart-secrets*' => Process::result(output: 'secret created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1s'),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   1s'),
         '*exec *' => Process::result(output: 'success'),
         '*' => Process::result(),
     ]);
@@ -131,24 +131,12 @@ test('mail:init local falls back to SearchStore "Default" (reuse Data store) whe
         ->and($captured['x:SearchStore/set']['update']['singleton'])->toBe(['@type' => 'Default']);
 });
 
-// NOTE: a dedicated regression test for "configureStalwartStore() always
-// targets the bare 'stalwart' Postgres tenant, never instance-suffixed"
-// (the fix for the 2026-08-23 incident — see MailInitCommand.php's
-// $tenant = ClusterTool::MAIL->commonsDatabases(null)[0] comment for the
-// full story) was attempted here and abandoned: configureStalwartStore()'s
-// full precondition chain (Commons spec, secrets backend, allocateDatabase()
-// against the real Plex Postgres) needs Process fakes several layers deeper
-// than this file's existing tests exercise, and getting that mock chain
-// right cost more time than was available to spend on it that night. The
-// fix itself is simple, reviewed, and covered by phpstan + the full suite
-// staying green — this is a known test-coverage gap, not an unverified fix.
-
 test('mail:init explains why it skipped Commons store auto-config instead of staying silent', function (): void {
     // No plex-commons ConfigMap on the cluster: a legitimate skip, but it used
     // to print nothing at all, which is indistinguishable from a broken run.
     Process::fake([
         '*get configmap plex-commons*' => Process::result(output: '', exitCode: 1),
-        '*get secret mail-secrets*' => Process::result(output: base64_encode('pw')),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('pw')),
         '*rollout*' => Process::result(output: 'rolled out'),
         '*' => Process::result(output: ''),
     ]);
@@ -160,10 +148,10 @@ test('mail:init explains why it skipped Commons store auto-config instead of sta
 
 test('mail:show detects a local wizard-skip install and shows "already configured" instead of wizard instructions', function (): void {
     Process::fake([
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1d'),
-        '*get secret mail-secrets*' => Process::result(output: base64_encode('admin-pass')),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   1d'),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('admin-pass')),
         '*port-forward*' => Process::result(output: ''),
-        '*get configmap mail-stalwart-config*' => Process::result(output: 'stalwart-config   1   1d'),
+        '*get configmap stalwart-config*' => Process::result(output: 'stalwart-config   1   1d'),
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
             'services' => ['postgres' => ['enabled' => true]],
@@ -198,10 +186,10 @@ test('mail:show detects a local wizard-skip install and shows "already configure
 
 test('mail:show falls back to the original wizard hint when stalwart-config does not exist', function (): void {
     Process::fake([
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1d'),
-        '*get secret mail-secrets*' => Process::result(output: base64_encode('admin-pass')),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   1d'),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('admin-pass')),
         '*port-forward*' => Process::result(output: ''),
-        '*get configmap mail-stalwart-config*' => Process::result(output: '', exitCode: 1),
+        '*get configmap stalwart-config*' => Process::result(output: '', exitCode: 1),
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
             'services' => ['postgres' => ['enabled' => true]],

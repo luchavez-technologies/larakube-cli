@@ -1619,7 +1619,8 @@ enum ClusterTool: string implements HasWorkloadComponents
         $vendor = $this->vendor($engine);
         if ($vendor instanceof HasOpenbaoSync) {
             $config = ['namespace' => $this->namespace()] + $vendor->openbaoSyncConfig($instance);
-            $config['secret'] = $this->instanceSecretName($config['secret'], $instance, engine: $engine);
+            $config['secret'] = $this->instanceSecretName($config['secret'], $instance, $config['kind'] ?? SecretKind::CREDENTIALS, engine: $engine);
+            unset($config['kind']);
 
             return $config;
         }
@@ -1642,7 +1643,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::DIRECTUS, self::LINK, self::KUTT, self::ANALYTICS, self::UMAMI, self::PLAUSIBLE, self::SHEETS,
             self::TEABLE, self::TASKS, self::PLANKA, self::DASHBOARD, self::HEADLAMP, self::MEET,
             self::LIVEKIT, self::WEBMAIL, self::BULWARK, self::DRIVE, self::OCIS, self::VPN, self::NETBIRD,
-            self::CRM, self::TWENTY, self::PASSWORDS, self::VAULTWARDEN, self::CHAT, self::MATRIX => ResourceNaming::CANONICAL,
+            self::CRM, self::TWENTY, self::PASSWORDS, self::VAULTWARDEN, self::CHAT, self::MATRIX, self::MAIL, self::STALWART => ResourceNaming::CANONICAL,
             self::SSO, self::ZITADEL, self::RECORD,
             self::SENDREC, self::RESUME, self::SUPPORT, self::CHATWOOT => ResourceNaming::AS_SHIPPED,
             default => ResourceNaming::INSTANCE_SUFFIXED,

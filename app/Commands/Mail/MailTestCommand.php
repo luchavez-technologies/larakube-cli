@@ -70,7 +70,7 @@ class MailTestCommand extends Command
             required: true,
         ));
 
-        $cachedSender = $this->readClusterSecretKey($kubectl, $ns, 'mail-sender', 'sender');
+        $cachedSender = $this->readMailSender($kubectl, $ns, 'sender');
         $from = (string) ($this->option('from') ?: text(
             label: 'From — a Stalwart account',
             default: $cachedSender ?: ($domain !== '' ? 'noreply@'.$domain : ''),
@@ -109,7 +109,7 @@ class MailTestCommand extends Command
         $external = $domain !== '' && ! str_ends_with(strtolower($to), '@'.strtolower($domain));
         if ($external) {
             $relayOn = trim(Process::run(
-                "{$kubectl} get secret mail-relay -n {$ns} --ignore-not-found -o name",
+                "{$kubectl} get secret {$this->mailRelaySecretName($kubectl)} -n {$ns} --ignore-not-found -o name",
             )->output()) !== '';
 
             if ($relayOn) {

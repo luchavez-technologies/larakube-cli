@@ -16,7 +16,7 @@ test('mail:dns is registered', function (): void {
 });
 
 test('mail:dns requires installed stalwart', function (): void {
-    Process::fake(['*app=mail-stalwart*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*larakube.io/tool=mail*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:dns', ['--zone' => 'partner.example', '--cloudflare-token' => 'tok', '--provider' => 'ses', '--ses-tokens' => 't1,t2,t3'])
         ->assertExitCode(1)
@@ -25,8 +25,8 @@ test('mail:dns requires installed stalwart', function (): void {
 
 test('mail:dns configures SES Easy DKIM records using provided tokens', function (): void {
     Process::fake([
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);
@@ -64,8 +64,8 @@ test('mail:dns configures SES Easy DKIM records using provided tokens', function
 
 test('mail:dns auto-discovers Cloudflare token from Stalwart DnsServer', function (): void {
     Process::fake([
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);

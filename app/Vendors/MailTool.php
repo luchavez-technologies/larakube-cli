@@ -15,7 +15,10 @@ use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasToolAccessDetails;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
+use App\Data\ToolInstance;
+use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
+use App\Enums\SecretKind;
 use Illuminate\Support\Facades\Process;
 
 /** The single vendor backing the MAIL category — 'Mail Server'. Only Stalwart. */
@@ -36,17 +39,43 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
         return [
             'secret' => 'stalwart',
             'key' => 'STALWART_STORE_PASSWORD',
+            // The OpenBao-synced store Secret, kept apart from the credentials
+            // Secret so a rotation cannot clobber the admin and API keys.
+            'kind' => SecretKind::STORE,
         ];
     }
 
+    /**
+     * One PRIMARY component with every resource stalwart.blade.php declares, so
+     * teardown() can't drift from what is deployed. The category is stripped from
+     * the Deployment name by ClusterTool::components(); the nested names are
+     * composed here the same way, rather than read back from ToolInstance, which
+     * derives every name FROM this list and would recurse.
+     *
+     * @return list<ClusterToolComponentData>
+     */
     public function components(?string $instance = null, ?string $engine = null): array
     {
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
+        $canonical = fn (string $n) => ClusterTool::MAIL->withoutCategory($n);
+        $deployment = $canonical($name('mail-stalwart'));
 
         return [
             new ClusterToolComponentData(
                 key: 'app', role: ClusterToolComponentRole::PRIMARY, deployment: $name('mail-stalwart'),
-                container: 'stalwart', backupVolume: true, backupPaths: ['/var/lib/stalwart'],
+                container: 'stalwart',
+                resources: [
+                    ['kind' => 'service', 'name' => $deployment],
+                    ['kind' => 'service', 'name' => $canonical($name('mail-stalwart-mail'))],
+                    ['kind' => 'ingress', 'name' => $deployment],
+                    ['kind' => 'configmap', 'name' => $canonical($name('mail-stalwart-config'))],
+                    ['kind' => 'secret', 'name' => $canonical($name('mail-stalwart-secrets'))],
+                    ['kind' => 'secret', 'name' => $canonical($name('mail-stalwart-store'))],
+                    ['kind' => 'secret', 'name' => $canonical($name('mail-stalwart-sender'))],
+                    ['kind' => 'secret', 'name' => $canonical($name('mail-stalwart-relay'))],
+                    ['kind' => 'pvc', 'name' => $canonical($name('mail-stalwart-storage'))],
+                ],
+                backupVolume: true, backupPaths: ['/var/lib/stalwart'],
             ),
         ];
     }
@@ -55,6 +84,8 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
     {
         return [
             'secret' => 'stalwart',
+            // The synced Secret is the store one, apart from the credentials Secret.
+            'kind' => SecretKind::STORE,
             'keys' => [
                 'STALWART_STORE_PASSWORD',
                 'STALWART_S3_KEY_ID',
@@ -101,11 +132,11 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
         // (InteractsWithMail) returns this same fixed value unconditionally;
         // only the Deployment name (see presenceProbe()) varies by instance.
         $ns = 'larakube-shared';
-        // mail-secrets{-instance}, not 'stalwart' — 'stalwart' is the
-        // OpenBao-synced secret dbSecretRef()/openbaoSyncConfig() write DB/S3
-        // creds into; it never holds admin-password. mail-secrets is what
-        // mail:init itself creates and always contains it.
-        $secretName = ($instance === null || $instance === '') ? 'mail-secrets' : "mail-secrets-{$instance}";
+        // The credentials Secret, not the OpenBao-synced store Secret: the
+        // store Secret holds DB/S3 creds and never admin-password.
+        $secretName = ($instance === null || $instance === '')
+            ? 'stalwart-secrets'
+            : ToolInstance::forInstance(ClusterTool::MAIL, $instance)->secret();
         $passVal = trim(Process::run(
             "{$kubectl} get secret {$secretName} -n {$ns} -o jsonpath='{.data.admin-password}' --ignore-not-found",
         )->output());
@@ -121,8 +152,7 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
 
     public function presenceProbe(?string $instance = null): ?string
     {
-        $deployment = ($instance === null || $instance === '') ? 'mail-stalwart' : "mail-stalwart-{$instance}";
-
-        return "deployment/{$deployment} -n larakube-shared";
+        // By label: the Deployment is named per instance, so a bare name matches nothing.
+        return 'deployment -l larakube.io/tool=mail -n larakube-shared';
     }
 }

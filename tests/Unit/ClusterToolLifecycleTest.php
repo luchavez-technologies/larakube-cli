@@ -313,7 +313,7 @@ test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifest
         // otherwise the shape its manifests still write.
         'git' => ['forgejo-secrets-inst', 'forgejo-secrets-inst'],
         'notes' => ['outline-secrets-inst', 'outline-secrets-inst'],
-        'mail' => ['stalwart-inst', 'stalwart-inst'],
+        'mail' => ['stalwart-store-inst', 'stalwart-store-inst'],
         'sign' => [null, 'documenso-secrets-inst'],
         'data' => [null, 'directus-secrets-inst'],
         'vpn' => ['netbird-secrets-inst', 'netbird-store-inst'],

@@ -1,19 +1,23 @@
 @php
-    // Self-contained rather than trusting inherited scope: this partial is
-    // also rendered standalone (SharedClusterService::MAIL's local-dev
-    // re-point path via applySharedService(), which doesn't know about
-    // $instance/$deploymentName at all) as well as @include'd from
-    // stalwart.blade.php (which already computed these). Fall back to no
-    // suffix — correct for the standalone caller today, since that path is
-    // local-only and local installs aren't threaded through the instance
-    // rename in this pass.
-    $deploymentName ??= 'mail-stalwart'.((($instance ?? '') !== '') ? "-{$instance}" : '');
+    // Rendered on its own by the local-dev re-point path (SharedClusterService::MAIL
+    // via applySharedService(), which knows only the host) as well as included
+    // from stalwart.blade.php, so derive every name here.
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::MAIL->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::MAIL, $instance);
+    $deploymentName = $names->deployment();
+    $ingressLabels = '';
+    foreach ($names->labels() as $key => $value) {
+        $ingressLabels .= "\n    {$key}: {$value}";
+    }
 @endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ $deploymentName }}
   namespace: larakube-shared
+  labels:{!! $ingressLabels !!}
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -23,8 +27,8 @@ metadata:
     external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
 @endif
 @endunless
-@if($vpnOnly ?? false)
-    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-mail-vpn-only@kubernetescrd
+@if(($vpnOnly ?? false) && $names->vpnMiddleware() !== null)
+    traefik.ingress.kubernetes.io/router.middlewares: {{ $names->vpnMiddleware()->traefikMiddleware() }}
 @endif
 spec:
   rules:

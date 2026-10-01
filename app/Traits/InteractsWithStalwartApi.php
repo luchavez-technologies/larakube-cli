@@ -56,10 +56,9 @@ trait InteractsWithStalwartApi
 
     protected function stalwartPodName(string $kubectl, string $ns): string
     {
-        // Stable, non-instance-suffixed label (mail-stalwart, not stalwart) —
-        // matches isMailInstalled()'s fix, avoids needing to resolve the
-        // instance just to find the pod.
-        $pod = trim(Process::run("{$kubectl} get pod -l app=mail-stalwart -n {$ns} -o name --no-headers 2>/dev/null | head -1")->output());
+        // By identity label, which avoids needing to resolve the instance just
+        // to find the pod.
+        $pod = trim(Process::run("{$kubectl} get pod -l larakube.io/tool=mail -n {$ns} -o name --no-headers 2>/dev/null | head -1")->output());
         if ($pod !== '') {
             return $pod;
         }

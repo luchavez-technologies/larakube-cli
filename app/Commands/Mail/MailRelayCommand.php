@@ -70,8 +70,8 @@ class MailRelayCommand extends Command
 
     protected function configureRelay(string $kubectl, string $ns, string $env, ?ConfigData $config, RelayProvider $provider): int
     {
-        $cachedUsername = $this->readClusterSecretKey($kubectl, $ns, 'mail-relay', 'username');
-        $cachedPassword = $this->readClusterSecretKey($kubectl, $ns, 'mail-relay', 'password');
+        $cachedUsername = $this->readMailRelay($kubectl, $ns, 'username');
+        $cachedPassword = $this->readMailRelay($kubectl, $ns, 'password');
 
         // Only show onboarding/pricing when we're actually about to prompt —
         // stay quiet on scripted runs (--username/--api-key) and re-runs that
@@ -94,7 +94,7 @@ class MailRelayCommand extends Command
         // region-scoped, and the onboarding text tells the user to note it first.
         $region = '';
         if ($provider->requiresRegion()) {
-            $cachedRegion = $this->readClusterSecretKey($kubectl, $ns, 'mail-relay', 'region');
+            $cachedRegion = $this->readMailRelay($kubectl, $ns, 'region');
             $region = (string) ($this->option('region') ?: $cachedRegion ?: text(
                 label: "AWS region for {$provider->label()} (where you verified your domain)",
                 placeholder: 'us-east-1',
@@ -114,7 +114,7 @@ class MailRelayCommand extends Command
         ));
 
         $this->withSpin('Caching relay credentials...', function () use ($kubectl, $ns, $provider, $username, $apiKey, $region): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'mail-relay', ['provider' => $provider->value, 'username' => $username, 'password' => $apiKey, 'region' => $region]);
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $this->mailRelaySecretName($kubectl), ['provider' => $provider->value, 'username' => $username, 'password' => $apiKey, 'region' => $region]);
         });
 
         $relayHost = $provider->defaultHost($region ?: null);
@@ -201,7 +201,7 @@ class MailRelayCommand extends Command
         $this->withSpin('Reverting to direct MX delivery...', fn () => $this->stalwartSetOutboundRoute($kubectl, $ns, 'mx'));
         $this->withSpin("Removing the {$provider->label()} relay route...", fn () => $this->stalwartDeleteRoute($kubectl, $ns, $route['id']));
 
-        Process::run("{$kubectl} delete secret mail-relay -n {$ns} --ignore-not-found");
+        Process::run("{$kubectl} delete secret {$this->mailRelaySecretName($kubectl)} -n {$ns} --ignore-not-found");
 
         $this->laraKubeInfo("Outbound mail now delivers directly via MX again ({$provider->label()} relay removed).");
 

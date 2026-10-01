@@ -16,7 +16,7 @@ test('mail:domain is registered', function (): void {
 });
 
 test('mail:domain requires installed stalwart', function (): void {
-    Process::fake(['*app=mail-stalwart*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*larakube.io/tool=mail*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:domain', ['--zone' => 'partner.example', '--cloudflare-token' => 'tok', '--force' => true])
         ->assertExitCode(1)
@@ -25,8 +25,8 @@ test('mail:domain requires installed stalwart', function (): void {
 
 test('mail:domain onboards a fresh domain with automatic DNS/TLS/DKIM management', function (): void {
     Process::fake([
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);
@@ -91,8 +91,8 @@ test('mail:domain onboards a fresh domain with automatic DNS/TLS/DKIM management
 
 test('mail:domain reuses an existing ACME provider for the same directory instead of creating a second one', function (): void {
     Process::fake([
-        '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*get secret mail-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);
