@@ -89,7 +89,7 @@ CTX=larakube-159.89.205.239
 lmail() { kubectl --context=$CTX -n larakube-shared "$@"; }
 lplex() { kubectl --context=$CTX -n larakube-plex "$@"; }
 
-# jmap '<methodCalls json>'  -> prints methodResponses; $1 is the JSON array of calls
+# jmap SERVICE CALLS-JSON SECRET: prints methodResponses
 jmap() {
   local svc=$1 body=$2 port=$((31800 + RANDOM % 100))
   local key; key=$(lmail get secret $3 -o jsonpath='{.data.api-key}' | base64 -d)

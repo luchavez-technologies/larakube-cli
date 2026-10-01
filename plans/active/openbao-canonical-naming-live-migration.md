@@ -86,7 +86,7 @@ lshared() { kubectl --context=$CTX -n larakube-shared "$@"; }
 OLD_D=openbao-backend;                OLD_S=openbao-bootstrap
 NEW_D=openbao-secrets-luchtech-dev;   NEW_S=openbao-secrets-secrets-luchtech-dev
 
-# bao <deployment> <credentials-secret> <bao args…>
+# bao DEPLOYMENT CREDENTIALS-SECRET BAO-ARGS
 bao() {
   local d=$1 s=$2; shift 2
   local tok; tok=$(lsec get secret $s -o jsonpath='{.data.root-token}' | base64 -d)
