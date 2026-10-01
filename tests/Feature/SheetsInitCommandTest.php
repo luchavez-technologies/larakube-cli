@@ -55,7 +55,7 @@ test('sheets ToolInstance resolves canonical database, buckets, redis and secret
         ->and($instance->secret(SecretKind::SMTP))->toBe('teable-smtp-sheet-example-test')
         ->and($instance->secret(SecretKind::OIDC))->toBe('teable-oidc-sheet-example-test')
         ->and($instance->database())->toBe('teable_sheet_example_test')
-        ->and($instance->redisTenant())->toBe('teable_sheet-example-test')
+        ->and($instance->redisTenant())->toBe('teable_sheet_example_test')
         ->and($instance->bucket('teable-public'))->toBe('teable-public-sheet-example-test')
         ->and($instance->bucket('teable-private'))->toBe('teable-private-sheet-example-test');
 });

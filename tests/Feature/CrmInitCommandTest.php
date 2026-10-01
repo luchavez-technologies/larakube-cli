@@ -70,7 +70,7 @@ test('crm:init detects MinIO rather than assuming SeaweedFS when that\'s what pl
 
 test('crm:show displays status table for Twenty CRM', function (): void {
     Process::fake([
-        '*get deployment *' => Process::result(output: 'crm-twenty-crm-dev-test   1/1   1   1   10d'),
+        '*get deployment *' => Process::result(output: 'twenty-crm-dev-test   1/1   1   1   10d'),
     ]);
 
     $this->artisan(CrmShowCommand::class, [
@@ -83,7 +83,7 @@ test('crm:remove cleans up Twenty CRM resources', function (): void {
         '*get secret larakube-tools-registry*' => json_encode([
             ['tool' => 'crm', 'instance' => 'crm-dev-test', 'host' => 'crm.dev.test'],
         ]),
-        '*delete deployment/crm-twenty-crm-dev-test*' => Process::result(output: 'deleted'),
+        '*delete deployment/twenty-crm-dev-test*' => Process::result(output: 'deleted'),
         '*' => Process::result(output: 'deleted'),
     ]);
 
@@ -97,9 +97,9 @@ test('crm:remove cleans up Twenty CRM resources', function (): void {
 test('mail:wire correctly targets Twenty CRM for SMTP email delivery', function (): void {
     expect(ClusterTool::CRM->smtpEnv())->toBe([
         'namespace' => 'larakube-shared',
-        'also_patch' => ['crm-twenty-worker'],
-        'deployment' => 'crm-twenty',
-        'secret' => 'crm-smtp',
+        'also_patch' => ['twenty-worker'],
+        'deployment' => 'twenty',
+        'secret' => 'twenty-smtp',
         'static' => [
             'EMAIL_DRIVER' => 'smtp',
         ],
@@ -126,9 +126,9 @@ test('mail:wire correctly targets Twenty CRM for SMTP email delivery', function 
 test('smtpEnv() actually suffixes CRM deployment names for a real instance', function (): void {
     expect(ClusterTool::CRM->smtpEnv(instance: 'crm-luchtech-dev'))->toBe([
         'namespace' => 'larakube-shared',
-        'also_patch' => ['crm-twenty-worker-crm-luchtech-dev'],
-        'deployment' => 'crm-twenty-crm-luchtech-dev',
-        'secret' => 'crm-smtp-crm-luchtech-dev',
+        'also_patch' => ['twenty-worker-crm-luchtech-dev'],
+        'deployment' => 'twenty-crm-luchtech-dev',
+        'secret' => 'twenty-smtp-crm-luchtech-dev',
         'static' => [
             'EMAIL_DRIVER' => 'smtp',
         ],
@@ -138,6 +138,12 @@ test('smtpEnv() actually suffixes CRM deployment names for a real instance', fun
             'user' => 'EMAIL_SMTP_USER',
             'password' => 'EMAIL_SMTP_PASSWORD',
             'from' => 'EMAIL_FROM_ADDRESS',
+        ],
+        'labels' => [
+            'larakube.io/managed-by' => 'larakube',
+            'larakube.io/tool' => 'crm',
+            'larakube.io/component' => 'twenty',
+            'larakube.io/instance' => 'crm-luchtech-dev',
         ],
     ]);
 });

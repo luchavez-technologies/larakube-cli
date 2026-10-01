@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
@@ -26,7 +27,9 @@ trait InteractsWithCrm
 
     protected function readCrmSecret(string $kubectl, string $ns, string $key, ?string $instance = null): ?string
     {
-        $secretName = $instance !== null && $instance !== '' ? "crm-secrets-{$instance}" : 'crm-secrets';
+        $secretName = $instance !== null && $instance !== ''
+            ? ToolInstance::forInstance(ClusterTool::CRM, $instance)->secret()
+            : 'crm-secrets';
 
         return $this->readClusterSecretKey($kubectl, $ns, $secretName, $key);
     }

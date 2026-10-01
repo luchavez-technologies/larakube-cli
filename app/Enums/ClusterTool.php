@@ -624,6 +624,14 @@ enum ClusterTool: string implements HasWorkloadComponents
             return $keys;
         }
 
+        // A migrated tool's Redis tenant is its database name: both live in
+        // one Commons registry row, and Postgres identifiers carry no hyphen.
+        // Keeping the slug's hyphens here gave CRM two rows for one install,
+        // and let a purge free a name nothing had allocated.
+        if ($this->resourceNaming() === ResourceNaming::CANONICAL) {
+            $instance = str_replace('-', '_', $instance);
+        }
+
         return array_map(fn (string $key) => "{$key}_{$instance}", $keys);
     }
 
@@ -1633,7 +1641,8 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::FLOW, self::N8N, self::WINDMILL, self::SIGN, self::DOCUMENSO, self::DATA, self::POCKETBASE,
             self::DIRECTUS, self::LINK, self::KUTT, self::ANALYTICS, self::UMAMI, self::PLAUSIBLE, self::SHEETS,
             self::TEABLE, self::TASKS, self::PLANKA, self::DASHBOARD, self::HEADLAMP, self::MEET,
-            self::LIVEKIT, self::WEBMAIL, self::BULWARK, self::DRIVE, self::OCIS, self::VPN, self::NETBIRD => ResourceNaming::CANONICAL,
+            self::LIVEKIT, self::WEBMAIL, self::BULWARK, self::DRIVE, self::OCIS, self::VPN, self::NETBIRD,
+            self::CRM, self::TWENTY => ResourceNaming::CANONICAL,
             self::CHAT, self::MATRIX, self::PASSWORDS, self::VAULTWARDEN, self::SSO, self::ZITADEL, self::RECORD,
             self::SENDREC, self::RESUME, self::SUPPORT, self::CHATWOOT => ResourceNaming::AS_SHIPPED,
             default => ResourceNaming::INSTANCE_SUFFIXED,

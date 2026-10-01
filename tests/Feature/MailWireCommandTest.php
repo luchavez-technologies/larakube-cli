@@ -138,32 +138,32 @@ test('mail:wire local --tool=crm resolves the real host-derived instance from th
     // Regression: CRM has no 'main' deployment at all (pure host-derived
     // instance naming, see ClusterTool::CRM->instanceSlugFromHost()) — this
     // pins that mail:wire finds it via the tool registry instead of probing
-    // the never-existing unsuffixed 'crm-twenty' deployment.
+    // the never-existing unsuffixed 'twenty' deployment.
     Process::fake([
         '*get secret mail-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'crm', 'instance' => 'crm-luchtech-dev', 'host' => 'crm.luchtech.dev'],
         ]))),
-        '*get deployment crm-twenty-crm-luchtech-dev*' => Process::result(output: 'crm-twenty-crm-luchtech-dev   1/1   1   1   10d'),
+        '*get deployment twenty-crm-luchtech-dev*' => Process::result(output: 'twenty-crm-luchtech-dev   1/1   1   1   10d'),
         '*app=mail-stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/mail-stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/crm-twenty-crm-luchtech-dev*' => Process::result(output: 'updated'),
-        '*set env deployment/crm-twenty-worker-crm-luchtech-dev*' => Process::result(output: 'updated'),
-        '*rollout restart deployment/crm-twenty-crm-luchtech-dev*' => Process::result(output: 'restarted'),
-        '*rollout restart deployment/crm-twenty-worker-crm-luchtech-dev*' => Process::result(output: 'restarted'),
+        '*set env deployment/twenty-crm-luchtech-dev*' => Process::result(output: 'updated'),
+        '*set env deployment/twenty-worker-crm-luchtech-dev*' => Process::result(output: 'updated'),
+        '*rollout restart deployment/twenty-crm-luchtech-dev*' => Process::result(output: 'restarted'),
+        '*rollout restart deployment/twenty-worker-crm-luchtech-dev*' => Process::result(output: 'restarted'),
     ]);
 
     $this->artisan('mail:wire local --tool=crm')
         ->expectsOutputToContain('Wired to Stalwart: CRM (Twenty)');
 
-    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'crm-smtp-crm-luchtech-dev')
+    Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'twenty-smtp-crm-luchtech-dev')
         && isset(appliedSecret($process)['data']['EMAIL_SMTP_HOST']));
-    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/crm-twenty-worker-crm-luchtech-dev')
-        && str_contains($process->command, '--from=secret/crm-smtp-crm-luchtech-dev'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/twenty-worker-crm-luchtech-dev')
+        && str_contains($process->command, '--from=secret/twenty-smtp-crm-luchtech-dev'));
 
     // The never-existing unsuffixed name must never be targeted.
-    Process::assertNotRan(fn ($process) => preg_match('#deployment/crm-twenty(-worker)?(\s|$)#', $process->command) === 1);
+    Process::assertNotRan(fn ($process) => preg_match('#deployment/twenty(-worker)?(\s|$)#', $process->command) === 1);
 });
 
 test('mail:wire --domain targets that host\'s instance, even pasted as a URL', function (): void {

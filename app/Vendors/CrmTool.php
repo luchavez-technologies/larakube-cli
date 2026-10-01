@@ -11,6 +11,8 @@ use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
+use App\Data\ToolInstance;
+use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
 
 /** The single vendor backing the CRM category — 'CRM'. Only Twenty. */
@@ -28,23 +30,44 @@ final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
-        $name = $instance !== null && $instance !== '' ? "crm-vpn-only-{$instance}" : 'crm-vpn-only';
+        $name = ($instance === null || $instance === '')
+            ? 'crm-vpn-only'
+            : ToolInstance::forInstance(ClusterTool::CRM, $instance)->name('vpn-only');
 
         return [
             'name' => $name,
-            'namespace' => 'larakube-shared',
+            'namespace' => ClusterTool::CRM->namespace(),
         ];
     }
 
+    /**
+     * Server and worker, plus every resource crm/shared.blade.php declares for
+     * the server, so teardown() can't drift from what is deployed.
+     *
+     * @return list<ClusterToolComponentData>
+     */
     public function components(?string $instance = null, ?string $engine = null): array
     {
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
+        // ClusterTool::components() strips the category from the Deployment
+        // names; the nested resource names have to follow the same rule.
+        // Composed here rather than read back from ToolInstance, which
+        // derives every name FROM this list and would recurse.
+        $canonical = fn (string $n) => ClusterTool::CRM->withoutCategory($n);
+        $server = $canonical($name('crm-twenty'));
 
         return [
             new ClusterToolComponentData(
                 key: 'server',
                 role: ClusterToolComponentRole::PRIMARY,
                 deployment: $name('crm-twenty'),
+                resources: [
+                    ['kind' => 'service', 'name' => $server],
+                    ['kind' => 'ingress', 'name' => $server],
+                    ['kind' => 'secret', 'name' => $canonical($name('crm-twenty-secrets'))],
+                    ['kind' => 'secret', 'name' => $canonical($name('crm-twenty-smtp'))],
+                    ['kind' => 'secret', 'name' => $canonical($name('crm-twenty-oidc'))],
+                ],
             ),
             // Twenty's own docker-compose splits web (HTTP/API) from worker
             // (yarn worker:prod — email/calendar sync, workflow runs, cron).
@@ -61,8 +84,10 @@ final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
 
     public function smtpEnv(?string $instance = null): ?array
     {
-        $dep = $instance !== null && $instance !== '' ? "crm-twenty-{$instance}" : 'crm-twenty';
-        $sec = $instance !== null && $instance !== '' ? "crm-smtp-{$instance}" : 'crm-smtp';
+        $canonical = fn (string $n) => ClusterTool::CRM->withoutCategory($n);
+        $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
+        $dep = $canonical($name('crm-twenty'));
+        $sec = $canonical($name('crm-twenty-smtp'));
 
         return [
             'deployment' => $dep,
@@ -112,6 +137,6 @@ final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
 
     public function commonsRedisKeys(): array
     {
-        return ['crm_twenty'];
+        return ['twenty'];
     }
 }

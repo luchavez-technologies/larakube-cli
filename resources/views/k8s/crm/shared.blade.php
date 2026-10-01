@@ -1,22 +1,47 @@
+@php
+    // Every name comes from ToolInstance (ADR 0021). Rendered by crm:init
+    // (which passes the instance) and by anything that passes only the host.
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::CRM->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::CRM, $instance);
+    $deploymentName = $names->deployment('server');
+    $workerDeploymentName = $names->deployment('worker');
+    $serviceName = $deploymentName;
+    $ingressName = $deploymentName;
+    $secretName = $names->secret();
+    $oidcSecretName = $names->secret(\App\Enums\SecretKind::OIDC);
+    $dbName = $names->database();
+    $dbUser = $dbName;
+    $labels = function (string $component) use ($names) {
+        $out = '';
+        foreach ($names->labels($component) as $key => $value) {
+            $out .= "\n    {$key}: {$value}";
+        }
+
+        return $out;
+    };
+    $podLabels = fn (string $component) => str_replace("\n    ", "\n        ", $labels($component));
+@endphp
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ $deploymentName ?? 'crm-twenty' }}
+  name: {{ $deploymentName }}
   namespace: larakube-shared
   labels:
-    app: {{ $deploymentName ?? 'crm-twenty' }}
-    larakube-tool: crm
+    app: {{ $deploymentName }}
+    larakube-tool: crm{!! $labels('server') !!}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: {{ $deploymentName ?? 'crm-twenty' }}
+      app: {{ $deploymentName }}
   template:
     metadata:
       labels:
-        app: {{ $deploymentName ?? 'crm-twenty' }}
+        app: {{ $deploymentName }}{!! $podLabels('server') !!}
     spec:
       containers:
         - name: twenty
@@ -34,45 +59,45 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-secrets' }}
+                  name: {{ $secretName }}
                   key: db-password
             - name: FRONT_BASE_URL
               value: "https://{{ $host }}"
             - name: SERVER_URL
               value: "https://{{ $host }}"
             - name: PG_DATABASE_URL
-              value: "postgres://{{ $dbUser ?? 'crm_twenty' }}:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/{{ $dbName ?? 'crm_twenty' }}"
+              value: "postgres://{{ $dbUser }}:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/{{ $dbName }}"
             - name: REDIS_URL
               value: "redis://redis.{{ $plexNamespace }}.svc.cluster.local:6379/{{ $redisIndex }}"
             - name: ACCESS_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-secrets' }}
+                  name: {{ $secretName }}
                   key: access-token-secret
             - name: LOGIN_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-secrets' }}
+                  name: {{ $secretName }}
                   key: login-token-secret
             - name: REFRESH_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-secrets' }}
+                  name: {{ $secretName }}
                   key: refresh-token-secret
             - name: FILE_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-secrets' }}
+                  name: {{ $secretName }}
                   key: file-token-secret
             - name: ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-secrets' }}
+                  name: {{ $secretName }}
                   key: encryption-key
             - name: APP_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-secrets' }}
+                  name: {{ $secretName }}
                   key: encryption-key
             # Commons SeaweedFS (S3-compatible). Twenty's enum value for S3
             # storage is literally "S_3" — not "s3"/"S3" — per its own
@@ -90,12 +115,12 @@ spec:
             - name: STORAGE_S3_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-secrets' }}
+                  name: {{ $secretName }}
                   key: s3-key
             - name: STORAGE_S3_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-secrets' }}
+                  name: {{ $secretName }}
                   key: s3-secret
             # SeaweedFS denies anonymous reads by design — attachment links
             # handed to the browser must be presigned against the PUBLIC
@@ -109,19 +134,19 @@ spec:
             - name: SSO_OIDC_ISSUER
               valueFrom:
                 secretKeyRef:
-                  name: {{ $oidcSecretName ?? 'crm-oidc' }}
+                  name: {{ $oidcSecretName }}
                   key: SSO_OIDC_ISSUER
                   optional: true
             - name: SSO_OIDC_CLIENT_ID
               valueFrom:
                 secretKeyRef:
-                  name: {{ $oidcSecretName ?? 'crm-oidc' }}
+                  name: {{ $oidcSecretName }}
                   key: SSO_OIDC_CLIENT_ID
                   optional: true
             - name: SSO_OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $oidcSecretName ?? 'crm-oidc' }}
+                  name: {{ $oidcSecretName }}
                   key: SSO_OIDC_CLIENT_SECRET
                   optional: true
           startupProbe:
@@ -157,21 +182,21 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ $workerDeploymentName ?? 'crm-twenty-worker' }}
+  name: {{ $workerDeploymentName }}
   namespace: larakube-shared
   labels:
-    app: {{ $workerDeploymentName ?? 'crm-twenty-worker' }}
+    app: {{ $workerDeploymentName }}{!! $labels('worker') !!}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: {{ $workerDeploymentName ?? 'crm-twenty-worker' }}
+      app: {{ $workerDeploymentName }}
   template:
     metadata:
       labels:
-        app: {{ $workerDeploymentName ?? 'crm-twenty-worker' }}
+        app: {{ $workerDeploymentName }}{!! $podLabels('worker') !!}
     spec:
       containers:
         - name: twenty-worker
@@ -189,43 +214,43 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-secrets' }}
+                  name: {{ $secretName }}
                   key: db-password
             - name: SERVER_URL
               value: "https://{{ $host }}"
             - name: PG_DATABASE_URL
-              value: "postgres://{{ $dbUser ?? 'crm_twenty' }}:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/{{ $dbName ?? 'crm_twenty' }}"
+              value: "postgres://{{ $dbUser }}:$(DB_PASSWORD)@postgres.{{ $plexNamespace }}.svc.cluster.local:5432/{{ $dbName }}"
             - name: REDIS_URL
               value: "redis://redis.{{ $plexNamespace }}.svc.cluster.local:6379/{{ $redisIndex }}"
             - name: ACCESS_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-secrets' }}
+                  name: {{ $secretName }}
                   key: access-token-secret
             - name: LOGIN_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-secrets' }}
+                  name: {{ $secretName }}
                   key: login-token-secret
             - name: REFRESH_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-secrets' }}
+                  name: {{ $secretName }}
                   key: refresh-token-secret
             - name: FILE_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-secrets' }}
+                  name: {{ $secretName }}
                   key: file-token-secret
             - name: ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-secrets' }}
+                  name: {{ $secretName }}
                   key: encryption-key
             - name: APP_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-secrets' }}
+                  name: {{ $secretName }}
                   key: encryption-key
             - name: STORAGE_TYPE
               value: "S_3"
@@ -238,12 +263,12 @@ spec:
             - name: STORAGE_S3_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-secrets' }}
+                  name: {{ $secretName }}
                   key: s3-key
             - name: STORAGE_S3_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ $secretName ?? 'crm-secrets' }}
+                  name: {{ $secretName }}
                   key: s3-secret
             - name: STORAGE_S3_PRESIGNED_URL_ENABLED
               value: "true"
@@ -260,11 +285,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ $serviceName ?? 'crm' }}
+  name: {{ $serviceName }}
   namespace: larakube-shared
+  labels:{!! $labels('server') !!}
 spec:
   selector:
-    app: {{ $deploymentName ?? 'crm-twenty' }}
+    app: {{ $deploymentName }}
   ports:
     - protocol: TCP
       port: 80

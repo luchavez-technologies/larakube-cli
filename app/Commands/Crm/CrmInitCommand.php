@@ -2,8 +2,10 @@
 
 namespace App\Commands\Crm;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
+use App\Enums\SecretKind;
 use App\Enums\SharedClusterService;
 use App\Enums\StorageDriver;
 use App\Services\Kubectl;
@@ -96,12 +98,14 @@ class CrmInitCommand extends Command
         }
         $s3Driver = StorageDriver::from($s3Service);
 
-        $secretName = "crm-secrets-{$instance}";
-        $deploymentName = ClusterTool::CRM->deploymentName($instance);
-        $workerDeploymentName = "crm-twenty-worker-{$instance}";
-        $serviceName = "crm-{$instance}";
-        $ingressName = $serviceName;
-        $oidcSecretName = "crm-oidc-{$instance}";
+        // Every name comes from ToolInstance (ADR 0021).
+        $names = ToolInstance::forInstance(ClusterTool::CRM, $instance);
+        $secretName = $names->secret();
+        $deploymentName = $names->deployment('server');
+        $workerDeploymentName = $names->deployment('worker');
+        $serviceName = $deploymentName;
+        $ingressName = $deploymentName;
+        $oidcSecretName = $names->secret(SecretKind::OIDC);
 
         $dbPassword = $this->readCrmSecret($kubectl, $ns, 'db-password', $instance) ?? Str::random(24);
         $accessTokenSecret = $this->readCrmSecret($kubectl, $ns, 'access-token-secret', $instance) ?? bin2hex(random_bytes(32));
@@ -110,19 +114,19 @@ class CrmInitCommand extends Command
         $fileTokenSecret = $this->readCrmSecret($kubectl, $ns, 'file-token-secret', $instance) ?? bin2hex(random_bytes(32));
         $encryptionKey = $this->readCrmSecret($kubectl, $ns, 'encryption-key', $instance) ?? bin2hex(random_bytes(32));
 
-        $dbName = ClusterTool::CRM->commonsDatabases($instance)[0];
+        $dbName = $names->database();
         $dbUser = $dbName;
 
         if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
             return 1;
         }
 
-        $redisIndex = $this->allocateCommonsRedisIndex(ClusterTool::CRM->commonsRedisTenants($instance)[0]);
+        $redisIndex = $this->allocateCommonsRedisIndex($names->redisTenant());
 
         $s3Creds = $this->readCommonsS3Credentials();
         $s3Key = $s3Creds['access'] ?? 'seaweedfs-access-key';
         $s3Secret = $s3Creds['secret'] ?? 'seaweedfs-secret-key';
-        $bucket = ClusterTool::CRM->commonsBuckets($instance)[0];
+        $bucket = $names->bucket();
 
         if (! $this->allocateStorageBucket($s3Driver, $bucket)) {
             return 1;

@@ -32,7 +32,7 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
     // is excluded for the OPPOSITE reason — see its own dedicated test:
     // chat-synapse never gains an instance suffix, even when one is given.
     $expected = [
-        'analytics' => 'umami', 'crm' => 'crm-twenty',
+        'analytics' => 'umami', 'crm' => 'twenty',
         'drive' => 'ocis', 'errors' => 'glitchtip-web',
         'flow' => 'n8n', 'insights' => 'insights-metabase',
         'link' => 'kutt', 'mail' => 'mail-stalwart', 'monitor' => 'grafana',
@@ -122,7 +122,7 @@ test('only DESIGN\'s frontend, ERRORS\' worker, and CRM\'s worker components sha
                 ->and($shared[0]->deployment)->toBe('glitchtip-worker');
         } elseif ($tool === ClusterTool::CRM || $tool === ClusterTool::TWENTY) {
             expect($shared)->toHaveCount(1)
-                ->and($shared[0]->deployment)->toBe('crm-twenty-worker');
+                ->and($shared[0]->deployment)->toBe('twenty-worker');
         } else {
             expect($shared)->toBeEmpty();
         }
@@ -132,8 +132,8 @@ test('only DESIGN\'s frontend, ERRORS\' worker, and CRM\'s worker components sha
         ->and(ClusterTool::PENPOT->alsoPatchDeployments())->toBe(['design-penpot-frontend'])
         ->and(ClusterTool::ERRORS->alsoPatchDeployments())->toBe(['glitchtip-worker'])
         ->and(ClusterTool::GLITCHTIP->alsoPatchDeployments())->toBe(['glitchtip-worker'])
-        ->and(ClusterTool::CRM->alsoPatchDeployments())->toBe(['crm-twenty-worker'])
-        ->and(ClusterTool::TWENTY->alsoPatchDeployments())->toBe(['crm-twenty-worker']);
+        ->and(ClusterTool::CRM->alsoPatchDeployments())->toBe(['twenty-worker'])
+        ->and(ClusterTool::TWENTY->alsoPatchDeployments())->toBe(['twenty-worker']);
 });
 
 test('backupVolume is only true for the components InteractsWithBackup already covers today', function (): void {

@@ -25,20 +25,9 @@ class CrmRemoveCommand extends AbstractToolRemoveCommand
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
-        $instance = $this->resolveInstance($kubectl);
-
-        $deploymentName = ClusterTool::CRM->deploymentName($instance);
-        $workerDeploymentName = "crm-twenty-worker-{$instance}";
-        $serviceName = "crm-{$instance}";
-        $ingressName = $serviceName;
-        $secretName = "crm-secrets-{$instance}";
-        $oidcSecretName = "crm-oidc-{$instance}";
-        $smtpSecretName = "crm-smtp-{$instance}";
-
         return $this->removeResources(
             'Removing Twenty CRM resources...',
-            "{$kubectl} delete deployment/{$deploymentName} deployment/{$workerDeploymentName} service/{$serviceName} ingress/{$ingressName} "
-            ."secret/{$secretName} secret/{$oidcSecretName} secret/{$smtpSecretName} -n {$namespace} --ignore-not-found",
+            $this->teardownComponentsCommand($kubectl, $namespace, $this->resolveInstance($kubectl)),
         );
     }
 }

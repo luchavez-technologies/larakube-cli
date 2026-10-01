@@ -21,12 +21,12 @@ test('a bare component name is deliberately NOT matched', function (): void {
 });
 
 test('the longest matching component wins', function (): void {
-    // Otherwise crm-twenty-worker-crm-x resolves to the crm-twenty component
-    // with the instance "worker-crm-x".
-    $hit = ClusterTool::forInstancedDeployment('crm-twenty-worker-crm-luchtech-dev');
+    // Otherwise twenty-worker-crm-x resolves to the twenty component with the
+    // instance "worker-crm-x".
+    $hit = ClusterTool::forInstancedDeployment('twenty-worker-crm-luchtech-dev');
 
     expect($hit['tool'])->toBe(ClusterTool::TWENTY)
-        ->and($hit['component']->deployment)->toBe('crm-twenty-worker')
+        ->and($hit['component']->deployment)->toBe('twenty-worker')
         ->and($hit['instance'])->toBe('crm-luchtech-dev');
 });
 

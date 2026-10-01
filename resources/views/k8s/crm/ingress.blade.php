@@ -1,8 +1,22 @@
+@php
+    // Rendered on its own by the shared-service reconcile (host only) as well
+    // as included from shared.blade.php, so derive every name here.
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::CRM->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::CRM, $instance);
+    $serviceName = $ingressName = $names->deployment('server');
+    $ingressLabels = '';
+    foreach ($names->labels('server') as $key => $value) {
+        $ingressLabels .= "\n    {$key}: {$value}";
+    }
+@endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ $ingressName ?? 'crm' }}
+  name: {{ $ingressName }}
   namespace: larakube-shared
+  labels:{!! $ingressLabels !!}
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -13,7 +27,7 @@ metadata:
 @endif
 @endunless
 @if($vpnOnly ?? false)
-    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-{{ ($instance ?? '') === '' ? 'crm-vpn-only' : 'crm-vpn-only-'.$instance }}@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: {{ $names->vpnMiddleware()->traefikMiddleware() }}
 @endif
 spec:
   rules:
@@ -24,7 +38,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ $serviceName ?? 'crm' }}
+                name: {{ $serviceName }}
                 port:
                   number: 80
   tls:
