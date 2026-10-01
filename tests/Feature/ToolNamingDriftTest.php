@@ -18,20 +18,35 @@ function toolNamingKnownDrift(): array
 
     return [
         'chat' => $refusesDomain,
+        'matrix' => $refusesDomain,
         'meet' => $refusesDomain,
+        'livekit' => $refusesDomain,
         'design' => 'init hand-builds design-backend/-secrets/-oidc names remove never deletes',
+        'penpot' => 'init hand-builds design-backend/-secrets/-oidc names remove never deletes',
         'drive' => $refusesDomain,
+        'ocis' => $refusesDomain,
         'errors' => $refusesDomain,
+        'glitchtip' => $refusesDomain,
         'git' => $refusesDomain,
+        'forgejo' => $refusesDomain,
         'insights' => $refusesDomain,
+        'metabase' => $refusesDomain,
         'mail' => $refusesDomain,
+        'stalwart' => $refusesDomain,
         'monitor' => $refusesDomain,
+        'grafana' => $refusesDomain,
         'passwords' => $refusesDomain,
+        'vaultwarden' => $refusesDomain,
         'record' => $refusesDomain,
+        'sendrec' => $refusesDomain,
         'sso' => $refusesDomain,
+        'zitadel' => $refusesDomain,
         'support' => $refusesDomain,
+        'chatwoot' => $refusesDomain,
         'vpn' => $refusesDomain,
+        'netbird' => $refusesDomain,
         'dashboard' => $refusesDomain,
+        'headlamp' => $refusesDomain,
         'resume' => $refusesDomain,
     ];
 }
@@ -41,9 +56,13 @@ function toolNamingHarnessPending(): array
 {
     return [
         'dns' => 'not a per-host tool: needs a Cloudflare token and manages zones',
+        'external-dns' => 'not a per-host tool: needs a Cloudflare token and manages zones',
         'notes' => 'Outline needs a login provider: without Zitadel, notes:init refuses unattended',
+        'outline' => 'Outline needs a login provider: without Zitadel, notes:init refuses unattended',
         'secrets' => 'OpenBao init talks to its HTTP API',
+        'openbao' => 'OpenBao init talks to its HTTP API',
         'webmail' => 'needs Mail installed first',
+        'bulwark' => 'needs Mail installed first',
     ];
 }
 
@@ -53,8 +72,8 @@ afterEach(function (): void {
 
 test('init and remove agree on every name', function (ClusterTool $tool): void {
     $result = ToolDriftHarness::check($tool);
-    $pending = toolNamingHarnessPending()[$tool->value] ?? null;
-    $knownDrift = toolNamingKnownDrift()[$tool->value] ?? null;
+    $pending = toolNamingHarnessPending()[$tool->value] ?? toolNamingHarnessPending()[$tool->legacyCategoryPrefix() ?? ''] ?? null;
+    $knownDrift = toolNamingKnownDrift()[$tool->value] ?? toolNamingKnownDrift()[$tool->legacyCategoryPrefix() ?? ''] ?? null;
 
     if ($pending !== null) {
         expect($result['harnessed'])->toBeFalse("{$tool->value} now runs in the harness: take it off toolNamingHarnessPending().");

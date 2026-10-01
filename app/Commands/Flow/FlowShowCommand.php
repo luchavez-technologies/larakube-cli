@@ -7,6 +7,13 @@ use App\Enums\ClusterTool;
 
 class FlowShowCommand extends AbstractToolShowCommand
 {
+    public function handle(): int
+    {
+        $this->laraKubeWarn("[DEPRECATION] 'flow:show' is deprecated. Please use 'n8n:show' or 'windmill:show' instead.");
+
+        return parent::handle();
+    }
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::FLOW;

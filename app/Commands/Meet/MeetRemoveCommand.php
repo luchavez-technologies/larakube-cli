@@ -11,6 +11,13 @@ class MeetRemoveCommand extends AbstractToolRemoveCommand
 {
     use ManagesToolFirewallPorts;
 
+    public function handle(): int
+    {
+        $this->laraKubeWarn("[DEPRECATION] 'meet:remove' is deprecated. Please use 'livekit:remove' instead.");
+
+        return parent::handle();
+    }
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::MEET;

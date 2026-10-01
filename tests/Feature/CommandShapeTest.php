@@ -187,6 +187,7 @@ test('every cluster-inspecting :show resolves its context from {environment}', f
 
         // Either it inherits the base (which resolves), or it resolves itself.
         if (str_contains($source, 'extends AbstractToolShowCommand')
+            || preg_match('/extends\s+\w+ShowCommand/', $source)
             || str_contains($source, 'resolveToolContext')
             || str_contains($source, 'environmentContextOrCurrent')) {
             continue;

@@ -56,6 +56,7 @@ class ChatInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'chat:init' is deprecated. Forwarding to 'matrix:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deployChat();

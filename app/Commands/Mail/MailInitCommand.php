@@ -55,6 +55,7 @@ class MailInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'mail:init' is deprecated. Forwarding to 'stalwart:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deployMail();

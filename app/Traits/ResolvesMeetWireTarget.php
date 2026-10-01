@@ -55,13 +55,16 @@ trait ResolvesMeetWireTarget
                 return null;
             }
 
-            if (! in_array($tool, $installed, true)) {
+            $canonical = $tool->canonicalTool();
+            $matches = array_filter($installed, fn (ClusterTool $t) => $t === $tool || $t === $canonical);
+
+            if ($matches === []) {
                 $this->laraKubeError("{$tool->getLabel()} is not installed on this cluster.");
 
                 return null;
             }
 
-            return $tool;
+            return $canonical;
         }
 
         if ($installed === []) {

@@ -36,6 +36,10 @@ class DnsListCommand extends Command
 
     public function handle(): int
     {
+        if ($this->getName() === 'dns:list' && ! $this->option('json')) {
+            $this->laraKubeWarn("[DEPRECATION] 'dns:list' is deprecated. Please use 'external-dns:list' instead.");
+        }
+
         if (! $this->option('json')) {
             $this->renderHeader();
         }

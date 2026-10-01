@@ -197,8 +197,8 @@ class NewCommand extends Command
             return 1;
         }
 
-        $this->withSpin('Orchestrating infrastructure manifests...', function () use ($config): void {
-            $this->orchestrateProjectScaffolding($config);
+        $scaffolded = $this->withSpin('Orchestrating infrastructure manifests...', function () use ($config): void {
+            $this->orchestrateProjectScaffolding($config, buildImage: false);
 
             if ($config->id) {
                 $this->logToConsole($config->id, 'new', 'New architectural masterpiece created', [
@@ -208,6 +208,12 @@ class NewCommand extends Command
                 ]);
             }
         });
+
+        if (! $scaffolded) {
+            $this->laraKubeError("Failed to orchestrate infrastructure manifests for {$appName}.");
+
+            return 1;
+        }
 
         // Join the Commons through plex:join itself rather than reimplementing
         // it here. plex:join is the one path that writes the tenant .env AND

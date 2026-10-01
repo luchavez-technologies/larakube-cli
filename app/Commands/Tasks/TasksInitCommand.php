@@ -40,6 +40,7 @@ class TasksInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'tasks:init' is deprecated. Forwarding to 'planka:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deployTasks();

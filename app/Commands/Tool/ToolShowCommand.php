@@ -83,7 +83,17 @@ class ToolShowCommand extends Command
             return $tool;
         }
 
-        $installedTools = array_values(array_unique(array_column($this->getRegisteredTools($kubectl), 'tool')));
+        $installedTools = [];
+        foreach ($this->getRegisteredTools($kubectl) as $entry) {
+            $slug = $entry['tool'] ?? null;
+            if ($slug !== null) {
+                $tool = ClusterTool::tryFrom((string) $slug);
+                if ($tool !== null) {
+                    $installedTools[] = $tool->canonicalTool($entry['engine'] ?? null)->value;
+                }
+            }
+        }
+        $installedTools = array_values(array_unique($installedTools));
 
         if ($installedTools === []) {
             $this->laraKubeInfo('No tools are installed on this cluster.');

@@ -12,6 +12,13 @@ class MailRemoveCommand extends AbstractToolRemoveCommand
 {
     use InteractsWithMail;
 
+    public function handle(): int
+    {
+        $this->laraKubeWarn("[DEPRECATION] 'mail:remove' is deprecated. Please use 'stalwart:remove' instead.");
+
+        return parent::handle();
+    }
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::MAIL;

@@ -43,6 +43,7 @@ class WebmailInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'webmail:init' is deprecated. Forwarding to 'bulwark:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deployWebmail();

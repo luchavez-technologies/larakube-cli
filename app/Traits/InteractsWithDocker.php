@@ -88,7 +88,7 @@ trait InteractsWithDocker
 
         // Check if we have a local image, otherwise fallback to base
         $imageExists = Process::run($this->imageQuietLookupCommand($localImage))->output();
-        $image = $imageExists !== '' ? $localImage : $this->getProjectConfig($path)->getPhpImage(true);
+        $image = $imageExists !== '' ? $localImage : ($this->getProjectConfig($path)?->getPhpImage(true) ?? 'docker.io/serversideup/php:8.4-fpm-nginx-alpine');
 
         $baseEnvs = '-e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 -e COMPOSER_IGNORE_PLATFORM_REQS=1 -e SHOW_WELCOME_MESSAGE=false';
 

@@ -26,7 +26,7 @@ test('tool:list detects tools live on the cluster even if missing from registry 
     $output = json_decode(Artisan::output(), true);
 
     expect($exit)->toBe(0);
-    $mailRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'mail'))[0] ?? null;
+    $mailRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'stalwart'))[0] ?? null;
 
     expect($mailRow)->not->toBeNull()
         ->and($mailRow['installed'])->toBeTrue()
@@ -41,7 +41,7 @@ test('tool:list surfaces OpenBao rotation status for an installed DB-backed tool
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
-                ['tool' => 'mail', 'instance' => '', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'send.luchtech.dev'],
+                ['tool' => 'stalwart', 'instance' => '', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'send.luchtech.dev'],
             ])),
         ),
         '*deployment stalwart -n larakube-shared*' => Process::result(output: 'deployment.apps/stalwart created'),
@@ -60,7 +60,7 @@ test('tool:list surfaces OpenBao rotation status for an installed DB-backed tool
     $output = json_decode(Artisan::output(), true);
 
     expect($exit)->toBe(0);
-    $mailRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'mail'))[0] ?? null;
+    $mailRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'stalwart'))[0] ?? null;
 
     expect($mailRow)->not->toBeNull()
         ->and($mailRow['db_role'])->toBe('stalwart')
@@ -68,7 +68,7 @@ test('tool:list surfaces OpenBao rotation status for an installed DB-backed tool
 
     // A tool with no Commons database at all (e.g. DNS) never even checks —
     // no per-row port-forward for something that can never have a schedule.
-    $dnsRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'dns'))[0] ?? null;
+    $dnsRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'external-dns'))[0] ?? null;
     expect($dnsRow['db_role'])->toBeNull()
         ->and($dnsRow['rotation'])->toBe('N/A');
 });
@@ -77,8 +77,8 @@ test('tool:list lists multiple registered instances of a tool as separate rows',
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
-                ['tool' => 'notes', 'instance' => '', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
-                ['tool' => 'notes', 'instance' => 'docs', 'installedAt' => '2026-08-02T00:00:00+00:00', 'host' => 'wiki.luchtech.dev'],
+                ['tool' => 'outline', 'instance' => '', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
+                ['tool' => 'outline', 'instance' => 'docs', 'installedAt' => '2026-08-02T00:00:00+00:00', 'host' => 'wiki.luchtech.dev'],
             ])),
         ),
         '*' => Process::result(output: ''),
@@ -88,20 +88,20 @@ test('tool:list lists multiple registered instances of a tool as separate rows',
     $output = json_decode(Artisan::output(), true);
 
     expect($exit)->toBe(0);
-    $notesRows = array_values(array_filter($output, fn ($r) => $r['tool'] === 'notes'));
+    $notesRows = array_values(array_filter($output, fn ($r) => $r['tool'] === 'outline'));
     expect($notesRows)->toHaveCount(2)
         ->and($notesRows[0]['instance'])->toBe('')
-        ->and($notesRows[0]['brand'])->toBe('Notes')
+        ->and($notesRows[0]['brand'])->toBe('Outline')
         ->and($notesRows[1]['instance'])->toBe('docs')
-        ->and($notesRows[1]['brand'])->toBe('Notes [docs]');
+        ->and($notesRows[1]['brand'])->toBe('Outline [docs]');
 });
 
 test('tool:list surfaces OpenBao KV secret sync status for wired and unwired tools', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
-                ['tool' => 'mail', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'send.luchtech.dev'],
-                ['tool' => 'notes', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
+                ['tool' => 'stalwart', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'send.luchtech.dev'],
+                ['tool' => 'outline', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
             ])),
         ),
         // Stalwart (Mail) has its OpenBao KV sync ExternalSecret on the cluster
@@ -123,14 +123,14 @@ test('tool:list surfaces OpenBao KV secret sync status for wired and unwired too
     $output = json_decode(Artisan::output(), true);
 
     expect($exit)->toBe(0);
-    $mailRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'mail'))[0] ?? null;
-    $notesRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'notes'))[0] ?? null;
+    $mailRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'stalwart'))[0] ?? null;
+    $notesRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'outline'))[0] ?? null;
 
     expect($mailRow['sync'])->toBe('synced')
         ->and($notesRow['sync'])->toBe('unsynced');
 
     // A tool with no OpenBao KV sync surface (e.g. DNS) never even checks.
-    $dnsRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'dns'))[0] ?? null;
+    $dnsRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'external-dns'))[0] ?? null;
     expect($dnsRow['sync'])->toBe('N/A');
 });
 
@@ -144,7 +144,7 @@ test('tool:list also treats the dynamic "{secret}-db" ExternalSecret as synced, 
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
-                ['tool' => 'design', 'instance' => 'design-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'design.luchtech.dev'],
+                ['tool' => 'penpot', 'instance' => 'design-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'design.luchtech.dev'],
             ])),
         ),
         '*get externalsecret design-secrets-design-luchtech-dev-db*' => Process::result(output: 'design-secrets-design-luchtech-dev-db  1m  True  SecretSynced'),
@@ -164,14 +164,14 @@ test('tool:list also treats the dynamic "{secret}-db" ExternalSecret as synced, 
     $output = json_decode(Artisan::output(), true);
 
     expect($exit)->toBe(0);
-    $designRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'design'))[0] ?? null;
+    $designRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'penpot'))[0] ?? null;
     expect($designRow['sync'])->toBe('synced');
 });
 
 test('tool:list --registry-only answers from the registry alone, with no live probes, and marks rows unverified', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
-            ['tool' => 'data', 'instance' => '', 'installedAt' => '2026-09-01T00:00:00+00:00', 'host' => 'pocket.example.com'],
+            ['tool' => 'pocketbase', 'instance' => '', 'installedAt' => '2026-09-01T00:00:00+00:00', 'host' => 'pocket.example.com'],
         ]))),
         // Stalwart is live on the cluster but unregistered: only the full check may find it.
         '*deployment stalwart -n larakube-shared*' => Process::result(output: 'deployment.apps/stalwart'),
@@ -181,12 +181,12 @@ test('tool:list --registry-only answers from the registry alone, with no live pr
     expect(Artisan::call('tool:list local --registry-only --json'))->toBe(0);
     $rows = collect(json_decode(Artisan::output(), true))->keyBy('tool');
 
-    expect($rows['data']['installed'])->toBeTrue()
-        ->and($rows['data']['host'])->toBe('pocket.example.com')
-        ->and($rows['data']['verified'])->toBeFalse()
-        ->and($rows['mail']['installed'])->toBeFalse()
-        ->and($rows['mail']['verified'])->toBeFalse()
-        ->and($rows['mail']['sso'])->toBe('unverified');
+    expect($rows['pocketbase']['installed'])->toBeTrue()
+        ->and($rows['pocketbase']['host'])->toBe('pocket.example.com')
+        ->and($rows['pocketbase']['verified'])->toBeFalse()
+        ->and($rows['stalwart']['installed'])->toBeFalse()
+        ->and($rows['stalwart']['verified'])->toBeFalse()
+        ->and($rows['stalwart']['sso'])->toBe('unverified');
 
     Process::assertNotRan(fn ($process) => str_contains((string) $process->command, 'deployment stalwart'));
     Process::assertNotRan(fn ($process) => str_contains((string) $process->command, 'get ingress'));
@@ -204,7 +204,7 @@ test('tool:list --installed filters out uninstalled tools', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
-                ['tool' => 'mail', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'send.luchtech.dev'],
+                ['tool' => 'stalwart', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'send.luchtech.dev'],
             ])),
         ),
         '*' => Process::result(output: ''),
@@ -215,7 +215,7 @@ test('tool:list --installed filters out uninstalled tools', function (): void {
 
     expect($exit)->toBe(0);
     $tools = array_column($output, 'tool');
-    expect($tools)->toContain('mail')
+    expect($tools)->toContain('stalwart')
         ->not->toContain('analytics');
 });
 
@@ -242,7 +242,7 @@ test('tool:list reports SSO as wired for a CLI-OIDC tool once sso:wire records i
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
-                ['tool' => 'git', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'git.luchtech.dev'],
+                ['tool' => 'forgejo', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'git.luchtech.dev'],
             ])),
         ),
         '*get secret forgejo-oidc*' => Process::result(output: 'forgejo-oidc  Opaque  2  1h'),
@@ -253,7 +253,7 @@ test('tool:list reports SSO as wired for a CLI-OIDC tool once sso:wire records i
     $output = json_decode(Artisan::output(), true);
 
     expect($exit)->toBe(0);
-    $gitRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'git'))[0] ?? null;
+    $gitRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'forgejo'))[0] ?? null;
 
     expect($gitRow)->not->toBeNull()
         ->and($gitRow['sso'])->toBe('wired');
@@ -268,7 +268,7 @@ function toolListRefreshFakes(string $registryJson = ''): void
 {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: $registryJson),
-        '*get deployment -n larakube-shared *' => Process::result(output: implode("\n", [
+        '*get deployment *larakube-shared*' => Process::result(output: implode("\n", [
             'outline-notes-luchtech-dev',   // conforms
             'loki-monitor-luchtech-dev',  // conforms (was an enum gap)
             'external-dns-luchtech-dev',          // conforms, but DNS is headless
@@ -312,14 +312,14 @@ test('a full tool:list adopts live, unregistered convention tools into the regis
     expect(Artisan::call('tool:list local --json --no-interaction'))->toBe(0);
 
     $stored = collect($registry->stored)->keyBy(fn (array $row): string => $row['tool'].'|'.$row['instance']);
-    $notes = collect(json_decode(Artisan::output(), true))->firstWhere('tool', 'notes');
+    $notes = collect(json_decode(Artisan::output(), true))->firstWhere('tool', 'outline');
 
     // Adopted with the identity --refresh derives, so the registry-only view sees it next time.
-    expect($stored['notes|notes-luchtech-dev']['host'] ?? null)->toBe('notes.luchtech.dev')
+    expect($stored['outline|notes-luchtech-dev']['host'] ?? null)->toBe('notes.luchtech.dev')
         ->and($notes['installed'])->toBeTrue()
         ->and($notes['instance'])->toBe('notes-luchtech-dev')
         // An unsuffixed Deployment is never registered under a guessed instance.
-        ->and($stored->keys()->filter(fn (string $key): bool => str_starts_with($key, 'drive|'))->all())->toBeEmpty();
+        ->and($stored->keys()->filter(fn (string $key): bool => str_starts_with($key, 'ocis|'))->all())->toBeEmpty();
 });
 
 test('tool:list --registry-only never writes to the registry', function (): void {
@@ -378,4 +378,159 @@ test('tool:list --refresh --dry-run never writes to the registry', function (): 
     Process::assertNotRan(fn ($process) => str_contains(
         (string) $process->command, 'create secret generic larakube-tools-registry',
     ));
+});
+
+test('tool:list maps legacy registered tools to canonical tools with multi-category descriptors', function (): void {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(
+            output: base64_encode((string) json_encode([
+                ['tool' => 'crm', 'instance' => 'crm-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'crm.luchtech.dev'],
+            ])),
+        ),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $exit = Artisan::call('tool:list local --json');
+    $output = json_decode(Artisan::output(), true);
+
+    expect($exit)->toBe(0);
+    $twentyRow = array_values(array_filter($output, fn ($r) => $r['tool'] === 'twenty'))[0] ?? null;
+
+    expect($twentyRow)->not->toBeNull()
+        ->and($twentyRow['installed'])->toBeTrue()
+        ->and($twentyRow['brand'])->toBe('Twenty [crm-luchtech-dev]')
+        ->and($twentyRow['categories'])->toContain('communication')
+        ->and($twentyRow['categories'])->toContain('productivity')
+        ->and($twentyRow['categories'])->toContain('backend')
+        ->and($twentyRow['categories'])->toContain('database');
+});
+
+test('tool:list prunes leaked subcomponents, duplicate unshipped tools, and invalid single-instance entries', function (): void {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(
+            output: base64_encode((string) json_encode([
+                ['tool' => 'netbird', 'instance' => 'vpn-luchtech-dev', 'host' => 'vpn.luchtech.dev'],
+                ['tool' => 'netbird', 'instance' => 'client-vpn-luchtech-dev', 'host' => 'vpn.luchtech.dev'],
+                ['tool' => 'netbird', 'instance' => 'dashboard-vpn-luchtech-dev', 'host' => 'vpn.luchtech.dev'],
+                ['tool' => 'gitea', 'instance' => 'git-luchtech-dev', 'host' => 'git.luchtech.dev'],
+                ['tool' => 'forgejo', 'instance' => 'git-luchtech-dev', 'host' => 'git.luchtech.dev'],
+                ['tool' => 'grafana', 'instance' => 'monitor-luchtech-dev', 'host' => 'monitor.luchtech.dev'],
+                ['tool' => 'grafana', 'instance' => 'matrix-forwarder'],
+            ])),
+        ),
+        '*get deployment -n larakube-shared*' => Process::result(output: ''),
+        '*get deployment -n larakube-vpn*' => Process::result(output: ''),
+        '*create secret generic larakube-tools-registry*' => Process::result(output: ''),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $exit = Artisan::call('tool:list local --json');
+    $output = json_decode(Artisan::output(), true);
+
+    expect($exit)->toBe(0);
+
+    $netbirdRows = array_values(array_filter($output, fn ($r) => $r['tool'] === 'netbird' && $r['installed']));
+    expect($netbirdRows)->toHaveCount(1)
+        ->and($netbirdRows[0]['instance'])->toBe('vpn-luchtech-dev');
+
+    $grafanaRows = array_values(array_filter($output, fn ($r) => $r['tool'] === 'grafana' && $r['installed']));
+    expect($grafanaRows)->toHaveCount(1)
+        ->and($grafanaRows[0]['instance'])->toBe('monitor-luchtech-dev');
+
+    $giteaRows = array_values(array_filter($output, fn ($r) => $r['tool'] === 'gitea' && $r['installed']));
+    expect($giteaRows)->toBeEmpty();
+
+    $forgejoRows = array_values(array_filter($output, fn ($r) => $r['tool'] === 'forgejo' && $r['installed']));
+    expect($forgejoRows)->toHaveCount(1);
+});
+
+test('discoverConventionTools only discovers primary components and ignores subcomponents and forwarders', function (): void {
+    Process::fake([
+        '*config get-contexts*' => Process::result(output: 'local'),
+        '*get secret larakube-tools-registry*' => Process::result(output: ''),
+        '*get deployment*larakube-vpn*' => Process::result(
+            output: "netbird-vpn-luchtech-dev\nnetbird-client-vpn-luchtech-dev\nnetbird-dashboard-vpn-luchtech-dev\nnetbird-relay-vpn-luchtech-dev\nnetbird-signal-vpn-luchtech-dev",
+        ),
+        '*get ingress*larakube-vpn*' => Process::result(output: 'vpn.luchtech.dev'),
+        '*get deployment*larakube-shared*' => Process::result(
+            output: "grafana-matrix-forwarder\ngrafana-monitor-luchtech-dev",
+        ),
+        '*get ingress*larakube-shared*' => Process::result(output: 'monitor.luchtech.dev'),
+        '*create secret generic larakube-tools-registry*' => Process::result(output: ''),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $command = new class extends App\Commands\Tool\ToolListCommand
+    {
+        public function testDiscovery(): array
+        {
+            return $this->discoverConventionTools('kubectl');
+        }
+    };
+
+    $discovered = $command->testDiscovery();
+    expect($discovered['found'])->toHaveKey('netbird|vpn-luchtech-dev')
+        ->and($discovered['found'])->toHaveKey('grafana|monitor-luchtech-dev')
+        ->and(array_keys($discovered['found']))->not->toContain('netbird|client-vpn-luchtech-dev')
+        ->and(array_keys($discovered['found']))->not->toContain('netbird|dashboard-vpn-luchtech-dev')
+        ->and(array_keys($discovered['found']))->not->toContain('netbird|relay-vpn-luchtech-dev')
+        ->and(array_keys($discovered['found']))->not->toContain('netbird|signal-vpn-luchtech-dev')
+        ->and(array_keys($discovered['found']))->not->toContain('grafana|matrix-forwarder')
+        ->and($discovered['skipped'])->toContain('netbird-client-vpn-luchtech-dev')
+        ->and($discovered['skipped'])->toContain('netbird-dashboard-vpn-luchtech-dev')
+        ->and($discovered['skipped'])->toContain('netbird-relay-vpn-luchtech-dev')
+        ->and($discovered['skipped'])->toContain('netbird-signal-vpn-luchtech-dev')
+        ->and($discovered['skipped'])->toContain('grafana-matrix-forwarder');
+});
+
+test('tool:list prunes ghost engine entries sharing the same host when its deployment does not exist on cluster', function (): void {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(
+            output: base64_encode((string) json_encode([
+                ['tool' => 'n8n', 'instance' => 'flow-luchtech-dev', 'host' => 'flow.luchtech.dev'],
+                ['tool' => 'windmill', 'instance' => '', 'host' => 'flow.luchtech.dev'],
+            ])),
+        ),
+        // Only n8n is deployed
+        '*get deployment -n larakube-shared*' => Process::result(output: 'n8n-flow-luchtech-dev'),
+        '*create secret generic larakube-tools-registry*' => Process::result(output: ''),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $exit = Artisan::call('tool:list local --json');
+    $output = json_decode(Artisan::output(), true);
+
+    expect($exit)->toBe(0);
+
+    $n8nRows = array_values(array_filter($output, fn ($r) => $r['tool'] === 'n8n' && $r['installed']));
+    expect($n8nRows)->toHaveCount(1)
+        ->and($n8nRows[0]['host'])->toBe('flow.luchtech.dev');
+
+    $windmillRows = array_values(array_filter($output, fn ($r) => $r['tool'] === 'windmill' && $r['installed']));
+    expect($windmillRows)->toBeEmpty();
+});
+
+test('tool:list prunes ghost multi-instance entries that lack both host and named instance when valid instances exist', function (): void {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(
+            output: base64_encode((string) json_encode([
+                ['tool' => 'pocketbase', 'instance' => 'pocket-test-1', 'host' => 'pocket-test-1.larakube.app'],
+                ['tool' => 'pocketbase', 'instance' => 'pocket-test-2', 'host' => 'pocket-test-2.larakube.app'],
+                ['tool' => 'pocketbase', 'instance' => null, 'host' => null],
+            ])),
+        ),
+        '*get deployment -n larakube-shared*' => Process::result(output: "pocketbase-pocket-test-1\npocketbase-pocket-test-2"),
+        '*create secret generic larakube-tools-registry*' => Process::result(output: ''),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $exit = Artisan::call('tool:list local --json');
+    $output = json_decode(Artisan::output(), true);
+
+    expect($exit)->toBe(0);
+
+    $pocketbaseRows = array_values(array_filter($output, fn ($r) => $r['tool'] === 'pocketbase' && $r['installed']));
+    expect($pocketbaseRows)->toHaveCount(2)
+        ->and(array_column($pocketbaseRows, 'instance'))->toEqualCanonicalizing(['pocket-test-1', 'pocket-test-2'])
+        ->and(array_column($pocketbaseRows, 'host'))->toEqualCanonicalizing(['pocket-test-1.larakube.app', 'pocket-test-2.larakube.app']);
 });

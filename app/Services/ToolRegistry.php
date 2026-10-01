@@ -56,7 +56,35 @@ class ToolRegistry
     /** @return list<array<string, mixed>> */
     public function entries(ClusterTool $tool): array
     {
-        return array_values(array_filter($this->rows(), fn (array $row) => ($row['tool'] ?? null) === $tool->value));
+        return array_values(array_filter($this->rows(), function (array $row) use ($tool): bool {
+            $rowToolSlug = $row['tool'] ?? null;
+            if ($rowToolSlug === null) {
+                return false;
+            }
+
+            $rowTool = ClusterTool::tryFrom((string) $rowToolSlug);
+            if ($rowTool === null) {
+                return false;
+            }
+
+            if ($rowTool === $tool) {
+                return true;
+            }
+
+            if ($tool->isLegacy()) {
+                if ($rowToolSlug === $tool->value) {
+                    return true;
+                }
+
+                return $rowTool->legacyCategoryPrefix() === $tool->value;
+            }
+
+            if ($rowTool->isLegacy()) {
+                return $rowTool->canonicalTool($row['engine'] ?? null) === $tool;
+            }
+
+            return $rowTool->canonicalTool($row['engine'] ?? null) === $tool;
+        }));
     }
 
     /**
@@ -180,7 +208,11 @@ class ToolRegistry
         $index = $this->matchIndex($rows, $tool, $instance, selfHeal: true);
 
         if ($index !== null) {
-            $rows[$index] = array_merge($rows[$index], $metadata, $instance !== null ? ['instance' => $instance] : [], ['updatedAt' => $now]);
+            $toolSlug = $rows[$index]['tool'] ?? $tool->value;
+            if (! $tool->isLegacy()) {
+                $toolSlug = $tool->value;
+            }
+            $rows[$index] = array_merge($rows[$index], ['tool' => $toolSlug], $metadata, $instance !== null ? ['instance' => $instance] : [], ['updatedAt' => $now]);
         } else {
             $rows[] = array_merge(['tool' => $tool->value, 'instance' => $instance, 'aliases' => [], 'installedAt' => $now], $metadata, ['updatedAt' => $now]);
         }
@@ -233,6 +265,15 @@ class ToolRegistry
         return $this->save(array_values($rows));
     }
 
+    /** @param  list<array<string, mixed>>  $rows */
+    public function save(array $rows): bool
+    {
+        $ok = $this->write(array_values($rows));
+        $this->rows = null;
+
+        return $ok;
+    }
+
     /** @return list<array<string, mixed>> */
     protected function read(): array
     {
@@ -263,15 +304,6 @@ class ToolRegistry
         return $ok;
     }
 
-    /** @param  list<array<string, mixed>>  $rows */
-    private function save(array $rows): bool
-    {
-        $ok = $this->write(array_values($rows));
-        $this->rows = null;
-
-        return $ok;
-    }
-
     /**
      * Which row is $tool at $instance. With $selfHeal (register() only), an
      * instance that matches nothing may heal onto the tool's sole row, but
@@ -281,7 +313,31 @@ class ToolRegistry
      */
     private function matchIndex(array $rows, ClusterTool $tool, ?string $instance, bool $selfHeal = false): ?int
     {
-        $forTool = array_keys(array_filter($rows, fn (array $row) => ($row['tool'] ?? null) === $tool->value));
+        $forTool = [];
+        foreach ($rows as $i => $row) {
+            $rowToolSlug = $row['tool'] ?? null;
+            if ($rowToolSlug === null) {
+                continue;
+            }
+
+            $rowTool = ClusterTool::tryFrom((string) $rowToolSlug);
+            if ($rowTool === null) {
+                continue;
+            }
+
+            $matches = false;
+            if ($rowTool === $tool) {
+                $matches = true;
+            } elseif ($tool->isLegacy()) {
+                $matches = ($rowToolSlug === $tool->value) || ($rowTool->legacyCategoryPrefix() === $tool->value);
+            } else {
+                $matches = ($rowTool->canonicalTool($row['engine'] ?? null) === $tool);
+            }
+
+            if ($matches) {
+                $forTool[] = $i;
+            }
+        }
 
         if ($instance === null) {
             return count($forTool) === 1 ? $forTool[0] : null;

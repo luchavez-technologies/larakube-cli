@@ -40,6 +40,7 @@ class DashboardInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'dashboard:init' is deprecated. Forwarding to 'headlamp:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deployDashboard();

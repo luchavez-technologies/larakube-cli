@@ -39,6 +39,7 @@ class CrmInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'crm:init' is deprecated. Forwarding to 'twenty:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deployCrm();

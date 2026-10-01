@@ -1739,7 +1739,7 @@ trait GeneratesProjectInfrastructure
      *
      * @throws RandomException
      */
-    protected function orchestrateProjectScaffolding(ConfigData $config, bool $installFeatures = true, bool $buildImage = true, bool $dryRun = false, bool $syncK8s = true, bool $syncEnv = true): void
+    protected function orchestrateProjectScaffolding(ConfigData $config, bool $installFeatures = true, bool $buildImage = false, bool $dryRun = false, bool $syncK8s = true, bool $syncEnv = true): void
     {
         if ($dryRun) {
             $this->laraKubeInfo("Architectural Preview for '{$config->getName()}':");

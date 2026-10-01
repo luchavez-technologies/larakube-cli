@@ -53,6 +53,7 @@ class VpnInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'vpn:init' is deprecated. Forwarding to 'netbird:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deployVpn();

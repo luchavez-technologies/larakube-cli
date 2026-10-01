@@ -29,6 +29,7 @@ class MailShowCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'mail:show' is deprecated. Please use 'stalwart:show' instead.");
         $this->renderHeader();
 
         $env = (string) $this->argument('environment');

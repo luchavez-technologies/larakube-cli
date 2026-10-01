@@ -114,13 +114,13 @@ test('only DESIGN\'s frontend, ERRORS\' worker, and CRM\'s worker components sha
     foreach (ClusterTool::cases() as $tool) {
         $shared = array_values(array_filter($tool->components(), fn ($c) => $c->sharesPrimarySecret));
 
-        if ($tool === ClusterTool::DESIGN) {
+        if ($tool === ClusterTool::DESIGN || $tool === ClusterTool::PENPOT) {
             expect($shared)->toHaveCount(1)
                 ->and($shared[0]->deployment)->toBe('design-penpot-frontend');
-        } elseif ($tool === ClusterTool::ERRORS) {
+        } elseif ($tool === ClusterTool::ERRORS || $tool === ClusterTool::GLITCHTIP) {
             expect($shared)->toHaveCount(1)
                 ->and($shared[0]->deployment)->toBe('glitchtip-worker');
-        } elseif ($tool === ClusterTool::CRM) {
+        } elseif ($tool === ClusterTool::CRM || $tool === ClusterTool::TWENTY) {
             expect($shared)->toHaveCount(1)
                 ->and($shared[0]->deployment)->toBe('crm-twenty-worker');
         } else {
@@ -129,8 +129,11 @@ test('only DESIGN\'s frontend, ERRORS\' worker, and CRM\'s worker components sha
     }
 
     expect(ClusterTool::DESIGN->alsoPatchDeployments())->toBe(['design-penpot-frontend'])
+        ->and(ClusterTool::PENPOT->alsoPatchDeployments())->toBe(['design-penpot-frontend'])
         ->and(ClusterTool::ERRORS->alsoPatchDeployments())->toBe(['glitchtip-worker'])
-        ->and(ClusterTool::CRM->alsoPatchDeployments())->toBe(['crm-twenty-worker']);
+        ->and(ClusterTool::GLITCHTIP->alsoPatchDeployments())->toBe(['glitchtip-worker'])
+        ->and(ClusterTool::CRM->alsoPatchDeployments())->toBe(['crm-twenty-worker'])
+        ->and(ClusterTool::TWENTY->alsoPatchDeployments())->toBe(['crm-twenty-worker']);
 });
 
 test('backupVolume is only true for the components InteractsWithBackup already covers today', function (): void {
@@ -139,14 +142,21 @@ test('backupVolume is only true for the components InteractsWithBackup already c
     // silently start (or stop) a backup as a side effect of this refactor.
     $expected = [
         'secrets' => ['app' => ['/openbao']],
+        'openbao' => ['app' => ['/openbao']],
         'git' => ['server' => ['/data']],
+        'forgejo' => ['server' => ['/data']],
         'drive' => ['app' => ['/var/lib/ocis']],
+        'ocis' => ['app' => ['/var/lib/ocis']],
         'passwords' => ['app' => ['/data']],
+        'vaultwarden' => ['app' => ['/data']],
         'mail' => ['app' => ['/var/lib/stalwart']],
+        'stalwart' => ['app' => ['/var/lib/stalwart']],
         'chat' => ['synapse' => ['/data/chat.luchtech.dev.signing.key']],
+        'matrix' => ['synapse' => ['/data/chat.luchtech.dev.signing.key']],
         // Two files from one mount — the case backupPaths became a list for.
         // Everything else on that volume is re-downloaded on boot.
         'vpn' => ['management' => ['/var/lib/netbird/idp.db', '/var/lib/netbird/events.db']],
+        'netbird' => ['management' => ['/var/lib/netbird/idp.db', '/var/lib/netbird/events.db']],
     ];
 
     foreach (ClusterTool::cases() as $tool) {
@@ -189,4 +199,13 @@ test('several files from one mount are archived under a single -C', function ():
     expect($directories)->toHaveCount(1)
         ->and($directories[0])->toBe('/var/lib/netbird')
         ->and(array_map('basename', $component->backupPaths))->toBe(['idp.db', 'events.db']);
+});
+
+test('every component provides human-readable label and description metadata', function (): void {
+    foreach (ClusterTool::cases() as $tool) {
+        foreach ($tool->components() as $component) {
+            expect($component->label())->toBeString()->not->toBeEmpty("{$tool->value}:{$component->key} must have a label")
+                ->and($component->description())->toBeString()->not->toBeEmpty("{$tool->value}:{$component->key} must have a description");
+        }
+    }
 });

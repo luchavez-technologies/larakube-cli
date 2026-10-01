@@ -39,6 +39,7 @@ class PasswordsInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'passwords:init' is deprecated. Forwarding to 'vaultwarden:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deployVault();

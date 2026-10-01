@@ -9,6 +9,13 @@ use Illuminate\Support\Facades\Process;
 
 class MonitorRemoveCommand extends AbstractToolRemoveCommand
 {
+    public function handle(): int
+    {
+        $this->laraKubeWarn("[DEPRECATION] 'monitor:remove' is deprecated. Please use 'grafana:remove' instead.");
+
+        return parent::handle();
+    }
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::MONITOR;

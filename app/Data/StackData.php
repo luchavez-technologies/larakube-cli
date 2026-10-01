@@ -41,6 +41,8 @@ class StackData extends Data
         public ?string $projectId = null,
         /** ISO-8601 creation timestamp. */
         public ?string $createdAt = null,
+        /** Path to the SSH private key used to provision this stack (if VPS). */
+        public ?string $sshKey = null,
     ) {}
 
     /** Add an "appName/env" binding (idempotent). */

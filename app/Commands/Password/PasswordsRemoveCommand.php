@@ -7,6 +7,13 @@ use App\Enums\ClusterTool;
 
 class PasswordsRemoveCommand extends AbstractToolRemoveCommand
 {
+    public function handle(): int
+    {
+        $this->laraKubeWarn("[DEPRECATION] 'passwords:remove' is deprecated. Please use 'vaultwarden:remove' instead.");
+
+        return parent::handle();
+    }
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::PASSWORDS;

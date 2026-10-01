@@ -56,6 +56,8 @@ class ClusterToolComponentData extends Data
          * @var list<string>
          */
         public array $backupPaths = [],
+        public ?string $label = null,
+        public ?string $description = null,
     ) {
         $directories = array_unique(array_map('dirname', $this->backupPaths));
 
@@ -64,6 +66,72 @@ class ClusterToolComponentData extends Data
                 "backupPaths for component '{$this->key}' must share a directory; got: ".implode(', ', $directories),
             );
         }
+    }
+
+    /** Human-readable component display name. */
+    public function label(): string
+    {
+        if ($this->label !== null && $this->label !== '') {
+            return $this->label;
+        }
+
+        return match ($this->key) {
+            'management' => 'Management',
+            'signal' => 'Signal',
+            'relay' => 'Relay',
+            'dashboard' => 'Dashboard',
+            'client' => 'Client',
+            'grafana' => 'Grafana',
+            'prometheus' => 'Prometheus',
+            'loki' => 'Loki',
+            'synapse' => 'Synapse',
+            'cinny', 'web', 'element' => 'Web',
+            'coturn' => 'Coturn',
+            'mas' => 'MAS Auth',
+            'admin' => 'Admin',
+            'server' => 'Server',
+            'runner' => 'Runner',
+            'backend' => 'Backend',
+            'frontend' => 'Frontend',
+            'exporter' => 'Exporter',
+            'worker' => 'Worker',
+            'db', 'mas-db' => 'Bundled DB',
+            'app' => 'App',
+            default => ucfirst(str_replace(['-', '_'], ' ', $this->key)),
+        };
+    }
+
+    /** Human-readable explanation of what this component does in the cluster. */
+    public function description(): string
+    {
+        if ($this->description !== null && $this->description !== '') {
+            return $this->description;
+        }
+
+        return match ($this->key) {
+            'management' => 'Coordinates peer network discovery, authentication, and WireGuard keys.',
+            'signal' => 'Facilitates WebRTC/STUN signaling between WireGuard peers.',
+            'relay' => 'Relays encrypted traffic when direct peer-to-peer connection is unreachable.',
+            'dashboard' => 'Web console for managing peers, access policies, and routes.',
+            'client' => 'In-cluster WireGuard peer connecting workloads to the private mesh.',
+            'grafana' => 'Visualizes telemetry metrics, alerts, and log streams.',
+            'prometheus' => 'Collects and stores time-series metrics from nodes and pods.',
+            'loki' => 'High-efficiency log aggregation engine for cluster workloads.',
+            'synapse' => 'Matrix homeserver handling federation, rooms, and encrypted messaging.',
+            'cinny', 'web', 'element' => 'Modern browser client for team collaboration.',
+            'coturn' => 'STUN/TURN media relay server for voice and video sessions.',
+            'mas' => 'OIDC-compatible authentication service for Matrix users.',
+            'admin' => 'Administrative control console for room and user management.',
+            'server' => 'Core git repository hosting, code review, and web interface.',
+            'runner' => 'Executes CI/CD pipelines and automated actions jobs.',
+            'backend' => 'Core API server and workspace synchronization engine.',
+            'frontend' => 'Vector design editor canvas and collaboration UI.',
+            'exporter' => 'Headless rendering service for SVG, PNG, and PDF exports.',
+            'worker' => 'Asynchronous background queue worker processing tasks.',
+            'db', 'mas-db' => 'Dedicated bundled PostgreSQL database instance.',
+            'app' => 'Primary application service and HTTP API.',
+            default => "Workload component for {$this->deployment}.",
+        };
     }
 
     /** The same component under a different Deployment name (a naming migration). */
@@ -79,6 +147,8 @@ class ClusterToolComponentData extends Data
             sharesPrimarySecret: $this->sharesPrimarySecret,
             backupVolume: $this->backupVolume,
             backupPaths: $this->backupPaths,
+            label: $this->label,
+            description: $this->description,
         );
     }
 }

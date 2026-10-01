@@ -11,6 +11,7 @@ use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
+use Throwable;
 
 /**
  * Deploy a project to a remote VPS WITHOUT a container registry: build the image
@@ -63,15 +64,21 @@ trait InteractsWithRemoteDeploy
 
         $this->laraKubeInfo('Running Pre-Deployment Build Steps...');
 
+        $hasLocalPod = $this->hasRunningLocalWebPod($config);
         $bin = escapeshellarg($_SERVER['argv'][0] ?? 'larakube');
-        $pm = escapeshellarg($config->getPackageManager()->value);
+        $pm = $config->getPackageManager()->value;
 
         // 1. Composer install
         $this->line('  <fg=gray>📦 composer install</>');
-        $composerCmd = "$bin composer install --optimize-autoloader --no-interaction --no-progress";
-        $code = $this->runStreaming($composerCmd);
+        if ($hasLocalPod) {
+            $composerCmd = "$bin composer install --optimize-autoloader --no-interaction --no-progress";
+            $code = $this->runStreaming($composerCmd);
+        } else {
+            $code = $this->runComposerWithoutPod($config);
+        }
+
         if ($code !== 0) {
-            $this->laraKubeError('Composer install failed. Is your local dev cluster running (`larakube up`)?');
+            $this->laraKubeError('Composer install failed. Please verify dependencies or start your local container runtime.');
 
             return false;
         }
@@ -85,20 +92,34 @@ trait InteractsWithRemoteDeploy
 
         // 2. Node install (needed so node_modules exist for the Docker COPY context)
         $this->line("  <fg=gray>🛠  {$pm} install</>");
-        $installCmd = $config->getPackageManager()->installCommand();
-        $installCmdStr = preg_replace('/^([a-z]+)\b/', "$bin $1", $installCmd);
-        $code = $this->runStreaming($installCmdStr);
-        if ($code !== 0) {
-            $this->laraKubeError('Node dependencies install failed.');
+        if ($hasLocalPod) {
+            $installCmd = $config->getPackageManager()->installCommand();
+            $installCmdStr = preg_replace('/^([a-z]+)\b/', "$bin $1", $installCmd);
+            $code = $this->runStreaming($installCmdStr);
+            if ($code !== 0) {
+                $this->laraKubeError('Node dependencies install failed.');
 
-            return false;
+                return false;
+            }
+        } else {
+            $code = $this->runNodeWithoutPod($config);
+            if ($code !== 0) {
+                $this->laraKubeError('Node dependencies install failed.');
+
+                return false;
+            }
         }
 
         // 3. Wayfinder — generates TypeScript route types that Vite needs before
-        //    npm run build. Must run on the host (requires PHP + artisan).
+        //    npm run build.
         if ($config->usesWayfinder()) {
             $this->line('  <fg=gray>🏎  wayfinder:generate</>');
-            $code = $this->runStreaming("$bin php artisan wayfinder:generate --with-form");
+            if ($hasLocalPod) {
+                $code = $this->runStreaming("$bin php artisan wayfinder:generate --with-form");
+            } else {
+                $code = $this->runArtisanWithoutPod($config, 'wayfinder:generate --with-form');
+            }
+
             if ($code !== 0) {
                 $this->laraKubeError('Wayfinder generation failed.');
 
@@ -115,6 +136,20 @@ trait InteractsWithRemoteDeploy
         $this->newLine();
 
         return true;
+    }
+
+    public function hasRunningLocalWebPod(ConfigData $config): bool
+    {
+        try {
+            $namespace = $config->getName().'-local';
+            $kubectl = $this->environmentKubectl($config, 'local');
+
+            $result = Process::run("{$kubectl} get pods -n {$namespace} -l app=web --field-selector=status.phase=Running --request-timeout=2s -o jsonpath='{.items[0].metadata.name}'");
+
+            return $result->successful() && trim($result->output()) !== '';
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     /**
@@ -343,6 +378,133 @@ trait InteractsWithRemoteDeploy
         return $this->loginCommand($registryHost, $username, $password);
     }
 
+    protected function hasHostCommand(string $command): bool
+    {
+        return Process::run('which '.escapeshellarg($command))->successful();
+    }
+
+    protected function runComposerWithoutPod(ConfigData $config): int
+    {
+        $path = getcwd();
+        $runtime = $this->containerRuntime();
+
+        // 1. Try container runtime (Docker / Podman) with the project's base PHP image
+        if ($runtime && Process::run("{$runtime} info")->successful()) {
+            $image = $config->getPhpImage(true);
+            $cmd = "{$runtime} run --rm -v "
+                .escapeshellarg("{$path}:/var/www/html")
+                .' -w /var/www/html'
+                .' -e COMPOSER_ALLOW_SUPERUSER=1'
+                .' -e COMPOSER_CACHE_DIR=/dev/null'
+                .' -e COMPOSER_IGNORE_PLATFORM_REQS=1'
+                .' -e SHOW_WELCOME_MESSAGE=false '
+                .escapeshellarg($image)
+                .' composer install --optimize-autoloader --no-interaction --no-progress';
+
+            $code = $this->runStreaming($cmd);
+            if ($code === 0) {
+                return 0;
+            }
+        }
+
+        // 2. Try host composer if available
+        if ($this->hasHostCommand('composer')) {
+            $code = $this->runStreaming('composer install --optimize-autoloader --no-interaction --no-progress');
+            if ($code === 0) {
+                return 0;
+            }
+        }
+
+        // 3. Fallback: if vendor/autoload.php already exists on disk, we can proceed
+        if (file_exists("{$path}/vendor/autoload.php")) {
+            $this->laraKubeWarn('Could not run composer install in container or host, but vendor/autoload.php exists. Proceeding with existing dependencies.');
+
+            return 0;
+        }
+
+        return 1;
+    }
+
+    protected function runNodeWithoutPod(ConfigData $config): int
+    {
+        $path = getcwd();
+        $pm = $config->getPackageManager()->value;
+
+        // 1. If host package manager (npm/yarn/pnpm/bun) is available, use it
+        if ($this->hasHostCommand($pm)) {
+            return $this->runStreaming($config->getPackageManager()->installCommand());
+        }
+
+        // 2. If node_modules already exists on the host, we can safely proceed
+        // (the Dockerfile assets stage runs its own clean `npm ci && npm run build` inside Docker)
+        if (file_exists("{$path}/node_modules")) {
+            $this->line('  <fg=gray>   ↳ Using existing node_modules (Docker assets stage builds clean)</>');
+
+            return 0;
+        }
+
+        // 3. Try container runtime (Docker / Podman) with node image
+        $runtime = $this->containerRuntime();
+        if ($runtime && Process::run("{$runtime} info")->successful()) {
+            $installCmd = $config->getPackageManager()->installCommand();
+            $cmd = "{$runtime} run --rm -v "
+                .escapeshellarg("{$path}:/app")
+                .' -w /app node:22-alpine '
+                .'sh -c '.escapeshellarg($installCmd);
+
+            $code = $this->runStreaming($cmd);
+            if ($code === 0) {
+                return 0;
+            }
+        }
+
+        // 4. If nothing else, defer to Docker assets stage
+        $this->line('  <fg=gray>   ↳ Deferred to Docker assets stage</>');
+
+        return 0;
+    }
+
+    protected function runArtisanWithoutPod(ConfigData $config, string $artisanCommand): int
+    {
+        $path = getcwd();
+        $runtime = $this->containerRuntime();
+
+        // 1. Try container runtime (Docker / Podman) with project's base PHP image
+        if ($runtime && Process::run("{$runtime} info")->successful()) {
+            $image = $config->getPhpImage(true);
+            $cmd = "{$runtime} run --rm -v "
+                .escapeshellarg("{$path}:/var/www/html")
+                .' -w /var/www/html'
+                .' -e COMPOSER_ALLOW_SUPERUSER=1'
+                .' -e COMPOSER_CACHE_DIR=/dev/null'
+                .' -e SHOW_WELCOME_MESSAGE=false '
+                .escapeshellarg($image)
+                ." php artisan {$artisanCommand}";
+
+            $code = $this->runStreaming($cmd);
+            if ($code === 0) {
+                return 0;
+            }
+        }
+
+        // 2. Try host php if available
+        if ($this->hasHostCommand('php')) {
+            $code = $this->runStreaming("php artisan {$artisanCommand}");
+            if ($code === 0) {
+                return 0;
+            }
+        }
+
+        // 3. If Wayfinder generated files already exist in resources/js/
+        if (file_exists("{$path}/resources/js/routes") || file_exists("{$path}/resources/js/actions")) {
+            $this->laraKubeWarn('Could not run artisan in container or host, but generated Wayfinder routes exist. Proceeding.');
+
+            return 0;
+        }
+
+        return 1;
+    }
+
     /**
      * Executes necessary local commands (composer install, wayfinder) before
      * building the docker image. `npm run build` is intentionally NOT run here —
@@ -485,6 +647,29 @@ trait InteractsWithRemoteDeploy
         $image = "{$name}:{$tag}";
         $dockerfile = $this->dockerfileFor($config, $path);
         $ssh = $this->sshBaseCommand($cloud->user, $cloud->ip, $cloud->port, $cloud->key);
+
+        // Pre-flight check: verify SSH access early (before spending minutes building the image).
+        if (! $this->testSshConnection($cloud->user, $cloud->ip, $cloud->port, $cloud->key)) {
+            $resolved = $this->resolveSshDetails($cloud->ip, $context);
+            if ($resolved && $resolved['key'] !== $cloud->key && $this->testSshConnection($cloud->user, $cloud->ip, $cloud->port, $resolved['key'])) {
+                $this->laraKubeInfo("Self-healing SSH key: updated .larakube.local.json to use {$resolved['key']} (resolved from ~/.ssh/config).");
+                $data = $config->toArray();
+                $data['environments'][$environment]['cloud']['key'] = $resolved['key'];
+                ConfigData::from($data)->saveToFile($path);
+                $config = $this->getProjectConfigObject($path);
+                $cloud = $config->getCloud($environment);
+                if (! $cloud) {
+                    $this->laraKubeError("Failed to reload cloud config for '{$environment}'.");
+
+                    return 1;
+                }
+                $ssh = $this->sshBaseCommand($cloud->user, $cloud->ip, $cloud->port, $cloud->key);
+            } else {
+                $this->laraKubeError("SSH connection to {$cloud->user}@{$cloud->ip} failed with key {$cloud->key}. Check SSH access and public keys before deploying.");
+
+                return 1;
+            }
+        }
 
         if (! $this->runPreDeploymentSteps($config)) {
             return 1;

@@ -10,6 +10,13 @@ class VpnRemoveCommand extends AbstractToolRemoveCommand
 {
     use InteractsWithToolRegistry;
 
+    public function handle(): int
+    {
+        $this->laraKubeWarn("[DEPRECATION] 'vpn:remove' is deprecated. Please use 'netbird:remove' instead.");
+
+        return parent::handle();
+    }
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::VPN;

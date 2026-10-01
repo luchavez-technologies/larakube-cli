@@ -27,7 +27,7 @@ use function Laravel\Prompts\text;
  */
 trait ResolvesEnvironmentContext
 {
-    use InteractsWithProjectConfig;
+    use InteractsWithProjectConfig, ManagesSshKeys;
 
     /** The kube-context cloud:init creates for a host. Pure. */
     public function environmentContextName(string $ip): string
@@ -157,9 +157,15 @@ trait ResolvesEnvironmentContext
 
         // New VPS: capture the SSH target (needed for sideload deploy / provision).
         $ip = text(label: 'Server IP or host', required: true);
-        $user = text(label: 'SSH user', default: 'larakube', required: true);
-        $port = (int) text(label: 'SSH port', default: '22', required: true);
-        $key = text(label: 'SSH private key path', default: home_path('.ssh/id_rsa'), required: true);
+        $resolved = $this->resolveSshDetails(trim($ip));
+
+        $defaultUser = $resolved['user'] ?? 'larakube';
+        $defaultPort = $resolved['port'] ?? 22;
+        $defaultKey = $resolved['key'] ?? (file_exists(home_path('.ssh/id_rsa')) ? home_path('.ssh/id_rsa') : (file_exists(home_path('.ssh/id_ed25519')) ? home_path('.ssh/id_ed25519') : home_path('.ssh/id_rsa')));
+
+        $user = text(label: 'SSH user', default: $defaultUser, required: true);
+        $port = (int) text(label: 'SSH port', default: (string) $defaultPort, required: true);
+        $key = text(label: 'SSH private key path', default: $defaultKey, required: true);
         $key = str_replace('~', home_path(), $key);
 
         $data = $config->toArray();
@@ -203,14 +209,25 @@ trait ResolvesEnvironmentContext
 
         // A LaraKube VPS context — derive the ip and capture SSH so sideload deploys work.
         $this->laraKubeInfo("Detected a LaraKube VPS context ({$m[1]}). Confirm its SSH details:");
-        $user = text(label: 'SSH user', default: 'larakube', required: true);
-        $port = (int) text(label: 'SSH port', default: '22', required: true);
-        $key = text(label: 'SSH private key path', default: home_path('.ssh/id_rsa'), required: true);
-        $key = str_replace('~', home_path(), $key);
+        $ip = $m[1];
+        $resolved = $this->resolveSshDetails($ip, $context);
+
+        $keyOption = method_exists($this, 'hasOption') && $this->hasOption('ssh-key') ? $this->option('ssh-key') : (method_exists($this, 'hasOption') && $this->hasOption('key') ? $this->option('key') : null);
+        $userOption = method_exists($this, 'hasOption') && $this->hasOption('ssh-user') ? $this->option('ssh-user') : null;
+        $portOption = method_exists($this, 'hasOption') && $this->hasOption('ssh-port') ? $this->option('ssh-port') : null;
+
+        $defaultUser = $userOption ?: ($resolved['user'] ?? 'larakube');
+        $defaultPort = $portOption !== null && $portOption !== '' ? (int) $portOption : ($resolved['port'] ?? 22);
+        $defaultKey = $keyOption ?: ($resolved['key'] ?? (file_exists(home_path('.ssh/id_rsa')) ? home_path('.ssh/id_rsa') : (file_exists(home_path('.ssh/id_ed25519')) ? home_path('.ssh/id_ed25519') : home_path('.ssh/id_rsa'))));
+
+        $user = $userOption ?: text(label: 'SSH user', default: $defaultUser, required: true);
+        $port = $portOption !== null && $portOption !== '' ? (int) $portOption : (int) text(label: 'SSH port', default: (string) $defaultPort, required: true);
+        $key = $keyOption ?: text(label: 'SSH private key path', default: $defaultKey, required: true);
+        $key = str_replace('~', home_path(), (string) $key);
 
         $data['environments'][$environment]['cloud'] = [
-            'ip' => $m[1],
-            'user' => trim($user),
+            'ip' => $ip,
+            'user' => trim((string) $user),
             'port' => $port,
             'key' => $key,
         ];

@@ -60,43 +60,85 @@ enum ClusterTool: string implements HasWorkloadComponents
      */
     public function vendor(?string $engine = null): ClusterToolVendor
     {
+        if ($this->isLegacy()) {
+            return $this->canonicalTool($engine)->vendor($engine);
+        }
+
         return match ($this) {
-            self::DATA => DataTool::tryFrom((string) $engine) ?? DataTool::DIRECTUS,
-            self::FLOW => (FlowTool::tryFrom((string) $engine) ?? FlowTool::N8N)->tool(),
-            self::GIT => GitForgeTool::FORGEJO,
-            self::CHAT => ChatTool::MATRIX,
-            self::DESIGN => DesignTool::PENPOT,
-            self::TASKS => TaskTool::PLANKA,
-            self::MAIL => new MailTool,
-            self::SECRETS => new SecretTool,
-            self::DRIVE => new DriveTool,
-            self::PASSWORDS => new PasswordTool,
-            self::SIGN => new SignTool,
-            self::RECORD => new RecordTool,
-            self::SSO => new SsoTool,
-            self::LINK => new LinkTool,
-            self::WEBMAIL => new WebmailTool,
-            self::NOTES => new NoteTool,
-            self::SHEETS => new SheetTool,
-            self::MONITOR => new MonitorTool,
-            self::CRM => new CrmTool,
-            self::SUPPORT => new SupportTool,
-            self::INSIGHTS => new InsightTool,
-            self::ERRORS => new ErrorTool,
-            self::ANALYTICS => new AnalyticsTool,
-            self::MEET => new MeetTool,
-            self::DNS => new DnsTool,
-            self::UPTIME => new UptimeTool,
-            self::VPN => new VpnTool,
-            self::DASHBOARD => new DashboardTool,
+            self::POCKETBASE => DataTool::POCKETBASE,
+            self::DIRECTUS => DataTool::DIRECTUS,
+            self::N8N => (FlowTool::tryFrom((string) $engine) ?? FlowTool::N8N)->tool(),
+            self::WINDMILL => FlowTool::WINDMILL->tool(),
+            self::FORGEJO => GitForgeTool::FORGEJO,
+            self::MATRIX => ChatTool::MATRIX,
+            self::DESIGN, self::PENPOT => DesignTool::PENPOT,
+            self::TASKS, self::PLANKA => TaskTool::PLANKA,
+            self::MAIL, self::STALWART => new MailTool,
+            self::SECRETS, self::OPENBAO => new SecretTool,
+            self::DRIVE, self::OCIS => new DriveTool,
+            self::PASSWORDS, self::VAULTWARDEN => new PasswordTool,
+            self::SIGN, self::DOCUMENSO => new SignTool,
+            self::RECORD, self::SENDREC => new RecordTool,
+            self::SSO, self::ZITADEL => new SsoTool,
+            self::LINK, self::KUTT => new LinkTool,
+            self::WEBMAIL, self::BULWARK => new WebmailTool,
+            self::NOTES, self::OUTLINE => new NoteTool,
+            self::SHEETS, self::TEABLE => new SheetTool,
+            self::MONITOR, self::GRAFANA => new MonitorTool,
+            self::CRM, self::TWENTY => new CrmTool,
+            self::SUPPORT, self::CHATWOOT => new SupportTool,
+            self::INSIGHTS, self::METABASE => new InsightTool,
+            self::ERRORS, self::GLITCHTIP => new ErrorTool,
+            self::ANALYTICS, self::UMAMI, self::PLAUSIBLE => new AnalyticsTool,
+            self::MEET, self::LIVEKIT => new MeetTool,
+            self::DNS, self::EXTERNAL_DNS => new DnsTool,
+            self::UPTIME, self::KUMA => new UptimeTool,
+            self::VPN, self::NETBIRD => new VpnTool,
+            self::DASHBOARD, self::HEADLAMP => new DashboardTool,
             self::RESUME => new ResumeTool,
-            self::PASTE => new YopassTool,
+            self::PASTE, self::YOPASS => new YopassTool,
+            default => throw new LogicException("No vendor defined for tool: {$this->value}"),
         };
     }
 
     public function getLabel(): string
     {
         return match ($this) {
+            self::POCKETBASE => 'PocketBase (Embedded SQLite)',
+            self::DIRECTUS => 'Directus (Headless CMS)',
+            self::N8N => 'n8n (Workflow Automation)',
+            self::WINDMILL => 'Windmill (Developer Workflow Platform)',
+            self::MATRIX => 'Matrix (Synapse + Element)',
+            self::TWENTY => 'Twenty (CRM)',
+            self::LIVEKIT => 'LiveKit (WebRTC Meetings)',
+            self::OPENBAO => 'OpenBao (Secrets & Encryption)',
+            self::NETBIRD => 'NetBird (Zero-Trust VPN)',
+            self::ZITADEL => 'Zitadel (Identity Provider & SSO)',
+            self::VAULTWARDEN => 'Vaultwarden (Bitwarden Server)',
+            self::KUMA => 'Uptime Kuma (Status Pages)',
+            self::GRAFANA => 'Grafana (Metrics & Dashboards)',
+            self::FORGEJO => 'Forgejo (Git Forge & CI/CD)',
+            self::METABASE => 'Metabase (Business Intelligence)',
+            self::GLITCHTIP => 'GlitchTip (Error Tracking)',
+            self::OCIS => 'ownCloud Infinite Scale (oCIS)',
+            self::OUTLINE => 'Outline (Team Knowledge Base)',
+            self::TEABLE => 'Teable (Spreadsheet Database)',
+            self::DOCUMENSO => 'Documenso (Document Signing)',
+            self::CHATWOOT => 'Chatwoot (Customer Support)',
+            self::UMAMI => 'Umami (Web Analytics)',
+            self::PLAUSIBLE => 'Plausible (Privacy Analytics)',
+            self::HEADLAMP => 'Headlamp (Kubernetes Dashboard)',
+            self::STALWART => 'Stalwart (All-in-One Mail Server)',
+            self::BULWARK => 'Bulwark (Webmail Client)',
+            self::PLANKA => 'Planka (Kanban Project Management)',
+            self::KUTT => 'Kutt (Link Shortener & Management)',
+            self::PENPOT => 'Penpot (Design & Prototyping)',
+            self::RESUME => 'Resume Builder (Reactive Resume)',
+            self::YOPASS => 'Yopass (Burn-After-Read Secret Sharing)',
+            self::SENDREC => 'Sendrec (Screen Recording & Sharing)',
+            self::EXTERNAL_DNS => 'ExternalDNS (Cloudflare Sync)',
+
+            // Legacy Categories
             self::FLOW => 'Workflow Automation (N8N or Windmill)',
             self::SHEETS => 'Spreadsheet Database (Teable)',
             self::PASSWORDS => 'Password Manager (Vaultwarden)',
@@ -125,7 +167,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::DASHBOARD => 'Kubernetes Control Plane (Headlamp)',
             self::MEET => 'Video Meetings (LiveKit)',
             self::DESIGN => 'Design & Prototyping (Penpot)',
-            self::RESUME => 'Resume Builder (Reactive Resume)',
             self::PASTE => 'Secure Paste Sharing (Yopass)',
         };
     }
@@ -142,6 +183,41 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function icon(): string
     {
         return match ($this) {
+            self::POCKETBASE => '🗄️',
+            self::DIRECTUS => '🐰',
+            self::N8N => '⚡',
+            self::WINDMILL => '💨',
+            self::MATRIX => '💬',
+            self::TWENTY => '🤝',
+            self::LIVEKIT => '🎥',
+            self::OPENBAO => '🔒',
+            self::NETBIRD => '🔑',
+            self::ZITADEL => '🪪',
+            self::VAULTWARDEN => '🔐',
+            self::KUMA => '🟢',
+            self::GRAFANA => '📡',
+            self::FORGEJO => '🦊',
+            self::METABASE => '📈',
+            self::GLITCHTIP => '🐛',
+            self::OCIS => '☁️',
+            self::OUTLINE => '📝',
+            self::TEABLE => '📋',
+            self::DOCUMENSO => '✍️',
+            self::CHATWOOT => '💬',
+            self::UMAMI => '📊',
+            self::PLAUSIBLE => '📈',
+            self::HEADLAMP => '☸️',
+            self::STALWART => '✉️',
+            self::BULWARK => '📬',
+            self::PLANKA => '✅',
+            self::KUTT => '🔗',
+            self::PENPOT => '🎨',
+            self::RESUME => '📄',
+            self::YOPASS => '🔥',
+            self::SENDREC => '🎥',
+            self::EXTERNAL_DNS => '🌐',
+
+            // Legacy categories
             self::ANALYTICS => '📊',
             self::CHAT => '💬',
             self::CRM => '🤝',
@@ -170,7 +246,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::DASHBOARD => '☸️',
             self::MEET => '🎥',
             self::DESIGN => '🎨',
-            self::RESUME => '📄',
             self::PASTE => '🔥',
         };
     }
@@ -185,6 +260,41 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function brandName(): string
     {
         return match ($this) {
+            self::POCKETBASE => 'PocketBase',
+            self::DIRECTUS => 'Directus',
+            self::N8N => 'n8n',
+            self::WINDMILL => 'Windmill',
+            self::MATRIX => 'Matrix',
+            self::TWENTY => 'Twenty',
+            self::LIVEKIT => 'LiveKit',
+            self::OPENBAO => 'OpenBao',
+            self::NETBIRD => 'NetBird',
+            self::ZITADEL => 'Zitadel',
+            self::VAULTWARDEN => 'Vaultwarden',
+            self::KUMA => 'Uptime Kuma',
+            self::GRAFANA => 'Grafana',
+            self::FORGEJO => 'Forgejo',
+            self::METABASE => 'Metabase',
+            self::GLITCHTIP => 'GlitchTip',
+            self::OCIS => 'oCIS',
+            self::OUTLINE => 'Outline',
+            self::TEABLE => 'Teable',
+            self::DOCUMENSO => 'Documenso',
+            self::CHATWOOT => 'Chatwoot',
+            self::UMAMI => 'Umami',
+            self::PLAUSIBLE => 'Plausible',
+            self::HEADLAMP => 'Headlamp',
+            self::STALWART => 'Stalwart',
+            self::BULWARK => 'Bulwark',
+            self::PLANKA => 'Planka',
+            self::KUTT => 'Kutt',
+            self::PENPOT => 'Penpot',
+            self::RESUME => 'Resume',
+            self::YOPASS => 'Yopass',
+            self::SENDREC => 'Sendrec',
+            self::EXTERNAL_DNS => 'ExternalDNS',
+
+            // Legacy categories
             self::ANALYTICS => 'Analytics',
             self::CHAT => 'Chat',
             self::CRM => 'CRM',
@@ -213,7 +323,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::DASHBOARD => 'Dashboard',
             self::MEET => 'Meet',
             self::DESIGN => 'Design',
-            self::RESUME => 'Resume',
             self::PASTE => 'Paste',
         };
     }
@@ -246,36 +355,36 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function service(): ?SharedClusterService
     {
         return match ($this) {
-            self::ANALYTICS => SharedClusterService::ANALYTICS,
-            self::CHAT => SharedClusterService::CHAT,
-            self::CRM => SharedClusterService::CRM,
-            self::DATA => SharedClusterService::DATA,
-            self::DNS => null,
-            self::DRIVE => SharedClusterService::DRIVE,
-            self::ERRORS => SharedClusterService::ERRORS,
-            self::FLOW => SharedClusterService::FLOW,
-            self::GIT => SharedClusterService::FORGEJO,
-            self::INSIGHTS => SharedClusterService::INSIGHTS,
-            self::LINK => SharedClusterService::LINK,
-            self::MAIL => SharedClusterService::MAIL,
-            self::MONITOR => SharedClusterService::GRAFANA,
-            self::NOTES => SharedClusterService::NOTES,
-            self::PASSWORDS => SharedClusterService::VAULT,
-            self::RECORD => SharedClusterService::RECORD,
-            self::SECRETS => SharedClusterService::SECRETS,
-            self::SHEETS => SharedClusterService::SHEET,
-            self::SIGN => SharedClusterService::SIGN,
-            self::SSO => SharedClusterService::SSO,
-            self::SUPPORT => SharedClusterService::SUPPORT,
-            self::TASKS => SharedClusterService::TASKS,
-            self::UPTIME => SharedClusterService::UPTIME_KUMA,
-            self::VPN => SharedClusterService::VPN,
-            self::WEBMAIL => SharedClusterService::WEBMAIL,
-            self::DASHBOARD => SharedClusterService::DASHBOARD,
-            self::MEET => SharedClusterService::MEET,
-            self::DESIGN => SharedClusterService::DESIGN,
+            self::POCKETBASE, self::DIRECTUS, self::DATA => SharedClusterService::DATA,
+            self::N8N, self::WINDMILL, self::FLOW => SharedClusterService::FLOW,
+            self::FORGEJO, self::GIT => SharedClusterService::FORGEJO,
+            self::MATRIX, self::CHAT => SharedClusterService::CHAT,
+            self::TWENTY, self::CRM => SharedClusterService::CRM,
+            self::LIVEKIT, self::MEET => SharedClusterService::MEET,
+            self::OPENBAO, self::SECRETS => SharedClusterService::SECRETS,
+            self::NETBIRD, self::VPN => SharedClusterService::VPN,
+            self::ZITADEL, self::SSO => SharedClusterService::SSO,
+            self::VAULTWARDEN, self::PASSWORDS => SharedClusterService::VAULT,
+            self::KUMA, self::UPTIME => SharedClusterService::UPTIME_KUMA,
+            self::GRAFANA, self::MONITOR => SharedClusterService::GRAFANA,
+            self::METABASE, self::INSIGHTS => SharedClusterService::INSIGHTS,
+            self::GLITCHTIP, self::ERRORS => SharedClusterService::ERRORS,
+            self::OCIS, self::DRIVE => SharedClusterService::DRIVE,
+            self::OUTLINE, self::NOTES => SharedClusterService::NOTES,
+            self::TEABLE, self::SHEETS => SharedClusterService::SHEET,
+            self::DOCUMENSO, self::SIGN => SharedClusterService::SIGN,
+            self::CHATWOOT, self::SUPPORT => SharedClusterService::SUPPORT,
+            self::UMAMI, self::PLAUSIBLE, self::ANALYTICS => SharedClusterService::ANALYTICS,
+            self::HEADLAMP, self::DASHBOARD => SharedClusterService::DASHBOARD,
+            self::STALWART, self::MAIL => SharedClusterService::MAIL,
+            self::BULWARK, self::WEBMAIL => SharedClusterService::WEBMAIL,
+            self::PLANKA, self::TASKS => SharedClusterService::TASKS,
+            self::KUTT, self::LINK => SharedClusterService::LINK,
+            self::PENPOT, self::DESIGN => SharedClusterService::DESIGN,
             self::RESUME => SharedClusterService::RESUME,
-            self::PASTE => SharedClusterService::PASTE,
+            self::YOPASS, self::PASTE => SharedClusterService::PASTE,
+            self::SENDREC, self::RECORD => SharedClusterService::RECORD,
+            self::EXTERNAL_DNS, self::DNS => null,
         };
     }
 
@@ -290,10 +399,10 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function namespace(): string
     {
         return match ($this) {
-            self::PASSWORDS => 'larakube-vault',
-            self::SECRETS => 'larakube-secrets',
-            self::SSO => 'larakube-sso',
-            self::VPN => 'larakube-vpn',
+            self::PASSWORDS, self::VAULTWARDEN => 'larakube-vault',
+            self::SECRETS, self::OPENBAO => 'larakube-secrets',
+            self::SSO, self::ZITADEL => 'larakube-sso',
+            self::VPN, self::NETBIRD => 'larakube-vpn',
             default => 'larakube-shared',
         };
     }
@@ -362,7 +471,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         $best = null;
 
-        foreach (self::cases() as $tool) {
+        foreach (self::shippedCases() as $tool) {
             foreach ($tool->engineCandidates() as $engine) {
                 foreach ($tool->components(engine: $engine) as $component) {
                     $prefix = $component->deployment.'-';
@@ -553,8 +662,9 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function supportsNoPlex(): bool
     {
         return match ($this) {
-            self::CHAT, self::DRIVE, self::ERRORS,
-            self::FLOW, self::GIT, self::INSIGHTS, self::SSO => true,
+            self::CHAT, self::MATRIX, self::DRIVE, self::OCIS, self::ERRORS, self::GLITCHTIP,
+            self::FLOW, self::N8N, self::WINDMILL, self::GIT, self::FORGEJO,
+            self::INSIGHTS, self::METABASE, self::SSO, self::ZITADEL => true,
             default => false,
         };
     }
@@ -594,21 +704,175 @@ enum ClusterTool: string implements HasWorkloadComponents
      * PASTE (Yopass) is shipped despite having no OIDC/SSO story — that's a
      * deliberate exception, not an oversight: zero-knowledge/no-account
      * secret sharing is the whole point of the tool, so "no auth" is the
-     * design, not a gap. Note it's unauthenticated to anyone with the link —
-     * fine for the tool's own zero-knowledge model, but don't add ForwardAuth
-     * gating casually: this cluster's oauth2-proxy is ONE shared pod across
-     * every ForwardAuth tool (ADR 0006) with a single global --allowed-group,
-     * so a second ForwardAuth-gated tool with a different (or no) role
-     * requirement will silently override another tool's gate — needs real
-     * per-tool group scoping first. Shipped 2026-08-20, before a live smoke
-     * test — verify the happy path (paste:init → paste:show a real secret →
-     * confirm burn-after-read) the moment there's a spare minute.
+     * design, not a gap.
      */
     public function isShipped(): bool
     {
         return match ($this) {
-            self::ANALYTICS, self::UPTIME => false,
+            self::ANALYTICS, self::UMAMI, self::PLAUSIBLE, self::UPTIME, self::KUMA => false,
             default => true,
+        };
+    }
+
+    /**
+     * Whether this case represents a deprecated legacy category verb rather than an
+     * individual tool.
+     */
+    public function isLegacy(): bool
+    {
+        return match ($this) {
+            self::ANALYTICS,
+            self::CHAT,
+            self::MEET,
+            self::CRM,
+            self::DATA,
+            self::DNS,
+            self::DRIVE,
+            self::ERRORS,
+            self::FLOW,
+            self::GIT,
+            self::INSIGHTS,
+            self::LINK,
+            self::MAIL,
+            self::MONITOR,
+            self::NOTES,
+            self::PASSWORDS,
+            self::RECORD,
+            self::SECRETS,
+            self::SHEETS,
+            self::SIGN,
+            self::SSO,
+            self::SUPPORT,
+            self::TASKS,
+            self::UPTIME,
+            self::VPN,
+            self::WEBMAIL,
+            self::DASHBOARD,
+            self::DESIGN,
+            self::PASTE => true,
+            default => false,
+        };
+    }
+
+    /**
+     * Resolve a legacy category or canonical case to its canonical individual tool.
+     */
+    public function canonicalTool(?string $engine = null): self
+    {
+        return match ($this) {
+            self::DATA => ($engine === 'pocketbase') ? self::POCKETBASE : self::DIRECTUS,
+            self::FLOW => ($engine === 'windmill') ? self::WINDMILL : self::N8N,
+            self::GIT => self::FORGEJO,
+            self::SHEETS => self::TEABLE,
+            self::ANALYTICS => ($engine === 'plausible') ? self::PLAUSIBLE : self::UMAMI,
+            self::CHAT => self::MATRIX,
+            self::CRM => self::TWENTY,
+            self::DNS => self::EXTERNAL_DNS,
+            self::DRIVE => self::OCIS,
+            self::ERRORS => self::GLITCHTIP,
+            self::INSIGHTS => self::METABASE,
+            self::LINK => self::KUTT,
+            self::MAIL => self::STALWART,
+            self::MONITOR => self::GRAFANA,
+            self::NOTES => self::OUTLINE,
+            self::PASSWORDS => self::VAULTWARDEN,
+            self::RECORD => self::SENDREC,
+            self::SECRETS => self::OPENBAO,
+            self::SIGN => self::DOCUMENSO,
+            self::SSO => self::ZITADEL,
+            self::SUPPORT => self::CHATWOOT,
+            self::TASKS => self::PLANKA,
+            self::UPTIME => self::KUMA,
+            self::VPN => self::NETBIRD,
+            self::WEBMAIL => self::BULWARK,
+            self::DASHBOARD => self::HEADLAMP,
+            self::MEET => self::LIVEKIT,
+            self::DESIGN => self::PENPOT,
+            self::PASTE => self::YOPASS,
+            default => $this,
+        };
+    }
+
+    /**
+     * Legacy category prefix used in resource naming and stripping.
+     */
+    public function legacyCategoryPrefix(): ?string
+    {
+        return match ($this) {
+            self::POCKETBASE, self::DIRECTUS, self::DATA => 'data',
+            self::N8N, self::WINDMILL, self::FLOW => 'flow',
+            self::FORGEJO, self::GIT => 'git',
+            self::MATRIX, self::CHAT => 'chat',
+            self::TWENTY, self::CRM => 'crm',
+            self::LIVEKIT, self::MEET => 'meet',
+            self::OPENBAO, self::SECRETS => 'secrets',
+            self::NETBIRD, self::VPN => 'vpn',
+            self::ZITADEL, self::SSO => 'sso',
+            self::VAULTWARDEN, self::PASSWORDS => 'passwords',
+            self::KUMA, self::UPTIME => 'uptime',
+            self::GRAFANA, self::MONITOR => 'monitor',
+            self::METABASE, self::INSIGHTS => 'insights',
+            self::GLITCHTIP, self::ERRORS => 'errors',
+            self::OCIS, self::DRIVE => 'drive',
+            self::OUTLINE, self::NOTES => 'notes',
+            self::TEABLE, self::SHEETS => 'sheets',
+            self::DOCUMENSO, self::SIGN => 'sign',
+            self::CHATWOOT, self::SUPPORT => 'support',
+            self::UMAMI, self::PLAUSIBLE, self::ANALYTICS => 'analytics',
+            self::HEADLAMP, self::DASHBOARD => 'dashboard',
+            self::STALWART, self::MAIL => 'mail',
+            self::BULWARK, self::WEBMAIL => 'webmail',
+            self::PLANKA, self::TASKS => 'tasks',
+            self::KUTT, self::LINK => 'link',
+            self::PENPOT, self::DESIGN => 'design',
+            self::YOPASS, self::PASTE => 'paste',
+            self::SENDREC, self::RECORD => 'record',
+            self::EXTERNAL_DNS, self::DNS => 'dns',
+            self::RESUME => 'resume',
+        };
+    }
+
+    /**
+     * Functional category descriptors for this tool.
+     *
+     * @return list<ToolCategory>
+     */
+    public function categories(): array
+    {
+        return match ($this->canonicalTool()) {
+            self::POCKETBASE => [ToolCategory::DATABASE, ToolCategory::BACKEND, ToolCategory::AUTH, ToolCategory::STORAGE],
+            self::DIRECTUS => [ToolCategory::DATABASE, ToolCategory::BACKEND, ToolCategory::AUTH],
+            self::N8N => [ToolCategory::DEVOPS, ToolCategory::PRODUCTIVITY, ToolCategory::COMMUNICATION],
+            self::WINDMILL => [ToolCategory::DEVOPS, ToolCategory::PRODUCTIVITY, ToolCategory::BACKEND],
+            self::MATRIX => [ToolCategory::COMMUNICATION],
+            self::TWENTY => [ToolCategory::COMMUNICATION, ToolCategory::PRODUCTIVITY, ToolCategory::BACKEND, ToolCategory::DATABASE],
+            self::LIVEKIT => [ToolCategory::COMMUNICATION],
+            self::OPENBAO => [ToolCategory::SECURITY, ToolCategory::DEVOPS],
+            self::NETBIRD => [ToolCategory::SECURITY, ToolCategory::DEVOPS],
+            self::ZITADEL => [ToolCategory::AUTH, ToolCategory::SECURITY],
+            self::VAULTWARDEN => [ToolCategory::SECURITY, ToolCategory::PRODUCTIVITY],
+            self::KUMA => [ToolCategory::OBSERVABILITY, ToolCategory::DEVOPS],
+            self::GRAFANA => [ToolCategory::OBSERVABILITY, ToolCategory::DEVOPS],
+            self::FORGEJO => [ToolCategory::DEVOPS, ToolCategory::PRODUCTIVITY],
+            self::METABASE => [ToolCategory::ANALYTICS, ToolCategory::DATABASE],
+            self::GLITCHTIP => [ToolCategory::OBSERVABILITY, ToolCategory::DEVOPS],
+            self::OCIS => [ToolCategory::STORAGE, ToolCategory::PRODUCTIVITY],
+            self::OUTLINE => [ToolCategory::PRODUCTIVITY, ToolCategory::COMMUNICATION],
+            self::TEABLE => [ToolCategory::DATABASE, ToolCategory::PRODUCTIVITY, ToolCategory::BACKEND],
+            self::DOCUMENSO => [ToolCategory::PRODUCTIVITY, ToolCategory::SECURITY],
+            self::CHATWOOT => [ToolCategory::COMMUNICATION, ToolCategory::PRODUCTIVITY],
+            self::UMAMI, self::PLAUSIBLE => [ToolCategory::ANALYTICS],
+            self::HEADLAMP => [ToolCategory::DEVOPS],
+            self::STALWART => [ToolCategory::COMMUNICATION, ToolCategory::DEVOPS],
+            self::BULWARK => [ToolCategory::COMMUNICATION, ToolCategory::PRODUCTIVITY],
+            self::PLANKA => [ToolCategory::PRODUCTIVITY],
+            self::KUTT => [ToolCategory::PRODUCTIVITY, ToolCategory::ANALYTICS],
+            self::PENPOT => [ToolCategory::PRODUCTIVITY],
+            self::RESUME => [ToolCategory::PRODUCTIVITY],
+            self::YOPASS => [ToolCategory::SECURITY, ToolCategory::COMMUNICATION],
+            self::SENDREC => [ToolCategory::COMMUNICATION, ToolCategory::PRODUCTIVITY],
+            self::EXTERNAL_DNS => [ToolCategory::DEVOPS],
+            default => [ToolCategory::PRODUCTIVITY],
         };
     }
 
@@ -619,7 +883,7 @@ enum ClusterTool: string implements HasWorkloadComponents
      */
     public static function shippedCases(): array
     {
-        return array_values(array_filter(self::cases(), fn (self $tool) => $tool->isShipped()));
+        return array_values(array_filter(self::cases(), fn (self $tool) => $tool->isShipped() && ! $tool->isLegacy()));
     }
 
     /**
@@ -727,7 +991,7 @@ enum ClusterTool: string implements HasWorkloadComponents
      */
     public function hasMailWire(): bool
     {
-        return $this->vendor() instanceof HasSmtpWiring || $this === self::SSO;
+        return $this->vendor() instanceof HasSmtpWiring || $this === self::SSO || $this === self::ZITADEL;
     }
 
     /**
@@ -763,12 +1027,12 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function rbacRoles(): array
     {
         return match ($this) {
-            self::SECRETS => [
+            self::SECRETS, self::OPENBAO => [
                 'openbao-admin' => 'Full read/write on all secrets and Commons database credentials',
                 'openbao-operator' => 'Read-only on production secrets and static database roles',
                 'openbao-auditor' => 'Read-only on audit logs and secret metadata (no values)',
             ],
-            self::MONITOR => [
+            self::MONITOR, self::GRAFANA => [
                 'grafana-admin' => 'Full Grafana admin — manage users, datasources, plugins',
                 'grafana-editor' => 'Can create/edit dashboards and alerts',
                 'grafana-user' => 'Can log in to Grafana (Viewer role)',
@@ -780,7 +1044,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             // one ServiceAccount's token, so OIDC login is the ONLY gate
             // between "authenticated Zitadel user" and full cluster-admin.
             // Must never be open-to-org.
-            self::DASHBOARD => [
+            self::DASHBOARD, self::HEADLAMP => [
                 'dashboard-admin' => 'Full cluster-admin access via the Headlamp Kubernetes dashboard',
             ],
             // Single login-gate role, not admin/viewer tiers: confirmed none
@@ -793,26 +1057,26 @@ enum ClusterTool: string implements HasWorkloadComponents
             // sso:org) could read internal Outline docs — every SSO-wired
             // tool without a rbacRoles() entry admits ANY authenticated
             // Zitadel user, regardless of which org they belong to.
-            self::NOTES => ['outline-user' => 'Can log in to Outline'],
-            self::PASSWORDS => ['vaultwarden-user' => 'Can log in to Vaultwarden'],
-            self::LINK => ['kutt-user' => 'Can log in to Kutt'],
+            self::NOTES, self::OUTLINE => ['outline-user' => 'Can log in to Outline'],
+            self::PASSWORDS, self::VAULTWARDEN => ['vaultwarden-user' => 'Can log in to Vaultwarden'],
+            self::LINK, self::KUTT => ['kutt-user' => 'Can log in to Kutt'],
             self::RESUME => ['reactive-resume-user' => 'Can log in to Reactive Resume'],
-            self::SIGN => ['documenso-user' => 'Can log in to Documenso'],
-            self::SHEETS => ['teable-user' => 'Can log in to Teable'],
+            self::SIGN, self::DOCUMENSO => ['documenso-user' => 'Can log in to Documenso'],
+            self::SHEETS, self::TEABLE => ['teable-user' => 'Can log in to Teable'],
             // Confirmed live 2026-08-21: admin@ourfridays.com (a partner-org
             // identity, same one Outline's incident involved) hit Penpot's
             // auto-provision-on-first-login prompt via plain Zitadel SSO —
             // access must be something LaraKube grants, not anyone with any
             // Zitadel account in the org.
-            self::DESIGN => ['penpot-user' => 'Can log in to Penpot'],
+            self::DESIGN, self::PENPOT => ['penpot-user' => 'Can log in to Penpot'],
             // ForwardAuth (ADR 0006), not native OIDC — wireForwardAuth()
             // reads this to also gate the shared sso-proxy's
             // --allowed-groups, not just to route onto rbacProjectName().
-            self::RECORD => ['record-user' => 'Can log in to Sendrec'],
+            self::RECORD, self::SENDREC => ['record-user' => 'Can log in to Sendrec'],
             // Added 2026-08-20 at the user's explicit request — a git forge
             // holding real source/CI credentials must not be reachable by
             // every org member (a future partner-org identity included).
-            self::GIT => ['git-user' => 'Can log in to Forgejo'],
+            self::GIT, self::FORGEJO => ['git-user' => 'Can log in to Forgejo'],
             // DRIVE keeps its ssoAdminRoles() (ocisAdmin/ocisSpaceAdmin) —
             // this base role is the ONLY thing that changes: it's what an
             // operator grants for plain "can log in, no admin tier" access.
@@ -826,13 +1090,13 @@ enum ClusterTool: string implements HasWorkloadComponents
             // at the user's request — a future partner given Drive access
             // (their stated plan) must not thereby get default access to
             // every other open-to-org tool sharing LaraKube Shared Tools.
-            self::DRIVE => ['ocisUser' => 'Can log in to oCIS (regular access, no admin)'],
+            self::DRIVE, self::OCIS => ['ocisUser' => 'Can log in to oCIS (regular access, no admin)'],
             // VPN grants private NETWORK access (reach cluster-internal-only
             // services), not just a web login — a materially higher-stakes
             // gap than the open-to-org tools above if left ungated, so this
             // is gated from the moment sso:wire vpn ships, not added
             // reactively after an incident like the others above were.
-            self::VPN => ['vpn-user' => 'Can join the VPN via SSO'],
+            self::VPN, self::NETBIRD => ['vpn-user' => 'Can join the VPN via SSO'],
             default => [],
         };
     }
@@ -864,7 +1128,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function ssoAdminRoles(): array
     {
         return match ($this) {
-            self::DRIVE => [
+            self::DRIVE, self::OCIS => [
                 'ocisAdmin' => 'oCIS administrator — can create and manage Spaces',
                 'ocisSpaceAdmin' => 'oCIS space administrator — create and manage Spaces, no system admin',
             ],
@@ -980,10 +1244,32 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function supportsMultipleInstances(): bool
     {
         return match ($this) {
-            self::CHAT, self::MEET, self::GIT,
-            self::MAIL, self::SSO, self::SECRETS, self::MONITOR, self::VPN, self::WEBMAIL, self::DASHBOARD,
-            self::DNS => false,
+            self::CHAT, self::MATRIX, self::MEET, self::LIVEKIT, self::GIT, self::FORGEJO,
+            self::MAIL, self::STALWART, self::SSO, self::ZITADEL, self::SECRETS, self::OPENBAO,
+            self::MONITOR, self::GRAFANA, self::VPN, self::NETBIRD, self::WEBMAIL, self::BULWARK,
+            self::DASHBOARD, self::HEADLAMP, self::DNS, self::EXTERNAL_DNS => false,
             default => true,
+        };
+    }
+
+    /**
+     * Whether this tool's initializer requires or provisions a primary admin email.
+     */
+    public function requiresAdminEmail(?string $engine = null): bool
+    {
+        return match ($this->canonicalTool($engine)) {
+            self::POCKETBASE,
+            self::DIRECTUS,
+            self::ZITADEL,
+            self::STALWART,
+            self::METABASE,
+            self::PENPOT,
+            self::OUTLINE,
+            self::CHATWOOT,
+            self::GLITCHTIP,
+            self::FORGEJO,
+            self::NETBIRD => true,
+            default => false,
         };
     }
 
@@ -1011,7 +1297,10 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function hasInstanceAwareRemoval(): bool
     {
         return match ($this) {
-            self::DATA, self::NOTES, self::CRM, self::DESIGN, self::PASTE, self::SIGN, self::FLOW, self::LINK, self::ANALYTICS, self::SHEETS, self::TASKS => true,
+            self::DATA, self::POCKETBASE, self::DIRECTUS, self::NOTES, self::OUTLINE, self::CRM, self::TWENTY,
+            self::DESIGN, self::PENPOT, self::PASTE, self::YOPASS, self::SIGN, self::DOCUMENSO,
+            self::FLOW, self::N8N, self::WINDMILL, self::LINK, self::KUTT, self::ANALYTICS, self::UMAMI, self::PLAUSIBLE,
+            self::SHEETS, self::TEABLE, self::TASKS, self::PLANKA => true,
             default => false,
         };
     }
@@ -1046,6 +1335,10 @@ enum ClusterTool: string implements HasWorkloadComponents
      */
     public function ssoLicenseCaveat(?string $engine = null): ?string
     {
+        if ($this === self::DIRECTUS) {
+            return DataTool::DIRECTUS->ssoLicenseCaveat();
+        }
+
         if ($this !== self::DATA) {
             return null;
         }
@@ -1148,10 +1441,10 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function oidcPostLogoutRedirectUris(string $toolHost): array
     {
         return match ($this) {
-            self::DRIVE => ["https://{$toolHost}/"],
+            self::DRIVE, self::OCIS => ["https://{$toolHost}/"],
             // Fixed NetBird dashboard-frontend path (IdentityProviderModal.tsx),
             // not derived from redirect_path — same reasoning as DRIVE above.
-            self::VPN => ["https://{$toolHost}/oauth2/logout/callback"],
+            self::VPN, self::NETBIRD => ["https://{$toolHost}/oauth2/logout/callback"],
             default => [],
         };
     }
@@ -1313,12 +1606,12 @@ enum ClusterTool: string implements HasWorkloadComponents
      *
      * @return array{namespace: string, secret: string}|null
      */
-    public function openbaoSyncConfig(?string $instance = null): ?array
+    public function openbaoSyncConfig(?string $instance = null, ?string $engine = null): ?array
     {
-        $vendor = $this->vendor();
+        $vendor = $this->vendor($engine);
         if ($vendor instanceof HasOpenbaoSync) {
             $config = ['namespace' => $this->namespace()] + $vendor->openbaoSyncConfig($instance);
-            $config['secret'] = $this->instanceSecretName($config['secret'], $instance);
+            $config['secret'] = $this->instanceSecretName($config['secret'], $instance, engine: $engine);
 
             return $config;
         }
@@ -1336,10 +1629,13 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function resourceNaming(): ResourceNaming
     {
         return match ($this) {
-            self::MONITOR, self::GIT, self::NOTES, self::FLOW, self::SIGN, self::DATA, self::LINK, self::ANALYTICS, self::SHEETS, self::TASKS, self::DASHBOARD,
-            self::MEET, self::WEBMAIL, self::DRIVE, self::VPN => ResourceNaming::CANONICAL,
-            self::CHAT, self::PASSWORDS, self::SSO, self::RECORD,
-            self::RESUME, self::SUPPORT => ResourceNaming::AS_SHIPPED,
+            self::MONITOR, self::GRAFANA, self::GIT, self::FORGEJO, self::NOTES, self::OUTLINE,
+            self::FLOW, self::N8N, self::WINDMILL, self::SIGN, self::DOCUMENSO, self::DATA, self::POCKETBASE,
+            self::DIRECTUS, self::LINK, self::KUTT, self::ANALYTICS, self::UMAMI, self::PLAUSIBLE, self::SHEETS,
+            self::TEABLE, self::TASKS, self::PLANKA, self::DASHBOARD, self::HEADLAMP, self::MEET,
+            self::LIVEKIT, self::WEBMAIL, self::BULWARK, self::DRIVE, self::OCIS, self::VPN, self::NETBIRD => ResourceNaming::CANONICAL,
+            self::CHAT, self::MATRIX, self::PASSWORDS, self::VAULTWARDEN, self::SSO, self::ZITADEL, self::RECORD,
+            self::SENDREC, self::RESUME, self::SUPPORT, self::CHATWOOT => ResourceNaming::AS_SHIPPED,
             default => ResourceNaming::INSTANCE_SUFFIXED,
         };
     }
@@ -1358,6 +1654,10 @@ enum ClusterTool: string implements HasWorkloadComponents
 
     public function dbSecretRef(?string $instance = null, ?string $engine = null): ?array
     {
+        if ($this === self::DATA && $engine === null) {
+            $engine = 'directus';
+        }
+
         $vendor = $this->vendor($engine);
         if ($vendor instanceof HasDbSecretRef) {
             $ref = $vendor->dbSecretRef();
@@ -1366,7 +1666,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             }
 
             $ref = ['namespace' => $this->namespace()] + $ref;
-            $ref['secret'] = $this->instanceSecretName($ref['secret'], $instance, $ref['kind'] ?? SecretKind::CREDENTIALS);
+            $ref['secret'] = $this->instanceSecretName($ref['secret'], $instance, $ref['kind'] ?? SecretKind::CREDENTIALS, engine: $engine);
             unset($ref['kind']);
 
             return $ref;
@@ -1428,18 +1728,27 @@ enum ClusterTool: string implements HasWorkloadComponents
     /** `git-forgejo-runner-x` -> `forgejo-runner-x`: the category, dropped. */
     public function withoutCategory(string $name): string
     {
-        return str_starts_with($name, "{$this->value}-") ? substr($name, strlen($this->value) + 1) : $name;
+        $prefix = $this->legacyCategoryPrefix();
+        if ($prefix !== null && str_starts_with($name, "{$prefix}-")) {
+            return substr($name, strlen($prefix) + 1);
+        }
+
+        if ($this->isLegacy() && str_starts_with($name, "{$this->value}-")) {
+            return substr($name, strlen($this->value) + 1);
+        }
+
+        return $name;
     }
 
     /** The Secret this tool's manifests write, in whichever generation it is on. */
-    public function instanceSecretName(string $shippedName, ?string $instance, SecretKind $kind = SecretKind::CREDENTIALS): string
+    public function instanceSecretName(string $shippedName, ?string $instance, SecretKind $kind = SecretKind::CREDENTIALS, ?string $engine = null): string
     {
         if ($instance === null || $instance === '') {
             return $shippedName;
         }
 
         return match ($this->resourceNaming()) {
-            ResourceNaming::CANONICAL => ToolInstance::forInstance($this, $instance)->secret($kind),
+            ResourceNaming::CANONICAL => ToolInstance::forInstance($this, $instance, $engine)->secret($kind),
             ResourceNaming::INSTANCE_SUFFIXED => "{$shippedName}-{$instance}",
             ResourceNaming::AS_SHIPPED => $shippedName,
         };
@@ -1524,6 +1833,7 @@ enum ClusterTool: string implements HasWorkloadComponents
         return [];
     }
 
+    // Legacy Category Cases (Retained as deprecated aliases for backwards compatibility with production clusters)
     case ANALYTICS = 'analytics';
     case CHAT = 'chat';
     case MEET = 'meet';
@@ -1552,6 +1862,40 @@ enum ClusterTool: string implements HasWorkloadComponents
     case WEBMAIL = 'webmail';
     case DASHBOARD = 'dashboard';
     case DESIGN = 'design';
-    case RESUME = 'resume';
     case PASTE = 'paste';
+
+    // Canonical Individual Tool Cases
+    case POCKETBASE = 'pocketbase';
+    case DIRECTUS = 'directus';
+    case N8N = 'n8n';
+    case WINDMILL = 'windmill';
+    case MATRIX = 'matrix';
+    case TWENTY = 'twenty';
+    case LIVEKIT = 'livekit';
+    case OPENBAO = 'openbao';
+    case NETBIRD = 'netbird';
+    case ZITADEL = 'zitadel';
+    case VAULTWARDEN = 'vaultwarden';
+    case KUMA = 'kuma';
+    case GRAFANA = 'grafana';
+    case FORGEJO = 'forgejo';
+    case METABASE = 'metabase';
+    case GLITCHTIP = 'glitchtip';
+    case OCIS = 'ocis';
+    case OUTLINE = 'outline';
+    case TEABLE = 'teable';
+    case DOCUMENSO = 'documenso';
+    case CHATWOOT = 'chatwoot';
+    case UMAMI = 'umami';
+    case PLAUSIBLE = 'plausible';
+    case HEADLAMP = 'headlamp';
+    case STALWART = 'stalwart';
+    case BULWARK = 'bulwark';
+    case PLANKA = 'planka';
+    case KUTT = 'kutt';
+    case PENPOT = 'penpot';
+    case RESUME = 'resume';
+    case YOPASS = 'yopass';
+    case SENDREC = 'sendrec';
+    case EXTERNAL_DNS = 'external-dns';
 }

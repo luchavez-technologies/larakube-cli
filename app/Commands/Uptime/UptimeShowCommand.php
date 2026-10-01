@@ -25,6 +25,8 @@ class UptimeShowCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'uptime:show' is deprecated. Please use 'kuma:show' instead.");
+
         if ($this->refuseUnshippedTool(ClusterTool::UPTIME)) {
             return 1;
         }

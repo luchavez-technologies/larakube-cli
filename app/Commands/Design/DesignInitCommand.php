@@ -43,6 +43,7 @@ class DesignInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'design:init' is deprecated. Forwarding to 'penpot:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deployDesign();

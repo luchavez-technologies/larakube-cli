@@ -30,6 +30,9 @@ class EnvCommand extends Command
                             {--ingress= : Ingress controller slug (skips the prompt)}
                             {--managed= : Comma-separated externally-managed services; pass an empty value for none (skips the prompt)}
                             {--web-hosts= : Comma-separated additional web hostnames; pass an empty value for none (skips the prompt)}
+                            {--ssh-key= : Path to SSH private key for remote VPS deployment (skips the prompt)}
+                            {--ssh-user= : SSH username for remote VPS deployment (skips the prompt)}
+                            {--ssh-port= : SSH port for remote VPS deployment (skips the prompt)}
                             {--edit : Re-run the ingress/managed-services/hosts wizard on an existing environment, prefilled with its current settings}';
 
     /**

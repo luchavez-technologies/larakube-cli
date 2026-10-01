@@ -72,3 +72,41 @@ test('upsertSshConfigHost replaces an existing block for the same alias (re-prov
         ->and($config)->toContain('HostName 198.51.100.9')
         ->and($config)->not->toContain('203.0.113.7');
 });
+
+test('resolveSshDetails resolves user, port, and key from ~/.ssh/config matching Host or HostName', function (): void {
+    @mkdir(home_path('.ssh'), 0700, true);
+    $keyPath = home_path('.ssh/custom_key');
+    file_put_contents($keyPath, 'fake-private-key');
+
+    $helper = sshKeysHelper();
+    $helper->upsert('prod-server', '34.27.253.31', 'admin', '2222', $keyPath);
+
+    // Resolves by IP
+    $resolvedByIp = $helper->resolveSshDetails('34.27.253.31');
+    expect($resolvedByIp)->not->toBeNull()
+        ->and($resolvedByIp['user'])->toBe('admin')
+        ->and($resolvedByIp['port'])->toBe(2222)
+        ->and($resolvedByIp['key'])->toBe($keyPath)
+        ->and($resolvedByIp['host'])->toBe('prod-server');
+
+    // Resolves by larakube-<ip> context
+    $resolvedByContext = $helper->resolveSshDetails('larakube-34.27.253.31');
+    expect($resolvedByContext)->not->toBeNull()
+        ->and($resolvedByContext['key'])->toBe($keyPath);
+
+    // Resolves by alias
+    $resolvedByAlias = $helper->resolveSshDetails('prod-server');
+    expect($resolvedByAlias)->not->toBeNull()
+        ->and($resolvedByAlias['key'])->toBe($keyPath);
+});
+
+test('testSshConnection executes ssh in batch mode and returns exit status', function (): void {
+    Process::fake([
+        '*203.0.113.5* true' => Process::result(output: '', exitCode: 0),
+        '*203.0.113.6* true' => Process::result(output: 'Permission denied', exitCode: 255),
+    ]);
+
+    $helper = sshKeysHelper();
+    expect($helper->testSshConnection('larakube', '203.0.113.5', 22, home_path('.ssh/id_rsa')))->toBeTrue()
+        ->and($helper->testSshConnection('larakube', '203.0.113.6', 22, home_path('.ssh/id_rsa')))->toBeFalse();
+});

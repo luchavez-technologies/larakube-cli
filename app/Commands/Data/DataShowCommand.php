@@ -11,6 +11,13 @@ class DataShowCommand extends AbstractToolShowCommand
 {
     use InteractsWithData;
 
+    public function handle(): int
+    {
+        $this->laraKubeWarn("[DEPRECATION] 'data:show' is deprecated. Please use 'pocketbase:show' or 'directus:show' instead.");
+
+        return parent::handle();
+    }
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::DATA;

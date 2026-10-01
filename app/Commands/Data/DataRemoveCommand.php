@@ -26,6 +26,13 @@ class DataRemoveCommand extends AbstractToolRemoveCommand
         {--purge     : Also destroy persistent data — drop the Plex Commons database and release the Redis index. Irreversible.}
         {--force     : Skip the confirmation prompt (required for non-interactive runs)}';
 
+    public function handle(): int
+    {
+        $this->laraKubeWarn("[DEPRECATION] 'data:remove' is deprecated. Please use 'pocketbase:remove' or 'directus:remove' instead.");
+
+        return parent::handle();
+    }
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::DATA;
@@ -84,7 +91,9 @@ class DataRemoveCommand extends AbstractToolRemoveCommand
         $directusDeploy = $namesDir->deployment();
         $pocketbaseDeploy = $namesPb->deployment();
 
-        $requested = strtolower((string) ($this->option('engine') ?: ''));
+        $requested = $this->hasOption('engine')
+            ? strtolower((string) ($this->option('engine') ?: ''))
+            : ($this->instanceEngine($kubectl, $instance) ?? '');
         $hasDirectus = $this->deploymentExists($kubectl, $namespace, $directusDeploy);
         $hasPocketbase = $this->deploymentExists($kubectl, $namespace, $pocketbaseDeploy);
 

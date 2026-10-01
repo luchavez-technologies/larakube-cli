@@ -359,7 +359,7 @@ test('secrets:wire --all wires every installed DB-rotatable tool and skips unins
 
     $this->artisan('secrets:wire local --all --force')
         ->assertExitCode(0)
-        ->expectsOutputToContain("Document Signing (Documenso)'s DB password is now rotated by OpenBao every 168h");
+        ->expectsOutputToContain("Documenso (Document Signing)'s DB password is now rotated by OpenBao every 168h");
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/documenso-sign-kube'));
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/record-sendrec'));

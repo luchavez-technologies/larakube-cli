@@ -10,6 +10,13 @@ use App\Enums\SecretKind;
 
 class SheetsRemoveCommand extends AbstractToolRemoveCommand
 {
+    public function handle(): int
+    {
+        $this->laraKubeWarn("[DEPRECATION] 'sheets:remove' is deprecated. Please use 'teable:remove' instead.");
+
+        return parent::handle();
+    }
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::SHEETS;

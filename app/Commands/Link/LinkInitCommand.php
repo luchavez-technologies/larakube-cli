@@ -41,6 +41,7 @@ class LinkInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'link:init' is deprecated. Forwarding to 'kutt:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deployLink();

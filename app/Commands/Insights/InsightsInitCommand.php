@@ -45,6 +45,7 @@ class InsightsInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'insights:init' is deprecated. Forwarding to 'metabase:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deployInsights();

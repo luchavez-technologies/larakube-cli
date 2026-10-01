@@ -75,6 +75,7 @@ class GitInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'git:init' is deprecated. Forwarding to 'forgejo:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deployGit();

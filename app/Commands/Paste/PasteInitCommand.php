@@ -45,6 +45,8 @@ class PasteInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'paste:init' is deprecated. Forwarding to 'yopass:init'. Please update your scripts.");
+
         if ($this->refuseUnshippedTool(ClusterTool::PASTE)) {
             return 1;
         }

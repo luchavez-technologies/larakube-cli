@@ -39,6 +39,8 @@ class AnalyticsInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'analytics:init' is deprecated. Forwarding to 'umami:init'. Please update your scripts.");
+
         if ($this->refuseUnshippedTool(ClusterTool::ANALYTICS)) {
             return 1;
         }

@@ -92,7 +92,7 @@ test('data:init records which engine an instance runs in the cluster registry', 
     $this->artisan('data:init local --engine=pocketbase --admin-email=admin@example.com --force')->assertExitCode(0);
 
     expect($captured)->not->toBeNull();
-    $dataEntry = collect($captured)->firstWhere('tool', 'data');
+    $dataEntry = collect($captured)->first(fn ($e) => in_array($e['tool'] ?? null, ['data', 'pocketbase'], true));
     expect($dataEntry)->not->toBeNull()
         ->and($dataEntry['engine'])->toBe('pocketbase');
 });
@@ -163,7 +163,7 @@ test('data:init --domain re-targets an already-registered instance in place, nev
     Process::assertRan(fn ($p) => str_contains((string) $p->command, 'pocketbase-main'))
         ->assertNotRan(fn ($p) => str_contains((string) $p->command, 'pocketbase-pocket-luchtech-dev'));
 
-    $dataEntries = collect($captured ?? [])->where('tool', 'data');
+    $dataEntries = collect($captured ?? [])->filter(fn ($e) => in_array($e['tool'] ?? null, ['data', 'pocketbase'], true));
     expect($dataEntries)->toHaveCount(1)
         ->and($dataEntries->first()['instance'])->toBe('main')
         ->and($dataEntries->first()['host'])->toBe('pocket.luchtech.dev');

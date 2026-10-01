@@ -148,6 +148,9 @@ class VpnUnwireCommand extends Command
         $restricted = [];
         foreach ($this->vpnOnlyIngresses($kubectl) as $entry) {
             $restricted[$entry['tool']->value.'|'.$entry['host']] = true;
+            if ($entry['tool']->legacyCategoryPrefix() !== null) {
+                $restricted[$entry['tool']->legacyCategoryPrefix().'|'.$entry['host']] = true;
+            }
         }
 
         return $this->pickRegisteredTool(
@@ -223,7 +226,7 @@ class VpnUnwireCommand extends Command
         $hosts = [];
 
         foreach ($this->vpnOnlyIngresses($kubectl) as $entry) {
-            if ($entry['tool'] === $tool && $entry['host'] !== '') {
+            if (($entry['tool'] === $tool || $entry['tool']->canonicalTool() === $tool->canonicalTool()) && $entry['host'] !== '') {
                 $hosts[] = $entry['host'];
             }
         }

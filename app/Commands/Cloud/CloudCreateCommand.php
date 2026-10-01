@@ -578,7 +578,7 @@ class CloudCreateCommand extends Command
         $context = $this->provisionK3sNode('root', $ip, '22', $keyPath, $pipelineConfig, adminCidr: $adminCidr);
 
         // Record the resolved context on the stack + bind the env.
-        $this->updateStackContext($stackName, $context);
+        $this->updateStackContext($stackName, $context, $keyPath);
         if ($config && $environment) {
             $this->bindVpsEnv($config, $projectPath, $environment, $ip, 'larakube', '22', $keyPath);
             $this->tagBinding($stackName, $config->getName(), $environment);
@@ -723,10 +723,13 @@ class CloudCreateCommand extends Command
         return true;
     }
 
-    private function updateStackContext(string $name, string $context): void
+    private function updateStackContext(string $name, string $context, ?string $sshKey = null): void
     {
         if ($stack = $this->getGlobalConfig()->findStack($name)) {
             $stack->context = $context;
+            if ($sshKey !== null) {
+                $stack->sshKey = $sshKey;
+            }
             $this->putStack($stack);
         }
     }

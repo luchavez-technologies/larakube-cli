@@ -7,6 +7,13 @@ use App\Enums\ClusterTool;
 
 class DashboardRemoveCommand extends AbstractToolRemoveCommand
 {
+    public function handle(): int
+    {
+        $this->laraKubeWarn("[DEPRECATION] 'dashboard:remove' is deprecated. Please use 'headlamp:remove' instead.");
+
+        return parent::handle();
+    }
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::DASHBOARD;

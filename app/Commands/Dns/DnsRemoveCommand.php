@@ -53,6 +53,7 @@ class DnsRemoveCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'dns:remove' is deprecated. Please use 'external-dns:remove' instead.");
         $this->renderHeader();
 
         $env = $this->resolveToolEnvironment(ClusterTool::DNS);

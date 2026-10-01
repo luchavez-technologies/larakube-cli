@@ -391,9 +391,9 @@ trait InteractsWithPlex
 
     protected function joinPlexCommons(ConfigData $config, string $projectPath): void
     {
-        $database = $config->getDatabase();
+        $eligible = $this->projectCommonsServices($config);
 
-        if ($database === DatabaseDriver::SQLITE || $database === DatabaseDriver::MONGODB) {
+        if ($eligible === []) {
             return;
         }
 

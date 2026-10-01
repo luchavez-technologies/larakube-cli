@@ -119,3 +119,12 @@ test('resolvePushedDigest only accepts a well-formed sha256 digest', function ()
     Process::fake(["docker buildx imagetools inspect 'ghcr.io/me/app:abc' --format '{{.Manifest.Digest}}'" => Process::result(output: '', exitCode: 1)]);
     expect(remoteDeployProcessHelper()->digest('ghcr.io/me/app:abc'))->toBeNull();
 });
+
+test('pre-deployment steps fallback to container runner when no local pod is active', function (): void {
+    $helper = remoteDeployPreDeployHelper();
+    $config = new App\Data\ConfigData(name: 'demo-app');
+
+    expect($helper->hasRunningLocalWebPod($config))->toBeFalse()
+        ->and($helper->runPreDeploymentSteps($config))->toBeTrue()
+        ->and($helper->ran[0])->toContain('composer install');
+});

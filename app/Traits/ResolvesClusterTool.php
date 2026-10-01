@@ -42,7 +42,17 @@ trait ResolvesClusterTool
             return $tools;
         }
 
-        $installedTools = array_unique(array_column($this->getRegisteredTools($kubectl), 'tool'));
+        $installedTools = [];
+        foreach ($this->getRegisteredTools($kubectl) as $entry) {
+            $slug = $entry['tool'] ?? null;
+            if ($slug !== null) {
+                $tool = ClusterTool::tryFrom((string) $slug);
+                if ($tool !== null) {
+                    $installedTools[] = $tool->canonicalTool($entry['engine'] ?? null)->value;
+                }
+            }
+        }
+        $installedTools = array_unique($installedTools);
         $options = [];
 
         foreach (ClusterTool::shippedCases() as $tool) {

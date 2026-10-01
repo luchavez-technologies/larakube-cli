@@ -43,7 +43,7 @@ class DataWireCommand extends Command
         $picked = $this->pickRegisteredTool(
             kubectl: $kubectl,
             label: 'Data / Headless CMS',
-            capable: fn (ClusterTool $tool) => $tool === ClusterTool::DATA,
+            capable: fn (ClusterTool $tool) => in_array($tool, [ClusterTool::DATA, ClusterTool::POCKETBASE, ClusterTool::DIRECTUS], true),
             emptyMessage: "No Data / Headless CMS instance is registered for '{$env}'.",
             only: ClusterTool::DATA,
             domain: $this->option('domain'),

@@ -37,6 +37,8 @@ class UptimeInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'uptime:init' is deprecated. Forwarding to 'kuma:init'. Please update your scripts.");
+
         if ($this->refuseUnshippedTool(ClusterTool::UPTIME)) {
             return 1;
         }

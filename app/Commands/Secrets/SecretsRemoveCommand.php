@@ -21,6 +21,13 @@ class SecretsRemoveCommand extends AbstractToolRemoveCommand
 
     protected $description = 'Remove OpenBao secrets manager and External Secrets Operator from a cluster';
 
+    public function handle(): int
+    {
+        $this->laraKubeWarn("[DEPRECATION] 'secrets:remove' is deprecated. Please use 'openbao:remove' instead.");
+
+        return parent::handle();
+    }
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::SECRETS;

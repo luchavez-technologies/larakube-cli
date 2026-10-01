@@ -52,6 +52,7 @@ class MonitorInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'monitor:init' is deprecated. Forwarding to 'grafana:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deployMonitoring();

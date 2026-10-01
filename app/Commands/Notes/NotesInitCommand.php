@@ -53,6 +53,7 @@ class NotesInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'notes:init' is deprecated. Forwarding to 'outline:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deployNotes();

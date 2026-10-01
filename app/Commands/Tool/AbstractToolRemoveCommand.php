@@ -520,10 +520,7 @@ abstract class AbstractToolRemoveCommand extends Command
             return $this->resolveInstanceTargetsForDomain($kubectl, $tool, $domain);
         }
 
-        $registered = array_values(array_filter(
-            $this->getRegisteredTools($kubectl),
-            fn (array $e) => ($e['tool'] ?? null) === $tool->value,
-        ));
+        $registered = $this->toolRegistry($kubectl)->entries($tool);
 
         // A row without an instance is this tool's unsuffixed default (null).
         $instances = array_values(array_unique(array_map(
@@ -585,7 +582,7 @@ abstract class AbstractToolRemoveCommand extends Command
 
         return array_values(array_unique(array_filter(array_map(
             fn (array $e): string => in_array((string) ($e['instance'] ?? ''), $wanted, true) ? (string) ($e['host'] ?? '') : '',
-            array_filter($this->getRegisteredTools($kubectl), fn (array $e) => ($e['tool'] ?? null) === $this->tool()->value),
+            $this->toolRegistry($kubectl)->entries($this->tool()),
         ))));
     }
 }

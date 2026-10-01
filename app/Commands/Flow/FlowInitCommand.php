@@ -43,6 +43,7 @@ class FlowInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'flow:init' is deprecated. Please use 'n8n:init' or 'windmill:init' instead.");
         $this->renderHeader();
 
         return $this->deployFlow();

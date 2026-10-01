@@ -314,11 +314,9 @@ test("sso:revoke's discovery picker surfaces Drive's ocisAdmin on Drive's own pr
         DeleteUserGrantRequest::class => MockResponse::make([]),
     ]);
 
-    // ocisAdmin is now the FIRST option (Drive precedes Secrets in
-    // ClusterTool's declaration order) — SPACE selects it, ENTER submits.
-    // The command runs directly (not via artisan()) so Prompt::fake's mocked
-    // terminal isn't clobbered by the Kernel's configurePrompts() fallbacks.
-    Prompt::fake([Key::SPACE, Key::ENTER]);
+    // OpenBao precedes oCIS in ClusterTool's canonical declaration order —
+    // DOWN moves to ocisAdmin, SPACE selects it, ENTER submits.
+    Prompt::fake([Key::DOWN, Key::SPACE, Key::ENTER]);
 
     $command = app(SsoRevokeCommand::class);
     $input = new ArrayInput(['--email' => 'admin@luchtech.dev', '--force' => true]);

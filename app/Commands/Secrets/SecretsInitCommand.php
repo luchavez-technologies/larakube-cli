@@ -37,6 +37,7 @@ class SecretsInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'secrets:init' is deprecated. Forwarding to 'openbao:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deploySecrets();

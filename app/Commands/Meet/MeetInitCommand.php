@@ -38,6 +38,7 @@ class MeetInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'meet:init' is deprecated. Forwarding to 'livekit:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deployMeet();

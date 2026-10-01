@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ClusterTool;
 use App\Http\Integrations\Zitadel\Requests\CreateProjectRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateUserGrantRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateUserRequest;
@@ -151,31 +152,15 @@ test('sso:grant\'s picker offers every role-bearing tool — Drive included — 
         CreateUserGrantRequest::class => MockResponse::make([]),
     ]);
 
-    // No --tool: the picker resolves Drive (the first role-bearing tool in
-    // case order) purely from the enum's role schema — the grant succeeds even
-    // though Zitadel here knows nothing about any roles yet.
+    $expectedTools = [];
+    foreach (array_filter(ClusterTool::shippedCases(), fn (ClusterTool $t) => $t->grantableRoles() !== []) as $t) {
+        $expectedTools[$t->value] = $t->getLabel();
+    }
+
+    // No --tool: the picker resolves oCIS from the enum's role schema — the grant
+    // succeeds even though Zitadel here knows nothing about any roles yet.
     $this->artisan('sso:grant', ['--role' => 'ocisAdmin', '--email' => 'admin@luchtech.dev', '--no-interaction' => true])
-        // Order follows ClusterTool::cases() declaration order, filtered to
-        // role-bearing tools — link/notes/passwords/record/sheets/sign
-        // joined the list 2026-08-20, git and drive's rbacRoles() joined
-        // the same day, design's joined 2026-08-21, vpn's joined 2026-08-24
-        // (see ClusterTool::rbacRoles()).
-        ->expectsChoice('Which tool?', 'drive', [
-            'drive' => 'Cloud Storage & Sync (oCIS)',
-            'git' => 'Git Forge & CI/CD (Forgejo)',
-            'link' => 'Link Management (Kutt)',
-            'monitor' => 'Monitoring Stack (Grafana + Loki + Prometheus)',
-            'notes' => 'Team Wiki & Knowledge Base (Outline)',
-            'passwords' => 'Password Manager (Vaultwarden)',
-            'record' => 'Screen Recording & Sharing (Sendrec)',
-            'secrets' => 'Secrets Manager (OpenBao)',
-            'sheets' => 'Spreadsheet Database (Teable)',
-            'sign' => 'Document Signing (Documenso)',
-            'vpn' => 'Zero-Trust VPN Mesh (NetBird)',
-            'dashboard' => 'Kubernetes Control Plane (Headlamp)',
-            'design' => 'Design & Prototyping (Penpot)',
-            'resume' => 'Resume Builder (Reactive Resume)',
-        ])
+        ->expectsChoice('Which tool?', 'ocis', $expectedTools)
         ->assertExitCode(0)
         ->expectsOutputToContain("Granted 'ocisAdmin' to admin@luchtech.dev");
 

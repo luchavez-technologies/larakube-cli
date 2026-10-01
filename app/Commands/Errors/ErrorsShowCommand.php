@@ -23,6 +23,7 @@ class ErrorsShowCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'errors:show' is deprecated. Please use 'glitchtip:show' instead.");
         $this->renderHeader();
 
         $env = (string) $this->argument('environment');

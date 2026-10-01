@@ -81,6 +81,59 @@ function ensuresRealHostsRunner(): object
     };
 }
 
+/**
+ * Runner that simulates a command declaring the --web-host option, so the
+ * flag-check path inside ensureHosts() is exercised.
+ */
+function ensuresRealHostsRunnerWithFlag(?string $webHost): object
+{
+    return new class($webHost)
+    {
+        use EnsuresRealHosts;
+
+        public array $lines = [];
+
+        private ?string $webHost;
+
+        public function __construct(?string $webHost)
+        {
+            $this->webHost = $webHost;
+        }
+
+        public function newLine($count = 1) {}
+
+        public function info($text = null)
+        {
+            $this->lines[] = (string) $text;
+        }
+
+        public function line($text = null)
+        {
+            $this->lines[] = (string) $text;
+        }
+
+        public function hasOption(string $name): bool
+        {
+            return $name === 'web-host';
+        }
+
+        public function option(string $name): ?string
+        {
+            return $name === 'web-host' ? $this->webHost : null;
+        }
+
+        public function run(ConfigData $config, string $environment): string
+        {
+            return $this->ensureHosts($config, $environment);
+        }
+
+        public function checkLocalDomain(string $host): bool
+        {
+            return $this->isLocalDomain($host);
+        }
+    };
+}
+
 beforeEach(function (): void {
     resetPromptFallbacks();
     Prompt::interactive(false);
@@ -275,4 +328,28 @@ test('isLocalDomain recognizes every allowed local TLD and .dev.test, and reject
     expect($runner->checkLocalDomain('acme.dev.test'))->toBeTrue()
         ->and($runner->checkLocalDomain('acme.com'))->toBeFalse()
         ->and($runner->checkLocalDomain('staging.acme.com'))->toBeFalse();
+});
+
+test('--web-host flag with a real domain configures the host without triggering re-prompt', function (): void {
+    $config = ConfigData::from(['name' => 'acme', 'database' => 'sqlite']);
+
+    $runner = ensuresRealHostsRunnerWithFlag('app.example.com');
+    $host = $runner->run($config, 'production');
+
+    expect($host)->toBe('app.example.com')
+        ->and($config->getHost('production', 'web'))->toBe('app.example.com')
+        ->and($runner->lines)->toBeEmpty();
+});
+
+test('--web-host flag with a local domain or placeholder triggers the re-prompt', function (): void {
+    $config = ConfigData::from(['name' => 'acme', 'database' => 'sqlite']);
+
+    $runner = ensuresRealHostsRunnerWithFlag('acme.dev.test');
+    try {
+        $runner->run($config, 'production');
+    } catch (NonInteractiveValidationException) {
+        // expected in non-interactive test context
+    }
+
+    expect($runner->lines)->not->toBeEmpty();
 });

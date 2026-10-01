@@ -10,6 +10,13 @@ class ErrorsRemoveCommand extends AbstractToolRemoveCommand
 {
     use ReadsClusterSecrets;
 
+    public function handle(): int
+    {
+        $this->laraKubeWarn("[DEPRECATION] 'errors:remove' is deprecated. Please use 'glitchtip:remove' instead.");
+
+        return parent::handle();
+    }
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::ERRORS;

@@ -7,6 +7,13 @@ use App\Enums\ClusterTool;
 
 class WebmailRemoveCommand extends AbstractToolRemoveCommand
 {
+    public function handle(): int
+    {
+        $this->laraKubeWarn("[DEPRECATION] 'webmail:remove' is deprecated. Please use 'bulwark:remove' instead.");
+
+        return parent::handle();
+    }
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::WEBMAIL;

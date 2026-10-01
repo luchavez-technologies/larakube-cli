@@ -31,6 +31,7 @@ class CloudConfigureCommand extends Command
         {--rotate : Revoke the current deploy token/secrets and mint fresh ones (use after a leak) — only with --only=ci}
         {--ingress= : Ingress controller slug for the environment (skips the prompt)}
         {--managed= : Comma-separated externally-managed services; pass an empty value for none (skips the prompt)}
+        {--web-host= : The environment\'s primary web host, e.g. app.example.com (skips the prompt)}
         {--web-hosts= : Comma-separated additional web hostnames; pass an empty value to clear (skips the prompt)}
         {--registry-provider= : Legacy alias for the --registry option}
         {--registry= : Container registry provider: ghcr|dockerhub|gitlab|forgejo|gar (skips the prompt)}

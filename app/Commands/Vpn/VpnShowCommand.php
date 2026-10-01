@@ -14,6 +14,13 @@ class VpnShowCommand extends AbstractToolShowCommand
     /** Below this many days remaining, the countdown is a warning rather than a note. */
     protected const WARN_WITHIN_DAYS = 30;
 
+    public function handle(): int
+    {
+        $this->laraKubeWarn("[DEPRECATION] 'vpn:show' is deprecated. Please use 'netbird:show' instead.");
+
+        return parent::handle();
+    }
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::VPN;

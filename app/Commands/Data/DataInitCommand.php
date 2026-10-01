@@ -51,6 +51,10 @@ class DataInitCommand extends Command
 
     public function handle(): int
     {
+        $engine = $this->resolveEngine();
+        $target = $engine === 'directus' ? 'directus:init' : 'pocketbase:init';
+        $this->laraKubeWarn("[DEPRECATION] 'data:init' is deprecated. Forwarding to '{$target}'. Please update your scripts.");
+
         $this->renderHeader();
 
         return $this->deployData();

@@ -9,6 +9,13 @@ use App\Enums\ClusterTool;
 
 class AnalyticsRemoveCommand extends AbstractToolRemoveCommand
 {
+    public function handle(): int
+    {
+        $this->laraKubeWarn("[DEPRECATION] 'analytics:remove' is deprecated. Please use 'umami:remove' instead.");
+
+        return parent::handle();
+    }
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::ANALYTICS;

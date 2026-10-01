@@ -184,3 +184,34 @@ test('cloud:configure --only=registry with a bad flag exits 1 with a clear error
 
     expect(State::lastError())->toContain("Invalid --registry-provider 'bogus'");
 });
+
+test('cloud:configure --only=hosts with --web-host configures and persists headlessly', function (): void {
+    saveNonInteractiveProject($this->tempDir);
+
+    $this->artisan('cloud:configure', [
+        'environment' => 'production',
+        '--only' => 'hosts',
+        '--web-host' => 'app.example.com',
+        '--web-hosts' => '',
+        '--no-interaction' => true,
+    ])->assertExitCode(0);
+
+    $reloaded = ConfigData::loadFromFile($this->tempDir);
+    expect($reloaded->getHost('production', 'web'))->toBe('app.example.com');
+});
+
+test('cloud:configure --only=hosts with both --web-host and --web-hosts configures primary and additional hosts headlessly', function (): void {
+    saveNonInteractiveProject($this->tempDir);
+
+    $this->artisan('cloud:configure', [
+        'environment' => 'production',
+        '--only' => 'hosts',
+        '--web-host' => 'app.example.com',
+        '--web-hosts' => 'admin.example.com, api.example.com',
+        '--no-interaction' => true,
+    ])->assertExitCode(0);
+
+    $reloaded = ConfigData::loadFromFile($this->tempDir);
+    expect($reloaded->getHost('production', 'web'))->toBe('app.example.com')
+        ->and($reloaded->environments['production']->additionalWebHosts)->toBe(['admin.example.com', 'api.example.com']);
+});

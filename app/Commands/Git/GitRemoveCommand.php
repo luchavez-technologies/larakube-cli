@@ -12,6 +12,13 @@ class GitRemoveCommand extends AbstractToolRemoveCommand
 {
     use ManagesToolFirewallPorts;
 
+    public function handle(): int
+    {
+        $this->laraKubeWarn("[DEPRECATION] 'git:remove' is deprecated. Please use 'forgejo:remove' instead.");
+
+        return parent::handle();
+    }
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::GIT;

@@ -6,6 +6,7 @@ use App\Data\StackData;
 use App\Traits\DiscoversUnfinishedStacks;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ManagesSshKeys;
 use App\Traits\ReadsCommandOptions;
 
 use function Laravel\Prompts\table;
@@ -18,7 +19,7 @@ use LaravelZero\Framework\Commands\Command;
  */
 class CloudStacksCommand extends Command
 {
-    use DiscoversUnfinishedStacks, EmitsJsonOutput, LaraKubeOutput, ReadsCommandOptions;
+    use DiscoversUnfinishedStacks, EmitsJsonOutput, LaraKubeOutput, ManagesSshKeys, ReadsCommandOptions;
 
     protected $signature = 'cloud:stacks
         {--json : Emit one machine-readable JSON result on stdout, including unfinished setups}';
@@ -91,6 +92,7 @@ class CloudStacksCommand extends Command
             'region' => $stack->region,
             'ip' => $stack->ip,
             'context' => $stack->context,
+            'sshKey' => $stack->sshKey ?? ($stack->ip ? $this->resolveSshDetails($stack->ip, $stack->context)['key'] ?? null : null),
             'account' => $stack->account,
             'projectId' => $stack->projectId,
             'bindings' => $stack->bindings,

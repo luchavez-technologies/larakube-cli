@@ -44,6 +44,7 @@ class DriveInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'drive:init' is deprecated. Forwarding to 'ocis:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deployDrive();

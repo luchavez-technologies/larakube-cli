@@ -7,6 +7,13 @@ use App\Enums\ClusterTool;
 
 class UptimeRemoveCommand extends AbstractToolRemoveCommand
 {
+    public function handle(): int
+    {
+        $this->laraKubeWarn("[DEPRECATION] 'uptime:remove' is deprecated. Please use 'kuma:remove' instead.");
+
+        return parent::handle();
+    }
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::UPTIME;

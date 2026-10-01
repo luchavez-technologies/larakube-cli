@@ -24,6 +24,7 @@ class ToolAddCommand extends Command
         {--tool= : Comma-separated tool slugs to install (e.g. flow,passwords)}
         {--context= : Target a specific kube-context}
         {--domain=  : Base domain for all tool hosts (e.g. example.com → flow.example.com)}
+        {--admin-email= : Primary administrator email for tools that require an admin account}
         {--wire-mail : Wire each installed tool to Stalwart without asking}
         {--no-wire-mail : Never wire to Stalwart, even interactively}
         {--wire-sso : Wire each installed tool to Zitadel SSO without asking}
@@ -59,6 +60,9 @@ class ToolAddCommand extends Command
         if ($domain) {
             $params['--domain'] = $domain;
         }
+        if ($this->option('admin-email')) {
+            $params['--admin-email'] = $this->option('admin-email');
+        }
 
         $exitCode = 0;
 
@@ -69,11 +73,13 @@ class ToolAddCommand extends Command
             $result = $this->call("{$tool->value}:init", $params);
 
             if ($result === 0) {
-                // {tool}:init already registered itself WITH its resolved host.
-                // Re-registering here is only to catch a tool whose own init
-                // forgot to — registerTool() merges, so it can no longer wipe
-                // the host that was just recorded (it used to).
-                $this->registerTool($kubectl, $tool);
+                // {tool}:init already registered itself WITH its resolved host and instance.
+                // Re-registering here is only to catch a single-instance tool whose own
+                // init forgot to register itself. Multi-instance tools MUST NOT be registered
+                // without an instance or host.
+                if (! $this->isToolRegistered($kubectl, $tool) && ! $tool->supportsMultipleInstances()) {
+                    $this->registerTool($kubectl, $tool);
+                }
                 $this->offerMailWiring($kubectl, $tool);
                 $this->offerSsoWiring($kubectl, $tool);
             } else {

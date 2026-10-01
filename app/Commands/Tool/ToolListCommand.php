@@ -8,6 +8,7 @@ use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\UsesForwardAuth;
 use App\Enums\ClusterTool;
+use App\Enums\ClusterToolComponentRole;
 use App\Traits\InteractsWithToolRegistry;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesStandaloneEnvironment;
@@ -61,13 +62,28 @@ class ToolListCommand extends Command
         $registryOnly = (bool) $this->option('registry-only');
         $registered = $this->getRegisteredTools($kubectl);
 
+        if (! $registryOnly) {
+            $registered = $this->pruneBogusRegistryEntries($kubectl, $registered);
+        }
+
         // Tools running on the cluster but missing from the registry. When
         // there are any, adopt the convention-named ones into the registry
         // (as --refresh does), so the fast registry-only view sees them too.
         $liveUnregistered = [];
         if (! $registryOnly) {
             foreach (ClusterTool::shippedCases() as $tool) {
-                $isRegistered = array_filter($registered, fn ($e) => ($e['tool'] ?? null) === $tool->value) !== [];
+                $isRegistered = array_filter(
+                    $registered,
+                    function ($e) use ($tool): bool {
+                        $slug = $e['tool'] ?? null;
+                        if ($slug === $tool->value) {
+                            return true;
+                        }
+                        $rowTool = ClusterTool::tryFrom((string) $slug);
+
+                        return $rowTool?->canonicalTool($e['engine'] ?? null) === $tool;
+                    },
+                ) !== [];
 
                 if (! $isRegistered) {
                     $liveUnregistered[$tool->value] = $this->isToolPresentOnCluster($kubectl, $tool);
@@ -84,7 +100,15 @@ class ToolListCommand extends Command
             $vendor = $tool->vendor();
             $instances = array_values(array_filter(
                 $registered,
-                fn ($e) => ($e['tool'] ?? null) === $tool->value,
+                function ($e) use ($tool): bool {
+                    $slug = $e['tool'] ?? null;
+                    if ($slug === $tool->value) {
+                        return true;
+                    }
+                    $rowTool = ClusterTool::tryFrom((string) $slug);
+
+                    return $rowTool?->canonicalTool($e['engine'] ?? null) === $tool;
+                },
             ));
 
             if ($instances === []) {
@@ -127,6 +151,7 @@ class ToolListCommand extends Command
                     'icon' => $tool->icon(),
                     'brand' => $serviceLabel,
                     'label' => $tool->getLabel(),
+                    'categories' => array_map(fn ($cat) => $cat->value, $tool->categories()),
                     'installed' => $installed,
                     'namespace' => $tool->namespace(),
                     'host' => $host,
@@ -134,7 +159,17 @@ class ToolListCommand extends Command
                     'url' => $host !== null ? 'https://'.$host.$aliasSuffix : null,
                     'installedAt' => $entry['installedAt'] ?? null,
                     'verified' => ! $registryOnly,
+                    'requiresAdminEmail' => $tool->requiresAdminEmail($entry['engine'] ?? null),
                     'vendor' => $vendor,
+                    'components' => array_map(fn ($c) => [
+                        'key' => $c->key,
+                        'label' => $c->label(),
+                        'role' => $c->role->value,
+                        'deployment' => $c->deployment,
+                        'container' => $c->container ?? $c->deployment,
+                        'description' => $c->description(),
+                        'backup' => $c->backupVolume,
+                    ], $tool->components($instance)),
                 ];
             }
         }
@@ -399,6 +434,14 @@ class ToolListCommand extends Command
                     continue;
                 }
 
+                // Subcomponents (worker, ingress, database, auth, client, relay, signal, runner)
+                // belong to a tool instance, but only PRIMARY components represent tool instances.
+                if ($hit['component']->role !== ClusterToolComponentRole::PRIMARY) {
+                    $skipped[] = $deployment;
+
+                    continue;
+                }
+
                 $tool = $hit['tool'];
 
                 // service() is already the codebase's model of "exposes
@@ -413,11 +456,10 @@ class ToolListCommand extends Command
                 }
 
                 $instance = $hit['instance'];
-                $key = $tool->value.'|'.$instance;
 
                 // The instance was derived FROM a host, so the matching host is
                 // the one that slugifies back to it — exact, not guesswork.
-                $host = $found[$key]['host'] ?? null;
+                $host = null;
                 foreach ($hosts as $candidate) {
                     if ($tool->instanceSlugFromHost($candidate) === $instance) {
                         $host = $candidate;
@@ -426,11 +468,150 @@ class ToolListCommand extends Command
                     }
                 }
 
+                // Deployments with HTTP services must have an Ingress whose host slugifies back to them.
+                // An arbitrary deployment (e.g. grafana-matrix-forwarder) without a matching ingress host is skipped.
+                if ($host === null) {
+                    $skipped[] = $deployment;
+
+                    continue;
+                }
+
+                $key = $tool->value.'|'.$instance;
                 $found[$key] = ['tool' => $tool, 'instance' => $instance, 'host' => $host];
             }
         }
 
         return ['found' => $found, 'skipped' => $skipped, 'headless' => $headless];
+    }
+
+    /**
+     * Remove leaked subcomponent instances, ghost duplicate unshipped tools,
+     * and invalid single-instance entries from the cluster registry secret.
+     *
+     * @param  list<array<string, mixed>>  $registered
+     * @return list<array<string, mixed>>
+     */
+    protected function pruneBogusRegistryEntries(string $kubectl, array $registered): array
+    {
+        $dirty = false;
+        $cleaned = [];
+
+        $validInstances = [];
+        foreach ($registered as $entry) {
+            $toolSlug = $entry['tool'] ?? null;
+            $tool = ClusterTool::tryFrom((string) $toolSlug)?->canonicalTool();
+            if ($tool !== null && $tool->isShipped()) {
+                $validInstances[$tool->value][] = (string) ($entry['instance'] ?? '');
+            }
+        }
+
+        $seenHosts = [];
+        foreach ($registered as $entry) {
+            $h = $entry['host'] ?? null;
+            if ($h !== null && $h !== '') {
+                $seenHosts[$h][] = $entry;
+            }
+        }
+
+        foreach ($registered as $entry) {
+            $toolSlug = $entry['tool'] ?? null;
+            $instance = (string) ($entry['instance'] ?? '');
+            $host = $entry['host'] ?? null;
+            $tool = ClusterTool::tryFrom((string) $toolSlug)?->canonicalTool();
+
+            // 1. Tool not recognized or not shipped (e.g. gitea when forgejo is the shipped tool)
+            if ($tool === null || ! $tool->isShipped()) {
+                $dirty = true;
+
+                continue;
+            }
+
+            // 2. Check if instance is a leaked subcomponent of another registered instance of this tool
+            // e.g. 'client-vpn-luchtech-dev', 'signal-vpn-luchtech-dev', 'dashboard-vpn-luchtech-dev', 'relay-vpn-luchtech-dev'
+            $isSubcomponentLeak = false;
+            foreach ($tool->components() as $component) {
+                if ($component->role === ClusterToolComponentRole::PRIMARY) {
+                    continue;
+                }
+
+                $prefix = $component->key.'-';
+                if (str_starts_with($instance, $prefix)) {
+                    $baseInstance = substr($instance, strlen($prefix));
+                    if (in_array($baseInstance, $validInstances[$tool->value] ?? [], true)) {
+                        $isSubcomponentLeak = true;
+
+                        break;
+                    }
+                }
+            }
+
+            if ($isSubcomponentLeak) {
+                $dirty = true;
+
+                continue;
+            }
+
+            // 3. For single-instance tools, if an entry has no host and is not a valid host-derived slug,
+            // while a valid instance exists (e.g. grafana matrix-forwarder vs monitor-luchtech-dev)
+            if (! $tool->supportsMultipleInstances()) {
+                $otherInstances = array_filter(
+                    $validInstances[$tool->value] ?? [],
+                    fn ($inst) => $inst !== $instance && $inst !== '',
+                );
+                $hasHost = ! empty($entry['host']);
+                if ($otherInstances !== [] && ! $hasHost) {
+                    $dirty = true;
+
+                    continue;
+                }
+            } else {
+                // 3b. For multi-instance tools (e.g. pocketbase, directus, n8n), prune ghost entries
+                // that have no host and no named instance, or no live deployment on the cluster.
+                $hasHost = ! empty($entry['host']);
+                $hasInstance = ! in_array($instance, ['', 'main'], true);
+                if (! $hasHost && (! $hasInstance || ! $this->isToolPresentOnCluster($kubectl, $tool, $instance))) {
+                    $dirty = true;
+
+                    continue;
+                }
+            }
+
+            // 4. Duplicate host collision: if multiple different tools share the same host
+            // (e.g. n8n and windmill both claiming flow.luchtech.dev, or legacy 'secrets' vs canonical 'openbao')
+            if ($host !== null && $host !== '') {
+                $rawSlugsOnHost = array_unique(array_map(fn ($e) => (string) ($e['tool'] ?? ''), $seenHosts[$host] ?? []));
+                $canonicalToolsOnHost = array_unique(array_filter(array_map(
+                    fn ($e) => ClusterTool::tryFrom((string) ($e['tool'] ?? ''))?->canonicalTool()->value,
+                    $seenHosts[$host] ?? [],
+                )));
+
+                // 4a. Legacy vs canonical on same host: prune legacy category (e.g. secrets vs openbao)
+                $rawTool = ClusterTool::tryFrom((string) $toolSlug);
+                $isLegacyCategory = $rawTool !== null && $rawTool->canonicalTool()->value !== $rawTool->value;
+                if ($isLegacyCategory && in_array($tool->value, $rawSlugsOnHost, true)) {
+                    $dirty = true;
+
+                    continue;
+                }
+
+                // 4b. Multiple distinct canonical tools claiming the same host (e.g. n8n vs windmill)
+                if (count($canonicalToolsOnHost) > 1) {
+                    if (! $this->isToolPresentOnCluster($kubectl, $tool, $instance)) {
+                        $dirty = true;
+
+                        continue;
+                    }
+                }
+            }
+
+            $cleaned[] = $entry;
+        }
+
+        if ($dirty) {
+            $this->toolRegistry($kubectl)->save($cleaned);
+        }
+
+        return $cleaned;
     }
 
     /** @return list<string> */

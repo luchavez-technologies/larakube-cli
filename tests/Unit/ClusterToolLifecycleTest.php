@@ -40,7 +40,7 @@ test('only tools that own their namespace outright are torn down namespace-wide'
     ));
 
     expect(array_map(fn ($t) => $t->value, $wholesale))
-        ->toEqualCanonicalizing(['passwords', 'secrets', 'sso', 'vpn']);
+        ->toEqualCanonicalizing(['passwords', 'secrets', 'sso', 'vpn', 'netbird', 'openbao', 'vaultwarden', 'zitadel']);
 
     foreach ($wholesale as $tool) {
         expect($tool->namespace())->not->toBe('larakube-shared');
@@ -49,7 +49,7 @@ test('only tools that own their namespace outright are torn down namespace-wide'
 
 test('every tool except dns maps to a SharedClusterService for host resolution', function (): void {
     foreach (ClusterTool::cases() as $tool) {
-        if ($tool === ClusterTool::DNS) {
+        if ($tool === ClusterTool::DNS || $tool === ClusterTool::EXTERNAL_DNS) {
             // ExternalDNS is a controller with no ingress — nothing to show.
             expect($tool->service())->toBeNull();
 
@@ -64,7 +64,7 @@ test('every tool except dns maps to a SharedClusterService for host resolution',
 test('tool services are unique so two tools never claim the same host', function (): void {
     $services = array_filter(array_map(
         fn (ClusterTool $t) => $t->service()?->value,
-        ClusterTool::cases(),
+        array_values(array_filter(ClusterTool::cases(), fn (ClusterTool $t) => $t->isLegacy())),
     ));
 
     expect(array_values($services))->toEqual(array_values(array_unique($services)));
@@ -103,13 +103,14 @@ test('only tools that can bundle their own storage advertise --no-plex', functio
 
     expect($noPlex)->toEqualCanonicalizing([
         'chat', 'drive', 'errors', 'flow', 'git', 'insights', 'sso',
+        'matrix', 'ocis', 'glitchtip', 'n8n', 'windmill', 'forgejo', 'metabase', 'zitadel',
     ]);
 
-    // A tool that leases no Commons tenant has nothing to bypass. Drive is the
-    // one exception: its `--no-plex` bundles its own storage, and its Commons
-    // lease is the SeaweedFS S3 bucket — never a Postgres tenant — so it has no
+    // A tool that leases no Commons tenant has nothing to bypass. Drive and OCIS are the
+    // exceptions: their `--no-plex` bundles their own storage, and their Commons
+    // lease is the SeaweedFS S3 bucket — never a Postgres tenant — so they have no
     // commonsDatabases to assert.
-    $storageLeaseOnly = [ClusterTool::DRIVE];
+    $storageLeaseOnly = [ClusterTool::DRIVE, ClusterTool::OCIS];
     foreach (ClusterTool::cases() as $tool) {
         if ($tool->supportsNoPlex() && ! in_array($tool, $storageLeaseOnly, true)) {
             expect($tool->commonsDatabases())->not->toBeEmpty();
@@ -174,7 +175,7 @@ test('only DATA carries an SSO license caveat', function (): void {
     // showing up here unexpectedly means this test needs updating alongside
     // whatever tool just grew a paywalled SSO tier.
     foreach (ClusterTool::cases() as $tool) {
-        if ($tool === ClusterTool::DATA) {
+        if ($tool === ClusterTool::DATA || $tool === ClusterTool::DIRECTUS) {
             continue;
         }
 
@@ -192,9 +193,10 @@ test('supportsMultipleInstances() pins the 2026-08 multi-instance capability aud
     // this list is a deliberate capability change, not drift — this test
     // exists so that change has to touch this file too.
     $expectedFalse = [
-        ClusterTool::CHAT, ClusterTool::MEET, ClusterTool::GIT,
-        ClusterTool::MAIL, ClusterTool::SSO, ClusterTool::SECRETS, ClusterTool::MONITOR, ClusterTool::VPN,
-        ClusterTool::WEBMAIL, ClusterTool::DASHBOARD, ClusterTool::DNS,
+        ClusterTool::CHAT, ClusterTool::MATRIX, ClusterTool::MEET, ClusterTool::LIVEKIT, ClusterTool::GIT, ClusterTool::FORGEJO,
+        ClusterTool::MAIL, ClusterTool::STALWART, ClusterTool::SSO, ClusterTool::ZITADEL, ClusterTool::SECRETS, ClusterTool::OPENBAO,
+        ClusterTool::MONITOR, ClusterTool::GRAFANA, ClusterTool::VPN, ClusterTool::NETBIRD,
+        ClusterTool::WEBMAIL, ClusterTool::BULWARK, ClusterTool::DASHBOARD, ClusterTool::HEADLAMP, ClusterTool::DNS, ClusterTool::EXTERNAL_DNS,
     ];
 
     foreach (ClusterTool::cases() as $tool) {
@@ -214,7 +216,19 @@ test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance
     // regardless of what host was passed. A tool moving in or out of this
     // list means its :remove command grew (or lost) real per-instance
     // teardown — a deliberate capability change, not drift.
-    $expectedTrue = [ClusterTool::DATA, ClusterTool::NOTES, ClusterTool::CRM, ClusterTool::DESIGN, ClusterTool::PASTE, ClusterTool::SIGN, ClusterTool::FLOW, ClusterTool::LINK, ClusterTool::ANALYTICS, ClusterTool::SHEETS, ClusterTool::TASKS];
+    $expectedTrue = [
+        ClusterTool::DATA, ClusterTool::POCKETBASE, ClusterTool::DIRECTUS,
+        ClusterTool::NOTES, ClusterTool::OUTLINE,
+        ClusterTool::CRM, ClusterTool::TWENTY,
+        ClusterTool::DESIGN, ClusterTool::PENPOT,
+        ClusterTool::PASTE, ClusterTool::YOPASS,
+        ClusterTool::SIGN, ClusterTool::DOCUMENSO,
+        ClusterTool::FLOW, ClusterTool::N8N, ClusterTool::WINDMILL,
+        ClusterTool::LINK, ClusterTool::KUTT,
+        ClusterTool::ANALYTICS, ClusterTool::UMAMI, ClusterTool::PLAUSIBLE,
+        ClusterTool::SHEETS, ClusterTool::TEABLE,
+        ClusterTool::TASKS, ClusterTool::PLANKA,
+    ];
 
     foreach (ClusterTool::cases() as $tool) {
         $expected = in_array($tool, $expectedTrue, true);
@@ -327,7 +341,7 @@ test('a migrated tool never keeps its category on a Commons tenant', function ()
     $offenders = [];
 
     foreach (ClusterTool::cases() as $tool) {
-        if ($tool->resourceNaming() !== ResourceNaming::CANONICAL) {
+        if (! $tool->isLegacy() || $tool->resourceNaming() !== ResourceNaming::CANONICAL) {
             continue;
         }
 
@@ -357,7 +371,7 @@ test('a migrated tool never keeps its category on any resource name', function (
     $offenders = [];
 
     foreach (ClusterTool::cases() as $tool) {
-        if ($tool->resourceNaming() !== ResourceNaming::CANONICAL) {
+        if (! $tool->isLegacy() || $tool->resourceNaming() !== ResourceNaming::CANONICAL) {
             continue;
         }
 

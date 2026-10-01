@@ -28,3 +28,18 @@ test('new only offers to start the app when a person can answer', function (): v
 
     expect($source)->toContain("\$this->input->isInteractive() && confirm('Would you like to start your application now with `larakube up`?'");
 });
+
+test('new orchestrates infrastructure manifests with buildImage: false', function (): void {
+    $source = (string) file_get_contents(base_path('app/Commands/NewCommand.php'));
+
+    expect($source)->toContain('orchestrateProjectScaffolding($config, buildImage: false)');
+});
+
+test('GeneratesProjectInfrastructure defaults buildImage to false', function (): void {
+    $ref = new ReflectionMethod(App\Commands\NewCommand::class, 'orchestrateProjectScaffolding');
+    $params = $ref->getParameters();
+    $buildImageParam = collect($params)->first(fn ($p) => $p->getName() === 'buildImage');
+
+    expect($buildImageParam)->not->toBeNull()
+        ->and($buildImageParam->getDefaultValue())->toBeFalse();
+});

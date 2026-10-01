@@ -39,6 +39,7 @@ class SheetsInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'sheets:init' is deprecated. Forwarding to 'teable:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deploySheet();

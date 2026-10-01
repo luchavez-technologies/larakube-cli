@@ -16,9 +16,8 @@ test('the join helper lives on the shared trait, not copied per scaffolder', fun
     expect($trait)->toContain('protected function joinPlexCommons(')
         ->and($trait)->toContain("\$this->call('plex:join'")
         ->and($trait)->toContain("'--no-interaction' => true")
-        // Commons has no home for these, so joining would only emit noise.
-        ->and($trait)->toContain('DatabaseDriver::SQLITE')
-        ->and($trait)->toContain('DatabaseDriver::MONGODB');
+        // Projects with no eligible Commons services (e.g. SQLite + file cache) stay self-hosted.
+        ->and($trait)->toContain('$this->projectCommonsServices($config)');
 });
 
 test('no scaffolder provisions the Commons on its own any more', function (): void {

@@ -41,6 +41,7 @@ class RecordInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'record:init' is deprecated. Forwarding to 'sendrec:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deployRecord();

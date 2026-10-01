@@ -6,7 +6,7 @@ test('a suffixed deployment yields its tool and instance', function (): void {
     $hit = ClusterTool::forInstancedDeployment('outline-notes-luchtech-dev');
 
     expect($hit)->not->toBeNull()
-        ->and($hit['tool'])->toBe(ClusterTool::NOTES)
+        ->and($hit['tool'])->toBe(ClusterTool::OUTLINE)
         ->and($hit['instance'])->toBe('notes-luchtech-dev');
 });
 
@@ -25,7 +25,7 @@ test('the longest matching component wins', function (): void {
     // with the instance "worker-crm-x".
     $hit = ClusterTool::forInstancedDeployment('crm-twenty-worker-crm-luchtech-dev');
 
-    expect($hit['tool'])->toBe(ClusterTool::CRM)
+    expect($hit['tool'])->toBe(ClusterTool::TWENTY)
         ->and($hit['component']->deployment)->toBe('crm-twenty-worker')
         ->and($hit['instance'])->toBe('crm-luchtech-dev');
 });
@@ -34,9 +34,9 @@ test('components added to close the enum gaps are now discoverable', function ()
     // These follow the convention exactly but were invisible because
     // components() never declared them.
     foreach ([
-        'loki-monitor-luchtech-dev' => [ClusterTool::MONITOR, 'monitor-luchtech-dev'],
-        'prometheus-monitor-luchtech-dev' => [ClusterTool::MONITOR, 'monitor-luchtech-dev'],
-        'lk-jwt-meet-luchtech-dev' => [ClusterTool::MEET, 'meet-luchtech-dev'],
+        'loki-monitor-luchtech-dev' => [ClusterTool::GRAFANA, 'monitor-luchtech-dev'],
+        'prometheus-monitor-luchtech-dev' => [ClusterTool::GRAFANA, 'monitor-luchtech-dev'],
+        'lk-jwt-meet-luchtech-dev' => [ClusterTool::LIVEKIT, 'meet-luchtech-dev'],
     ] as $deployment => [$tool, $instance]) {
         $hit = ClusterTool::forInstancedDeployment($deployment);
 
@@ -60,5 +60,25 @@ test('a headless tool is identified by a null service(), not a parallel contract
 
     foreach ([ClusterTool::NOTES, ClusterTool::MAIL, ClusterTool::MONITOR] as $tool) {
         expect($tool->service())->not->toBeNull();
+    }
+});
+
+test('netbird components map to their respective component roles and share the same instance', function (): void {
+    $expected = [
+        'netbird-vpn-luchtech-dev' => ['comp' => 'netbird', 'role' => App\Enums\ClusterToolComponentRole::PRIMARY],
+        'netbird-client-vpn-luchtech-dev' => ['comp' => 'netbird-client', 'role' => App\Enums\ClusterToolComponentRole::WORKER],
+        'netbird-dashboard-vpn-luchtech-dev' => ['comp' => 'netbird-dashboard', 'role' => App\Enums\ClusterToolComponentRole::INGRESS],
+        'netbird-relay-vpn-luchtech-dev' => ['comp' => 'netbird-relay', 'role' => App\Enums\ClusterToolComponentRole::WORKER],
+        'netbird-signal-vpn-luchtech-dev' => ['comp' => 'netbird-signal', 'role' => App\Enums\ClusterToolComponentRole::WORKER],
+    ];
+
+    foreach ($expected as $deployment => $data) {
+        $hit = ClusterTool::forInstancedDeployment($deployment);
+
+        expect($hit)->not->toBeNull()
+            ->and($hit['tool'])->toBe(ClusterTool::NETBIRD)
+            ->and($hit['component']->deployment)->toBe($data['comp'])
+            ->and($hit['component']->role)->toBe($data['role'])
+            ->and($hit['instance'])->toBe('vpn-luchtech-dev');
     }
 });

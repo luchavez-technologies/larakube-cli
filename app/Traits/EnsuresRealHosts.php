@@ -60,6 +60,26 @@ trait EnsuresRealHosts
         $currentHost = $config->getHost($environment, 'web');
         $placeholder = "{$config->getName()}.com";
 
+        // `--web-host=` answers this headlessly, on commands that declare it.
+        $flagged = method_exists($this, 'hasOption') && $this->hasOption('web-host') ? $this->option('web-host') : null;
+
+        if (is_string($flagged) && $flagged !== '') {
+            // The flag provided a value — accept it if it's a real domain,
+            // otherwise fall through to the re-prompt (which will show the
+            // ARCHITECTURAL ALIGNMENT message and either prompt or throw
+            // NonInteractiveValidationException when --no-interaction is on).
+            if (! $this->isLocalDomain($flagged) && $flagged !== $placeholder) {
+                $config->setHost($environment, 'web', $flagged);
+
+                return $this->ensuredHosts[$environment] = $flagged;
+            }
+
+            // Flag supplied a local/placeholder domain — treat it the same as
+            // an unconfigured host: $needsWebHost stays true below, the guard
+            // message fires, and a prompt (or non-interactive error) follows.
+            $currentHost = $flagged;
+        }
+
         $needsWebHost = ! $currentHost || $currentHost === $placeholder || $this->isLocalDomain((string) $currentHost);
 
         // Already real: confirm rather than assume. Answering "no" falls into

@@ -257,7 +257,7 @@ test('--domain on a tool without real per-instance teardown errors instead of si
         // DNS excluded: dns:remove is a bespoke Cloudflare-zone command that
         // never extended AbstractToolRemoveCommand and has no --domain option
         // at all — this loop only covers tools sharing the generic guard.
-        fn (ClusterTool $tool) => ! $tool->hasInstanceAwareRemoval() && $tool !== ClusterTool::DNS,
+        fn (ClusterTool $tool) => ! $tool->hasInstanceAwareRemoval() && $tool !== ClusterTool::DNS && $tool !== ClusterTool::EXTERNAL_DNS,
     );
 
     expect($groupB)->not->toBeEmpty();

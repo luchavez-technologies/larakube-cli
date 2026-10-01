@@ -190,19 +190,36 @@ trait InteractsWithToolRegistry
      */
     protected function isToolPresentOnCluster(string $kubectl, ClusterTool $tool, ?string $instance = null): bool
     {
-        if ($tool === ClusterTool::DNS) {
+        if ($tool === ClusterTool::DNS || $tool === ClusterTool::EXTERNAL_DNS) {
             return trim(Process::run("{$kubectl} get deployment -n larakube-shared --no-headers --ignore-not-found 2>/dev/null | grep external-dns")->output()) !== '';
         }
 
-        $probe = $tool->service()?->presenceProbe();
+        // Multi-engine tools (e.g. N8N vs WINDMILL, UMAMI vs PLAUSIBLE, POCKETBASE vs DIRECTUS)
+        // must never probe the generic shared service (like larakube-tool=flow) because that causes
+        // false positives where one installed engine makes the other engine appear installed.
+        $multiEngineTools = [
+            ClusterTool::FLOW, ClusterTool::N8N, ClusterTool::WINDMILL,
+            ClusterTool::ANALYTICS, ClusterTool::UMAMI, ClusterTool::PLAUSIBLE,
+            ClusterTool::DATA, ClusterTool::POCKETBASE, ClusterTool::DIRECTUS,
+        ];
 
-        if ($probe !== null && trim(Process::run("{$kubectl} get {$probe} --no-headers --ignore-not-found 2>/dev/null")->output()) !== '') {
+        if (! in_array($tool, $multiEngineTools, true)) {
+            $probe = $tool->service()?->presenceProbe();
+
+            if ($probe !== null && trim(Process::run("{$kubectl} get {$probe} --no-headers --ignore-not-found 2>/dev/null")->output()) !== '') {
+                return true;
+            }
+        }
+
+        // For multi-engine tools and instanced tools, check instanced deployments
+        if ($this->hasInstancedDeployment($kubectl, $tool, $instance)) {
             return true;
         }
 
-        // The service probe names one fixed Deployment, so it cannot see an
-        // engine- or instance-suffixed install. Additive: it only adds a true.
-        return $tool->supportsMultipleInstances() && $this->hasInstancedDeployment($kubectl, $tool, $instance);
+        // Also check if tool's primary component deployment exists directly in namespace
+        $primaryDeployment = $tool->primaryComponent($instance)->deployment;
+
+        return in_array($primaryDeployment, $this->clusterDeploymentNames($kubectl, $tool->namespace()), true);
     }
 
     /** Whether a convention-named Deployment of $tool (optionally one instance) exists. */
@@ -211,7 +228,16 @@ trait InteractsWithToolRegistry
         foreach ($this->clusterDeploymentNames($kubectl, $tool->namespace()) as $name) {
             $hit = ClusterTool::forInstancedDeployment($name);
 
-            if ($hit !== null && $hit['tool'] === $tool && ($instance === null || $instance === '' || $hit['instance'] === $instance)) {
+            if ($hit === null) {
+                continue;
+            }
+
+            $matchesTool = ($hit['tool'] === $tool)
+                || ($hit['tool']->canonicalTool() === $tool->canonicalTool())
+                || ($hit['tool']->legacyCategoryPrefix() === $tool->value)
+                || ($tool->legacyCategoryPrefix() === $hit['tool']->value);
+
+            if ($matchesTool && ($instance === null || $instance === '' || $hit['instance'] === $instance)) {
                 return true;
             }
         }

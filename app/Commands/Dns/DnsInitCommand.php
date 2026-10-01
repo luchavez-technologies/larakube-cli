@@ -75,6 +75,7 @@ class DnsInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'dns:init' is deprecated. Forwarding to 'external-dns:init'. Please update your scripts.");
         $this->renderHeader();
 
         $env = $this->resolveToolEnvironment(ClusterTool::DNS);

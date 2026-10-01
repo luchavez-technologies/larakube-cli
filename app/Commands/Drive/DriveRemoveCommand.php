@@ -8,6 +8,13 @@ use Illuminate\Support\Facades\Process;
 
 class DriveRemoveCommand extends AbstractToolRemoveCommand
 {
+    public function handle(): int
+    {
+        $this->laraKubeWarn("[DEPRECATION] 'drive:remove' is deprecated. Please use 'ocis:remove' instead.");
+
+        return parent::handle();
+    }
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::DRIVE;

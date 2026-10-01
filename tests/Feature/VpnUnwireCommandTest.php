@@ -113,7 +113,7 @@ test('every wire pair has a predicate backed by its own marker contract', functi
             // own API — but is still mail-wireable, so it is folded in here
             // rather than special-cased at each call site.
             ->and($tool->hasMailWire())->toBe(
-                $vendor instanceof App\Contracts\HasSmtpWiring || $tool === ClusterTool::SSO,
+                $vendor instanceof App\Contracts\HasSmtpWiring || $tool === ClusterTool::SSO || $tool === ClusterTool::ZITADEL,
             );
     }
 });

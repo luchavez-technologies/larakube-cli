@@ -49,6 +49,7 @@ class SsoInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'sso:init' is deprecated. Forwarding to 'zitadel:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deploySso();

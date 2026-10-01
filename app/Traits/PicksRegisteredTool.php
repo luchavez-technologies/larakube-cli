@@ -87,7 +87,7 @@ trait PicksRegisteredTool
             // choice entirely. Naming a tool used to mean "and take its default
             // instance", which on a multi-instance tool silently acted on the
             // wrong one.
-            if ($only !== null && $tool !== $only) {
+            if ($only !== null && $tool !== $only && $tool->canonicalTool() !== $only->canonicalTool() && $tool->legacyCategoryPrefix() !== $only->value) {
                 continue;
             }
 

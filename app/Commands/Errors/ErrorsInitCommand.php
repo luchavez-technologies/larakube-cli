@@ -44,6 +44,7 @@ class ErrorsInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'errors:init' is deprecated. Forwarding to 'glitchtip:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deployErrors();

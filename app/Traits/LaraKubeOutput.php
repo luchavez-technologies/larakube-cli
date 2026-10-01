@@ -19,6 +19,8 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 use function Termwind\render;
 
+use Throwable;
+
 trait LaraKubeOutput
 {
     use InteractsWithGlobalConfig;
@@ -391,13 +393,19 @@ trait LaraKubeOutput
     protected function withSpin(string $message, callable $callback): bool
     {
         return $this->task($message, function () use ($callback) {
-            $result = $callback();
+            try {
+                $result = $callback();
 
-            if (is_int($result)) {
-                return $result === 0;
+                if (is_int($result)) {
+                    return $result === 0;
+                }
+
+                return $result instanceof ProcessResult ? $result->successful() : $result;
+            } catch (Throwable $e) {
+                $this->laraKubeError($e->getMessage());
+
+                return false;
             }
-
-            return $result instanceof ProcessResult ? $result->successful() : $result;
         });
     }
 }

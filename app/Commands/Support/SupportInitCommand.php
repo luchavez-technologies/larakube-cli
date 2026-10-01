@@ -44,6 +44,7 @@ class SupportInitCommand extends Command
 
     public function handle(): int
     {
+        $this->laraKubeWarn("[DEPRECATION] 'support:init' is deprecated. Forwarding to 'chatwoot:init'. Please update your scripts.");
         $this->renderHeader();
 
         return $this->deploySupport();
