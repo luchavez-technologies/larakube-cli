@@ -75,14 +75,14 @@ lsec() { kubectl --context=$CTX -n larakube-secrets "$@"; }
 lplex() { kubectl --context=$CTX -n larakube-plex "$@"; }
 lshared() { kubectl --context=$CTX -n larakube-shared "$@"; }
 
-# zapi SERVICE SECRET PATH [JSON-BODY]: the Zitadel API with the CLI own PAT
+# zapi SERVICE SECRET ENDPOINT [JSON-BODY]: the Zitadel API with the CLI own PAT
 zapi() {
-  local svc=$1 sec=$2 path=$3 body=${4:-'{}'} port=$((31900 + RANDOM % 90))
+  local svc=$1 sec=$2 endpoint=$3 body=${4:-'{}'} port=$((31900 + RANDOM % 90))
   local pat; pat=$(lsso get secret $sec -o jsonpath='{.data.machine-pat}' | base64 -d)
   kubectl --context=$CTX -n larakube-sso port-forward svc/$svc $port:8080 >/dev/null 2>&1 &
   local pf=$!; sleep 4
   curl -s -m 20 -H "Host: sso.luchtech.dev" -H "Authorization: Bearer $pat" -H 'Content-Type: application/json' \
-    -X POST "http://localhost:$port$path" -d "$body"
+    -X POST "http://localhost:$port$endpoint" -d "$body"
   kill $pf 2>/dev/null
 }
 
