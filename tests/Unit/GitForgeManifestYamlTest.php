@@ -67,6 +67,36 @@ test('forgejo manifest renders valid multi-document YAML with public registratio
         ->and($env->get('FORGEJO__oauth2_client__USERNAME'))->toBe('preferred_username');
 });
 
+test('the forgejo data PVC carries the instance and the Deployment mounts that same claim', function (): void {
+    $rendered = view('k8s.git.forgejo', [
+        'host' => 'git.example.com',
+        'instance' => 'git-example-com',
+        'tenant' => 'forgejo_git_example_com',
+        'buckets' => ['forgejo-storage-git-example-com', 'forgejo-packages-git-example-com', 'forgejo-lfs-git-example-com'],
+        'plexNamespace' => 'larakube-plex',
+        'redisIndex' => 3,
+        's3Host' => 'files.example.com',
+        's3AccessKey' => 'ak',
+        's3SecretKey' => 'sk',
+        'forgejoVersion' => '16.0.4',
+        'runnerVersion' => '13.1.0',
+        'appName' => null,
+    ])->render();
+
+    $documents = array_map(
+        fn (string $doc) => Yaml::parse($doc),
+        array_values(array_filter(array_map('trim', preg_split('/^---$/m', $rendered)), fn (string $doc) => $doc !== '')),
+    );
+    $forgejo = collect($documents)->first(fn (array $doc) => $doc['kind'] === 'Deployment' && $doc['metadata']['name'] === 'forgejo-git-example-com');
+    $pvc = collect($documents)->firstWhere('metadata.name', 'forgejo-storage-git-example-com');
+
+    expect($pvc['kind'])->toBe('PersistentVolumeClaim')
+        ->and($pvc['metadata']['labels']['larakube.io/instance'])->toBe('git-example-com')
+        ->and(collect($forgejo['spec']['template']['spec']['volumes'])->firstWhere('name', 'forgejo-data')['persistentVolumeClaim']['claimName'])
+        ->toBe('forgejo-storage-git-example-com')
+        ->and(collect($documents)->firstWhere('metadata.name', 'forgejo-data'))->toBeNull();
+});
+
 test('runner config mounts the Podman socket into jobs and maps every label to the job image', function (): void {
     $rendered = view('k8s.git.forgejo', [
         'host' => 'git.example.com',

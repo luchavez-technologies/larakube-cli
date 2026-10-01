@@ -15,6 +15,7 @@
     $sshServiceName = $tool->name('ssh', 'server');
     $runnerDeploymentName = $tool->deployment('runner');
     $runnerConfigMapName = $tool->configMap('config', 'runner');
+    $dataVolumeName = $tool->volume('storage', 'server');
     $runnerCacheVolumeName = $tool->volume('cache', 'runner');
     $labels = function (string $component) use ($tool) {
         $out = '';
@@ -29,13 +30,14 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: forgejo-data
+  name: {{ $dataVolumeName }}
+  labels:{!! $labels('server') !!}
   namespace: larakube-shared
 spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: {{ $volumeSize('forgejo-data', '5Gi', true) }}
+      storage: {{ $volumeSize($dataVolumeName, '5Gi', true) }}
 ---
 apiVersion: v1
 kind: Secret
@@ -288,7 +290,7 @@ spec:
       volumes:
         - name: forgejo-data
           persistentVolumeClaim:
-            claimName: forgejo-data
+            claimName: {{ $dataVolumeName }}
 ---
 apiVersion: v1
 kind: Service

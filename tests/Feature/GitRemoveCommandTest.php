@@ -48,7 +48,7 @@ test('git:remove deletes the same resource set as before the component refactor'
         'service/forgejo-http-git-luchtech-dev',
         'service/forgejo-ssh-git-luchtech-dev',
         'ingress/forgejo-git-luchtech-dev',
-        'pvc/forgejo-data',
+        'pvc/forgejo-storage-git-luchtech-dev',
         'secret/forgejo-secrets-git-luchtech-dev',
     ];
     sort($expected);

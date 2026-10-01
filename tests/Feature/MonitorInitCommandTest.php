@@ -4,6 +4,7 @@ use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
 use Illuminate\Support\Facades\Process;
 use Saloon\Http\Faking\MockClient;
 use Saloon\Laravel\Facades\Saloon;
+use Symfony\Component\Yaml\Yaml;
 
 afterEach(function (): void {
     MockClient::destroyGlobal();
@@ -381,6 +382,39 @@ test('monitoring shared blade view conditionally renders optional components bas
         ->toContain('mountPath: /var/lib/grafana/dashboards/');
 });
 
+test('every monitoring PVC carries the instance, and the claims mount the PVCs the manifest creates', function (): void {
+    $manifest = view('k8s.monitoring.shared', [
+        'host' => 'grafana.dev.test',
+        'instance' => 'grafana-dev-test',
+        'grafanaPassword' => 'secret123',
+        'dbPassword' => 'db-secret123',
+        'plexNamespace' => 'larakube-plex',
+        'isLocal' => true,
+        'vpnOnly' => false,
+        'withLogs' => true,
+        'withTraces' => true,
+        'noPlex' => true,
+    ])->render();
+
+    $claims = collect(explode("\n---\n", $manifest))
+        ->filter(fn (string $doc) => str_contains($doc, 'kind: PersistentVolumeClaim'))
+        ->map(fn (string $doc) => Yaml::parse($doc)['metadata']['name'])
+        ->sort()->values()->all();
+
+    expect($claims)->toBe([
+        'grafana-storage-grafana-dev-test',
+        'loki-storage-grafana-dev-test',
+        'prometheus-storage-grafana-dev-test',
+        'tempo-storage-grafana-dev-test',
+    ]);
+
+    foreach ($claims as $claim) {
+        expect($manifest)->toContain("claimName: {$claim}");
+    }
+
+    expect($manifest)->not->toMatch('/claimName: (prometheus|loki|tempo|grafana)-storage\s*$/m');
+});
+
 test('Grafana restarts when its rotated Commons password changes, and only when it uses one', function (): void {
     $render = fn (bool $noPlex) => view('k8s.monitoring.shared', [
         'host' => 'grafana.dev.test',
@@ -398,7 +432,7 @@ test('Grafana restarts when its rotated Commons password changes, and only when 
     $grafana = fn (string $manifest) => collect(explode("\n---\n", $manifest))
         ->first(fn (string $doc) => str_contains($doc, 'kind: Deployment') && str_contains($doc, 'name: grafana-grafana-dev-test'));
 
-    expect(Symfony\Component\Yaml\Yaml::parse($grafana($render(false)))['metadata']['annotations'])
+    expect(Yaml::parse($grafana($render(false)))['metadata']['annotations'])
         ->toBe(['reloader.stakater.com/auto' => 'true'])
-        ->and(Symfony\Component\Yaml\Yaml::parse($grafana($render(true)))['metadata'])->not->toHaveKey('annotations');
+        ->and(Yaml::parse($grafana($render(true)))['metadata'])->not->toHaveKey('annotations');
 });

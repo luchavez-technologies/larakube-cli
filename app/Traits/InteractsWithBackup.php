@@ -47,7 +47,7 @@ trait InteractsWithBackup
      * ClusterTool::forDeployment() resolves to a component with
      * backupVolume: true. Excluded — by that component simply not opting in,
      * not by omission from a hardcoded list — on purpose:
-     *   - prometheus-storage — metrics history, ~1.1G, rebuildable by waiting
+     *   - the Prometheus PVC — metrics history, ~1.1G, rebuildable by waiting
      *     (not a ClusterTool component at all, so forDeployment() never
      *     matches it — nothing to opt out of)
      *   - chat-synapse's media_store and site-packages — media is mirrored to

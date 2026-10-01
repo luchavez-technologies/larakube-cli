@@ -72,6 +72,7 @@ class MonitorInitCommand extends Command
         $prometheusDeployment = "prometheus-{$instance}";
         $lokiDeployment = "loki-{$instance}";
         $lokiConfigMap = "loki-config-{$instance}";
+        $lokiVolume = ToolInstance::forInstance(ClusterTool::MONITOR, $instance)->volume('storage', 'loki');
         $promtailDaemonset = "promtail-{$instance}";
         $promtailConfigMap = "promtail-config-{$instance}";
 
@@ -191,10 +192,9 @@ class MonitorInitCommand extends Command
         }
 
         if ($removedLogs) {
-            // loki-storage PVC name stays bare (never renamed, per the PVC
-            // convention), but it IS still deleted here — confirmComponentRemoval()
-            // above already got explicit sign-off to wipe its retained logs.
-            if (! $this->removeResources('Removing Loki...', "{$kubectl} delete deployment,svc,configmap,pvc {$lokiDeployment} {$lokiConfigMap} loki-storage -n {$ns} --ignore-not-found")
+            // The Loki PVC goes with it: confirmComponentRemoval() above already
+            // got explicit sign-off to wipe its retained logs.
+            if (! $this->removeResources('Removing Loki...', "{$kubectl} delete deployment,svc,configmap,pvc {$lokiDeployment} {$lokiConfigMap} {$lokiVolume} -n {$ns} --ignore-not-found")
                 || ! $this->removeResources('Removing Promtail...', "{$kubectl} delete daemonset,configmap {$promtailDaemonset} {$promtailConfigMap} -n {$ns} --ignore-not-found")
                 || ! $this->removeResources('Removing Promtail RBAC...', "{$kubectl} delete serviceaccount promtail -n {$ns} --ignore-not-found")) {
                 $this->laraKubeError('Could not remove the previously-deployed log aggregation stack — see the output above.');
@@ -204,7 +204,7 @@ class MonitorInitCommand extends Command
         }
 
         if ($removedTraces) {
-            if (! $this->removeResources('Removing Tempo...', "{$kubectl} delete deployment,svc,configmap,pvc tempo tempo-config tempo-storage -n {$ns} --ignore-not-found")) {
+            if (! $this->removeResources('Removing Tempo...', "{$kubectl} delete deployment,svc,configmap,pvc tempo tempo-config tempo-storage-{$instance} -n {$ns} --ignore-not-found")) {
                 $this->laraKubeError('Could not remove the previously-deployed trace storage — see the output above.');
 
                 return 1;
@@ -376,7 +376,7 @@ class MonitorInitCommand extends Command
         $removedTraces = false;
 
         if (! $withLogs && $lokiMismatch) {
-            if ($this->confirmComponentRemoval('Log aggregation (Loki + Promtail) is currently deployed.', 'This will delete Loki + Promtail and wipe loki-storage (~10Gi of historical logs).')) {
+            if ($this->confirmComponentRemoval('Log aggregation (Loki + Promtail) is currently deployed.', "This will delete Loki + Promtail and wipe loki-storage-{$instance} (~10Gi of historical logs).")) {
                 $removedLogs = true;
             } else {
                 $withLogs = true;
@@ -385,7 +385,7 @@ class MonitorInitCommand extends Command
         }
 
         if (! $withTraces && $tempoMismatch) {
-            if ($this->confirmComponentRemoval('Tempo trace storage is currently deployed.', 'This will delete Tempo and wipe tempo-storage (~5Gi of trace data).')) {
+            if ($this->confirmComponentRemoval('Tempo trace storage is currently deployed.', "This will delete Tempo and wipe tempo-storage-{$instance} (~5Gi of trace data).")) {
                 $removedTraces = true;
             } else {
                 $withTraces = true;

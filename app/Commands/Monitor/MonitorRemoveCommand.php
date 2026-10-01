@@ -23,14 +23,16 @@ class MonitorRemoveCommand extends AbstractToolRemoveCommand
 
     /**
      * A --no-plex install never leased a Commons Postgres tenant for
-     * Grafana — it keeps SQLite on the grafana-storage PVC instead (see
+     * Grafana — it keeps SQLite on the Grafana PVC instead (see
      * monitor:init). Its presence is the signal: --purge must not try to
      * drop a 'grafana' Commons database that was never allocated.
      */
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
+        $volume = ToolInstance::forInstance(ClusterTool::MONITOR, $this->resolveInstance($kubectl) ?? 'monitor')->volume('storage', 'grafana');
+
         return trim(Process::run(
-            "{$kubectl} get pvc grafana-storage -n {$namespace} --ignore-not-found",
+            "{$kubectl} get pvc {$volume} -n {$namespace} --ignore-not-found",
         )->output()) !== '';
     }
 
@@ -44,7 +46,12 @@ class MonitorRemoveCommand extends AbstractToolRemoveCommand
     {
         $instance = $this->resolveInstance($kubectl) ?? 'monitor';
         $grafanaName = "grafana-{$instance}";
-        $secretName = ToolInstance::forInstance(ClusterTool::MONITOR, $instance)->secret();
+        $names = ToolInstance::forInstance(ClusterTool::MONITOR, $instance);
+        $secretName = $names->secret();
+        $prometheusVolume = $names->volume('storage', 'prometheus');
+        $lokiVolume = $names->volume('storage', 'loki');
+        $tempoVolume = "tempo-storage-{$instance}";
+        $grafanaVolume = $names->volume('storage', 'grafana');
         $prometheusName = "prometheus-{$instance}";
         $prometheusConfigMapName = "prometheus-config-{$instance}";
         $lokiDeployment = "loki-{$instance}";
@@ -53,13 +60,13 @@ class MonitorRemoveCommand extends AbstractToolRemoveCommand
         $promtailConfigMap = "promtail-config-{$instance}";
 
         $steps = [
-            'Removing Prometheus...' => "deployment,svc,configmap,pvc,serviceaccount {$prometheusName} prometheus {$prometheusConfigMapName} prometheus-config prometheus-storage -n {$namespace}",
-            'Removing Loki...' => "deployment,svc,configmap,pvc {$lokiDeployment} {$lokiConfigMap} loki-storage -n {$namespace}",
+            'Removing Prometheus...' => "deployment,svc,configmap,pvc,serviceaccount {$prometheusName} prometheus {$prometheusConfigMapName} prometheus-config {$prometheusVolume} -n {$namespace}",
+            'Removing Loki...' => "deployment,svc,configmap,pvc {$lokiDeployment} {$lokiConfigMap} {$lokiVolume} -n {$namespace}",
             'Removing Promtail...' => "daemonset,configmap {$promtailDaemonset} {$promtailConfigMap} -n {$namespace}",
             'Removing Promtail RBAC...' => "serviceaccount promtail -n {$namespace}",
-            'Removing Tempo...' => "deployment,svc,configmap,pvc tempo tempo-config tempo-storage -n {$namespace}",
+            'Removing Tempo...' => "deployment,svc,configmap,pvc tempo tempo-config {$tempoVolume} -n {$namespace}",
             'Removing kube-state-metrics...' => "deployment,svc,serviceaccount kube-state-metrics -n {$namespace}",
-            'Removing Grafana...' => "deployment,svc,ingress,secret,configmap,pvc {$grafanaName} grafana {$secretName} grafana-datasources grafana-dashboard-provider grafana-dashboards grafana-storage -n {$namespace}",
+            'Removing Grafana...' => "deployment,svc,ingress,secret,configmap,pvc {$grafanaName} grafana {$secretName} grafana-datasources grafana-dashboard-provider grafana-dashboards {$grafanaVolume} -n {$namespace}",
             'Removing monitoring RBAC...' => 'clusterrole,clusterrolebinding larakube-prometheus larakube-promtail larakube-kube-state-metrics',
         ];
 

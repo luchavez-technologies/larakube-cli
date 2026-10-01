@@ -10,6 +10,10 @@
     $tool = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::MONITOR, $instance);
     $secretName = $tool->secret();
     $dbName = $tool->database();
+    $prometheusVolume = $tool->volume('storage', 'prometheus');
+    $lokiVolume = $tool->volume('storage', 'loki');
+    $tempoVolume = "tempo-storage-{$instance}";
+    $grafanaVolume = $tool->volume('storage', 'grafana');
     // Identity for discovery and teardown. Names are for humans; labels are
     // how anything finds these again — a component named after its upstream
     // (`prometheus`) is ambiguous by name alone.
@@ -110,13 +114,14 @@ data:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: prometheus-storage
+  name: {{ $prometheusVolume }}
+  labels:{!! $labels('prometheus') !!}
   namespace: larakube-shared
 spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: {{ $volumeSize('prometheus-storage', '2Gi', true) }}
+      storage: {{ $volumeSize($prometheusVolume, '2Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -181,7 +186,7 @@ spec:
             name: {{ $prometheusConfigMapName }}
         - name: storage
           persistentVolumeClaim:
-            claimName: prometheus-storage
+            claimName: {{ $prometheusVolume }}
 ---
 apiVersion: v1
 kind: Service
@@ -246,13 +251,14 @@ data:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: loki-storage
+  name: {{ $lokiVolume }}
+  labels:{!! $labels('loki') !!}
   namespace: larakube-shared
 spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: {{ $volumeSize('loki-storage', '5Gi', true) }}
+      storage: {{ $volumeSize($lokiVolume, '5Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -307,7 +313,7 @@ spec:
             name: {{ $lokiConfigMapName }}
         - name: storage
           persistentVolumeClaim:
-            claimName: loki-storage
+            claimName: {{ $lokiVolume }}
 ---
 apiVersion: v1
 kind: Service
@@ -378,13 +384,13 @@ data:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: tempo-storage
+  name: {{ $tempoVolume }}
   namespace: larakube-shared
 spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: {{ $volumeSize('tempo-storage', '5Gi', true) }}
+      storage: {{ $volumeSize($tempoVolume, '5Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -439,7 +445,7 @@ spec:
             name: tempo-config
         - name: storage
           persistentVolumeClaim:
-            claimName: tempo-storage
+            claimName: {{ $tempoVolume }}
 ---
 apiVersion: v1
 kind: Service
@@ -767,13 +773,14 @@ data:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: grafana-storage
+  name: {{ $grafanaVolume }}
+  labels:{!! $labels('grafana') !!}
   namespace: larakube-shared
 spec:
   accessModes: [ReadWriteOnce]
   resources:
     requests:
-      storage: {{ $volumeSize('grafana-storage', '1Gi', false) }}
+      storage: {{ $volumeSize($grafanaVolume, '1Gi', false) }}
 @endif
 ---
 apiVersion: apps/v1
@@ -888,7 +895,7 @@ spec:
 @if($noPlex ?? false)
         - name: storage
           persistentVolumeClaim:
-            claimName: grafana-storage
+            claimName: {{ $grafanaVolume }}
 @endif
 ---
 apiVersion: v1

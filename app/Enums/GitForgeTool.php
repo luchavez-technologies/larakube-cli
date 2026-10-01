@@ -66,10 +66,7 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
                     ['kind' => 'service', 'name' => $canonical($name('git-forgejo-http'))],
                     ['kind' => 'service', 'name' => $canonical($name('git-forgejo-ssh'))],
                     ['kind' => 'ingress', 'name' => $canonical($name('git-forgejo'))],
-                    // forgejo-data is NEVER suffixed — it's the live repo/LFS/
-                    // registry PVC, and renaming a PVC means a brand-new empty
-                    // volume, not the existing one.
-                    ['kind' => 'pvc', 'name' => 'forgejo-data'],
+                    ['kind' => 'pvc', 'name' => $canonical($name('git-forgejo-storage'))],
                     ['kind' => 'secret', 'name' => self::credentialsSecret($instance)],
                 ],
                 backupVolume: true,
