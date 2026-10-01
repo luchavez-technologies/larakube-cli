@@ -14,6 +14,7 @@ afterEach(function (): void {
 });
 
 test('chat:init deploys matrix using plex commons postgres by default', function (): void {
+    ssoRegistered();
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -41,6 +42,7 @@ test('chat:init deploys matrix using plex commons postgres by default', function
 });
 
 test('chat:init deploys MAS via resolveManagedDbPassword() (Commons Postgres path) when SSO is already installed', function (): void {
+    ssoRegistered();
     // Regression guard: deployMas() calls resolveManagedDbPassword() (from
     // SyncsClusterSecrets) on the Commons-Postgres path (no --no-plex) — a
     // trait that was never added to this command's `use` list, so this call
@@ -60,8 +62,8 @@ test('chat:init deploys MAS via resolveManagedDbPassword() (Commons Postgres pat
         ]),
         '*get secret plex-admin*' => base64_encode('test-cred'),
         '*get secret synapse-secrets-*' => Process::result(output: '', exitCode: 1),
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret mas-sso-*' => Process::result(output: '', exitCode: 1),
         '*get secret mas-secrets-*' => Process::result(output: '', exitCode: 1),
         '*get secret mas-config-*' => Process::result(output: '', exitCode: 1),
@@ -98,6 +100,7 @@ test('chat:init deploys MAS via resolveManagedDbPassword() (Commons Postgres pat
 });
 
 test('chat:init restarts Synapse when MAS is already the active auth mode and its served config actually changed', function (): void {
+    ssoRegistered();
     // Regression guard for a real live incident, 2026-08-24: Synapse fetches
     // MAS's own self-reported discovery metadata (issuer, endpoints) once
     // and CACHES it in memory with no periodic refresh. A code fix to MAS's
@@ -117,8 +120,8 @@ test('chat:init restarts Synapse when MAS is already the active auth mode and it
         ]),
         '*get secret plex-admin*' => base64_encode('test-cred'),
         '*get secret synapse-secrets-*' => Process::result(output: '', exitCode: 1),
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         // MAS is ALREADY the active auth mode before this run: chat-oidc
         // absent (unmatched Process::fake patterns default to empty/success,
         // so no explicit fake is needed for that), chat-mas-secrets already
@@ -154,6 +157,7 @@ test('chat:init restarts Synapse when MAS is already the active auth mode and it
 });
 
 test('chat:init aborts when the Commons S3 credentials are missing', function (): void {
+    ssoRegistered();
     Process::fake([
         // Specific patterns first — the S3 keys read empty while everything
         // else on plex-admin resolves, so we fail on creds and nothing earlier.
@@ -180,6 +184,7 @@ test('chat:init aborts when the Commons S3 credentials are missing', function ()
 });
 
 test('chat:init deploys standalone matrix when --no-plex is passed', function (): void {
+    ssoRegistered();
     Process::fake([
         '*get secret synapse-secrets-*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
@@ -194,6 +199,7 @@ test('chat:init deploys standalone matrix when --no-plex is passed', function ()
 });
 
 test('chat:init --vpn-only creates the Traefik Middleware before applying the manifests', function (): void {
+    ssoRegistered();
     Process::fake([
         '*get secret synapse-secrets-*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
@@ -208,6 +214,7 @@ test('chat:init --vpn-only creates the Traefik Middleware before applying the ma
 });
 
 test('chat:init --vpn-only aborts when the Middleware apply fails', function (): void {
+    ssoRegistered();
     Process::fake([
         '*get secret synapse-secrets-*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
@@ -225,6 +232,7 @@ test('chat:init --vpn-only aborts when the Middleware apply fails', function ():
 // init and remove test files.
 
 test('Synapse takes its database password from its credentials Secret, so an OpenBao rotation reaches it', function (): void {
+    ssoRegistered();
     // It must not be baked into homeserver.yaml: OpenBao rotates the role's
     // password, the credentials Secret follows, the config file wouldn't, and
     // Synapse would lose the database once its open connections recycled.

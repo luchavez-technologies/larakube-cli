@@ -237,20 +237,23 @@ class SsoUnwireCommand extends Command
 
         Process::run("{$kubectl} delete middleware sso-forwardauth -n {$schema['namespace']} --ignore-not-found");
 
-        if ($this->gatedForwardAuthTools($kubectl, $tool) === []) {
-            $this->withSpin('No gated tools left — removing the shared SSO proxy...', function () use ($kubectl, $ssoNs, $ssoHost, $pat): void {
-                $projectId = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-proxy', 'project-id');
-                $appId = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-proxy', 'app-id');
+        $sso = $this->ssoNames($kubectl);
+        if ($sso !== null && $this->gatedForwardAuthTools($kubectl, $tool) === []) {
+            $this->withSpin('No gated tools left — removing the shared SSO proxy...', function () use ($kubectl, $sso, $ssoNs, $ssoHost, $pat): void {
+                $appSecret = $this->ssoAppSecretName(ClusterTool::SSO, $sso->instance, 'proxy');
+                $projectId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'project-id');
+                $appId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'app-id');
                 if ($projectId !== null && $appId !== null) {
                     $this->zitadelDeleteOidcApp($ssoHost, $pat, $projectId, $appId);
                 }
 
                 $ns = 'larakube-shared';
-                Process::run("{$kubectl} delete ingress sso-proxy -n {$ns} --ignore-not-found");
-                Process::run("{$kubectl} delete service sso-proxy -n {$ns} --ignore-not-found");
-                Process::run("{$kubectl} delete deployment sso-proxy -n {$ns} --ignore-not-found");
-                Process::run("{$kubectl} delete secret sso-proxy -n {$ns} --ignore-not-found");
-                Process::run("{$kubectl} delete secret sso-app-proxy -n {$ssoNs} --ignore-not-found");
+                $proxy = $sso->deployment('proxy');
+                Process::run("{$kubectl} delete ingress {$proxy} -n {$ns} --ignore-not-found");
+                Process::run("{$kubectl} delete service {$proxy} -n {$ns} --ignore-not-found");
+                Process::run("{$kubectl} delete deployment {$proxy} -n {$ns} --ignore-not-found");
+                Process::run("{$kubectl} delete secret {$sso->secret(SecretKind::CREDENTIALS, 'proxy')} -n {$ns} --ignore-not-found");
+                Process::run("{$kubectl} delete secret {$appSecret} -n {$ssoNs} --ignore-not-found");
             });
         }
 

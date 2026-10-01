@@ -13,12 +13,14 @@ afterEach(function (): void {
 });
 
 test('mail:delete is registered', function (): void {
+    ssoRegistered();
     $this->artisan('list')
         ->assertExitCode(0)
         ->expectsOutputToContain('mail:delete');
 });
 
 test('mail:delete requires installed stalwart', function (): void {
+    ssoRegistered();
     Process::fake(['*larakube.io/tool=mail*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:delete')
@@ -27,11 +29,12 @@ test('mail:delete requires installed stalwart', function (): void {
 });
 
 test('mail:delete deletes account by email', function (): void {
+    ssoRegistered();
     Process::fake([
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
-        '*get deployment sso-zitadel*' => Process::result(output: ''),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);
 
@@ -47,12 +50,13 @@ test('mail:delete deletes account by email', function (): void {
 });
 
 test('mail:delete --sso removes the matching Zitadel identity', function (): void {
+    ssoRegistered();
     Process::fake([
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*' => Process::result(),
     ]);
 

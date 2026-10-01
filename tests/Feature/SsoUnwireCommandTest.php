@@ -14,12 +14,14 @@ afterEach(function (): void {
 });
 
 test('sso:unwire is registered', function (): void {
+    ssoRegistered();
     $this->artisan('list')
         ->assertExitCode(0)
         ->expectsOutputToContain('sso:unwire');
 });
 
 test('sso:unwire --domain= targets a specific instance instead of always the default', function (): void {
+    ssoRegistered();
     // Regression test: sso:unwire had NO instance/domain targeting at all
     // before — it always unwired the tool's single default instance,
     // resolved via oidcEnv($engine) with no $instance argument. This proves
@@ -29,9 +31,9 @@ test('sso:unwire --domain= targets a specific instance instead of always the def
     // Directus's schema has a separate, pre-existing (unrelated) gap where
     // its 'deployment'/'secret' keys are instance-invariant literals.
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment pocketbase-blog-example-com*' => Process::result(output: 'pocketbase-blog-example-com   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*data-directus-sso*project-id*' => Process::result(output: base64_encode('proj-1')),
         '*data-directus-sso*app-id*' => Process::result(output: base64_encode('app-1')),
         '*delete secret data-directus-sso*' => Process::result(output: 'secret deleted'),
@@ -51,10 +53,11 @@ test('sso:unwire --domain= targets a specific instance instead of always the def
 });
 
 test('sso:unwire delegates to sso:wire --remove', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment*grafana*' => Process::result(output: 'grafana-grafana-dev-test   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*grafana-sso*project-id*' => Process::result(output: base64_encode('proj-1')),
         '*grafana-sso*app-id*' => Process::result(output: base64_encode('app-1')),
         '*delete secret grafana-sso*' => Process::result(output: 'secret deleted'),
@@ -70,13 +73,14 @@ test('sso:unwire delegates to sso:wire --remove', function (): void {
 });
 
 test('sso:unwire deletes a legacy "Login with SSO" Forgejo source', function (): void {
+    ssoRegistered();
     // The unwire matcher used to look for the canonical `zitadel` name only,
     // so a source left behind by an older wiring (named after the display
     // label) was never deleted — `sso:unwire` silently did nothing.
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*admin auth list*' => Process::result(output: "ID\tName\tType\tEnabled\n".'4'."\t"."Login with SSO\t".'OpenID Connect'."\t".'true'),
         '*admin auth delete*' => Process::result(output: 'source deleted'),
     ]);
@@ -91,10 +95,11 @@ test('sso:unwire deletes a legacy "Login with SSO" Forgejo source', function ():
 });
 
 test('sso:unwire deregisters NetBird\'s Zitadel identity provider via its own REST API', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment netbird*' => Process::result(output: 'netbird   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*netbird-sso*project-id*' => Process::result(output: base64_encode('proj-1')),
         '*netbird-sso*app-id*' => Process::result(output: base64_encode('app-vpn')),
         '*delete secret netbird-sso*' => Process::result(output: 'secret deleted'),
@@ -119,10 +124,11 @@ test('sso:unwire deregisters NetBird\'s Zitadel identity provider via its own RE
 });
 
 test('sso:unwire for NetBird is a clean no-op when no zitadel identity provider is registered', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment netbird*' => Process::result(output: 'netbird   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*netbird-sso*' => Process::result(output: '', exitCode: 1),
         '*delete secret netbird-sso*' => Process::result(output: 'secret deleted'),
         '*delete secret netbird-oidc*' => Process::result(output: 'secret deleted'),
@@ -141,6 +147,7 @@ test('sso:unwire for NetBird is a clean no-op when no zitadel identity provider 
 });
 
 test('sso:unwire removes the same OIDC secret sso:wire wrote', function (): void {
+    ssoRegistered();
     // wire wrote netbird-oidc-{instance} (via vpnName()) while unwire
     // deleted $schema['secret'], which was unsuffixed — so the marker survived
     // and tool:list kept reporting the tool as SSO-wired after unwiring it.
@@ -165,13 +172,14 @@ test('sso:unwire lists only tools that are actually wired, by host', function ()
     // did work. "Wired" means the marker Secret sso:wire writes exists.
     Process::fake([
         '*larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ssoRegistryRow(),
             ['tool' => 'vpn', 'instance' => 'vpn-luchtech-dev', 'host' => 'vpn.luchtech.dev'],
             ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'host' => 'notes.luchtech.dev'],
         ]))),
         // Only VPN's marker exists, so only VPN is offered.
         '*get secret netbird-oidc-vpn-luchtech-dev*' => Process::result(output: 'netbird-oidc-vpn-luchtech-dev  Opaque  2  1d'),
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*' => Process::result(output: ''),
     ]);
 
@@ -188,9 +196,10 @@ test('sso:unwire lists only tools that are actually wired, by host', function ()
 test('sso:unwire says nothing is wired rather than listing every capable tool', function (): void {
     Process::fake([
         '*larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ssoRegistryRow(),
             ['tool' => 'vpn', 'instance' => 'vpn-luchtech-dev', 'host' => 'vpn.luchtech.dev'],
         ]))),
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*' => Process::result(output: ''),
     ]);
 

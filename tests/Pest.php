@@ -259,6 +259,7 @@ function registeredToolRemoveFakes(string $removeCommand, string $instance = '',
     return [
         '*get secret larakube-tools-registry*' => Illuminate\Support\Facades\Process::result(output: base64_encode(json_encode([
             ['tool' => $tool->value, 'instance' => $instance, 'host' => $host],
+            ...($tool === App\Enums\ClusterTool::SSO ? [] : [ssoRegistryRow()]),
         ]))),
         '*create namespace larakube-shared*' => Illuminate\Support\Facades\Process::result(),
         '*create secret generic larakube-tools-registry*' => Illuminate\Support\Facades\Process::result(),
@@ -293,7 +294,29 @@ function openBaoRegistered(string $host = 'secrets.example.com'): Tests\Support\
 {
     return Tests\Support\FakeToolRegistry::install([
         ['tool' => 'openbao', 'instance' => 'secrets-example-com', 'host' => $host],
+        ssoRegistryRow(),
     ]);
+}
+
+/**
+ * Registers a Zitadel install in the fake tool registry, so the SSO helpers
+ * resolve its names (zitadel-sso-example-com, zitadel-secrets-sso-example-com),
+ * beside the OpenBao one every Secrets helper needs.
+ */
+function ssoRegistered(): Tests\Support\FakeToolRegistry
+{
+    return openBaoRegistered();
+}
+
+/**
+ * The registry row for the Zitadel install ssoRegistered() fakes, for tests that
+ * feed the registry through a faked `get secret larakube-tools-registry`.
+ *
+ * @return array<string, string>
+ */
+function ssoRegistryRow(): array
+{
+    return ['tool' => 'zitadel', 'instance' => 'sso-example-com', 'host' => 'sso.example.com'];
 }
 
 /**

@@ -57,6 +57,7 @@ test('vpn ingress manifest parses as valid YAML across isLocal/proxied branches'
 
 test('sso oauth2-proxy ingress manifest parses as valid YAML across isLocal/proxied branches', function (bool $isLocal, bool $proxied): void {
     $rendered = view('k8s.sso.proxy', [
+        'names' => App\Data\ToolInstance::forInstance(App\Enums\ClusterTool::SSO, 'sso-example-com'),
         'namespace' => 'larakube-sso', 'authHost' => 'sso.example.com', 'isLocal' => $isLocal, 'proxied' => $proxied,
         'clientId' => 'cid', 'clientSecret' => 'csecret', 'cookieDomain' => 'example.com', 'cookieSecret' => 'cookiesecret',
         'image' => 'quay.io/oauth2-proxy/oauth2-proxy:v7.6.0', 'rbacRole' => 'owner', 'secretChecksum' => 'abc123', 'ssoHost' => 'sso.example.com',
@@ -78,6 +79,7 @@ test('sso oauth2-proxy ingress manifest parses as valid YAML across isLocal/prox
 ]);
 
 test('static-site dev-server manifest parses as valid YAML', function (): void {
+    ssoRegistered();
     $config = new App\Data\ConfigData(
         id: 'demo', name: 'demo', path: '/tmp/demo', framework: App\Enums\AppFramework::VITE,
     );
@@ -136,6 +138,7 @@ test('static-site caddy manifest parses as valid YAML for one or many hosts', fu
 ]);
 
 test('static-site ingress proxies only when the environment is proxied', function (): void {
+    ssoRegistered();
     $config = new App\Data\ConfigData(
         id: 'demo', name: 'demo', path: '/tmp/demo', framework: App\Enums\AppFramework::VITE,
     );

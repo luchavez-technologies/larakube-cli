@@ -39,26 +39,30 @@ afterEach(function (): void {
 });
 
 test('sso:wire is registered', function (): void {
+    ssoRegistered();
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('sso:wire');
 });
 
 test('sso:wire rejects a tool with no OIDC support', function (): void {
+    ssoRegistered();
     $this->artisan('sso:wire', ['--tool' => 'dns', '--no-interaction' => true])
         ->assertExitCode(1)
         ->expectsOutputToContain("can't be wired to SSO");
 });
 
 test('sso:wire rejects an unknown tool', function (): void {
+    ssoRegistered();
     $this->artisan('sso:wire', ['--tool' => 'not-a-real-tool', '--no-interaction' => true])
         ->assertExitCode(1)
         ->expectsOutputToContain("Unknown tool 'not-a-real-tool'");
 });
 
 test('sso:wire errors when Zitadel is not installed', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: ''),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: ''),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true, '--context' => 'ctx'])
@@ -93,12 +97,13 @@ test('sso:wire resolves a cloud tool host from the cluster registry when .laraku
         chdir($dir);
 
         Process::fake([
-            '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+            '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
             '*get deployment headlamp*' => Process::result(output: 'headlamp   1/1   1   1   10d'),
-            '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+            '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
             '*get secret headlamp-sso*' => Process::result(output: ''),
             '*get secret larakube-tools-registry*' => Process::result(
                 output: base64_encode((string) json_encode([
+                    ssoRegistryRow(),
                     ['tool' => 'dashboard', 'instance' => 'main', 'installed_at' => '2026-08-01T00:00:00+00:00', 'host' => 'dashboard.luchtech.dev'],
                 ])),
             ),
@@ -137,10 +142,11 @@ test('sso:wire resolves a cloud tool host from the cluster registry when .laraku
 });
 
 test('sso:wire registers a new OIDC client and wires it to Grafana', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment*grafana*' => Process::result(output: 'grafana-grafana-dev-test   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret grafana-sso*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
@@ -185,14 +191,15 @@ test('sso:wire registers a new OIDC client and wires it to Grafana', function ()
 });
 
 test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, never as a literal env override', function (): void {
+    ssoRegistered();
     // ADR 0018: sso_only_vars merged into $staticVars must land in the
     // Secret (reached via --from=secret) — a literal `set env KEY=value`
     // pass would desync kubectl apply's bookkeeping for the next
     // monitor:init re-apply, exactly the bug this test guards against.
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment*grafana*' => Process::result(output: 'grafana-grafana-dev-test   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret grafana-sso*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
@@ -229,14 +236,15 @@ test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, ne
 });
 
 test('sso:wire without --sso-only unsets a previously-written sso_only_var instead of leaving it stuck on', function (): void {
+    ssoRegistered();
     // The one legitimate remaining imperative Deployment touch (ADR 0018
     // point 4): there's no declarative way to remove an env var a PAST
     // --sso-only run may have written, so toggling back off still needs
     // `kubectl set env deployment/X KEY-`.
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment*grafana*' => Process::result(output: 'grafana-grafana-dev-test   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret grafana-sso*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
@@ -272,10 +280,11 @@ test('sso:wire without --sso-only unsets a previously-written sso_only_var inste
 });
 
 test('sso:wire registers oCIS Drive as a public PKCE client with its real callback URIs', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment ocis-*' => Process::result(output: 'ocis-drive-example-com   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret ocis-sso-*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
@@ -338,12 +347,13 @@ test('sso:wire registers oCIS Drive as a public PKCE client with its real callba
 });
 
 test('sso:wire re-registers a Drive app whose Zitadel registration is stale (confidential, wrong redirect URI)', function (): void {
+    ssoRegistered();
     $tld = GlobalConfigData::load()->getLocalTld();
 
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment ocis-*' => Process::result(output: 'ocis-drive-example-com   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         // A previous sso:wire run cached creds for a confidential client whose
         // only redirect URI was the tool root — the state found live on
         // production 2026-07-31, where the pod already ran the corrected env.
@@ -399,12 +409,13 @@ test('sso:wire re-registers a Drive app whose Zitadel registration is stale (con
 });
 
 test('sso:wire re-registers a Drive app whose redirect URIs match but post-logout URIs are missing', function (): void {
+    ssoRegistered();
     $tld = GlobalConfigData::load()->getLocalTld();
 
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment ocis-*' => Process::result(output: 'ocis-drive-example-com   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*ocis-sso-*client-id*' => Process::result(output: base64_encode('cid-live')),
         '*ocis-sso-*client-secret*' => Process::result(output: base64_encode('')),
         '*ocis-sso-*app-id*' => Process::result(output: base64_encode('app-live')),
@@ -456,10 +467,11 @@ test('sso:wire re-registers a Drive app whose redirect URIs match but post-logou
 });
 
 test('sso:wire for Drive installs the ocisRoles claim Action, gates login via rbacRoles(), and grants ocisAdmin via --admin-email', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment ocis-*' => Process::result(output: 'ocis-drive-example-com   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret ocis-sso-*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
@@ -550,10 +562,11 @@ test('sso:wire for Drive installs the ocisRoles claim Action, gates login via rb
 });
 
 test('sso:wire refreshes a stale flattenOcisRoles script instead of skipping the existing Action', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment ocis-*' => Process::result(output: 'ocis-drive-example-com   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret ocis-sso-*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
@@ -604,6 +617,7 @@ test('sso:wire refreshes a stale flattenOcisRoles script instead of skipping the
 });
 
 test('sso:wire refreshes a stale flattenLaraKubeRoles script to add the groups claim', function (): void {
+    ssoRegistered();
     // Regression for a real live gap (2026-08-06): granting dashboard-admin
     // in Zitadel did nothing on the cluster, because Headlamp authorizes via
     // Kubernetes impersonation (Impersonate-User/-Group), not its own OIDC
@@ -612,9 +626,9 @@ test('sso:wire refreshes a stale flattenLaraKubeRoles script to add the groups c
     // asserts an EXISTING (pre-groups) Action gets its script updated in
     // place, same self-heal as flattenOcisRoles above.
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment headlamp*' => Process::result(output: 'headlamp   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret headlamp-sso*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
@@ -652,10 +666,11 @@ test('sso:wire refreshes a stale flattenLaraKubeRoles script to add the groups c
 });
 
 test('sso:wire turns projectRoleCheck on immediately, not just projectRoleAssertion', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment*grafana*' => Process::result(output: 'grafana-grafana-dev-test   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret grafana-sso*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
@@ -691,10 +706,11 @@ test('sso:wire turns projectRoleCheck on immediately, not just projectRoleAssert
 });
 
 test('sso:wire aborts before registering an OIDC client if role-gating setup fails', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment*grafana*' => Process::result(output: 'grafana-grafana-dev-test   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     // Simulates the real bug found live 2026-07-30: the claim-flattening
@@ -718,19 +734,20 @@ test('sso:wire aborts before registering an OIDC client if role-gating setup fai
 });
 
 test('sso:wire gates the ForwardAuth proxy with --allowed-group for a role-gated tool', function (): void {
+    ssoRegistered();
     // Record (Sendrec) has no native OIDC of its own — it's gated at the
-    // ingress via the shared sso-proxy (ADR 0006). Added 2026-08-20: that
+    // ingress via the shared SSO proxy (ADR 0006). Added 2026-08-20: that
     // ADR's own "non-goals" section already named this gap
     // ("--email-domain=* admits any Zitadel user... for real authz, add
     // --allowed-groups fed by Zitadel project roles") — this proves it's
     // actually wired now, not just documented as a TODO.
     $proxyManifest = null;
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment record-sendrec*' => Process::result(output: 'record-sendrec   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get crd middlewares.traefik.io*' => Process::result(output: 'middlewares.traefik.io   2026-01-01T00:00:00Z'),
-        '*get secret sso-app-proxy*' => Process::result(output: '', exitCode: 1),
+        '*get secret proxy-sso-sso-example-com*' => Process::result(output: '', exitCode: 1),
         // applyManifest() deletes its temp file before this test can read it
         // back, so capture the content here — while it still exists, inside
         // the same synchronous Process::run() call that writes it.
@@ -770,10 +787,11 @@ test('sso:wire gates the ForwardAuth proxy with --allowed-group for a role-gated
 });
 
 test('sso:wire aborts before deploying the ForwardAuth proxy if role-gating setup fails', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment record-sendrec*' => Process::result(output: 'record-sendrec   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get crd middlewares.traefik.io*' => Process::result(output: 'middlewares.traefik.io   2026-01-01T00:00:00Z'),
         '*apply -f *' => Process::result(output: 'applied'),
     ]);
@@ -795,15 +813,16 @@ test('sso:wire aborts before deploying the ForwardAuth proxy if role-gating setu
 });
 
 test('sso:wire gates Outline behind Zitadel roles — the actual tool from the live 2026-08-20 incident', function (): void {
+    ssoRegistered();
     // A partner org's ORG_OWNER (created by sso:org, a real and legitimate
     // Zitadel identity) could read internal Outline docs, because Outline
     // had no rbacRoles() and every SSO-wired tool without one admits any
     // authenticated Zitadel user regardless of org. This is the direct
     // regression guard for that incident, not just a generic RBAC test.
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment outline*' => Process::result(output: 'outline   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret outline-sso*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
@@ -845,10 +864,11 @@ test('sso:wire gates Outline behind Zitadel roles — the actual tool from the l
 });
 
 test('sso:wire reuses an already-registered OIDC client', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment*grafana*' => Process::result(output: 'grafana-grafana-dev-test   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*grafana-sso*client-id*' => Process::result(output: base64_encode('cached-cid')),
         '*grafana-sso*client-secret*' => Process::result(output: base64_encode('cached-secret')),
         '*grafana-sso*app-id*' => Process::result(output: base64_encode('cached-appid')),
@@ -891,10 +911,10 @@ test('sso:wire reuses an already-registered OIDC client', function (): void {
 
 test('sso:wire writes three bound_claims-gated roles to OpenBao, not one unconditional-admin role', function (): void {
     Process::fake([
-        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([openBaoRegistryRow()]))),
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([openBaoRegistryRow(), ssoRegistryRow()]))),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment openbao-secrets-example-com*' => Process::result(output: 'openbao-secrets-example-com   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret openbao-secrets-example-com-sso*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
@@ -946,6 +966,7 @@ test('sso:wire writes three bound_claims-gated roles to OpenBao, not one uncondi
     foreach (['admin' => 'openbao-admin', 'operator' => 'openbao-operator', 'auditor' => 'openbao-auditor'] as $role => $roleKey) {
         Process::assertRan(function ($process) use ($role, $roleKey) {
             $expectedJson = json_encode([
+                ssoRegistryRow(),
                 'bound_claims' => ['larakube_roles' => $roleKey],
                 'bound_claims_type' => 'string',
                 'policies' => ["{$role}-policy"],
@@ -988,8 +1009,9 @@ test('sso:wire writes three bound_claims-gated roles to OpenBao, not one uncondi
 });
 
 test('sso:wire refuses webmail — Bulwark SSO is disabled (see docs/decisions/0001)', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*-l larakube.io/tool=webmail --no-headers*' => Process::result(output: 'bulwark-webmail-example-com   1/1   1   1   10d'),
     ]);
 
@@ -999,12 +1021,13 @@ test('sso:wire refuses webmail — Bulwark SSO is disabled (see docs/decisions/0
 });
 
 test('sso:wire registers a new OIDC client and wires it to Kutt (link)', function (): void {
+    ssoRegistered();
     $expectedSlug = 'link-'.GlobalConfigData::load()->getLocalTld();
 
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         "*get deployment kutt-{$expectedSlug}*" => Process::result(output: "kutt-{$expectedSlug}   1/1   1   1   1d"),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         "*get secret kutt-oidc-{$expectedSlug}*" => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
@@ -1062,10 +1085,11 @@ test('sso:wire registers a new OIDC client and wires it to Kutt (link)', functio
 });
 
 test('sso:wire registers a new OIDC client and wires it to Directus (data)', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment directus*' => Process::result(output: 'directus   1/1   1   1   1d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret directus-oidc*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
@@ -1092,8 +1116,9 @@ test('sso:wire registers a new OIDC client and wires it to Directus (data)', fun
 });
 
 test('sso:wire registers a new OIDC client and wires it to PocketBase (data)', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment pocketbase*' => Process::result(output: 'pocketbase-pocket-luchtech-dev   1/1   1   1   10d'),
         '*get deployment -n larakube-shared*' => Process::result(output: 'pocketbase-pocket-luchtech-dev   1/1   1   1   10d'),
         '*get configmap larakube-registry*' => Process::result(output: json_encode([
@@ -1102,7 +1127,7 @@ test('sso:wire registers a new OIDC client and wires it to PocketBase (data)', f
                 'data' => ['host' => 'pocket.luchtech.dev', 'engine' => 'pocketbase'],
             ],
         ])),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret pocketbase-oidc*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
@@ -1146,10 +1171,11 @@ test('sso:wire registers a new OIDC client and wires it to PocketBase (data)', f
 });
 
 test('sso:wire --remove deregisters the app and unsets the tool\'s env vars', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment*grafana*' => Process::result(output: 'grafana-grafana-dev-test   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*grafana-sso*project-id*' => Process::result(output: base64_encode('proj-1')),
         '*grafana-sso*app-id*' => Process::result(output: base64_encode('app-1')),
         '*delete secret grafana-sso*' => Process::result(output: 'secret deleted'),
@@ -1168,6 +1194,7 @@ test('sso:wire --remove deregisters the app and unsets the tool\'s env vars', fu
 });
 
 test('sso:wire resolves the main DATA instance\'s own engine, not contaminated by a second instance\'s', function (): void {
+    ssoRegistered();
     // Regression test: the OLD resolveToolEngine() queried ALL data
     // Deployments in the namespace by label selector with no instance
     // scoping, so a second PocketBase instance's Deployment name containing
@@ -1176,10 +1203,10 @@ test('sso:wire resolves the main DATA instance\'s own engine, not contaminated b
     // resolution checks directus specifically, never confused
     // by a second pocketbase-blog-example-com Deployment coexisting.
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment directus*' => Process::result(output: 'directus   1/1   1   1   10d'),
         '*get deployment pocketbase-blog-example-com*' => Process::result(output: 'pocketbase-blog-example-com   1/1   1   1   1d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret directus-oidc*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
@@ -1207,6 +1234,7 @@ test('sso:wire resolves the main DATA instance\'s own engine, not contaminated b
 });
 
 test('sso:wire also patches Penpot\'s frontend deployment with the same OIDC secret (also_patch)', function (): void {
+    ssoRegistered();
     // Regression test for the ClusterTool component refactor: DESIGN's
     // oidcEnv() used to carry a one-off 'frontend_deployment' key that only
     // this tool had; it's now the general 'also_patch' list derived from
@@ -1214,10 +1242,10 @@ test('sso:wire also patches Penpot\'s frontend deployment with the same OIDC sec
     // frontend deployment still gets `set env --from=secret` + a rollout
     // restart, exactly like the old special case did.
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment design-penpot-backend*' => Process::result(output: 'design-penpot-backend   1/1   1   1   10d'),
         '*get deployment design-penpot-frontend*' => Process::result(output: 'design-penpot-frontend   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret design-penpot-backend-sso*' => Process::result(output: ''),
         '*get secret design-oidc*' => Process::result(output: ''),
         '*get secret design-smtp*' => Process::result(output: ''),
@@ -1257,6 +1285,7 @@ test('sso:wire also patches Penpot\'s frontend deployment with the same OIDC sec
 });
 
 test('sso:wire updates a legacy "Login with SSO" Forgejo source in place (rename to the canonical `zitadel` name)', function (): void {
+    ssoRegistered();
     // Live failure 2026-08-12: Forgejo refused `forgejo admin auth add-oauth`
     // with "login source already exists [name: Login with SSO]" because an
     // earlier broken wiring created the source under the display label while
@@ -1264,9 +1293,9 @@ test('sso:wire updates a legacy "Login with SSO" Forgejo source in place (rename
     // the Zitadel redirect URI (`/user/oauth2/zitadel/callback`) only agrees
     // with the source named `zitadel` anyway.
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret forgejo-sso*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
@@ -1318,10 +1347,11 @@ test('sso:wire updates a legacy "Login with SSO" Forgejo source in place (rename
 });
 
 test('sso:wire registers the Forgejo login source under the canonical `zitadel` name', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret forgejo-sso*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
@@ -1366,12 +1396,13 @@ test('sso:wire registers the Forgejo login source under the canonical `zitadel` 
 });
 
 test('sso:wire registers NetBird as a Zitadel identity provider via its own REST API', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment netbird*' => Process::result(output: 'netbird   1/1   1   1   10d'),
         '*rollout restart deployment/netbird-dashboard*' => Process::result(output: 'restarted'),
         '*patch secret netbird-sso*' => Process::result(output: 'patched'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret netbird-sso*' => Process::result(output: ''),
         // vpnName() resolves the instance suffix from the tool registry.
         '*larakube-tools-registry*' => Process::result(output: ''),
@@ -1455,12 +1486,13 @@ test('sso:wire registers NetBird as a Zitadel identity provider via its own REST
 });
 
 test('sso:wire re-wiring NetBird updates the existing identity provider via PUT, not a duplicate POST', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment netbird*' => Process::result(output: 'netbird   1/1   1   1   10d'),
         '*rollout restart deployment/netbird-dashboard*' => Process::result(output: 'restarted'),
         '*patch secret netbird-sso*' => Process::result(output: 'patched'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*netbird-sso*project-id*' => Process::result(output: base64_encode('proj-1')),
         '*netbird-sso*app-id*' => Process::result(output: base64_encode('app-vpn')),
         '*netbird-sso*client-id*' => Process::result(output: base64_encode('cid-vpn')),
@@ -1526,11 +1558,12 @@ test('plain sso:wire lists each registered instance by its host', function (): v
     // INSTANCE makes a tool installed twice selectable at all.
     Process::fake([
         '*larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ssoRegistryRow(),
             ['tool' => 'git', 'instance' => 'git-luchtech-dev', 'host' => 'git.luchtech.dev'],
         ]))),
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret forgejo-sso*' => Process::result(output: ''),
         '*create secret generic*' => Process::result(output: 'secret created'),
         '*apply -f -*' => Process::result(output: 'applied'),
@@ -1575,10 +1608,11 @@ test('a tool installed twice is selectable per instance', function (): void {
     // express the choice at all.
     Process::fake([
         '*larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ssoRegistryRow(),
             ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'host' => 'notes.luchtech.dev'],
             ['tool' => 'notes', 'instance' => 'wiki-luchtech-dev', 'host' => 'wiki.luchtech.dev'],
         ]))),
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*' => Process::result(output: ''),
     ]);
 
@@ -1590,12 +1624,13 @@ test('a tool installed twice is selectable per instance', function (): void {
 });
 
 test('sso:wire says nothing is registered rather than nothing is installed', function (): void {
+    Tests\Support\FakeToolRegistry::install([ssoRegistryRow()]);
     // An empty registry means no tool went through its own :init here — which is
     // a different thing from "your deployments are missing", and the old message
     // named Vaultwarden and Grafana as if they were expected to exist.
     Process::fake([
         '*larakube-tools-registry*' => Process::result(output: ''),
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*' => Process::result(output: ''),
     ]);
 
@@ -1610,9 +1645,10 @@ test('sso:wire keeps the project it already owns, renaming it rather than creati
     // every user grant on the old one — a silent lockout of a role-gated tool
     // that is otherwise healthy.
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ssoRegistryRow(),
             ['tool' => 'monitor', 'instance' => 'monitor-example-com', 'host' => 'monitor.example.com'],
         ]))),
         '*grafana-sso-monitor-example-com*project-id*' => Process::result(output: base64_encode('proj-owned')),

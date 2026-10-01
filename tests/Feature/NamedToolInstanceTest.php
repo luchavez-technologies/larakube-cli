@@ -17,6 +17,7 @@ afterEach(function (): void {
 });
 
 test('ClusterTool deploymentName, commonsDatabases, and dbSecretRef support named instances', function (): void {
+    ssoRegistered();
     expect(ClusterTool::NOTES->deploymentName('sister'))->toBe('outline-sister')
         ->and(ClusterTool::NOTES->commonsDatabases('sister'))->toBe(['outline_sister'])
         ->and(ClusterTool::DATA->dbSecretRef('sister'))->toBe([
@@ -27,6 +28,7 @@ test('ClusterTool deploymentName, commonsDatabases, and dbSecretRef support name
 });
 
 test('notes:init deploys a named multi-instance with isolated DB and secrets', function (): void {
+    ssoRegistered();
     // A bare, dot-less --domain so ClusterTool::instanceSlugFromHost() derives
     // exactly 'sister' (no dots to dash-ify) — keeps every fixture below
     // (outline-secrets-sister, outline-sister, ...) matching the slug the
@@ -53,12 +55,12 @@ test('notes:init deploys a named multi-instance with isolated DB and secrets', f
         ])),
         '*get configmap plex-registry*' => Process::result(output: json_encode(['tenants' => []])),
         '*get secret plex-admin*' => Process::result(output: base64_encode('s3-credential-val')),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('pat-token')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('pat-token')),
         '*get secret sso-zitadel-host*' => Process::result(output: base64_encode('sso.kube')),
         '*get secret outline-secrets-sister*' => Process::result(output: '', exitCode: 1),
         '*get secret outline-oidc-sister*' => Process::result(output: '', exitCode: 1),
         '*get deployment outline-sister*' => Process::result(output: 'outline-sister 1/1'),
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel 1/1'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com 1/1'),
         '*' => Process::result(output: 'success'),
     ]);
 

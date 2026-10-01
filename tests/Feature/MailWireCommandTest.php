@@ -25,6 +25,7 @@ test('mail:wire --forget clears the cached sender and exits (no Stalwart needed)
 });
 
 test('mail:wire --tool=sso configures Zitadel SMTP via API', function (): void {
+    ssoRegistered();
     Saloon::fake([
         SearchEmailProvidersRequest::class => MockResponse::make(['result' => []]),
         CreateSmtpProviderRequest::class => MockResponse::make(['id' => 'smtp-123']),
@@ -33,8 +34,8 @@ test('mail:wire --tool=sso configures Zitadel SMTP via API', function (): void {
 
     Process::fake([
         '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('pat-token')),
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('pat-token')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
     ]);
@@ -142,6 +143,7 @@ test('mail:wire local --tool=crm resolves the real host-derived instance from th
     Process::fake([
         '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
+            ssoRegistryRow(),
             ['tool' => 'crm', 'instance' => 'crm-luchtech-dev', 'host' => 'crm.luchtech.dev'],
         ]))),
         '*get deployment twenty-crm-luchtech-dev*' => Process::result(output: 'twenty-crm-luchtech-dev   1/1   1   1   10d'),
@@ -169,6 +171,7 @@ test('mail:wire local --tool=crm resolves the real host-derived instance from th
 test('mail:wire --domain targets that host\'s instance, even pasted as a URL', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
+            ssoRegistryRow(),
             ['tool' => 'flow', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'engine' => 'n8n'],
         ]))),
         '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@example.com')),

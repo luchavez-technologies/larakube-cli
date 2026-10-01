@@ -18,12 +18,14 @@ afterEach(function (): void {
 });
 
 test('mail:password is registered', function (): void {
+    ssoRegistered();
     $this->artisan('list')
         ->assertExitCode(0)
         ->expectsOutputToContain('mail:password');
 });
 
 test('mail:password requires installed stalwart', function (): void {
+    ssoRegistered();
     Process::fake(['*larakube.io/tool=mail*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:password')
@@ -32,11 +34,12 @@ test('mail:password requires installed stalwart', function (): void {
 });
 
 test('mail:password resets password', function (): void {
+    ssoRegistered();
     Process::fake([
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
-        '*get deployment sso-zitadel*' => Process::result(output: ''),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: ''),
     ]);
 
     Saloon::fake([
@@ -52,12 +55,13 @@ test('mail:password resets password', function (): void {
 });
 
 test('mail:password syncs the SSO password BY DEFAULT when Zitadel is installed and the identity exists', function (): void {
+    ssoRegistered();
     Process::fake([
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     Saloon::fake([
@@ -79,11 +83,12 @@ test('mail:password syncs the SSO password BY DEFAULT when Zitadel is installed 
 });
 
 test('mail:password --no-sso leaves Zitadel untouched', function (): void {
+    ssoRegistered();
     Process::fake([
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
     ]);
 
     Saloon::fake([
@@ -101,12 +106,13 @@ test('mail:password --no-sso leaves Zitadel untouched', function (): void {
 });
 
 test('mail:password hints (does not error) when no matching SSO identity exists', function (): void {
+    ssoRegistered();
     Process::fake([
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     // Zitadel is up, but the email has no identity (empty search result).
@@ -123,6 +129,7 @@ test('mail:password hints (does not error) when no matching SSO identity exists'
 });
 
 test('mail:password without --force asks for confirmation and cancels on decline', function (): void {
+    ssoRegistered();
     Process::fake([
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),

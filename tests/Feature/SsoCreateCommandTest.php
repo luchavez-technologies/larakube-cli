@@ -13,16 +13,18 @@ afterEach(function (): void {
 });
 
 test('sso:create is registered', function (): void {
+    ssoRegistered();
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('sso:create');
 });
 
 test('sso:create provisions a new human user in Zitadel', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*get ingress sso-zitadel*' => Process::result(output: 'sso.example.com'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get ingress zitadel-sso-example-com*' => Process::result(output: 'sso.example.com'),
     ]);
 
     Saloon::fake([
@@ -45,10 +47,11 @@ test('sso:create provisions a new human user in Zitadel', function (): void {
 });
 
 test('sso:create reports if user already exists', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*get ingress sso-zitadel*' => Process::result(output: 'sso.example.com'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get ingress zitadel-sso-example-com*' => Process::result(output: 'sso.example.com'),
     ]);
 
     Saloon::fake([

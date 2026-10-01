@@ -61,6 +61,7 @@ function withDashboardTrustProject(array $cloud, callable $fn, string $env = 'pr
 function dashboardTrustRegistryJson(): string
 {
     return (string) json_encode([
+        [...ssoRegistryRow(), 'host' => 'sso.luchtech.dev'],
         ['tool' => 'dashboard', 'instance' => 'dashboard-luchtech-dev', 'host' => 'dashboard.luchtech.dev'],
     ]);
 }
@@ -89,7 +90,7 @@ test('dashboard:trust refuses a managed cluster — there is no node to SSH into
 
 test('dashboard:trust errors when Zitadel is not installed', function (): void {
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: ''),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: ''),
     ]);
 
     withDashboardTrustProject(['ip' => '1.2.3.4', 'user' => 'larakube', 'port' => 22], function (): void {
@@ -101,7 +102,7 @@ test('dashboard:trust errors when Zitadel is not installed', function (): void {
 
 test('dashboard:trust errors when Headlamp has not been wired to Zitadel yet', function (): void {
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(dashboardTrustRegistryJson())),
         '*get secret headlamp-sso*' => Process::result(output: '', exitCode: 1),
     ]);
@@ -125,7 +126,7 @@ test('dashboard:trust is a no-op when the API server already trusts Zitadel', fu
     YAML;
 
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(dashboardTrustRegistryJson())),
         '*get secret headlamp-sso*' => Process::result(output: base64_encode('cid-1')),
         "*'echo success'" => Process::result(output: "success\n"),
@@ -143,7 +144,7 @@ test('dashboard:trust is a no-op when the API server already trusts Zitadel', fu
 
 test('dashboard:trust writes the config and restarts k3s when the OIDC trust is missing', function (): void {
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(dashboardTrustRegistryJson())),
         '*get secret headlamp-sso*' => Process::result(output: base64_encode('cid-1')),
         '*get ingress -n*' => Process::result(output: ''),
@@ -182,7 +183,7 @@ test('dashboard:trust writes the config and restarts k3s when the OIDC trust is 
 
 test('dashboard:trust cancels cleanly when the operator declines the restart', function (): void {
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(dashboardTrustRegistryJson())),
         '*get secret headlamp-sso*' => Process::result(output: base64_encode('cid-1')),
         "*'echo success'" => Process::result(output: "success\n"),

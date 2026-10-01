@@ -1,10 +1,21 @@
 {{-- Shared OAuth2-Proxy: ONE instance gates every ForwardAuth tool.
      See docs/decisions/0006-centralized-forwardauth-sso.md --}}
+@php
+    // Every name comes from ToolInstance (ADR 0021): `names` is the Zitadel install.
+    $proxyName = $names->deployment('proxy');
+    $proxySecret = $names->secret(\App\Enums\SecretKind::CREDENTIALS, 'proxy');
+    $proxyLabels = '';
+    foreach ($names->labels('proxy') as $key => $value) {
+        $proxyLabels .= "\n    {$key}: {$value}";
+    }
+    $proxyPodLabels = str_replace("\n    ", "\n        ", $proxyLabels);
+@endphp
 apiVersion: v1
 kind: Secret
 metadata:
-  name: sso-proxy
+  name: {{ $proxySecret }}
   namespace: {{ $namespace }}
+  labels:{!! $proxyLabels !!}
 type: Opaque
 stringData:
   OAUTH2_PROXY_CLIENT_ID: "{{ $clientId }}"
@@ -14,19 +25,19 @@ stringData:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sso-proxy
+  name: {{ $proxyName }}
   namespace: {{ $namespace }}
   labels:
-    app: sso-proxy
+    app: {{ $proxyName }}{!! $proxyLabels !!}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: sso-proxy
+      app: {{ $proxyName }}
   template:
     metadata:
       labels:
-        app: sso-proxy
+        app: {{ $proxyName }}{!! $proxyPodLabels !!}
       annotations:
         # Rotating a Secret does NOT roll a Deployment — the pod template is
         # unchanged, so a healthy pod keeps the old credentials forever. Folding
@@ -40,7 +51,7 @@ spec:
           # args — args are readable by anyone who can `get pod`.
           envFrom:
             - secretRef:
-                name: sso-proxy
+                name: {{ $proxySecret }}
           args:
             - --provider=oidc
             - --oidc-issuer-url=https://{{ $ssoHost }}
@@ -123,11 +134,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: sso-proxy
+  name: {{ $proxyName }}
   namespace: {{ $namespace }}
+  labels:{!! $proxyLabels !!}
 spec:
   selector:
-    app: sso-proxy
+    app: {{ $proxyName }}
   ports:
     - port: 4180
       targetPort: 4180
@@ -137,8 +149,9 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: sso-proxy
+  name: {{ $proxyName }}
   namespace: {{ $namespace }}
+  labels:{!! $proxyLabels !!}
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -161,7 +174,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: sso-proxy
+                name: {{ $proxyName }}
                 port:
                   number: 4180
   tls:

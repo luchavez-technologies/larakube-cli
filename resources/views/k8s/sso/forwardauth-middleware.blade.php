@@ -12,7 +12,7 @@ spec:
     # Root path (not /oauth2/auth): unauthenticated requests get a 302 to
     # Zitadel, which Traefik relays to the browser. Authenticated ones hit the
     # static://202 upstream and are allowed through.
-    address: "http://sso-proxy.{{ $proxyNamespace }}.svc.cluster.local:4180/"
+    address: "http://{{ $proxyService }}.{{ $proxyNamespace }}.svc.cluster.local:4180/"
     trustForwardHeader: true
     authResponseHeaders:
       - X-Auth-Request-User

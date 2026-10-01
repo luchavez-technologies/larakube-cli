@@ -1,46 +1,71 @@
+@php
+    // Every name comes from ToolInstance (ADR 0021).
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::SSO->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::SSO, $instance);
+    $deploymentName = $names->deployment();
+    $credentialsSecret = $names->secret();
+    // A Commons tenant's role and database share one name.
+    $dbName = $names->database();
+    $dbDeployment = $names->deployment('db');
+    $dbVolume = $names->volume('storage', 'db');
+    $labels = '';
+    foreach ($names->labels() as $key => $value) {
+        $labels .= "\n    {$key}: {$value}";
+    }
+    $podLabels = str_replace("\n    ", "\n        ", $labels);
+    $dbLabels = '';
+    foreach ($names->labels('db') as $key => $value) {
+        $dbLabels .= "\n    {$key}: {$value}";
+    }
+    $dbPodLabels = str_replace("\n    ", "\n        ", $dbLabels);
+@endphp
 @if($noPlex)
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: sso-zitadel-db-storage
+  name: {{ $dbVolume }}
   namespace: larakube-sso
+  labels:{!! $dbLabels !!}
 spec:
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: {{ $volumeSize('sso-zitadel-db-storage', '5Gi', true) }}
+      storage: {{ $volumeSize($dbVolume, '5Gi', true) }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sso-zitadel-db
+  name: {{ $dbDeployment }}
   namespace: larakube-sso
+  labels:{!! $dbLabels !!}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: sso-zitadel-db
+      app: {{ $dbDeployment }}
   template:
     metadata:
       labels:
-        app: sso-zitadel-db
+        app: {{ $dbDeployment }}{!! $dbPodLabels !!}
     spec:
       containers:
         - name: postgres
           image: postgres:15-alpine
           env:
             - name: POSTGRES_USER
-              value: zitadel
+              value: {{ $dbName }}
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: sso-secrets
+                  name: {{ $credentialsSecret }}
                   key: db-password
             - name: POSTGRES_DB
-              value: zitadel
+              value: {{ $dbName }}
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
           volumeMounts:
@@ -49,16 +74,17 @@ spec:
       volumes:
         - name: storage
           persistentVolumeClaim:
-            claimName: sso-zitadel-db-storage
+            claimName: {{ $dbVolume }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: sso-zitadel-db
+  name: {{ $dbDeployment }}
   namespace: larakube-sso
+  labels:{!! $dbLabels !!}
 spec:
   selector:
-    app: sso-zitadel-db
+    app: {{ $dbDeployment }}
   ports:
     - protocol: TCP
       port: 5432
@@ -68,21 +94,21 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sso-zitadel
+  name: {{ $deploymentName }}
   namespace: larakube-sso
   labels:
-    app: sso-zitadel
+    app: {{ $deploymentName }}{!! $labels !!}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: sso-zitadel
+      app: {{ $deploymentName }}
   template:
     metadata:
       labels:
-        app: sso-zitadel
+        app: {{ $deploymentName }}{!! $podLabels !!}
     spec:
       # The DB provisioning step (CREATE DATABASE/ROLE/GRANT) is done externally
       # by Plex Commons — the shared Postgres only ever hands Zitadel a
@@ -109,7 +135,7 @@ spec:
             - name: ZITADEL_MASTERKEY
               valueFrom:
                 secretKeyRef:
-                  name: sso-secrets
+                  name: {{ $credentialsSecret }}
                   key: masterkey
             - name: ZITADEL_EXTERNALDOMAIN
               value: "{{ $host }}"
@@ -127,20 +153,20 @@ spec:
               value: "false"
             - name: ZITADEL_DATABASE_POSTGRES_HOST
 @if($noPlex)
-              value: sso-zitadel-db
+              value: {{ $dbDeployment }}
 @else
               value: "postgres.{{ $plexNamespace }}.svc.cluster.local"
 @endif
             - name: ZITADEL_DATABASE_POSTGRES_PORT
               value: "5432"
             - name: ZITADEL_DATABASE_POSTGRES_DATABASE
-              value: zitadel
+              value: {{ $dbName }}
             - name: ZITADEL_DATABASE_POSTGRES_USER_USERNAME
-              value: zitadel
+              value: {{ $dbName }}
             - name: ZITADEL_DATABASE_POSTGRES_USER_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: sso-secrets
+                  name: {{ $credentialsSecret }}
                   key: db-password
             - name: ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE
               value: disable
@@ -150,11 +176,11 @@ spec:
             # satisfied and a future full-init path wouldn't reach for a
             # superuser that would break other tenants' isolation.
             - name: ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME
-              value: zitadel
+              value: {{ $dbName }}
             - name: ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: sso-secrets
+                  name: {{ $credentialsSecret }}
                   key: db-password
             - name: ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE
               value: disable
@@ -170,7 +196,7 @@ spec:
             - name: ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: sso-secrets
+                  name: {{ $credentialsSecret }}
                   key: admin-password
             # A machine (service-account) user with IAM_OWNER, for the CLI's own
             # API automation (mail:create --sso, sso:wire) — distinct from the
@@ -181,7 +207,7 @@ spec:
             # wrote nothing). It lands on a shared emptyDir the `pat-reader`
             # sidecar can `cat`, because the Zitadel image is distroless (no
             # shell/cat of its own). SsoInitCommand reads it once after rollout
-            # and caches it in sso-secrets; a miss is non-fatal.
+            # and caches it in the credentials Secret; a miss is non-fatal.
             - name: ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME
               value: larakube-automation
             - name: ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME
@@ -243,15 +269,16 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: sso-zitadel
+  name: {{ $deploymentName }}
   namespace: larakube-sso
+  labels:{!! $labels !!}
 spec:
   selector:
-    app: sso-zitadel
+    app: {{ $deploymentName }}
   ports:
     - protocol: TCP
       port: 8080
       targetPort: 8080
   type: ClusterIP
 ---
-@include('k8s.sso.ingress')
+@include('k8s.sso.ingress', ['instance' => $instance])

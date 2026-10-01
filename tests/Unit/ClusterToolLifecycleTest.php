@@ -12,6 +12,7 @@ use App\Enums\SharedClusterService;
  * the blast radius of a typo went up when the knowledge got centralised.
  */
 test('every tool declares a namespace', function (): void {
+    ssoRegistered();
     foreach (ClusterTool::cases() as $tool) {
         expect($tool->namespace())
             ->toStartWith('larakube-')
@@ -20,6 +21,7 @@ test('every tool declares a namespace', function (): void {
 });
 
 test('dashboard requires RBAC gating — its ServiceAccount is bound to cluster-admin with no lesser tier', function (): void {
+    ssoRegistered();
     // Regression guard for a real near-miss (2026-08-06): DASHBOARD had no
     // rbacRoles(), so sso:wire would have registered it on the open-to-org
     // "LaraKube Shared Tools" project instead of "LaraKube RBAC" — meaning
@@ -32,6 +34,7 @@ test('dashboard requires RBAC gating — its ServiceAccount is bound to cluster-
 });
 
 test('only tools that own their namespace outright are torn down namespace-wide', function (): void {
+    ssoRegistered();
     // A larakube-shared tool deleting its namespace would take every other
     // shared tool with it — this is the guard against exactly that.
     $wholesale = array_values(array_filter(
@@ -48,6 +51,7 @@ test('only tools that own their namespace outright are torn down namespace-wide'
 });
 
 test('every tool except dns maps to a SharedClusterService for host resolution', function (): void {
+    ssoRegistered();
     foreach (ClusterTool::cases() as $tool) {
         if ($tool === ClusterTool::DNS || $tool === ClusterTool::EXTERNAL_DNS) {
             // ExternalDNS is a controller with no ingress — nothing to show.
@@ -62,6 +66,7 @@ test('every tool except dns maps to a SharedClusterService for host resolution',
 });
 
 test('tool services are unique so two tools never claim the same host', function (): void {
+    ssoRegistered();
     $services = array_filter(array_map(
         fn (ClusterTool $t) => $t->service()?->value,
         array_values(array_filter(ClusterTool::cases(), fn (ClusterTool $t) => $t->isLegacy())),
@@ -71,6 +76,7 @@ test('tool services are unique so two tools never claim the same host', function
 });
 
 test('engine-switchable tools drop every engine database, not just the active one', function (): void {
+    ssoRegistered();
     // Switching engines between installs used to strand the previous engine's
     // Commons tenant, which then collided on the next init.
     expect(ClusterTool::FLOW->commonsDatabases())->toEqualCanonicalizing(['n8n', 'windmill'])
@@ -78,6 +84,7 @@ test('engine-switchable tools drop every engine database, not just the active on
 });
 
 test('every tool with engines declares a default that is one of them', function (): void {
+    ssoRegistered();
     foreach (ClusterTool::cases() as $tool) {
         $engines = $tool->engines();
 
@@ -92,10 +99,12 @@ test('every tool with engines declares a default that is one of them', function 
 });
 
 test('sheets no longer has selectable engines', function (): void {
+    ssoRegistered();
     expect(ClusterTool::SHEETS->defaultEngine())->toBeNull();
 });
 
 test('only tools that can bundle their own storage advertise --no-plex', function (): void {
+    ssoRegistered();
     $noPlex = array_map(
         fn ($t) => $t->value,
         array_values(array_filter(ClusterTool::cases(), fn ($t) => $t->supportsNoPlex())),
@@ -119,6 +128,7 @@ test('only tools that can bundle their own storage advertise --no-plex', functio
 });
 
 test('command name helpers spell the canonical tool:action shape', function (): void {
+    ssoRegistered();
     expect(ClusterTool::FLOW->initCommand())->toBe('flow:init')
         ->and(ClusterTool::FLOW->removeCommand())->toBe('flow:remove')
         ->and(ClusterTool::FLOW->showCommand())->toBe('flow:show')
@@ -126,6 +136,7 @@ test('command name helpers spell the canonical tool:action shape', function (): 
 });
 
 test('deploymentName() matches the actual Deployment name each tool\'s own manifest creates', function (): void {
+    ssoRegistered();
     // Regression guard for three real drifts found live 2026-07-31: SSO,
     // ERRORS, and VPN's deploymentName() didn't match the name their
     // manifests create. Silent for years because most callers resolve presence
@@ -135,12 +146,13 @@ test('deploymentName() matches the actual Deployment name each tool\'s own manif
     // as "not installed". Values here are cross-checked against
     // SharedClusterService::presenceProbe() and the tools' own manifests,
     // not just re-asserting whatever the enum currently says.
-    expect(ClusterTool::SSO->deploymentName())->toBe('sso-zitadel');
+    expect(ClusterTool::SSO->deploymentName())->toBe('zitadel');
     expect(ClusterTool::ERRORS->deploymentName())->toBe('glitchtip-web')
         ->and(ClusterTool::VPN->deploymentName())->toBe('netbird');
 });
 
 test('tasks (Planka) does not claim OIDC wiring — it was removed from the OSS edition', function (): void {
+    ssoRegistered();
     // Regression guard, inverted from the original: TaskTool used to claim
     // HasOidcWiring with a working '/oidc-callback' redirect path, correct
     // for the version pinned at the time (v2.1.1). Confirmed live 2026-08-16
@@ -158,6 +170,7 @@ test('tasks (Planka) does not claim OIDC wiring — it was removed from the OSS 
 });
 
 test('directus SSO carries a license caveat, pocketbase does not', function (): void {
+    ssoRegistered();
     // Directus v12 moved SSO/OIDC out of its free Core tier (MSCL license,
     // June 2026) — the wiring is real (oidcEnv() vars are genuinely read by
     // Directus), but login won't work without a paid license even
@@ -168,6 +181,7 @@ test('directus SSO carries a license caveat, pocketbase does not', function (): 
 });
 
 test('only DATA carries an SSO license caveat', function (): void {
+    ssoRegistered();
     // Confirms the full 2026-08 SSO audit's conclusion: every other tool's
     // oidcEnv() is either free (Grafana, Vaultwarden, Outline, Documenso,
     // Kutt, Teable, oCIS, Forgejo) or has no license-gated integration at
@@ -184,6 +198,7 @@ test('only DATA carries an SSO license caveat', function (): void {
 });
 
 test('supportsMultipleInstances() pins the 2026-08 multi-instance capability audit', function (): void {
+    ssoRegistered();
     // CHAT/MEET bind hostPort (TURN, LiveKit SFU) — a second instance
     // collides on the same node. GIT exposes SSH via a fixed-port
     // LoadBalancer — same collision risk. MAIL/SSO/SECRETS/MONITOR/VPN/
@@ -207,6 +222,7 @@ test('supportsMultipleInstances() pins the 2026-08 multi-instance capability aud
 });
 
 test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance teardown', function (): void {
+    ssoRegistered();
     // Deliberately narrower than supportsMultipleInstances() above: that
     // method's `true` default means "no known architectural blocker", not
     // "already built". Only DATA, NOTES, CRM, DESIGN, PASTE, SIGN and FLOW actually resolve
@@ -238,11 +254,13 @@ test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance
 });
 
 test('instanceSlugFromHost() derives pure host-based slug for every host', function (): void {
+    ssoRegistered();
     expect(ClusterTool::DATA->instanceSlugFromHost('data.example.com'))->toBe('data-example-com')
         ->and(ClusterTool::DATA->instanceSlugFromHost('data.luchtech.dev'))->toBe('data-luchtech-dev');
 });
 
 test('instanceSlugFromHost() never collides on the leftmost label — the incident this method exists to prevent', function (): void {
+    ssoRegistered();
     // The old DATA-specific derivation used ONLY the leftmost label
     // ("blog.example.com" -> "blog"), so two different hosts sharing that
     // label collided on the same Kubernetes resource name. The generic
@@ -256,6 +274,7 @@ test('instanceSlugFromHost() never collides on the leftmost label — the incide
 });
 
 test('instanceSlugFromHost() is deterministic and Kubernetes-resource-name-safe', function (): void {
+    ssoRegistered();
     $host = 'a-very-long-subdomain-that-goes-on-and-on.example.com';
 
     $first = ClusterTool::DATA->instanceSlugFromHost($host);
@@ -267,6 +286,7 @@ test('instanceSlugFromHost() is deterministic and Kubernetes-resource-name-safe'
 });
 
 test('vpnMiddlewareTarget() never produces a -main suffix for the default (no-instance) call, for any tool with a vpn-only mode', function (): void {
+    ssoRegistered();
     // ensureVpnMiddleware() (app/Traits/DeploysClusterTool.php) used to
     // default $instance to the literal string 'main', and every Vendor's
     // vpnMiddlewareTarget() recognized that string as "no instance". Several
@@ -293,6 +313,7 @@ test('vpnMiddlewareTarget() never produces a -main suffix for the default (no-in
 });
 
 test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifests write', function (): void {
+    ssoRegistered();
     // The two halves have to agree: an ExternalSecret with creationPolicy=Merge
     // cannot create its target, so a suffix the tool's templates don't use
     // leaves the synced values reaching nothing. Live names as deployed.
@@ -308,7 +329,7 @@ test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifest
         'chat' => ['synapse-secrets-inst', 'synapse-secrets-inst'],
         'monitor' => ['grafana-secrets-inst', 'grafana-secrets-inst'],
         'passwords' => ['vaultwarden-secrets-inst', 'vaultwarden-secrets-inst'],
-        'sso' => [null, 'sso-secrets'],
+        'sso' => [null, 'zitadel-secrets-inst'],
         // Canonical ({component}-{token}-{instance}) once a tool has migrated,
         // otherwise the shape its manifests still write.
         'git' => ['forgejo-secrets-inst', 'forgejo-secrets-inst'],
@@ -321,6 +342,7 @@ test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifest
 });
 
 test('without an instance every tool keeps its base Secret name', function (): void {
+    ssoRegistered();
     $dangling = [];
     foreach (ClusterTool::cases() as $tool) {
         foreach (array_filter([$tool->openbaoSyncConfig(null)['secret'] ?? null, $tool->dbSecretRef(null)['secret'] ?? null]) as $name) {
@@ -334,6 +356,7 @@ test('without an instance every tool keeps its base Secret name', function (): v
 });
 
 test('a migrated tool never keeps its category on a Commons tenant', function (): void {
+    ssoRegistered();
     // Buckets and databases are resources like any other — the data they hold
     // is carried over as part of the tool's migration, which is what makes the
     // rename safe. No exemptions (ADR 0021).
@@ -363,6 +386,7 @@ test('a migrated tool never keeps its category on a Commons tenant', function ()
 });
 
 test('a migrated tool never keeps its category on any resource name', function (): void {
+    ssoRegistered();
     // The ledger flip is the whole migration: every name a CANONICAL tool
     // hands out — teardown targets, the VPN Middleware, every wired Secret —
     // has to have dropped the category, not just the Deployment. No

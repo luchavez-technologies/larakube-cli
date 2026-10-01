@@ -3,6 +3,7 @@
 namespace App\Commands\Sso;
 
 use App\Data\GlobalConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\SharedClusterService;
@@ -63,6 +64,12 @@ class SsoInitCommand extends Command
         $kubectl = Kubectl::forContext($context)->prefix();
         $host = $this->resolveToolHost(SharedClusterService::SSO, ClusterTool::SSO, $env, $kubectl);
 
+        // The registry has no row for this install yet, so every helper below
+        // would find nothing; hand them the names this command is deploying.
+        $this->ssoNamesOverride = ToolInstance::forHost(ClusterTool::SSO, $host);
+        $names = $this->ssoNamesOverride;
+        $dbName = $names->database();
+
         $ns = $this->ssoNamespace();
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
@@ -71,7 +78,7 @@ class SsoInitCommand extends Command
             return 1;
         }
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::SSO, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::SSO, $kubectl, $names->instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -105,13 +112,13 @@ class SsoInitCommand extends Command
 
         if (! $noPlex) {
             // Once OpenBao's database secrets engine already owns the
-            // 'zitadel' static role, defer to ITS current password instead
+            // Zitadel static role, defer to ITS current password instead
             // of re-affirming a locally-cached one that may predate
             // OpenBao's own rotation — see resolveManagedDbPassword()'s
             // docblock.
-            $dbPassword = $this->resolveManagedDbPassword($kubectl, 'zitadel', $dbPassword);
+            $dbPassword = $this->resolveManagedDbPassword($kubectl, $dbName, $dbPassword);
 
-            if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'zitadel', $dbPassword)) {
+            if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
                 return 1;
             }
 
@@ -121,8 +128,8 @@ class SsoInitCommand extends Command
             // create returns "already exists" on the pre-provisioned DB, which
             // Zitadel's restart-safe init tolerates. Must run every deploy: a
             // role recreation (e.g. after --remove) drops the attribute.
-            if (! $this->grantPostgresCreateDb('zitadel')) {
-                $this->laraKubeError('Could not grant CREATEDB to the zitadel role in the Commons — Zitadel will crash on boot without it.');
+            if (! $this->grantPostgresCreateDb($dbName)) {
+                $this->laraKubeError("Could not grant CREATEDB to the {$dbName} role in the Commons — Zitadel will crash on boot without it.");
 
                 return 1;
             }
@@ -132,14 +139,14 @@ class SsoInitCommand extends Command
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $dbPassword, $masterkey, $adminPassword, $adminEmail): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, 'sso-secrets', ['db-password' => $dbPassword, 'masterkey' => $masterkey, 'admin-password' => $adminPassword, 'admin-email' => $adminEmail]);
+        $this->withSpin('Syncing secrets...', function () use ($kubectl, $ns, $names, $dbName, $dbPassword, $masterkey, $adminPassword, $adminEmail): void {
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $names->secret(), ['db-password' => $dbPassword, 'masterkey' => $masterkey, 'admin-password' => $adminPassword, 'admin-email' => $adminEmail]);
 
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
                 $this->pushClusterSecret($kubectl, 'ZITADEL_ADMIN_EMAIL', $adminEmail, 'production');
                 $this->pushClusterSecret($kubectl, 'ZITADEL_ADMIN_PASSWORD', $adminPassword, 'production');
                 if ($this->databaseEngineMounted($kubectl)) {
-                    $this->registerStaticRole($kubectl, 'zitadel');
+                    $this->registerStaticRole($kubectl, $dbName);
 
                     // registerStaticRole() rotates the password as a side
                     // effect the instant a role is FIRST created — the
@@ -147,9 +154,9 @@ class SsoInitCommand extends Command
                     // stale from that moment on. This exact gap is why
                     // Zitadel came up healthy and then desynced again a
                     // restart later, confirmed live 2026-08-02.
-                    $realPassword = $this->readStaticRolePassword($kubectl, 'zitadel');
+                    $realPassword = $this->readStaticRolePassword($kubectl, $dbName);
                     if ($realPassword !== null) {
-                        Kubectl::fromPrefix($kubectl)->patchSecret($ns, 'sso-secrets', ['db-password' => $realPassword]);
+                        Kubectl::fromPrefix($kubectl)->patchSecret($ns, $names->secret(), ['db-password' => $realPassword]);
                     }
                 } else {
                     $this->pushClusterSecret($kubectl, 'ZITADEL_DB_PASSWORD', $dbPassword, 'production');
@@ -168,6 +175,7 @@ class SsoInitCommand extends Command
         $manifest = view('k8s.sso.zitadel', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
+            'instance' => $names->instance,
             'adminEmail' => $adminEmail,
             'plexNamespace' => $this->plexNamespace(),
             'noPlex' => $noPlex,
@@ -184,7 +192,7 @@ class SsoInitCommand extends Command
         // serving traffic — give it generous headroom (up to 300s).
         $rolledOut = $this->withSpin(
             'Applying Zitadel manifests (first boot runs schema setup)...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, 'sso-zitadel', 300),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 300),
         );
         $temporaryDirectory->delete();
 
@@ -275,7 +283,7 @@ class SsoInitCommand extends Command
     /**
      * Read back the machine-user PAT Zitadel wrote to ZITADEL_FIRSTINSTANCE_PATPATH
      * at first-instance setup (on the shared /machinekey emptyDir) via the
-     * pat-reader sidecar, and cache it in sso-secrets for InteractsWithZitadelApi.
+     * pat-reader sidecar, and cache it in the credentials Secret for InteractsWithZitadelApi.
      * A miss here is NON-FATAL — the deploy already succeeded; only the CLI's own
      * API automation (sso:wire, mail:create --sso) depends on it, not Zitadel.
      */
@@ -285,7 +293,7 @@ class SsoInitCommand extends Command
             return true; // already captured on a previous run
         }
 
-        $pod = trim(Process::run("{$kubectl} get pod -l app=sso-zitadel -n {$ns} -o name --no-headers 2>/dev/null | head -1")->output());
+        $pod = trim(Process::run("{$kubectl} get pod -l app={$this->ssoNames($kubectl)?->deployment()} -n {$ns} -o name --no-headers 2>/dev/null | head -1")->output());
         if ($pod === '') {
             return false;
         }
@@ -297,14 +305,14 @@ class SsoInitCommand extends Command
             return false;
         }
 
-        Kubectl::fromPrefix($kubectl)->patchSecret($ns, 'sso-secrets', ['machine-pat' => $pat]);
+        Kubectl::fromPrefix($kubectl)->patchSecret($ns, $this->ssoNames($kubectl)?->secret() ?? '', ['machine-pat' => $pat]);
 
         if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
             $this->pushClusterSecret($kubectl, 'ZITADEL_MACHINE_PAT', $pat, 'production');
             // NOT syncClusterSecretToNamespace() here — same bug as the other
             // call site in this file (see deploySso()): it always syncs
             // empty and, as an Owner-mode ExternalSecret with a 1m refresh,
-            // wipes sso-secrets on its next reconcile. The kubectl patch
+            // wipes the credentials Secret on its next reconcile. The kubectl patch
             // above already wrote machine-pat directly; nothing else needs
             // to sync it into the namespace.
         }

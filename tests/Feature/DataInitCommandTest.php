@@ -256,8 +256,9 @@ test('data:show --domain=all lists every registered instance', function (): void
 });
 
 test('data:show --domain=all on a single-instance tool behaves like the default instance', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*' => Process::result(output: ''),
     ]);
 

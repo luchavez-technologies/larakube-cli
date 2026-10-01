@@ -19,15 +19,17 @@ afterEach(function (): void {
 });
 
 test('sso:grant is registered', function (): void {
+    ssoRegistered();
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('sso:grant');
 });
 
 test('sso:grant rejects a tool with no role-gated access', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     Saloon::fake([
@@ -49,10 +51,11 @@ test('sso:grant auto-resolves --domain= when a multi-instance tool has exactly o
     // genuinely ambiguous, so this resolves it automatically instead of
     // forcing the operator to already know and type the domain.
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
+                ssoRegistryRow(),
                 ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
             ])),
         ),
@@ -75,10 +78,11 @@ test('sso:grant auto-resolves --domain= when a multi-instance tool has exactly o
 
 test('sso:grant refuses to guess when a multi-instance tool has more than one registered instance and no --domain', function (): void {
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
+                ssoRegistryRow(),
                 ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
                 ['tool' => 'notes', 'instance' => 'blog-example-com', 'installedAt' => '2026-08-02T00:00:00+00:00', 'host' => 'blog.example.com'],
             ])),
@@ -92,10 +96,11 @@ test('sso:grant refuses to guess when a multi-instance tool has more than one re
 
 test('sso:grant --domain= resolves the exact named instance\'s project', function (): void {
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
+                ssoRegistryRow(),
                 ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
                 ['tool' => 'notes', 'instance' => 'blog-example-com', 'installedAt' => '2026-08-02T00:00:00+00:00', 'host' => 'blog.example.com'],
             ])),
@@ -118,9 +123,10 @@ test('sso:grant --domain= resolves the exact named instance\'s project', functio
 });
 
 test('sso:grant rejects an unknown tool', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     Saloon::fake([
@@ -133,9 +139,10 @@ test('sso:grant rejects an unknown tool', function (): void {
 });
 
 test('sso:grant\'s picker offers every role-bearing tool — Drive included — without a live-role probe', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     $grantSearchCallCount = 0;
@@ -174,9 +181,10 @@ test('sso:grant\'s picker offers every role-bearing tool — Drive included — 
 });
 
 test('sso:grant rejects a role the tool does not define', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     Saloon::fake([
@@ -189,8 +197,9 @@ test('sso:grant rejects a role the tool does not define', function (): void {
 });
 
 test('sso:grant errors when Zitadel is not installed', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: ''),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: ''),
     ]);
 
     $this->artisan('sso:grant', ['--tool' => 'secrets', '--role' => 'openbao-admin', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
@@ -199,9 +208,10 @@ test('sso:grant errors when Zitadel is not installed', function (): void {
 });
 
 test('sso:grant errors when Zitadel user cannot be resolved or created', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     Saloon::fake([
@@ -216,9 +226,10 @@ test('sso:grant errors when Zitadel user cannot be resolved or created', functio
 });
 
 test('sso:grant creates a fresh UserGrant when the user holds none on the RBAC project yet', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     $grantSearchCallCount = 0;
@@ -247,9 +258,10 @@ test('sso:grant creates a fresh UserGrant when the user holds none on the RBAC p
 });
 
 test('sso:grant merges a new role into an existing UserGrant instead of clobbering it', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     $grantSearchCallCount = 0;
@@ -275,6 +287,7 @@ test('sso:grant merges a new role into an existing UserGrant instead of clobberi
 });
 
 test('sso:grant grants Drive\'s ocisAdmin on Drive\'s own project, found by name', function (): void {
+    ssoRegistered();
     // Drive moved to rbacRoles() alongside ssoAdminRoles() 2026-08-20 (at the
     // user's explicit request) — requiresRbacGating() is now checked FIRST
     // in resolveSsoProject(), so every Drive grant resolves via
@@ -283,8 +296,8 @@ test('sso:grant grants Drive\'s ocisAdmin on Drive\'s own project, found by name
     // reachable for a tool with ssoAdminRoles() and no rbacRoles() at all —
     // Drive no longer qualifies).
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     $grantSearchCallCount = 0;
@@ -314,9 +327,10 @@ test('sso:grant grants Drive\'s ocisAdmin on Drive\'s own project, found by name
 });
 
 test('sso:grant for Drive creates its own project when none exists yet', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     $grantSearchCallCount = 0;

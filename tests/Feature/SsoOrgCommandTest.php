@@ -24,8 +24,8 @@ use Saloon\Laravel\Facades\Saloon;
 function ssoOrgBaseProcessFakes(): array
 {
     return [
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ];
 }
 
@@ -64,12 +64,14 @@ afterEach(function (): void {
 });
 
 test('sso:org is registered', function (): void {
+    ssoRegistered();
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('sso:org');
 });
 
 test('sso:org creates a new org, verifies the domain, and installs the RBAC action', function (): void {
+    ssoRegistered();
     Process::fake(ssoOrgBaseProcessFakes());
     Saloon::fake(ssoOrgSaloonFakes());
 
@@ -92,6 +94,7 @@ test('sso:org creates a new org, verifies the domain, and installs the RBAC acti
 });
 
 test('sso:org reuses an existing org instead of creating a duplicate', function (): void {
+    ssoRegistered();
     Process::fake(ssoOrgBaseProcessFakes());
     Saloon::fake(array_merge(ssoOrgSaloonFakes(), [
         SearchOrganizationsRequest::class => MockResponse::make(['result' => [['id' => 'org-existing']]]),
@@ -104,6 +107,7 @@ test('sso:org reuses an existing org instead of creating a duplicate', function 
 });
 
 test('sso:org creates an ORG_OWNER admin when --admin-email is given', function (): void {
+    ssoRegistered();
     Process::fake(ssoOrgBaseProcessFakes());
     Saloon::fake(ssoOrgSaloonFakes());
 
@@ -126,6 +130,7 @@ test('sso:org creates an ORG_OWNER admin when --admin-email is given', function 
 });
 
 test('sso:org skips the DNS challenge entirely when the domain is already verified', function (): void {
+    ssoRegistered();
     // Confirmed live (2026-08-20): Zitadel auto-verifies a domain the
     // instant it's added when the calling PAT already holds instance-level
     // admin rights — asking it to generate a fresh challenge for an
@@ -151,6 +156,7 @@ test('sso:org skips the DNS challenge entirely when the domain is already verifi
 });
 
 test('zitadelValidateOrgDomain retries on failure and succeeds once the challenge is verifiable', function (): void {
+    ssoRegistered();
     Saloon::fake([
         MockResponse::make(['message' => 'not verified yet'], 400),
         MockResponse::make(['message' => 'not verified yet'], 400),
@@ -176,6 +182,7 @@ test('zitadelValidateOrgDomain retries on failure and succeeds once the challeng
 });
 
 test('zitadelValidateOrgDomain gives up after exhausting its attempts', function (): void {
+    ssoRegistered();
     Saloon::fake([
         ValidateOrgDomainRequest::class => MockResponse::make(['message' => 'not verified yet'], 400),
     ]);

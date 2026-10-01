@@ -22,18 +22,20 @@ afterEach(function (): void {
 function ssoOrgGrantProcessFakes(): array
 {
     return [
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ];
 }
 
 test('sso:org-grant is registered', function (): void {
+    ssoRegistered();
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('sso:org-grant');
 });
 
 test('sso:org-grant errors cleanly when --org is omitted and no orgs exist to pick from', function (): void {
+    ssoRegistered();
     Process::fake(ssoOrgGrantProcessFakes());
     Saloon::fake([SearchOrganizationsRequest::class => MockResponse::make(['result' => []])]);
 
@@ -43,6 +45,7 @@ test('sso:org-grant errors cleanly when --org is omitted and no orgs exist to pi
 });
 
 test('sso:org-grant fails cleanly when the org does not exist', function (): void {
+    ssoRegistered();
     Process::fake(ssoOrgGrantProcessFakes());
     Saloon::fake([SearchOrganizationsRequest::class => MockResponse::make(['result' => []])]);
 
@@ -52,6 +55,7 @@ test('sso:org-grant fails cleanly when the org does not exist', function (): voi
 });
 
 test('sso:org-grant creates a project grant using every role defined on the project by default', function (): void {
+    ssoRegistered();
     Process::fake(ssoOrgGrantProcessFakes());
     Saloon::fake([
         SearchOrganizationsRequest::class => MockResponse::make(['result' => [['id' => 'org-1']]]),
@@ -72,6 +76,7 @@ test('sso:org-grant creates a project grant using every role defined on the proj
 });
 
 test('sso:org-grant merges new roles into an existing grant instead of replacing it', function (): void {
+    ssoRegistered();
     Process::fake(ssoOrgGrantProcessFakes());
     Saloon::fake([
         SearchOrganizationsRequest::class => MockResponse::make(['result' => [['id' => 'org-1']]]),
@@ -90,6 +95,7 @@ test('sso:org-grant merges new roles into an existing grant instead of replacing
 });
 
 test('sso:org-grant --tool= resolves the project the same way sso:grant does', function (): void {
+    ssoRegistered();
     Process::fake(ssoOrgGrantProcessFakes());
     Saloon::fake([
         SearchOrganizationsRequest::class => MockResponse::make(['result' => [['id' => 'org-1']]]),
@@ -114,6 +120,7 @@ test('sso:org-grant --tool= on a multi-instance tool without --domain= refuses t
     Process::fake(array_merge(ssoOrgGrantProcessFakes(), [
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
+                ssoRegistryRow(),
                 ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
                 ['tool' => 'notes', 'instance' => 'blog-example-com', 'installedAt' => '2026-08-02T00:00:00+00:00', 'host' => 'blog.example.com'],
             ])),
@@ -127,6 +134,7 @@ test('sso:org-grant --tool= on a multi-instance tool without --domain= refuses t
 });
 
 test('sso:org-grant prompts for an org when --org is omitted and orgs exist', function (): void {
+    ssoRegistered();
     Process::fake(ssoOrgGrantProcessFakes());
     Saloon::fake([
         SearchOrganizationsRequest::class => MockResponse::make(['result' => [
@@ -151,6 +159,7 @@ test('sso:org-grant prompts for an org when --org is omitted and orgs exist', fu
 });
 
 test('sso:org-grant --tool=drive installs the flattenOcisRoles Action into the GRANTED org, not the default one', function (): void {
+    ssoRegistered();
     // sso:wire only ever installs this Action in its own (default) org —
     // the project/roles it configures are shared across every org with a
     // grant, but Zitadel Actions/Flows are NOT: each org needs its own copy,

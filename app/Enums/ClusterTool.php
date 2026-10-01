@@ -1644,8 +1644,8 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::TEABLE, self::TASKS, self::PLANKA, self::DASHBOARD, self::HEADLAMP, self::MEET,
             self::LIVEKIT, self::WEBMAIL, self::BULWARK, self::DRIVE, self::OCIS, self::VPN, self::NETBIRD,
             self::CRM, self::TWENTY, self::PASSWORDS, self::VAULTWARDEN, self::CHAT, self::MATRIX, self::MAIL, self::STALWART,
-            self::SECRETS, self::OPENBAO => ResourceNaming::CANONICAL,
-            self::SSO, self::ZITADEL, self::RECORD,
+            self::SECRETS, self::OPENBAO, self::SSO, self::ZITADEL => ResourceNaming::CANONICAL,
+            self::RECORD,
             self::SENDREC, self::RESUME, self::SUPPORT, self::CHATWOOT => ResourceNaming::AS_SHIPPED,
             default => ResourceNaming::INSTANCE_SUFFIXED,
         };

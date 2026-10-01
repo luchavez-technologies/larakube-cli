@@ -3,6 +3,7 @@
 namespace App\Commands\Sso;
 
 use App\Commands\Tool\AbstractToolRemoveCommand;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 
 class SsoRemoveCommand extends AbstractToolRemoveCommand
@@ -21,7 +22,9 @@ class SsoRemoveCommand extends AbstractToolRemoveCommand
 
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
-        return $this->deploymentExists($kubectl, $namespace, 'sso-zitadel-db');
+        $names = ToolInstance::first($kubectl, ClusterTool::SSO);
+
+        return $names !== null && $this->deploymentExists($kubectl, $namespace, $names->deployment('db'));
     }
 
     protected function teardownWarning(string $env): array

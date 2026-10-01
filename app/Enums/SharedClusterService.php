@@ -241,7 +241,8 @@ enum SharedClusterService: string
             // Synapse is named per instance, so a probe on a bare name never
             // matches; select on the identity label instead.
             self::CHAT => 'deployment -l larakube.io/tool=chat,larakube.io/component=synapse -n larakube-shared',
-            self::SSO => 'deployment sso-zitadel -n larakube-sso',
+            // By label: Zitadel's Deployment is named per instance.
+            self::SSO => 'deployment -l larakube.io/tool=sso,larakube.io/component=zitadel -n larakube-sso',
             // Bulwark's Deployment is named per instance, so a probe on a bare
             // name never matches — select on the identity label instead.
             self::WEBMAIL => 'deployment -l larakube.io/tool=webmail -n larakube-shared',

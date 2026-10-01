@@ -22,15 +22,17 @@ afterEach(function (): void {
 });
 
 test('sso:revoke is registered', function (): void {
+    ssoRegistered();
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('sso:revoke');
 });
 
 test('sso:revoke rejects an explicit role no tool defines', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     Saloon::fake([
@@ -44,9 +46,10 @@ test('sso:revoke rejects an explicit role no tool defines', function (): void {
 });
 
 test('sso:revoke declines to act without --force under non-interactive confirmation', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     Saloon::fake([
@@ -63,9 +66,10 @@ test('sso:revoke declines to act without --force under non-interactive confirmat
 });
 
 test('sso:revoke --role skips the discovery picker entirely, resolving the owning tool automatically', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     $grantSearchCallCount = 0;
@@ -92,9 +96,10 @@ test('sso:revoke --role skips the discovery picker entirely, resolving the ownin
 });
 
 test('sso:revoke --role resolves a dynamic secrets:grant-issued per-app role key too, with no --tool needed', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     $grantSearchCallCount = 0;
@@ -124,9 +129,10 @@ test('sso:revoke --role resolves a dynamic secrets:grant-issued per-app role key
 });
 
 test('sso:revoke reports nothing to do when the user holds no role-gated access', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     Saloon::fake([
@@ -142,6 +148,7 @@ test('sso:revoke reports nothing to do when the user holds no role-gated access'
 });
 
 test('sso:revoke\'s discovery sweep checks every RBAC-gated tool\'s OWN project, not two fixed ones', function (): void {
+    ssoRegistered();
     // The actual point of the 2026-08-20 per-tool-project change, proven
     // precisely: unlike the other discovery tests in this file (which use
     // static/uniform fakes that happen to tolerate the sweep querying the
@@ -150,8 +157,8 @@ test('sso:revoke\'s discovery sweep checks every RBAC-gated tool\'s OWN project,
     // tool's project is silently skipped — the exact failure mode the old
     // fixed-2-project sweep couldn't have caught for a tool like Kutt.
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     $searchedNames = [];
@@ -198,9 +205,10 @@ test('sso:revoke\'s discovery sweep checks every RBAC-gated tool\'s OWN project,
 });
 
 test('sso:revoke\'s discovery picker defaults to an empty selection under non-interactive mode — no accidental full wipe', function (): void {
+    ssoRegistered();
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     Saloon::fake([
@@ -231,13 +239,14 @@ test('sso:revoke\'s discovery picker defaults to an empty selection under non-in
 });
 
 test('sso:revoke --role=ocisAdmin pulls Drive\'s admin role on Drive\'s own project', function (): void {
+    ssoRegistered();
     // Drive moved to rbacRoles() alongside ssoAdminRoles() 2026-08-20 (at the
     // user's explicit request) — requiresRbacGating() is now checked FIRST
     // in resolveSsoProject(), so this resolves via zitadelEnsureProject(the
     // 'ocis' name), never the sso-app-drive secret's cached project-id.
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     $grantSearchCallCount = 0;
@@ -267,6 +276,7 @@ test('sso:revoke --role=ocisAdmin pulls Drive\'s admin role on Drive\'s own proj
 });
 
 test("sso:revoke's discovery picker surfaces Drive's ocisAdmin on Drive's own project beside another tool's RBAC role", function (): void {
+    ssoRegistered();
     // Drive moved to rbacRoles() alongside ssoAdminRoles() 2026-08-20 — the
     // sweep now walks every RBAC-gated tool's OWN project (a dozen of them,
     // not "the one RBAC project" vs "the one shared project" as before), so
@@ -276,8 +286,8 @@ test("sso:revoke's discovery picker surfaces Drive's ocisAdmin on Drive's own pr
     // project) is empty. DRIVE is declared before SECRETS in ClusterTool's
     // case order, so ocisAdmin surfaces FIRST in the picker now, not second.
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
     ]);
 
     $driveGrantLookups = 0;

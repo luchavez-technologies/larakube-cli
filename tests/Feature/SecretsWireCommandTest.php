@@ -355,7 +355,7 @@ test('secrets:wire --all wires every installed DB-rotatable tool and skips unins
             ['tool' => 'sign', 'instance' => 'sign-kube', 'host' => 'sign.kube'],
         ]))),
         '*get deployment record-sendrec*' => Process::result(output: '', exitCode: 1),
-        '*get deployment sso-zitadel*' => Process::result(output: '', exitCode: 1),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: '', exitCode: 1),
         '*port-forward*' => Process::result(output: ''),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout restart*' => Process::result(output: 'restarted'),
@@ -466,7 +466,7 @@ test('secrets:wire requires --tool or --all when it cannot prompt', function ():
         '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get deployment documenso*' => Process::result(output: 'documenso'),
         '*get deployment record-sendrec*' => Process::result(output: '', exitCode: 1),
-        '*get deployment sso-zitadel*' => Process::result(output: '', exitCode: 1),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: '', exitCode: 1),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);

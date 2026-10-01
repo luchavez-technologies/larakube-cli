@@ -317,7 +317,7 @@ test('removing an SSO-wired tool deletes its Zitadel app, then the Secret record
     Process::fake([...registeredToolRemoveFakes('sign:remove', 'sign-example-com', 'sign.example.com'),
         '*get secret documenso-sso-sign-example-com*project-id*' => Process::result(output: base64_encode('111')),
         '*get secret documenso-sso-sign-example-com*app-id*' => Process::result(output: base64_encode('222')),
-        '*get secret sso-secrets*machine-pat*' => Process::result(output: base64_encode('pat')),
+        '*get secret zitadel-secrets-sso-example-com*machine-pat*' => Process::result(output: base64_encode('pat')),
         '*' => Process::result(output: ''),
     ]);
 
@@ -333,7 +333,7 @@ test('if Zitadel can\'t be reached, removal keeps the Secret so the app can stil
     Process::fake([...registeredToolRemoveFakes('sign:remove', 'sign-example-com', 'sign.example.com'),
         '*get secret documenso-sso-sign-example-com*project-id*' => Process::result(output: base64_encode('111')),
         '*get secret documenso-sso-sign-example-com*app-id*' => Process::result(output: base64_encode('222')),
-        '*get secret sso-secrets*' => Process::result(output: ''),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: ''),
         '*' => Process::result(output: ''),
     ]);
 

@@ -664,6 +664,16 @@ class SsoWireCommand extends Command
             return 1;
         }
 
+        $sso = $this->ssoNames($kubectl);
+        if ($sso === null) {
+            $this->laraKubeError('Zitadel is not registered on this cluster — run `larakube tool:list '.$env.' --refresh`, then try again.');
+
+            return 1;
+        }
+
+        $proxy = $sso->deployment('proxy');
+        $proxySecret = $sso->secret(SecretKind::CREDENTIALS, 'proxy');
+
         $authHost = "auth.{$apex}";
         // Cookies cannot be scoped to a single-label TLD (e.g. `.test`), so a
         // local *.test cluster can't share the session across hosts.
@@ -703,7 +713,7 @@ class SsoWireCommand extends Command
             $rbacRole = array_key_first($tool->rbacRoles());
         }
 
-        $app = $this->ensureProxyOidcApp($kubectl, $ssoNs, $ssoHost, $authHost, $pat, $env);
+        $app = $this->ensureProxyOidcApp($kubectl, $ssoNs, $ssoHost, $authHost, $pat, $env, $this->ssoAppSecretName(ClusterTool::SSO, $sso->instance, 'proxy'));
         if ($app === null) {
             return 1;
         }
@@ -714,15 +724,16 @@ class SsoWireCommand extends Command
         // base64_encode(random_bytes(32)) yields 44 chars and crashloops the pod
         // ("cookie_secret must be 16, 24, or 32 bytes"). A rotten cached value
         // would otherwise be reused forever, so regenerate instead of trusting it.
-        $cookieSecret = $this->readClusterSecretKey($kubectl, $this->proxyNamespace(), 'sso-proxy', 'OAUTH2_PROXY_COOKIE_SECRET');
+        $cookieSecret = $this->readClusterSecretKey($kubectl, $this->proxyNamespace(), $proxySecret, 'OAUTH2_PROXY_COOKIE_SECRET');
         if ($cookieSecret === null || ! in_array(strlen($cookieSecret), [16, 24, 32], true)) {
             $cookieSecret = Str::random(32);
         }
 
         $ok = true;
-        $this->withSpin('Deploying the shared SSO proxy...', function () use ($kubectl, $ssoHost, $authHost, $app, $cookieSecret, $cookieDomain, $env, $rbacRole, &$ok) {
+        $this->withSpin('Deploying the shared SSO proxy...', function () use ($kubectl, $sso, $proxy, $ssoHost, $authHost, $app, $cookieSecret, $cookieDomain, $env, $rbacRole, &$ok) {
             $ok = $this->applyManifest($kubectl, view('k8s.sso.proxy', [
                 'namespace' => $this->proxyNamespace(),
+                'names' => $sso,
                 'ssoHost' => $ssoHost,
                 'authHost' => $authHost,
                 'clientId' => $app['clientId'],
@@ -730,7 +741,7 @@ class SsoWireCommand extends Command
                 'cookieSecret' => $cookieSecret,
                 'cookieDomain' => $cookieDomain,
                 'isLocal' => $env === 'local',
-                'proxied' => $this->ingressIsProxied($kubectl, 'sso-proxy', $this->proxyNamespace()),
+                'proxied' => $this->ingressIsProxied($kubectl, $proxy, $this->proxyNamespace()),
                 // sso-proxy is ONE shared pod across every ForwardAuth-gated
                 // tool (ADR 0006) — this only stays correct while RECORD is
                 // the sole ForwardAuth tool, which is true today. A second
@@ -748,9 +759,10 @@ class SsoWireCommand extends Command
         });
 
         if ($ok) {
-            $this->withSpin("Attaching the ForwardAuth middleware to {$tool->getLabel()}...", function () use ($kubectl, $schema, &$ok) {
+            $this->withSpin("Attaching the ForwardAuth middleware to {$tool->getLabel()}...", function () use ($kubectl, $schema, $proxy, &$ok) {
                 $ok = $this->applyManifest($kubectl, view('k8s.sso.forwardauth-middleware', [
                     'namespace' => $schema['namespace'],
+                    'proxyService' => $proxy,
                     'proxyNamespace' => $this->proxyNamespace(),
                 ])->render(), 'sso-forwardauth');
 
@@ -768,7 +780,7 @@ class SsoWireCommand extends Command
             return 1;
         }
 
-        Process::run("{$kubectl} rollout status deployment/sso-proxy -n {$this->proxyNamespace()} --timeout=120s");
+        Process::run("{$kubectl} rollout status deployment/{$proxy} -n {$this->proxyNamespace()} --timeout=120s");
 
         $this->laraKubeInfo("✅ {$tool->getLabel()} is gated behind Zitadel SSO.");
         $this->newLine();
@@ -809,20 +821,23 @@ class SsoWireCommand extends Command
         Process::run("{$kubectl} delete middleware sso-forwardauth -n {$schema['namespace']} --ignore-not-found");
 
         // The proxy is SHARED — only tear it down once nothing else is gated.
-        if ($this->gatedForwardAuthTools($kubectl, $tool) === []) {
-            $this->withSpin('No gated tools left — removing the shared SSO proxy...', function () use ($kubectl, $ssoNs, $ssoHost, $pat): void {
-                $projectId = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-proxy', 'project-id');
-                $appId = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-proxy', 'app-id');
+        $sso = $this->ssoNames($kubectl);
+        if ($sso !== null && $this->gatedForwardAuthTools($kubectl, $tool) === []) {
+            $this->withSpin('No gated tools left — removing the shared SSO proxy...', function () use ($kubectl, $sso, $ssoNs, $ssoHost, $pat): void {
+                $appSecret = $this->ssoAppSecretName(ClusterTool::SSO, $sso->instance, 'proxy');
+                $projectId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'project-id');
+                $appId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'app-id');
                 if ($projectId !== null && $appId !== null) {
                     $this->zitadelDeleteOidcApp($ssoHost, $pat, $projectId, $appId);
                 }
 
                 $ns = $this->proxyNamespace();
-                Process::run("{$kubectl} delete ingress sso-proxy -n {$ns} --ignore-not-found");
-                Process::run("{$kubectl} delete service sso-proxy -n {$ns} --ignore-not-found");
-                Process::run("{$kubectl} delete deployment sso-proxy -n {$ns} --ignore-not-found");
-                Process::run("{$kubectl} delete secret sso-proxy -n {$ns} --ignore-not-found");
-                Process::run("{$kubectl} delete secret sso-app-proxy -n {$ssoNs} --ignore-not-found");
+                $proxy = $sso->deployment('proxy');
+                Process::run("{$kubectl} delete ingress {$proxy} -n {$ns} --ignore-not-found");
+                Process::run("{$kubectl} delete service {$proxy} -n {$ns} --ignore-not-found");
+                Process::run("{$kubectl} delete deployment {$proxy} -n {$ns} --ignore-not-found");
+                Process::run("{$kubectl} delete secret {$sso->secret(SecretKind::CREDENTIALS, 'proxy')} -n {$ns} --ignore-not-found");
+                Process::run("{$kubectl} delete secret {$appSecret} -n {$ssoNs} --ignore-not-found");
             });
         }
 
@@ -843,12 +858,12 @@ class SsoWireCommand extends Command
      *
      * @return array{clientId: string, clientSecret: string}|null
      */
-    protected function ensureProxyOidcApp(string $kubectl, string $ssoNs, string $ssoHost, string $authHost, string $pat, string $env): ?array
+    protected function ensureProxyOidcApp(string $kubectl, string $ssoNs, string $ssoHost, string $authHost, string $pat, string $env, string $appSecret): ?array
     {
-        $clientId = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-proxy', 'client-id');
-        $clientSecret = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-proxy', 'client-secret');
-        $appId = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-proxy', 'app-id');
-        $projectId = $this->readClusterSecretKey($kubectl, $ssoNs, 'sso-app-proxy', 'project-id');
+        $clientId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'client-id');
+        $clientSecret = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'client-secret');
+        $appId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'app-id');
+        $projectId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'project-id');
 
         if ($clientId !== null && $clientSecret !== null && $appId !== null && $projectId !== null
             && ZitadelConnector::make($ssoHost, $pat)->send(GetProjectAppRequest::make($projectId, $appId))->successful()) {
@@ -877,7 +892,7 @@ class SsoWireCommand extends Command
             return null;
         }
 
-        Kubectl::fromPrefix($kubectl)->putSecret($ssoNs, 'sso-app-proxy', ['project-id' => $registered['projectId'], 'app-id' => $registered['appId'], 'client-id' => $registered['clientId'], 'client-secret' => $registered['clientSecret']]);
+        Kubectl::fromPrefix($kubectl)->putSecret($ssoNs, $appSecret, ['project-id' => $registered['projectId'], 'app-id' => $registered['appId'], 'client-id' => $registered['clientId'], 'client-secret' => $registered['clientSecret']]);
 
         if ($this->secretsBackendAvailable($kubectl)) {
             $clusterEnv = $env === 'local' ? 'dev' : $env;

@@ -34,6 +34,7 @@ function ssoPruneProjects(): array
 function ssoPruneRegistryJson(): string
 {
     return (string) json_encode([
+        ssoRegistryRow(),
         ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
     ]);
 }
@@ -58,8 +59,8 @@ function ssoPruneSecretsJson(): string
 function ssoPruneFakes(): void
 {
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(ssoPruneRegistryJson())),
         '*get secrets -n larakube-sso -o json*' => Process::result(output: ssoPruneSecretsJson()),
     ]);
@@ -116,8 +117,8 @@ test('sso:prune refuses --project= naming a wire-referenced or unknown project',
 
 test('sso:prune is a clean no-op when every project is protected or referenced', function (): void {
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(ssoPruneRegistryJson())),
         // forgejo now ALSO tracked — nothing is orphaned anymore (the
         // idempotent second-run case after a successful prune).
@@ -163,8 +164,8 @@ test('sso:prune --force alone is still insufficient without --project=', functio
 
 test('sso:prune refuses to run when the reference-set sweep itself fails', function (): void {
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(ssoPruneRegistryJson())),
         '*get secrets -n larakube-sso -o json*' => Process::result(output: '', exitCode: 1),
     ]);
@@ -190,8 +191,8 @@ test('--project accepts a Zitadel id, not just a name', function (): void {
     // as "not a prunable project" even when it was one. Only a numeric id
     // reproduces it; the other fixtures here use p-* ids that stay strings.
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(ssoPruneRegistryJson())),
         '*get secrets -n larakube-sso -o json*' => Process::result(output: ssoPruneSecretsJson()),
     ]);
@@ -216,8 +217,8 @@ test('a project named after a tool nobody installed is prunable', function (): v
     // emit. Protecting shippedCases() wholesale meant a project left behind by
     // an uninstalled tool could never be pruned — the one case prune exists for.
     Process::fake([
-        '*get deployment sso-zitadel*' => Process::result(output: 'sso-zitadel   1/1   1   1   10d'),
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('zitadel-pat')),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         // Only notes is registered; resume is not installed at all.
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(ssoPruneRegistryJson())),
         '*get secrets -n larakube-sso -o json*' => Process::result(output: ssoPruneSecretsJson()),

@@ -21,6 +21,12 @@ trait InteractsWithSso
 {
     use InteractsWithToolRegistry, ReadsClusterSecrets, ResolvesEnvironmentContext;
 
+    /** Set by a command that is deploying Zitadel right now, before the registry has a row for it. */
+    protected ?ToolInstance $ssoNamesOverride = null;
+
+    /** @var array<string, ToolInstance> */
+    private array $ssoNamesMemo = [];
+
     /**
      * The Secret holding a tool's Zitadel client credentials. It lives in the
      * SSO namespace but is one of the tool's own resources, so it is named
@@ -34,6 +40,20 @@ trait InteractsWithSso
         return ToolInstance::forInstance($tool, $instance)->secret(SecretKind::SSO_APP, $component);
     }
 
+    /**
+     * The Zitadel instance on this cluster: the one being deployed, else the
+     * registered one. Null when none is registered, so a caller can never read
+     * a Secret or exec into a Deployment nothing deploys.
+     */
+    protected function ssoNames(string $kubectl): ?ToolInstance
+    {
+        if ($this->ssoNamesOverride !== null) {
+            return $this->ssoNamesOverride;
+        }
+
+        return $this->ssoNamesMemo[$kubectl] ??= ToolInstance::first($kubectl, ClusterTool::SSO);
+    }
+
     /** The namespace the SSO stack lives in — dedicated, not larakube-shared. */
     protected function ssoNamespace(): string
     {
@@ -43,13 +63,17 @@ trait InteractsWithSso
     /** Zitadel Deployment present? */
     protected function isSsoInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, 'sso-zitadel');
+        $names = $this->ssoNames($kubectl);
+
+        return $names !== null && Kubectl::fromPrefix($kubectl)->hasDeployment($ns, $names->deployment());
     }
 
-    /** Read a key from the sso-secrets secret. */
+    /** Read a key from Zitadel's credentials Secret. */
     protected function readSsoSecret(string $kubectl, string $ns, string $key): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, 'sso-secrets', $key);
+        $names = $this->ssoNames($kubectl);
+
+        return $names === null ? null : $this->readClusterSecretKey($kubectl, $ns, $names->secret(), $key);
     }
 
     /**

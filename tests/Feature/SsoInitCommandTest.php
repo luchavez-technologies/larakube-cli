@@ -22,7 +22,7 @@ test('sso:init deploys zitadel using plex commons postgres by default', function
                 'redis' => ['enabled' => true],
             ],
         ]),
-        '*get secret sso-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: '', exitCode: 1),
         '*exec *' => Process::result(output: 'success'),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -38,7 +38,7 @@ test('sso:init deploys zitadel using plex commons postgres by default', function
 
 test('sso:init deploys standalone zitadel when --no-plex is passed', function (): void {
     Process::fake([
-        '*get secret sso-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
@@ -52,7 +52,7 @@ test('sso:init deploys standalone zitadel when --no-plex is passed', function ()
 
 test('sso:remove removes zitadel namespace and drops the commons database', function (): void {
     Process::fake([...registeredToolRemoveFakes('sso:remove'),
-        '*get deployment sso-zitadel-db*' => Process::result(output: '', exitCode: 1),
+        '*get deployment zitadel-db-sso-example-com*' => Process::result(output: '', exitCode: 1),
         '*exec *' => Process::result(output: 'success'),
         '*delete *' => Process::result(output: 'deleted'),
     ]);
@@ -65,7 +65,7 @@ test('sso:remove removes zitadel namespace and drops the commons database', func
 
 test('sso:remove aborts when the namespace delete fails', function (): void {
     Process::fake([...registeredToolRemoveFakes('sso:remove'),
-        '*get deployment sso-zitadel-db*' => Process::result(output: 'sso-zitadel-db   1/1   1   1   1d'),
+        '*get deployment zitadel-db-sso-example-com*' => Process::result(output: 'zitadel-db-sso-example-com   1/1   1   1   1d'),
         '*delete *' => Process::result(output: '', exitCode: 1),
     ]);
 
@@ -88,7 +88,7 @@ test('sso:init registers zitadel as a static role when the OpenBao DB engine is 
                 'redis' => ['enabled' => true],
             ],
         ]),
-        '*get secret sso-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: '', exitCode: 1),
         '*get secret openbao-secrets-secrets-example-com*' => base64_encode('s.test-root-token'),
         '*port-forward*' => Process::result(output: ''),
         '*exec *' => Process::result(output: 'success'),
@@ -112,7 +112,7 @@ test('sso:init falls back to KV push when the OpenBao DB engine is not mounted',
                 'redis' => ['enabled' => true],
             ],
         ]),
-        '*get secret sso-secrets*' => Process::result(output: '', exitCode: 1),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: '', exitCode: 1),
         '*get secret openbao-secrets-secrets-example-com*' => base64_encode('s.test-root-token'),
         '*port-forward*' => Process::result(output: ''),
         '*exec *' => Process::result(output: 'success'),
@@ -162,7 +162,7 @@ test('sso:init wires Zitadel outbound email to Stalwart when the sender is cache
     Process::fake([
         // machine-pat already present → captureMachinePat short-circuits true,
         // and maybeWireStalwartSmtp reads the PAT from the same secret.
-        '*get secret sso-secrets*' => Process::result(output: base64_encode('pat-value')),
+        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('pat-value')),
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@example.com')),
         '*create namespace*' => Process::result(output: 'namespace created'),
