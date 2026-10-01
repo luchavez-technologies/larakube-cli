@@ -361,7 +361,7 @@ abstract class AbstractToolRemoveCommand extends Command
             // the tenant kept running: OpenBao stopped rotating a password
             // its still-live consumer depended on. Confirmed live 2026-08-23
             // on 4 tools (stalwart, record_sendrec, resume_reactive, and
-            // sheet's role) — see plans/active/openbao-static-role-coverage.md.
+            // sheet's role) — see plans/completed/openbao-static-role-coverage.md.
             if ($dropped) {
                 $this->deleteStaticRole($kubectl, $database);
             }

@@ -108,7 +108,7 @@ test('a failed database drop does not delete the OpenBao static role for a still
     // --purge'd is normally still live at that moment. That orphaned
     // OpenBao's rotation for a tenant that kept running fine. Confirmed live
     // 2026-08-23 on 4 tools (stalwart, record_sendrec, resume_reactive,
-    // sheet's role) — see plans/active/openbao-static-role-coverage.md.
+    // sheet's role) — see plans/completed/openbao-static-role-coverage.md.
     Process::fake(flowRemoveFakes([
         '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*exec *' => Process::result(output: '', exitCode: 1),

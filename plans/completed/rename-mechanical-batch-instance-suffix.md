@@ -213,7 +213,7 @@ Claude Code auto-mode classifier); I verify read-only after each.
    `kubectl delete deployment/loki service/loki configmap/loki-config daemonset/promtail configmap/promtail-config -n larakube-shared --ignore-not-found`
    (leaving `loki-storage` PVC and the ServiceAccount/ClusterRole/ClusterRoleBinding
    untouched, per the table above).
-5. Update `plans/active/openbao-static-role-coverage.md` or wherever the
+5. Update `plans/completed/openbao-static-role-coverage.md` or wherever the
    naming-migration status is tracked, and the relevant memory file, to record
    this batch as done and the remaining group (`forgejo`, `grafana`, `link-kutt`,
    `sign-documenso`, `sso-zitadel`, `vaultwarden`, plus `drive-ocis`/

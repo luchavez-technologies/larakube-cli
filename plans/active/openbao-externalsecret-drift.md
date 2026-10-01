@@ -2,7 +2,7 @@
 
 **Status:** deferred, not started. Diagnosis below is verified live on
 `larakube-159.89.205.239`, 2026-08-28.
-**Related:** `plans/active/openbao-static-role-coverage.md` (marked RESOLVED for Stalwart
+**Related:** `plans/completed/openbao-static-role-coverage.md` (marked RESOLVED for Stalwart
 only — these four were in its table and were never fixed), memory
 `project_openbao_db_static_role_rotation`.
 

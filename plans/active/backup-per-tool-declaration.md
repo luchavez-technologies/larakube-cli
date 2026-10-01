@@ -120,6 +120,6 @@ After the canonical-naming migration, alongside or after
 whole-store assumption fail outright, and both plans touch
 `ClusterToolComponentData`.
 
-Related: `plans/active/backup-per-item-objects.md`,
+Related: `plans/completed/backup-per-item-objects.md`,
 `plans/active/backup-volume-discovery.md`,
 `plans/active/seaweedfs-cluster-backup-system.md`.

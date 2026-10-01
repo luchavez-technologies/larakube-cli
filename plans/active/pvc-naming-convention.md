@@ -8,7 +8,7 @@ with no category, and the copy-Job mechanism now exists (VPN and drive migrated 
 `forgejo-data`, `loki-storage`, `prometheus-storage`, `stalwart-data`, `chat-synapse-data`,
 `vaultwarden-storage`, `openbao-data`. Names in the body below are the retired category-first form.
 **Created:** 2026-08-24
-**Related:** `plans/active/openbao-static-role-coverage.md` (the Deployment/Service/Ingress/DB naming convention this extends), the Mail/Stalwart rename and Git/Forgejo server rename (both in recent commit history) — the two live migrations that established the pattern this plan is extending to PVCs.
+**Related:** `plans/completed/openbao-static-role-coverage.md` (the Deployment/Service/Ingress/DB naming convention this extends), the Mail/Stalwart rename and Git/Forgejo server rename (both in recent commit history) — the two live migrations that established the pattern this plan is extending to PVCs.
 
 ## Context
 

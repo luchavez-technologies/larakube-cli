@@ -4,7 +4,7 @@ Cluster side of the change that moves Chat onto `ToolInstance` names. Context
 `larakube-159.89.205.239`, namespace `larakube-shared`, host `chat.luchtech.dev`,
 instance slug `chat-luchtech-dev`. Follows
 `plans/completed/vpn-canonical-naming-live-migration.md` and
-`plans/active/vaultwarden-canonical-naming-live-migration.md`.
+`plans/completed/vaultwarden-canonical-naming-live-migration.md`.
 
 **This is the team's chat history and its Element X sessions. Read all of it
 first.**

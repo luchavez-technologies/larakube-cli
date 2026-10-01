@@ -3,7 +3,7 @@
 Cluster side of the change that moves OpenBao onto `ToolInstance` names. Context
 `larakube-159.89.205.239`, namespace `larakube-secrets`, host `secrets.luchtech.dev`,
 instance slug `secrets-luchtech-dev`. Follows
-`plans/active/chat-canonical-naming-live-migration.md` and
+`plans/completed/chat-canonical-naming-live-migration.md` and
 `plans/active/mail-canonical-naming-live-migration.md`. Zitadel follows it:
 `plans/active/zitadel-canonical-naming-live-migration.md`.
 

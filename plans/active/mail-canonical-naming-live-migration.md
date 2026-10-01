@@ -3,7 +3,7 @@
 Cluster side of the change that moves Mail onto `ToolInstance` names. Context
 `larakube-159.89.205.239`, namespace `larakube-shared`, host `send.luchtech.dev`,
 instance slug `send-luchtech-dev`. Follows
-`plans/active/chat-canonical-naming-live-migration.md` and
+`plans/completed/chat-canonical-naming-live-migration.md` and
 `plans/completed/vpn-canonical-naming-live-migration.md`.
 
 **Every tool's outbound mail goes through this server, and it holds your
