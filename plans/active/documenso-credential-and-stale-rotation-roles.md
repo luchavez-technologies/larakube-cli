@@ -101,19 +101,19 @@ kubectl --context $CTX -n larakube-secrets logs deploy/openbao-backend --since=2
 
 ### 3. Leftover ExternalSecrets of tools that are not installed
 
+Seven ExternalSecrets have no target Secret and no workload using them:
 `record-sendrec-secrets-db`, `resume-reactive-secrets`,
-`resume-reactive-secrets-db`, `sheet-secrets` and `sheet-secrets-db` have been
-failing for 44 days. Neither Record, Resume nor Sheets is installed, so
-confirm that and delete them:
+`resume-reactive-secrets-db`, `sheet-secrets`, `sheet-secrets-db` (failing for
+44 days), plus `data-secrets-db` and `link-kutt-secrets-db`, which pointed at
+the static roles `secrets:prune` just removed. Verified live before deleting:
+each one's target Secret does not exist and no Deployment, StatefulSet or
+CronJob references it.
 
 ```zsh
-kubectl --context $CTX -n larakube-shared get deploy | grep -iE 'sendrec|resume|teable'
 kubectl --context $CTX -n larakube-shared delete externalsecret \
   record-sendrec-secrets-db resume-reactive-secrets resume-reactive-secrets-db \
-  sheet-secrets sheet-secrets-db --ignore-not-found
+  sheet-secrets sheet-secrets-db data-secrets-db link-kutt-secrets-db --ignore-not-found
 ```
-
-The `grep` must print nothing.
 
 ## The rule this encodes
 
