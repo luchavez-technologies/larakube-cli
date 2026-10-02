@@ -92,6 +92,33 @@ test('backup:init accepts a real off-site endpoint and prints the passphrase onc
         ->expectsOutputToContain('WRITE THIS DOWN SOMEWHERE OFF THIS SERVER');
 });
 
+test('backup:init --json takes its keys from the environment and never prints the passphrase', function (): void {
+    putenv('LARAKUBE_BACKUP_ACCESS_KEY=ENV-AK');
+    putenv('LARAKUBE_BACKUP_SECRET_KEY=ENV-SK');
+    Process::fake(backupInitFakes([
+        '*larakube-backup-config*bucket*' => Process::result(output: ''),
+        '*create secret*' => Process::result(output: 'created'),
+        '*apply -f *' => Process::result(output: 'configured'),
+    ]));
+
+    try {
+        $exit = Illuminate\Support\Facades\Artisan::call('backup:init local --json --no-interaction --endpoint=https://s3.us-west-004.backblazeb2.com --bucket=luchtech-backups');
+        $raw = Illuminate\Support\Facades\Artisan::output();
+    } finally {
+        putenv('LARAKUBE_BACKUP_ACCESS_KEY');
+        putenv('LARAKUBE_BACKUP_SECRET_KEY');
+    }
+
+    $lines = array_values(array_filter(array_map('trim', explode("\n", $raw))));
+    $payload = json_decode((string) end($lines), true);
+
+    expect($exit)->toBe(0)
+        ->and($payload)->toMatchArray(['success' => true, 'newPassphrase' => true])
+        ->and($payload['destination'])->toBe(['endpoint' => 'https://s3.us-west-004.backblazeb2.com', 'bucket' => 'luchtech-backups'])
+        ->and($raw)->not->toContain('WRITE THIS DOWN')
+        ->and($raw)->not->toContain('ENV-SK');
+});
+
 test('aws invocations disable the checksum that R2 and B2 reject', function (): void {
     // From aws-cli 2.23 the client sends x-amz-checksum-crc32 by default, which
     // Cloudflare R2, Backblaze B2 and MinIO reject. It surfaces as an opaque

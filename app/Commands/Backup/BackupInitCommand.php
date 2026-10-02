@@ -5,9 +5,11 @@ namespace App\Commands\Backup;
 use App\Exceptions\MissingFlagException;
 use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
+use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithBackup;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ReadsCommandOptions;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use Illuminate\Support\Str;
@@ -26,7 +28,7 @@ use LaravelZero\Framework\Commands\Command;
  */
 class BackupInitCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithBackup, InteractsWithClusterContext, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment;
+    use DeploysClusterTool, EmitsJsonOutput, InteractsWithBackup, InteractsWithClusterContext, LaraKubeOutput, ReadsCommandOptions, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment;
 
     protected $signature = 'backup:init
         {environment=local : Environment whose cluster to configure}
@@ -37,12 +39,19 @@ class BackupInitCommand extends Command
         {--region=auto : Region. Cloudflare R2 requires "auto"; most others accept it.}
         {--cloudflare-token= : Cloudflare API token, to create the R2 bucket for you}
         {--create-bucket : Create the bucket before configuring (Cloudflare R2 only)}
-        {--context=    : Target a specific kube-context}';
+        {--context=    : Target a specific kube-context}
+        {--json        : Emit one machine-readable JSON result on stdout, and never print the passphrase}';
 
     protected $description = 'Configure the off-site destination backups are shipped to';
 
     public function handle(): int
     {
+        $json = (bool) $this->flag('json');
+
+        if ($json) {
+            $this->enableJsonMode();
+        }
+
         $this->renderHeader();
 
         $env = (string) $this->argument('environment');
@@ -79,8 +88,8 @@ class BackupInitCommand extends Command
         $bucket = (string) ($this->option('bucket') ?: ($this->cannotPrompt() ? '' : text(
             label: 'Destination bucket', placeholder: 'luchtech-backups',
         )));
-        $accessKey = (string) ($this->option('access-key') ?: ($this->cannotPrompt() ? '' : text(label: 'Access key ID')));
-        $secretKey = (string) ($this->option('secret-key') ?: ($this->cannotPrompt() ? '' : password(label: 'Secret access key')));
+        $accessKey = (string) ($this->option('access-key') ?: getenv('LARAKUBE_BACKUP_ACCESS_KEY') ?: ($this->cannotPrompt() ? '' : text(label: 'Access key ID')));
+        $secretKey = (string) ($this->option('secret-key') ?: getenv('LARAKUBE_BACKUP_SECRET_KEY') ?: ($this->cannotPrompt() ? '' : password(label: 'Secret access key')));
 
         if ($bucket === '' || $accessKey === '' || $secretKey === '') {
             $this->laraKubeError('Bucket and credentials are all required.');
@@ -142,7 +151,7 @@ class BackupInitCommand extends Command
             $this->newLine();
         }
 
-        if ($isNew) {
+        if ($isNew && ! $json) {
             // The passphrase lives in a Secret on the very cluster these
             // backups exist to survive. If the cluster is gone, so is the only
             // copy — and the backups become undecryptable noise. This is the
@@ -159,6 +168,16 @@ class BackupInitCommand extends Command
 
         $this->line("  <fg=gray>Next:</> <fg=blue>larakube backup:run {$env}</>");
         $this->newLine();
+
+        if ($json) {
+            // Never the passphrase: it is only in the recovery card, so it cannot end up in a log.
+            $this->jsonOutput([
+                'success' => true,
+                'destination' => ['endpoint' => $endpoint, 'bucket' => $bucket],
+                'recoveryCard' => ['path' => $card],
+                'newPassphrase' => $isNew,
+            ]);
+        }
 
         return 0;
     }
@@ -183,7 +202,7 @@ class BackupInitCommand extends Command
             return false;
         }
 
-        $token = (string) ($this->option('cloudflare-token') ?? '');
+        $token = (string) ($this->option('cloudflare-token') ?: getenv('LARAKUBE_CLOUDFLARE_TOKEN') ?: '');
 
         if ($token === '') {
             if ($this->cannotPrompt()) {
