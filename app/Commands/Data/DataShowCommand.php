@@ -7,16 +7,9 @@ use App\Enums\ClusterTool;
 use App\Services\Kubectl;
 use App\Traits\InteractsWithData;
 
-class DataShowCommand extends AbstractToolShowCommand
+abstract class DataShowCommand extends AbstractToolShowCommand
 {
     use InteractsWithData;
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'data:show' is deprecated. Please use 'pocketbase:show' or 'directus:show' instead.");
-
-        return parent::handle();
-    }
 
     protected function tool(): ClusterTool
     {

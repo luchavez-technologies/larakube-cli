@@ -7,16 +7,9 @@ use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Traits\InteractsWithMeet;
 
-class MeetShowCommand extends AbstractToolShowCommand
+abstract class MeetShowCommand extends AbstractToolShowCommand
 {
     use InteractsWithMeet;
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'meet:show' is deprecated. Please use 'livekit:show' instead.");
-
-        return parent::handle();
-    }
 
     protected function tool(): ClusterTool
     {

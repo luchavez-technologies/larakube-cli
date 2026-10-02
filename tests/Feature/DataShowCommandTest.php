@@ -19,26 +19,26 @@ function dataShowFakes(array $deployments): void
     ]);
 }
 
-test('data:show finds an unregistered PocketBase instance by its Deployment name', function (): void {
+test('pocketbase:show finds an unregistered PocketBase instance by its Deployment name', function (): void {
     dataShowFakes(['pocketbase-data-test']);
 
-    $this->artisan('data:show local --domain=data.test --context=orbstack')
+    $this->artisan('pocketbase:show local --domain=data.test --context=orbstack')
         ->assertExitCode(0)
         ->expectsOutputToContain('s3cret-pass');
 });
 
-test('data:show still reports not installed when no Data Deployment exists', function (): void {
+test('directus:show still reports not installed when no Data Deployment exists', function (): void {
     dataShowFakes(['kube-state-metrics', 'outline-notes-test']);
 
-    $this->artisan('data:show local --domain=data.test --context=orbstack')
+    $this->artisan('directus:show local --domain=data.test --context=orbstack')
         ->assertExitCode(1)
         ->expectsOutputToContain('not installed');
 });
 
-test('data:show does not mistake a different instance for the one asked about', function (): void {
+test('directus:show does not mistake a different instance for the one asked about', function (): void {
     dataShowFakes(['pocketbase-data-other']);
 
-    $this->artisan('data:show local --domain=data.test --context=orbstack')
+    $this->artisan('directus:show local --domain=data.test --context=orbstack')
         ->assertExitCode(1)
         ->expectsOutputToContain('not installed');
 });

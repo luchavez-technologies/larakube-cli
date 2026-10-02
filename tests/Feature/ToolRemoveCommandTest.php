@@ -38,7 +38,7 @@ function flowRemoveFakes(array $extra = [], bool $bundled = false): array
 {
     $deployment = 'n8n-flow-example-com';
 
-    return [...registeredToolRemoveFakes('flow:remove', 'flow-example-com', 'flow.example.com'),
+    return [...registeredToolRemoveFakes('n8n:remove', 'flow-example-com', 'flow.example.com'),
         "*get deployment/{$deployment} *-o json*" => Process::result(output: json_encode([
             'kind' => 'Deployment',
             'metadata' => ['name' => $deployment, 'labels' => $bundled ? ['larakube-storage' => 'bundled'] : []],
@@ -50,10 +50,10 @@ function flowRemoveFakes(array $extra = [], bool $bundled = false): array
     ];
 }
 
-test('flow:remove keeps the database, the encryption key and the data volume by default', function (): void {
+test('n8n:remove keeps the database, the encryption key and the data volume by default', function (): void {
     Process::fake(flowRemoveFakes(['* delete *' => Process::result(output: 'deleted')]));
 
-    $this->artisan('flow:remove local --force')
+    $this->artisan('n8n:remove local --force')
         ->assertExitCode(0)
         ->doesntExpectOutputToContain('Dropping database')
         ->expectsOutputToContain('Removing Flow resources...')
@@ -65,13 +65,13 @@ test('flow:remove keeps the database, the encryption key and the data volume by 
         || str_contains($p->command, 'persistentvolumeclaim/'));
 });
 
-test('flow:remove --purge drops only the engine it ran, and its key and volume', function (): void {
+test('n8n:remove --purge drops only the engine it ran, and its key and volume', function (): void {
     Process::fake(flowRemoveFakes([
         '*exec *' => Process::result(output: 'dropped'),
         '* delete *' => Process::result(output: 'deleted'),
     ]));
 
-    $this->artisan('flow:remove local --force --purge')
+    $this->artisan('n8n:remove local --force --purge')
         ->assertExitCode(0)
         ->expectsOutputToContain("Dropping database 'n8n_flow_example_com' from Plex Commons")
         ->doesntExpectOutputToContain("Dropping database 'windmill")
@@ -81,18 +81,18 @@ test('flow:remove --purge drops only the engine it ran, and its key and volume',
         && str_contains($p->command, 'secret/n8n-secrets-flow-example-com'));
 });
 
-test('flow:remove --purge leaves the Commons alone for a --no-plex install', function (): void {
+test('n8n:remove --purge leaves the Commons alone for a --no-plex install', function (): void {
     Process::fake(flowRemoveFakes(['* delete *' => Process::result(output: 'deleted')], bundled: true));
 
-    $this->artisan('flow:remove local --force --purge')
+    $this->artisan('n8n:remove local --force --purge')
         ->assertExitCode(0)
         ->doesntExpectOutputToContain('Dropping database');
 });
 
-test('flow:remove --domain removes only that host\'s instance', function (): void {
+test('n8n:remove --domain removes only that host\'s instance', function (): void {
     Process::fake(flowRemoveFakes(['* delete *' => Process::result(output: 'deleted')]));
 
-    $this->artisan('flow:remove local --force --domain=flow.example.com')->assertExitCode(0);
+    $this->artisan('n8n:remove local --force --domain=flow.example.com')->assertExitCode(0);
 
     // Every name a delete touches belongs to flow.example.com's instance.
     Process::assertNotRan(fn ($p) => str_contains($p->command, ' delete ')
@@ -117,18 +117,18 @@ test('a failed database drop does not delete the OpenBao static role for a still
         '*' => Process::result(output: ''),
     ]));
 
-    $this->artisan('flow:remove local --force --purge');
+    $this->artisan('n8n:remove local --force --purge');
 
     // deleteStaticRole() only ever reaches OpenBao via a port-forward — none
     // should have been attempted for either database once their drops failed.
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'port-forward'));
 });
 
-test('sheets:remove --purge drops the Commons database AND its S3 buckets, not just the database', function (): void {
+test('teable:remove --purge drops the Commons database AND its S3 buckets, not just the database', function (): void {
     // The bug this guards: --purge dropped the Postgres tenant but silently
     // left every tool's S3 bucket (and its contents) behind — commonsBuckets()
     // was declared but never consulted by the teardown path.
-    Process::fake([...registeredToolRemoveFakes('sheets:remove', 'sheet-example-com', 'sheet.example.com'),
+    Process::fake([...registeredToolRemoveFakes('teable:remove', 'sheet-example-com', 'sheet.example.com'),
         '*get configmap plex-registry*' => Process::result(output: json_encode([
             'tenants' => [
                 'teable-public-sheet-example-com' => ['s3_bucket' => 'teable-public-sheet-example-com', 's3_service' => 'seaweedfs'],
@@ -140,7 +140,7 @@ test('sheets:remove --purge drops the Commons database AND its S3 buckets, not j
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('sheets:remove local --force --purge')
+    $this->artisan('teable:remove local --force --purge')
         ->assertExitCode(0)
         ->expectsOutputToContain("Dropping database 'teable_sheet_example_com' from Plex Commons")
         ->expectsOutputToContain("Dropping object-storage bucket 'teable-public-sheet-example-com' from Plex Commons")
@@ -152,7 +152,7 @@ test('a bucket drop falls back to the Commons spec\'s enabled S3 backend when th
     // tracked s3_service) has nothing to read the backend from — fall back
     // to whichever S3 service the live Commons spec has enabled, the same
     // discovery order every {tool}:init uses to pick one in the first place.
-    Process::fake([...registeredToolRemoveFakes('sheets:remove', 'sheet-example-com', 'sheet.example.com'),
+    Process::fake([...registeredToolRemoveFakes('teable:remove', 'sheet-example-com', 'sheet.example.com'),
         '*get configmap plex-registry*' => Process::result(output: json_encode(['tenants' => []])),
         '*get configmap plex-commons*' => Process::result(output: json_encode([
             'services' => ['seaweedfs' => ['enabled' => true]],
@@ -162,13 +162,13 @@ test('a bucket drop falls back to the Commons spec\'s enabled S3 backend when th
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('sheets:remove local --force --purge')
+    $this->artisan('teable:remove local --force --purge')
         ->assertExitCode(0)
         ->expectsOutputToContain("Dropping object-storage bucket 'teable-public-sheet-example-com' from Plex Commons");
 });
 
-test('drive:remove --purge does NOT drop its Commons bucket — oCIS encryption keys would orphan the data', function (): void {
-    Process::fake([...registeredToolRemoveFakes('drive:remove'),
+test('ocis:remove --purge does NOT drop its Commons bucket — oCIS encryption keys would orphan the data', function (): void {
+    Process::fake([...registeredToolRemoveFakes('ocis:remove'),
         '*get configmap plex-registry*' => Process::result(output: json_encode([
             'tenants' => ['drive-ocis' => ['s3_bucket' => 'drive-ocis', 's3_service' => 'seaweedfs']],
         ])),
@@ -176,7 +176,7 @@ test('drive:remove --purge does NOT drop its Commons bucket — oCIS encryption 
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('drive:remove local --force --purge')
+    $this->artisan('ocis:remove local --force --purge')
         ->assertExitCode(0)
         ->doesntExpectOutputToContain('Dropping object-storage bucket');
 
@@ -191,7 +191,7 @@ test('a failed delete exits non-zero instead of reporting success', function ():
         '* delete *' => Process::result(output: '', errorOutput: 'forbidden', exitCode: 1),
     ]));
 
-    $this->artisan('flow:remove local --force')
+    $this->artisan('n8n:remove local --force')
         ->assertExitCode(1)
         ->expectsOutputToContain('failed to remove');
 });
@@ -210,8 +210,8 @@ test('namespace-wholesale tools delete their own namespace and nothing shared', 
     }
 });
 
-test('mail:remove closes the firewall ports it opened', function (): void {
-    Process::fake([...registeredToolRemoveFakes('mail:remove'),
+test('stalwart:remove closes the firewall ports it opened', function (): void {
+    Process::fake([...registeredToolRemoveFakes('stalwart:remove'),
         '*delete *' => Process::result(output: 'deleted'),
         '*wait *' => Process::result(output: ''),
         '*get secrets*' => Process::result(output: ''),
@@ -220,28 +220,28 @@ test('mail:remove closes the firewall ports it opened', function (): void {
 
     // A mail server that's gone but whose SMTP ports stay open is a real
     // exposure, so teardown must reach the firewall too.
-    $this->artisan('mail:remove local --force')->assertExitCode(0);
+    $this->artisan('stalwart:remove local --force')->assertExitCode(0);
 });
 
 test('--domain on a single-instance tool errors instead of silently no-opping', function (): void {
-    // sso:remove/mail:remove/etc. inherit --domain from the shared base
+    // zitadel:remove/stalwart:remove/etc. inherit --domain from the shared base
     // unconditionally, but SSO/MAIL's teardown targets fixed resource names
     // — --domain=foo.example.com would do nothing (or a misleading partial
     // removal) rather than what it implies. hasInstanceAwareRemoval() guards
     // this for every tool where it's false, not just these two.
-    $this->artisan('sso:remove local --domain=foo.example.com --force')
+    $this->artisan('zitadel:remove local --domain=foo.example.com --force')
         ->assertExitCode(1)
         ->expectsOutputToContain('does not support multiple instances');
 
-    $this->artisan('mail:remove local --domain=foo.example.com --force')
+    $this->artisan('stalwart:remove local --domain=foo.example.com --force')
         ->assertExitCode(1)
         ->expectsOutputToContain('does not support multiple instances');
 });
 
 test('omitting --domain is always allowed, even for single-instance tools', function (): void {
-    Process::fake([...registeredToolRemoveFakes('sso:remove'), '*' => Process::result(output: '')]);
+    Process::fake([...registeredToolRemoveFakes('zitadel:remove'), '*' => Process::result(output: '')]);
 
-    $this->artisan('sso:remove local --force')->assertExitCode(0);
+    $this->artisan('zitadel:remove local --force')->assertExitCode(0);
 });
 
 test('--domain on a tool without real per-instance teardown errors instead of silently deleting the one real install', function (): void {
@@ -254,7 +254,7 @@ test('--domain on a tool without real per-instance teardown errors instead of si
     // that gap for every tool except the 4 with real per-instance logic.
     $groupB = array_filter(
         ClusterTool::shippedCases(),
-        // DNS excluded: dns:remove is a bespoke Cloudflare-zone command that
+        // DNS excluded: external-dns:remove is a bespoke Cloudflare-zone command that
         // never extended AbstractToolRemoveCommand and has no --domain option
         // at all — this loop only covers tools sharing the generic guard.
         fn (ClusterTool $tool) => ! $tool->hasInstanceAwareRemoval() && $tool !== ClusterTool::DNS && $tool !== ClusterTool::EXTERNAL_DNS,
@@ -275,7 +275,7 @@ test('a tool with no registered instance reports nothing to remove and deletes n
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('notes:remove local')
+    $this->artisan('outline:remove local')
         ->expectsOutputToContain("instances are registered in 'local', so there is nothing to remove.")
         ->assertExitCode(0);
 
@@ -283,12 +283,12 @@ test('a tool with no registered instance reports nothing to remove and deletes n
 });
 
 test('the confirmation names the host of the registered instance being removed', function (): void {
-    Process::fake([...registeredToolRemoveFakes('notes:remove', 'notes-example-com', 'notes.example.com'),
+    Process::fake([...registeredToolRemoveFakes('outline:remove', 'notes-example-com', 'notes.example.com'),
         '*delete*' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('notes:remove local')
+    $this->artisan('outline:remove local')
         ->expectsOutputToContain('Instance(s): notes.example.com')
         ->expectsQuestion('Type confirm to proceed', 'confirm')
         ->assertExitCode(0);
@@ -298,12 +298,12 @@ test('the confirmation names the host of the registered instance being removed',
 });
 
 test('removing a tool also removes its secrets:wire database-password sync', function (): void {
-    Process::fake([...registeredToolRemoveFakes('sign:remove', 'sign-example-com', 'sign.example.com'),
+    Process::fake([...registeredToolRemoveFakes('documenso:remove', 'sign-example-com', 'sign.example.com'),
         '*get secret documenso-secrets*' => Process::result(output: 'secret/documenso-secrets-sign-example-com'),
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('sign:remove local --force')->assertExitCode(0);
+    $this->artisan('documenso:remove local --force')->assertExitCode(0);
 
     // Both objects secrets:wire creates, for this instance's DB secret.
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete externalsecret,vaultdynamicsecret.generators.external-secrets.io documenso-secrets-sign-example-com-db'));
@@ -314,14 +314,14 @@ test('removing an SSO-wired tool deletes its Zitadel app, then the Secret record
     Saloon\Laravel\Facades\Saloon::fake([
         App\Http\Integrations\Zitadel\Requests\DeleteProjectAppRequest::class => Saloon\Http\Faking\MockResponse::make([]),
     ]);
-    Process::fake([...registeredToolRemoveFakes('sign:remove', 'sign-example-com', 'sign.example.com'),
+    Process::fake([...registeredToolRemoveFakes('documenso:remove', 'sign-example-com', 'sign.example.com'),
         '*get secret documenso-sso-sign-example-com*project-id*' => Process::result(output: base64_encode('111')),
         '*get secret documenso-sso-sign-example-com*app-id*' => Process::result(output: base64_encode('222')),
         '*get secret zitadel-secrets-sso-example-com*machine-pat*' => Process::result(output: base64_encode('pat')),
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('sign:remove local --force')->assertExitCode(0);
+    $this->artisan('documenso:remove local --force')->assertExitCode(0);
 
     Saloon\Laravel\Facades\Saloon::assertSent(fn ($request) => $request instanceof App\Http\Integrations\Zitadel\Requests\DeleteProjectAppRequest
         && str_contains($request->resolveEndpoint(), '/projects/111/apps/222'));
@@ -330,14 +330,14 @@ test('removing an SSO-wired tool deletes its Zitadel app, then the Secret record
 });
 
 test('if Zitadel can\'t be reached, removal keeps the Secret so the app can still be found', function (): void {
-    Process::fake([...registeredToolRemoveFakes('sign:remove', 'sign-example-com', 'sign.example.com'),
+    Process::fake([...registeredToolRemoveFakes('documenso:remove', 'sign-example-com', 'sign.example.com'),
         '*get secret documenso-sso-sign-example-com*project-id*' => Process::result(output: base64_encode('111')),
         '*get secret documenso-sso-sign-example-com*app-id*' => Process::result(output: base64_encode('222')),
         '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: ''),
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('sign:remove local --force')->assertExitCode(0);
+    $this->artisan('documenso:remove local --force')->assertExitCode(0);
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'delete secret documenso-sso'));
 });

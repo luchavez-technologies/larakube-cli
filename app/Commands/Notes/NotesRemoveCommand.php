@@ -7,15 +7,8 @@ use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SecretKind;
 
-class NotesRemoveCommand extends AbstractToolRemoveCommand
+abstract class NotesRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'notes:remove' is deprecated. Please use 'outline:remove' instead.");
-
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::NOTES;

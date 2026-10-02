@@ -16,11 +16,11 @@ use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
-class MailShowCommand extends Command
+abstract class MailShowCommand extends Command
 {
     use DeploysClusterTool, InteractsWithBulwark, InteractsWithClusterContext, InteractsWithMail, InteractsWithPlex, InteractsWithSso, InteractsWithStalwartApi, InteractsWithZitadelApi, LaraKubeOutput;
 
-    protected $signature = 'mail:show
+    protected $signature = 'stalwart:show
         {environment=local : Environment whose mail server to show}
         {--email=   : Show client setup for this account instead of admin access (never shows its password — that\'s never recoverable; use mail:password to reset it)}
         {--context= : Target a specific kube-context}';
@@ -29,7 +29,6 @@ class MailShowCommand extends Command
 
     public function handle(): int
     {
-        $this->laraKubeWarn("[DEPRECATION] 'mail:show' is deprecated. Please use 'stalwart:show' instead.");
         $this->renderHeader();
 
         $env = (string) $this->argument('environment');
@@ -118,7 +117,7 @@ class MailShowCommand extends Command
     /**
      * Reconstruct a printPlexHint()-shaped storeBootstrap array from LIVE
      * server state, for installs deployed via the local wizard-skip path
-     * (MailInitCommand::bootstrapStalwartStoreForLocal()). mail:show has no
+     * (MailInitCommand::bootstrapStalwartStoreForLocal()). stalwart:show has no
      * access to the array stalwart:init built at deploy time, so it detects the
      * same thing a different way: the 'stalwart-config' ConfigMap only
      * exists on that path (it's what pre-seeds config.json and skips

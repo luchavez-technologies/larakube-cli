@@ -1,6 +1,5 @@
 <?php
 
-use App\Exceptions\MissingFlagException;
 use App\Traits\InteractsWithToolRegistry;
 use Illuminate\Support\Facades\Process;
 
@@ -66,7 +65,7 @@ test('directus:init deploys directus stack using commons postgres', function ():
 
 test('directus:init records which engine an instance runs in the cluster registry', function (): void {
     // Nothing about a Data instance's host or URL reveals which engine it
-    // runs — data:show/tool:list --json need this recorded, not just baked
+    // runs — directus:show/tool:list --json need this recorded, not just baked
     // into the manifest's env vars.
     $captured = null;
 
@@ -204,7 +203,7 @@ test('directus:init --alias registers an additional hostname on the same instanc
         ->expectsOutputToContain('https://alt.example.com');
 });
 
-test('data:remove --domain derives the same instance directus:init would have, not main\'s', function (): void {
+test('pocketbase:remove --domain derives the same instance directus:init would have, not main\'s', function (): void {
     // The --domain given here must resolve to the SAME instance identifier
     // (via ClusterTool::instanceSlugFromHost() — the full host, dashed, no
     // auto-prefixing) that directus:init would have derived from the identical
@@ -217,14 +216,14 @@ test('data:remove --domain derives the same instance directus:init would have, n
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:remove local --domain=blog.example.com --force')->assertExitCode(0);
+    $this->artisan('pocketbase:remove local --domain=blog.example.com --force')->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete')
         && str_contains($process->command, 'deployment/pocketbase-blog-example-com')
         && ! str_contains($process->command, 'secret/data-secrets '));
 });
 
-test('data:remove --domain removes EVERY instance registered for the host (duplicate cleanup)', function (): void {
+test('pocketbase:remove --domain removes EVERY instance registered for the host (duplicate cleanup)', function (): void {
     // Regression guard for the 2026-08-09 incident: the legacy un-suffixed
     // default instance (instance '') AND the buggy host-derived slug both
     // registered pocket.luchtech.dev. Removal means "take down everything
@@ -236,8 +235,8 @@ test('data:remove --domain removes EVERY instance registered for the host (dupli
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
-                ['tool' => 'data', 'instance' => '', 'aliases' => [], 'installedAt' => '2026-08-09T10:35:58+00:00', 'host' => 'pocket.luchtech.dev'],
-                ['tool' => 'data', 'instance' => 'pocket-luchtech-dev', 'aliases' => [], 'installedAt' => '2026-08-09T10:36:31+00:00', 'host' => 'pocket.luchtech.dev'],
+                ['tool' => 'pocketbase', 'instance' => '', 'aliases' => [], 'installedAt' => '2026-08-09T10:35:58+00:00', 'host' => 'pocket.luchtech.dev'],
+                ['tool' => 'pocketbase', 'instance' => 'pocket-luchtech-dev', 'aliases' => [], 'installedAt' => '2026-08-09T10:36:31+00:00', 'host' => 'pocket.luchtech.dev'],
             ])),
         ),
         '*create secret generic larakube-tools-registry*' => function ($process) use (&$captured, &$writes) {
@@ -255,7 +254,7 @@ test('data:remove --domain removes EVERY instance registered for the host (dupli
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:remove local --domain=pocket.luchtech.dev --force')->assertExitCode(0);
+    $this->artisan('pocketbase:remove local --domain=pocket.luchtech.dev --force')->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete')
         && str_contains($process->command, 'deployment/pocketbase-pocket-luchtech-dev'));
@@ -265,89 +264,38 @@ test('data:remove --domain removes EVERY instance registered for the host (dupli
     // the second write still carries the other instance, which is expected;
     // what matters is both instances were actually unregistered.
     expect($writes)->toHaveCount(2);
-    $firstData = collect($writes[0])->where('tool', 'data')->first();
-    $secondData = collect($writes[1])->where('tool', 'data')->first();
+    $firstData = collect($writes[0])->where('tool', 'pocketbase')->first();
+    $secondData = collect($writes[1])->where('tool', 'pocketbase')->first();
     expect($firstData['instance'])->toBe('pocket-luchtech-dev')
         ->and($secondData['instance'])->toBe('');
 });
 
-test('data:remove --engine=pocketbase removes pocketbase resources', function (): void {
-    Process::fake([...registeredToolRemoveFakes('data:remove', 'tool-example-com'),
+test('pocketbase:remove removes pocketbase resources', function (): void {
+    Process::fake([...registeredToolRemoveFakes('pocketbase:remove', 'tool-example-com'),
         '*delete*' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:remove local --engine=pocketbase --force')
+    $this->artisan('pocketbase:remove local --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing Data resources...');
 });
 
-test('data:remove tears down pocketbase\'s own Service and Ingress, not just Directus-shaped names', function (): void {
+test('pocketbase:remove tears down pocketbase\'s own Service and Ingress, not just Directus-shaped names', function (): void {
     // Regression guard for a live collision (2026-08-08): teardown() only
     // ever deleted service/data + ingress/data (Directus's actual names) and
     // service/data-{instance} + ingress/data-{instance} — never PocketBase's
     // real names (service/data-pocketbase, ingress/data-pocketbase-ingress).
-    // Every past data:remove left those orphaned, and the next directus:init for
+    // Every past pocketbase:remove left those orphaned, and the next directus:init for
     // either engine collided with them on the shared Data host.
-    Process::fake([...registeredToolRemoveFakes('data:remove', 'tool-example-com'),
+    Process::fake([...registeredToolRemoveFakes('pocketbase:remove', 'tool-example-com'),
         '*delete*' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:remove local --engine=pocketbase --force')->assertExitCode(0);
+    $this->artisan('pocketbase:remove local --force')->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'service/pocketbase-tool-example-com')
         && str_contains($process->command, 'ingress/pocketbase-tool-example-com-ingress')
         && str_contains($process->command, 'configmap/pocketbase-hooks-tool-example-com'));
-});
-
-test('data:remove asks which engine when both are deployed for the same instance, rather than guessing', function (): void {
-    // Regression guard for the exact scare that prompted this redesign
-    // (2026-08-08): the old teardown() always deleted BOTH engine-shaped
-    // resource sets unconditionally — safe only under the old one-engine-
-    // per-Data assumption, wrong now that a stale/pre-fix cluster (or a
-    // failed swap) can genuinely have both live at once. Never silently
-    // pick one. Tests run non-interactively (RequiresFlagsWhenNonInteractive
-    // ::cannotPrompt() is true under runningUnitTests()), so this exercises
-    // the "ask" path as the flag-required failure — interactively it's a
-    // select() prompt instead, per flagOrPrompt()'s contract.
-    Process::fake([...registeredToolRemoveFakes('data:remove', 'tool-example-com'),
-        '*get deployment directus-tool-example-com*' => Process::result(output: 'directus-tool-example-com   1/1   1   1   10d'),
-        '*get deployment pocketbase-tool-example-com*' => Process::result(output: 'pocketbase-tool-example-com   1/1   1   1   10d'),
-        '*' => Process::result(output: ''),
-    ]);
-
-    // MissingFlagException is thrown before any delete command runs — the
-    // ->throws() assertion below is itself the proof nothing was deleted.
-    $this->artisan('data:remove local --force')->run();
-})->throws(MissingFlagException::class, 'Missing required --engine');
-
-test('data:remove --engine=all removes both when both are genuinely deployed', function (): void {
-    Process::fake([...registeredToolRemoveFakes('data:remove', 'tool-example-com'),
-        '*get deployment directus-tool-example-com*' => Process::result(output: 'directus-tool-example-com   1/1   1   1   10d'),
-        '*get deployment pocketbase-tool-example-com*' => Process::result(output: 'pocketbase-tool-example-com   1/1   1   1   10d'),
-        '*delete*' => Process::result(output: 'deleted'),
-        '*' => Process::result(output: ''),
-    ]);
-
-    $this->artisan('data:remove local --engine=all --force')->assertExitCode(0);
-
-    Process::assertRan(fn ($process) => str_contains($process->command, 'delete')
-        && str_contains($process->command, 'deployment/directus-tool-example-com')
-        && str_contains($process->command, 'deployment/pocketbase-tool-example-com'));
-});
-
-test('data:remove auto-detects the single engine actually deployed, without needing --engine', function (): void {
-    Process::fake([...registeredToolRemoveFakes('data:remove', 'tool-example-com'),
-        '*get deployment directus-tool-example-com*' => Process::result(output: 'directus-tool-example-com   1/1   1   1   10d'),
-        '*get deployment pocketbase*' => Process::result(output: ''),
-        '*delete*' => Process::result(output: 'deleted'),
-        '*' => Process::result(output: ''),
-    ]);
-
-    $this->artisan('data:remove local --force')->assertExitCode(0);
-
-    Process::assertRan(fn ($process) => str_contains($process->command, 'delete')
-        && str_contains($process->command, 'deployment/directus-tool-example-com')
-        && ! str_contains($process->command, 'deployment/pocketbase-tool-example-com'));
 });

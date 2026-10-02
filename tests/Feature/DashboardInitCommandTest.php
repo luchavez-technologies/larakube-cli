@@ -131,12 +131,12 @@ test('dashboard manifest binds cluster-admin to the OIDC-authenticated -dashboar
         ->and($manifest)->toContain('name: -dashboard-admin');
 });
 
-test('dashboard:remove deletes Headlamp resources', function (): void {
-    Process::fake([...registeredToolRemoveFakes('dashboard:remove'),
+test('headlamp:remove deletes Headlamp resources', function (): void {
+    Process::fake([...registeredToolRemoveFakes('headlamp:remove'),
         '*delete *' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan('dashboard:remove local --force')
+    $this->artisan('headlamp:remove local --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing CNCF Headlamp Control Plane resources...')
         ->expectsOutputToContain('removed from larakube-shared');

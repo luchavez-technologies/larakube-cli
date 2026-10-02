@@ -10,23 +10,23 @@ afterEach(function (): void {
     MockClient::destroyGlobal();
 });
 
-test('mail:show is registered', function (): void {
+test('stalwart:show is registered', function (): void {
     ssoRegistered();
     $this->artisan('list')
         ->assertExitCode(0)
-        ->expectsOutputToContain('mail:show');
+        ->expectsOutputToContain('stalwart:show');
 });
 
-test('mail:show requires installed stalwart', function (): void {
+test('stalwart:show requires installed stalwart', function (): void {
     ssoRegistered();
     Process::fake(['*larakube.io/tool=mail*' => Process::result(output: '', exitCode: 1)]);
 
-    $this->artisan('mail:show')
+    $this->artisan('stalwart:show')
         ->assertExitCode(1)
         ->expectsOutputToContain('Stalwart is not installed');
 });
 
-test('mail:show displays admin credentials', function (): void {
+test('stalwart:show displays admin credentials', function (): void {
     ssoRegistered();
     Process::fake([
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -34,13 +34,13 @@ test('mail:show displays admin credentials', function (): void {
         '*port-forward*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('mail:show')
+    $this->artisan('stalwart:show')
         ->assertExitCode(0)
         ->expectsOutputToContain('admin')
         ->expectsOutputToContain('s3cret-p@ss');
 });
 
-test('mail:show <email> displays that account\'s client setup, never a password', function (): void {
+test('stalwart:show <email> displays that account\'s client setup, never a password', function (): void {
     ssoRegistered();
     Process::fake([
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -55,7 +55,7 @@ test('mail:show <email> displays that account\'s client setup, never a password'
         MockResponse::make(['methodResponses' => [['x:Account/get', ['list' => [['id' => 'c', 'name' => 'alice', 'description' => 'Alice Smith', 'emailAddress' => 'alice@example.com', 'roles' => ['@type' => 'User']]], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
     ]);
 
-    $this->artisan('mail:show', ['--email' => 'alice@example.com'])
+    $this->artisan('stalwart:show', ['--email' => 'alice@example.com'])
         ->assertExitCode(0)
         ->expectsOutputToContain('alice@example.com')
         ->expectsOutputToContain('Alice Smith')
@@ -63,7 +63,7 @@ test('mail:show <email> displays that account\'s client setup, never a password'
         ->doesntExpectOutputToContain('test-admin-pass');
 });
 
-test('mail:show <email> errors when the account does not exist', function (): void {
+test('stalwart:show <email> errors when the account does not exist', function (): void {
     ssoRegistered();
     Process::fake([
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -76,12 +76,12 @@ test('mail:show <email> errors when the account does not exist', function (): vo
         MockResponse::make(['methodResponses' => [['x:Account/query', ['ids' => []], 'c0'], ['x:Account/get', ['list' => [], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
     ]);
 
-    $this->artisan('mail:show', ['--email' => 'ghost@example.com'])
+    $this->artisan('stalwart:show', ['--email' => 'ghost@example.com'])
         ->assertExitCode(1)
         ->expectsOutputToContain("Account 'ghost@example.com' not found");
 });
 
-test('mail:show <email> shows the webmail URL when Bulwark is installed', function (): void {
+test('stalwart:show <email> shows the webmail URL when Bulwark is installed', function (): void {
     ssoRegistered();
     Process::fake([
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -96,12 +96,12 @@ test('mail:show <email> shows the webmail URL when Bulwark is installed', functi
         MockResponse::make(['methodResponses' => [['x:Account/get', ['list' => [['id' => 'c', 'name' => 'alice', 'description' => 'Alice Smith', 'emailAddress' => 'alice@example.com', 'roles' => ['@type' => 'User']]], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
     ]);
 
-    $this->artisan('mail:show', ['--email' => 'alice@example.com'])
+    $this->artisan('stalwart:show', ['--email' => 'alice@example.com'])
         ->assertExitCode(0)
         ->expectsOutputToContain('Webmail:');
 });
 
-test('mail:show <email> shows SSO status when Zitadel is installed', function (): void {
+test('stalwart:show <email> shows SSO status when Zitadel is installed', function (): void {
     ssoRegistered();
     Process::fake([
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -117,7 +117,7 @@ test('mail:show <email> shows SSO status when Zitadel is installed', function ()
         SearchUsersRequest::class => MockResponse::make(['result' => [['userId' => 'zid-1']]]),
     ]);
 
-    $this->artisan('mail:show', ['--email' => 'alice@example.com'])
+    $this->artisan('stalwart:show', ['--email' => 'alice@example.com'])
         ->assertExitCode(0)
         ->expectsOutputToContain('SSO:');
 });

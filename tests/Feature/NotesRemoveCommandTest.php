@@ -2,14 +2,14 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('notes:remove tears down main\'s resources by their un-suffixed names', function (): void {
-    Process::fake([...registeredToolRemoveFakes('notes:remove'),
+test('outline:remove tears down main\'s resources by their un-suffixed names', function (): void {
+    Process::fake([...registeredToolRemoveFakes('outline:remove'),
         '*get secret notes-secrets*' => Process::result(output: '', exitCode: 1),
         '*delete*' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('notes:remove local --force')->assertExitCode(0);
+    $this->artisan('outline:remove local --force')->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete')
         && str_contains($process->command, 'deployment/notes-outline')
@@ -20,7 +20,7 @@ test('notes:remove tears down main\'s resources by their un-suffixed names', fun
         && str_contains($process->command, 'secret/notes-outline-smtp'));
 });
 
-test('notes:remove --domain scopes teardown to that instance\'s resources, not main\'s', function (): void {
+test('outline:remove --domain scopes teardown to that instance\'s resources, not main\'s', function (): void {
     // Regression guard: teardown() used to delete deployment/notes-outline,
     // service/notes, and ingress/notes unconditionally — the exact fixed
     // names main uses — regardless of which instance --domain resolved to.
@@ -31,7 +31,7 @@ test('notes:remove --domain scopes teardown to that instance\'s resources, not m
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('notes:remove local --domain=blog.example.com --force')->assertExitCode(0);
+    $this->artisan('outline:remove local --domain=blog.example.com --force')->assertExitCode(0);
 
     Process::assertRan(function ($process) {
         if (! str_contains($process->command, 'delete')) {

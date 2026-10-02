@@ -113,12 +113,12 @@ test('bulwark:init --vpn-only creates the Traefik Middleware before applying the
         ->expectsOutputToContain('Bulwark webmail is live.');
 });
 
-test('webmail:remove deletes the Bulwark resources', function (): void {
-    Process::fake([...registeredToolRemoveFakes('webmail:remove', instance: 'webmail-example-com', host: 'webmail.example.com'),
+test('bulwark:remove deletes the Bulwark resources', function (): void {
+    Process::fake([...registeredToolRemoveFakes('bulwark:remove', instance: 'webmail-example-com', host: 'webmail.example.com'),
         '*delete *' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan('webmail:remove local --force')
+    $this->artisan('bulwark:remove local --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing Bulwark webmail resources...')
         ->expectsOutputToContain('removed from larakube-shared');
@@ -131,12 +131,12 @@ test('webmail:remove deletes the Bulwark resources', function (): void {
         && str_contains($job->command, 'pvc/bulwark-storage-webmail-example-com'));
 });
 
-test('webmail:remove aborts when a delete step fails', function (): void {
-    Process::fake([...registeredToolRemoveFakes('webmail:remove'),
+test('bulwark:remove aborts when a delete step fails', function (): void {
+    Process::fake([...registeredToolRemoveFakes('bulwark:remove'),
         '*delete *' => Process::result(output: '', exitCode: 1),
     ]);
 
-    $this->artisan('webmail:remove local --force')
+    $this->artisan('bulwark:remove local --force')
         ->assertExitCode(1)
         ->expectsOutputToContain('failed to remove');
 });

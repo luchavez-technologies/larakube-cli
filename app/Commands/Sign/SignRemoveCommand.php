@@ -8,15 +8,8 @@ use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SecretKind;
 
-class SignRemoveCommand extends AbstractToolRemoveCommand
+abstract class SignRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'sign:remove' is deprecated. Please use 'documenso:remove' instead.");
-
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::SIGN;

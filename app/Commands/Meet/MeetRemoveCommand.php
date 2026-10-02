@@ -7,16 +7,9 @@ use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Traits\ManagesToolFirewallPorts;
 
-class MeetRemoveCommand extends AbstractToolRemoveCommand
+abstract class MeetRemoveCommand extends AbstractToolRemoveCommand
 {
     use ManagesToolFirewallPorts;
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'meet:remove' is deprecated. Please use 'livekit:remove' instead.");
-
-        return parent::handle();
-    }
 
     protected function tool(): ClusterTool
     {

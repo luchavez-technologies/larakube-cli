@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Process;
  * tool-specific `middleware/forgejo-vpn-only` cleanup (not a k8s resource
  * under the tool's own component list) still runs as a separate step.
  */
-test('git:remove deletes the same resource set as before the component refactor', function (): void {
+test('forgejo:remove deletes the same resource set as before the component refactor', function (): void {
     Process::fake([
         // GIT always resolves a real, host-derived instance — there is no
         // bare/default removal path to pin here anymore.
@@ -21,7 +21,7 @@ test('git:remove deletes the same resource set as before the component refactor'
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('git:remove local --force')
+    $this->artisan('forgejo:remove local --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing Forgejo resources...');
 

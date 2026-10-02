@@ -68,7 +68,7 @@ trait InteractsWithMonitoring
     }
 
     /**
-     * Resolve the monitoring stack's access details for display (monitor:show,
+     * Resolve the monitoring stack's access details for display (grafana:show,
      * about). Returns null when monitoring isn't installed, so callers can skip
      * the section. Read-only.
      *

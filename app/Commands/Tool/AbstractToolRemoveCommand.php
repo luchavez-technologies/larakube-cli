@@ -452,7 +452,7 @@ abstract class AbstractToolRemoveCommand extends Command
      * but dropping it would be unsafe"). Exists for Drive: oCIS wraps each
      * file's encryption key with drive-secrets' rekey key, so deleting the
      * bucket without also handling per-file re-encryption would orphan data
-     * no re-init could recover — a mistyped `drive:remove --purge` must not
+     * no re-init could recover — a mistyped `ocis:remove --purge` must not
      * be able to destroy files. Default: buckets purge normally.
      */
     protected function preservesBucketsOnPurge(): bool

@@ -21,7 +21,7 @@ trait InteractsWithDnsZones
      * comma-joined list in that case); this splits it back out so each zone
      * still gets its own row, with multiple rows naturally sharing the same
      * `slug`/`owner`/`ready` when they're served by the same instance —
-     * `dns:list`'s table reads that sharing directly off repeated values in
+     * `external-dns:list`'s table reads that sharing directly off repeated values in
      * the "Instance" column, no separate grouped-view UI needed.
      *
      * @return list<array{zone: string, slug: string, owner: string, ready: bool}>

@@ -3,20 +3,20 @@
 use Illuminate\Support\Facades\Process;
 
 /**
- * Regression test for the ClusterTool component refactor: chat:remove's
+ * Regression test for the ClusterTool component refactor: matrix:remove's
  * teardown() used to hand-copy a `kubectl delete` resource list independently
  * of the Blade manifest that deploys Matrix. It now iterates
  * ClusterTool::CHAT->components() instead — this pins that the exact same
  * set of resources still gets deleted (order doesn't matter to `kubectl
  * delete`, so this compares the resource SET, not a literal string).
  */
-test('chat:remove deletes the same resource set as before the component refactor', function (): void {
-    Process::fake([...registeredToolRemoveFakes('chat:remove'),
+test('matrix:remove deletes the same resource set as before the component refactor', function (): void {
+    Process::fake([...registeredToolRemoveFakes('matrix:remove'),
         '*delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('chat:remove local --force')
+    $this->artisan('matrix:remove local --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing Matrix (Synapse + Element) resources...');
 
@@ -75,7 +75,7 @@ test('chat:remove deletes the same resource set as before the component refactor
     expect($resources)->toBe($expected);
 });
 
-test('chat:remove targets the real instance-suffixed resources when chat is actually registered', function (): void {
+test('matrix:remove targets the real instance-suffixed resources when chat is actually registered', function (): void {
     // The test above fakes an empty registry lookup, so resolveInstance()
     // falls back to null and every resource comes back bare. This is the
     // live-shaped case: chat registered under its host-derived instance slug.
@@ -89,7 +89,7 @@ test('chat:remove targets the real instance-suffixed resources when chat is actu
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('chat:remove local --force')->assertExitCode(0);
+    $this->artisan('matrix:remove local --force')->assertExitCode(0);
 
     $deleteCommand = null;
     Process::assertRan(function ($process) use (&$deleteCommand) {
@@ -116,13 +116,13 @@ test('chat:remove targets the real instance-suffixed resources when chat is actu
         ->not->toContain('deployment/mas ');
 });
 
-test('chat:remove aborts when a delete step fails', function (): void {
-    Process::fake([...registeredToolRemoveFakes('chat:remove'),
+test('matrix:remove aborts when a delete step fails', function (): void {
+    Process::fake([...registeredToolRemoveFakes('matrix:remove'),
         '*get deployment synapse-db*' => Process::result(output: 'synapse-db   1/1   1   1   1d'),
         '*delete *' => Process::result(output: '', exitCode: 1),
     ]);
 
-    $this->artisan('chat:remove local --force')
+    $this->artisan('matrix:remove local --force')
         ->assertExitCode(1)
         ->expectsOutputToContain('failed to remove');
 });

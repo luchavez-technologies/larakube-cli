@@ -7,15 +7,8 @@ use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use Illuminate\Support\Facades\Process;
 
-class InsightsRemoveCommand extends AbstractToolRemoveCommand
+abstract class InsightsRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'insights:remove' is deprecated. Please use 'metabase:remove' instead.");
-
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::INSIGHTS;

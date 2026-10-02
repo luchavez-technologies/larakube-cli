@@ -2,19 +2,19 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('paste:remove deletes Yopass resources', function (): void {
-    Process::fake([...registeredToolRemoveFakes('paste:remove', 'paste-example-com', 'paste.example.com'),
+test('yopass:remove deletes Yopass resources', function (): void {
+    Process::fake([...registeredToolRemoveFakes('yopass:remove', 'paste-example-com', 'paste.example.com'),
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('paste:remove local --force')
+    $this->artisan('yopass:remove local --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing Yopass resources...');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete deployment/yopass-paste-example-com service/yopass-paste-example-com ingress/yopass-paste-example-com secret/yopass-secrets-paste-example-com'));
 });
 
-test('paste:remove --domain removes only that instance, never the other one', function (): void {
+test('yopass:remove --domain removes only that instance, never the other one', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'paste', 'instance' => 'paste-example-com', 'host' => 'paste.example.com'],
@@ -23,13 +23,13 @@ test('paste:remove --domain removes only that instance, never the other one', fu
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('paste:remove local --domain=paste.check.example.com --force')->assertExitCode(0);
+    $this->artisan('yopass:remove local --domain=paste.check.example.com --force')->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'deployment/yopass-paste-check-example-com '));
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'delete') && str_contains($process->command, 'yopass-paste-example-com'));
 });
 
-test('paste:remove --purge flushes and frees only that instance\'s Commons Redis index and bucket', function (): void {
+test('yopass:remove --purge flushes and frees only that instance\'s Commons Redis index and bucket', function (): void {
     $saved = [];
     $current = ['tenants' => [
         'yopass_paste_check_example_com' => ['redis_index' => 5],
@@ -56,7 +56,7 @@ test('paste:remove --purge flushes and frees only that instance\'s Commons Redis
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('paste:remove local --domain=paste.check.example.com --purge --force')->assertExitCode(0);
+    $this->artisan('yopass:remove local --domain=paste.check.example.com --purge --force')->assertExitCode(0);
 
     // Its keys are cleared before the index is handed back.
     Process::assertRan(fn ($process) => str_contains($process->command, 'redis-cli -n 5 FLUSHDB'));

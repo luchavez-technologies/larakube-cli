@@ -13,11 +13,11 @@ use function Laravel\Prompts\select;
 
 use LogicException;
 
-class DataRemoveCommand extends AbstractToolRemoveCommand
+abstract class DataRemoveCommand extends AbstractToolRemoveCommand
 {
     use InteractsWithData;
 
-    protected $signature = 'data:remove
+    protected $signature = 'directus:remove
         {environment=local : Environment to remove Data / Headless CMS from}
         {--context=  : Target a specific kube-context (defaults to the environment\'s saved cloud target)}
         {--domain=   : The instance\'s domain/host — the same value you gave directus:init, since that IS its identity. Omit for the default instance}
@@ -25,13 +25,6 @@ class DataRemoveCommand extends AbstractToolRemoveCommand
         {--all       : Remove all registered instances of this tool}
         {--purge     : Also destroy persistent data — drop the Plex Commons database and release the Redis index. Irreversible.}
         {--force     : Skip the confirmation prompt (required for non-interactive runs)}';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'data:remove' is deprecated. Please use 'pocketbase:remove' or 'directus:remove' instead.");
-
-        return parent::handle();
-    }
 
     protected function tool(): ClusterTool
     {

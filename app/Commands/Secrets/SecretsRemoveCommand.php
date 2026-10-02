@@ -8,11 +8,11 @@ use App\Enums\SecretKind;
 use App\Traits\InteractsWithSecrets;
 use Illuminate\Support\Facades\Process;
 
-class SecretsRemoveCommand extends AbstractToolRemoveCommand
+abstract class SecretsRemoveCommand extends AbstractToolRemoveCommand
 {
     use InteractsWithSecrets;
 
-    protected $signature = 'secrets:remove
+    protected $signature = 'openbao:remove
         {environment=local  : Environment to remove the secrets engine from}
         {--context=         : Target a specific kube-context (defaults to the environment\'s saved cloud target)}
         {--domain=          : Not supported — the secrets engine has a single instance}
@@ -20,13 +20,6 @@ class SecretsRemoveCommand extends AbstractToolRemoveCommand
         {--force            : Skip the confirmation prompt (required for non-interactive runs)}';
 
     protected $description = 'Remove OpenBao secrets manager and External Secrets Operator from a cluster';
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'secrets:remove' is deprecated. Please use 'openbao:remove' instead.");
-
-        return parent::handle();
-    }
 
     protected function tool(): ClusterTool
     {
@@ -104,7 +97,7 @@ class SecretsRemoveCommand extends AbstractToolRemoveCommand
         // sets creationPolicy: Owner, so that cascade would ALSO delete the
         // actual K8s Secret objects those other apps are using right now —
         // confirmed live 2026-07-31 via a real ownerReference
-        // (blockOwnerDeletion: true) on the forgejo Secret. secrets:remove's
+        // (blockOwnerDeletion: true) on the forgejo Secret. openbao:remove's
         // job is "remove OpenBao from this environment," not "remove the
         // sync mechanism cluster-wide" — those are different scopes that
         // just happen to ship together via openbao:init today.

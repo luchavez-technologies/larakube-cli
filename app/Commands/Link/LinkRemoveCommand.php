@@ -8,15 +8,8 @@ use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SecretKind;
 
-class LinkRemoveCommand extends AbstractToolRemoveCommand
+abstract class LinkRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'link:remove' is deprecated. Please use 'kutt:remove' instead.");
-
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::LINK;

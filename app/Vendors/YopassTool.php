@@ -64,7 +64,7 @@ final class YopassTool implements ClusterToolVendor, HasCommonsBuckets, HasCommo
     /**
      * Only ever actually created when Commons offers an S3-compatible
      * driver (seaweedfs/minio/garage) — declared unconditionally here so
-     * paste:remove --purge's cleanup is harmless/idempotent even when no
+     * yopass:remove --purge's cleanup is harmless/idempotent even when no
      * bucket was ever allocated.
      */
     public function commonsBucketList(): array

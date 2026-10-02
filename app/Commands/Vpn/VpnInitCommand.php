@@ -83,7 +83,7 @@ abstract class VpnInitCommand extends Command
                 return 1;
             }
 
-            // Derived, never hardcoded: vpn:remove --purge drops whatever
+            // Derived, never hardcoded: netbird:remove --purge drops whatever
             // commonsDatabases() computes for the registered instance, so any
             // name chosen independently here silently survives a purge.
             // DROP DATABASE IF EXISTS on a name that never existed reports
@@ -228,7 +228,7 @@ abstract class VpnInitCommand extends Command
         // the moment its manifests are applied and the servers are Ready — a
         // gateway pod that has not settled is a degraded install, not an absent
         // one. Gating registration on it meant every failed run left VPN
-        // unregistered, so the next `vpn:remove --purge` resolved NO instance,
+        // unregistered, so the next `netbird:remove --purge` resolved NO instance,
         // computed the unsuffixed tenant name, and ran DROP DATABASE IF EXISTS
         // against a name that never existed — reporting success while the real
         // database survived untouched. Confirmed live 2026-08-29, twice.
@@ -444,15 +444,15 @@ abstract class VpnInitCommand extends Command
             // 412 means the STORE already has an owner, which is a different
             // problem from a half-finished install: it happens when the
             // namespace was rebuilt but the Commons tenant survived, because
-            // plain vpn:remove drops the namespace and leaves the database.
+            // plain netbird:remove drops the namespace and leaves the database.
             // /api/setup can never succeed again against that store, so
             // "log in once to finish setup" is precisely the wrong advice.
             if ($setup !== null && $setup->status() === 412) {
                 $this->laraKubeWarn('NetBird already has an owner in its database — this cluster cannot re-bootstrap.');
-                $this->line('  <fg=gray>The namespace was recreated but the Commons store survived (plain vpn:remove keeps it).</>');
+                $this->line('  <fg=gray>The namespace was recreated but the Commons store survived (plain netbird:remove keeps it).</>');
                 $this->newLine();
                 $this->line('  <fg=gray>Start clean — drops the database too:</>');
-                $this->line('  <fg=blue>  larakube vpn:remove '.$env.' --purge</> <fg=gray>then</> <fg=blue>larakube netbird:init '.$env.'</>');
+                $this->line('  <fg=blue>  larakube netbird:remove '.$env.' --purge</> <fg=gray>then</> <fg=blue>larakube netbird:init '.$env.'</>');
                 $this->newLine();
                 $this->line('  <fg=gray>Or keep the existing account: mint a PAT in the dashboard</>');
                 $this->line('  <fg=gray>(Team → Users → your user → Access Tokens), then</>');

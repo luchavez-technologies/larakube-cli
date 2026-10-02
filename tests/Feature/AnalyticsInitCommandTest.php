@@ -48,8 +48,8 @@ test('analytics ToolInstance resolves canonical database and secrets', function 
         ->and($instance->database())->toBe('umami_analytics_example_test');
 });
 
-test('analytics:remove refuses because Umami is unshipped', function (): void {
-    $this->artisan('analytics:remove local --force --no-interaction')
+test('umami:remove refuses because Umami is unshipped', function (): void {
+    $this->artisan('umami:remove local --force --no-interaction')
         ->assertExitCode(1)
-        ->expectsOutputToContain('Web Analytics (Umami) is not yet shipped');
+        ->expectsOutputToContain('Umami (Web Analytics) is not yet shipped');
 });

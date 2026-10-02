@@ -9,15 +9,8 @@ use App\Enums\ClusterTool;
 use App\Enums\FlowTool;
 use App\Enums\SecretKind;
 
-class FlowRemoveCommand extends AbstractToolRemoveCommand
+abstract class FlowRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'flow:remove' is deprecated. Please use 'n8n:remove' or 'windmill:remove' instead.");
-
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::FLOW;

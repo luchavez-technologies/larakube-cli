@@ -6,15 +6,8 @@ use App\Commands\Tool\AbstractToolRemoveCommand;
 use App\Enums\ClusterTool;
 use Illuminate\Support\Facades\Process;
 
-class DriveRemoveCommand extends AbstractToolRemoveCommand
+abstract class DriveRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'drive:remove' is deprecated. Please use 'ocis:remove' instead.");
-
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::DRIVE;
@@ -56,7 +49,7 @@ class DriveRemoveCommand extends AbstractToolRemoveCommand
         // AND the credentials Secret. oCIS wraps each file's encryption key
         // with the rekey key, so deleting the Secret while keeping the data
         // would orphan every uploaded file (undecryptable once a re-init
-        // regenerates new keys). A mistyped `drive:remove` must not be able to
+        // regenerates new keys). A mistyped `ocis:remove` must not be able to
         // destroy files — only workloads and access middleware go; data and
         // keys go by hand. Both are left out of the vendor's component
         // resource list for the same reason.

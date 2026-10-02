@@ -71,26 +71,26 @@ test('zitadel:init keeps the cached automation token when it rewrites the creden
         && (appliedSecret($process)['data']['machine-pat'] ?? null) === 'cached-pat');
 });
 
-test('sso:remove removes zitadel namespace and drops the commons database', function (): void {
-    Process::fake([...registeredToolRemoveFakes('sso:remove'),
+test('zitadel:remove removes zitadel namespace and drops the commons database', function (): void {
+    Process::fake([...registeredToolRemoveFakes('zitadel:remove'),
         '*get deployment zitadel-db-sso-example-com*' => Process::result(output: '', exitCode: 1),
         '*exec *' => Process::result(output: 'success'),
         '*delete *' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan('sso:remove local --force')
+    $this->artisan('zitadel:remove local --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing Zitadel namespace...')
         ->expectsOutputToContain('removed from larakube-sso');
 });
 
-test('sso:remove aborts when the namespace delete fails', function (): void {
-    Process::fake([...registeredToolRemoveFakes('sso:remove'),
+test('zitadel:remove aborts when the namespace delete fails', function (): void {
+    Process::fake([...registeredToolRemoveFakes('zitadel:remove'),
         '*get deployment zitadel-db-sso-example-com*' => Process::result(output: 'zitadel-db-sso-example-com   1/1   1   1   1d'),
         '*delete *' => Process::result(output: '', exitCode: 1),
     ]);
 
-    $this->artisan('sso:remove local --force')
+    $this->artisan('zitadel:remove local --force')
         ->assertExitCode(1)
         ->expectsOutputToContain('failed to remove');
 });

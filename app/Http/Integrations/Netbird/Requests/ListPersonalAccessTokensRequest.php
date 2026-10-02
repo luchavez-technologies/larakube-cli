@@ -7,7 +7,7 @@ use Saloon\Http\Request;
 use Saloon\Traits\Plugins\HasTimeout;
 
 /**
- * Read a user's PATs so vpn:show can surface how long the stored one has left.
+ * Read a user's PATs so netbird:show can surface how long the stored one has left.
  * The token value itself is redacted on every read — only metadata comes back,
  * which is all the expiry warning needs.
  */

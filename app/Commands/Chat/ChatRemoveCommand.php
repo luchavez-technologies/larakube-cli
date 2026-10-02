@@ -8,16 +8,9 @@ use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Traits\ManagesToolFirewallPorts;
 
-class ChatRemoveCommand extends AbstractToolRemoveCommand
+abstract class ChatRemoveCommand extends AbstractToolRemoveCommand
 {
     use ManagesToolFirewallPorts;
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'chat:remove' is deprecated. Please use 'matrix:remove' instead.");
-
-        return parent::handle();
-    }
 
     protected function tool(): ClusterTool
     {

@@ -251,18 +251,18 @@ test('the token secret is named after the resolved group', function (): void {
     Process::assertNotRan(fn ($process) => str_contains((string) $process->command, 'second-account-token'));
 });
 
-test('dns:remove is a no-op when the cluster manages nothing', function (): void {
+test('external-dns:remove is a no-op when the cluster manages nothing', function (): void {
     Process::fake([
         '*get deployments*' => Process::result(output: ''),
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('dns:remove prod --context=ctx --force')
+    $this->artisan('external-dns:remove prod --context=ctx --force')
         ->expectsOutputToContain('No ExternalDNS instances')
         ->assertExitCode(0);
 });
 
-test('dns:remove warns that existing DNS records survive removal', function (): void {
+test('external-dns:remove warns that existing DNS records survive removal', function (): void {
     // Removing the controller stops reconciliation; it does not delete records.
     // Assuming otherwise leaves stale records resolving to a dead cluster.
     Process::fake([
@@ -283,12 +283,12 @@ test('dns:remove warns that existing DNS records survive removal', function (): 
 
     // Asserted on the post-removal notice, not the confirmation block —
     // --force skips printing the confirmation entirely.
-    $this->artisan('dns:remove prod --context=ctx --zone=example.com --force')
+    $this->artisan('external-dns:remove prod --context=ctx --zone=example.com --force')
         ->expectsOutputToContain('still exist in Cloudflare')
         ->assertExitCode(0);
 });
 
-test('dns:remove rejects a zone this cluster does not manage', function (): void {
+test('external-dns:remove rejects a zone this cluster does not manage', function (): void {
     Process::fake([
         '*get deployments*' => Process::result(output: (string) json_encode(['items' => [[
             'metadata' => [
@@ -301,12 +301,12 @@ test('dns:remove rejects a zone this cluster does not manage', function (): void
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('dns:remove prod --context=ctx --zone=nope.com --force')
+    $this->artisan('external-dns:remove prod --context=ctx --zone=nope.com --force')
         ->expectsOutputToContain('is not managed by this cluster')
         ->assertExitCode(1);
 });
 
-test('dns:remove refuses a bare --zone= that is part of a multi-zone group', function (): void {
+test('external-dns:remove refuses a bare --zone= that is part of a multi-zone group', function (): void {
     Process::fake([
         '*get deployments*' => Process::result(output: (string) json_encode(['items' => [[
             'metadata' => [
@@ -324,7 +324,7 @@ test('dns:remove refuses a bare --zone= that is part of a multi-zone group', fun
     // preserve every character past a certain point) — check the start of
     // the message and the behavior (nothing got deleted) instead of the
     // full text.
-    $this->artisan('dns:remove prod --context=ctx --zone=ourfridays.com --force')
+    $this->artisan('external-dns:remove prod --context=ctx --zone=ourfridays.com --force')
         ->expectsOutputToContain("is part of the 'shared' instance")
         ->assertExitCode(1);
 
@@ -334,7 +334,7 @@ test('dns:remove refuses a bare --zone= that is part of a multi-zone group', fun
     ));
 });
 
-test('dns:remove --group= removes every zone in a multi-zone instance', function (): void {
+test('external-dns:remove --group= removes every zone in a multi-zone instance', function (): void {
     Process::fake([
         '*get deployments*' => Process::result(output: (string) json_encode(['items' => [[
             'metadata' => [
@@ -351,7 +351,7 @@ test('dns:remove --group= removes every zone in a multi-zone instance', function
     // Checking behavior (the shared instance's resources actually got
     // deleted, in one pass, not per-zone) rather than the full printed
     // summary line — see the comment on the refusal test above for why.
-    $this->artisan('dns:remove prod --context=ctx --group=shared --force')
+    $this->artisan('external-dns:remove prod --context=ctx --group=shared --force')
         ->expectsOutputToContain('ExternalDNS removed for')
         ->assertExitCode(0);
 
@@ -361,7 +361,7 @@ test('dns:remove --group= removes every zone in a multi-zone instance', function
     ));
 });
 
-test('dns:list surfaces the owner id, which is how zone conflicts are diagnosed', function (): void {
+test('external-dns:list surfaces the owner id, which is how zone conflicts are diagnosed', function (): void {
     Process::fake([
         '*get deployments*' => Process::result(output: (string) json_encode(['items' => [[
             'metadata' => [
@@ -379,7 +379,7 @@ test('dns:list surfaces the owner id, which is how zone conflicts are diagnosed'
 
     // Via --json: the table renderer does not write through the console output
     // capture, and the owner id is the value that actually matters here.
-    $exit = Artisan::call('dns:list prod --context=ctx --json');
+    $exit = Artisan::call('external-dns:list prod --context=ctx --json');
     $payload = json_decode(Artisan::output(), true);
 
     expect($exit)->toBe(0)
@@ -388,7 +388,7 @@ test('dns:list surfaces the owner id, which is how zone conflicts are diagnosed'
         ->and($payload[0]['ready'])->toBeTrue();
 });
 
-test('dns:list shows one row per zone for a multi-zone group, sharing the same instance', function (): void {
+test('external-dns:list shows one row per zone for a multi-zone group, sharing the same instance', function (): void {
     Process::fake([
         '*get deployments*' => Process::result(output: (string) json_encode(['items' => [[
             'metadata' => [
@@ -404,7 +404,7 @@ test('dns:list shows one row per zone for a multi-zone group, sharing the same i
         '*' => Process::result(output: ''),
     ]);
 
-    $exit = Artisan::call('dns:list prod --context=ctx --json');
+    $exit = Artisan::call('external-dns:list prod --context=ctx --json');
     $payload = json_decode(Artisan::output(), true);
 
     expect($exit)->toBe(0)

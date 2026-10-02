@@ -383,7 +383,7 @@ trait DeploysClusterTool
      * terminating, which routinely outruns Process::run()'s 60s default once
      * PVCs are involved — and a timeout THROWS, so the exception escaped the
      * teardown loop before unregisterTool() ran. Confirmed live 2026-08-28 on
-     * vpn:remove: the namespace and both PVs were in fact deleted, but the
+     * netbird:remove: the namespace and both PVs were in fact deleted, but the
      * command reported failure and left a stale registry entry claiming the
      * tool was still installed.
      *

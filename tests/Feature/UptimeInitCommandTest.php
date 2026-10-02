@@ -14,14 +14,14 @@ test('kuma:init refuses because Uptime Kuma is not yet shipped', function (): vo
     Process::assertNotRan(fn ($process) => true);
 });
 
-test('uptime:remove refuses because Uptime Kuma is not yet shipped', function (): void {
+test('kuma:remove refuses because Uptime Kuma is not yet shipped', function (): void {
     Process::fake([
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('uptime:remove local --force')
+    $this->artisan('kuma:remove local --force')
         ->assertExitCode(1)
-        ->expectsOutputToContain('Status Pages (Uptime Kuma) is not yet shipped');
+        ->expectsOutputToContain('Uptime Kuma (Status Pages) is not yet shipped');
 
     Process::assertNotRan(fn ($process) => true);
 });

@@ -7,15 +7,8 @@ use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use Illuminate\Support\Facades\Process;
 
-class DesignRemoveCommand extends AbstractToolRemoveCommand
+abstract class DesignRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'design:remove' is deprecated. Please use 'penpot:remove' instead.");
-
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::DESIGN;

@@ -35,13 +35,13 @@ use LaravelZero\Framework\Commands\Command;
  * existing records in place and resolvable. Deleting the controller AND
  * expecting the records to vanish is the mistake worth warning about.
  */
-class DnsRemoveCommand extends Command
+abstract class DnsRemoveCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext,
         InteractsWithClusterIdentity, InteractsWithDnsZones, LaraKubeOutput,
         RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment;
 
-    protected $signature = 'dns:remove
+    protected $signature = 'external-dns:remove
         {environment? : Environment whose ExternalDNS to remove}
         {--zone=      : A zone to stop managing — refuses if it is one of several zones sharing a group, use --group= for those}
         {--group=     : The named multi-zone instance to remove entirely, e.g. --group=shared}
@@ -53,7 +53,6 @@ class DnsRemoveCommand extends Command
 
     public function handle(): int
     {
-        $this->laraKubeWarn("[DEPRECATION] 'dns:remove' is deprecated. Please use 'external-dns:remove' instead.");
         $this->renderHeader();
 
         $env = $this->resolveToolEnvironment(ClusterTool::DNS);
@@ -197,7 +196,7 @@ class DnsRemoveCommand extends Command
             throw new MissingFlagException(
                 'zone',
                 'which zone (or --group=) to stop managing',
-                'larakube dns:remove production --zone='.$groups[0]['zones'][0],
+                'larakube external-dns:remove production --zone='.$groups[0]['zones'][0],
             );
         }
 

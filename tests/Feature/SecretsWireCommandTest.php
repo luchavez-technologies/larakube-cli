@@ -434,7 +434,7 @@ test('secrets:wire --tool=data never trusts a stale registry engine hint over wh
     // must NOT be trusted blindly — resolveInstanceEngine() confirms the
     // hint against a live Deployment first, and falls back to live-probing
     // every engine when it doesn't check out, exactly like
-    // DataRemoveCommand's existing "registry is a hint, not authoritative"
+    // DirectusRemoveCommand's existing "registry is a hint, not authoritative"
     // discipline.
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),

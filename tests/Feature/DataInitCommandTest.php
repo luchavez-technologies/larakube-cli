@@ -1,17 +1,17 @@
 <?php
 
-use App\Commands\Data\DataRemoveCommand;
-use App\Commands\Data\DataShowCommand;
 use App\Commands\Directus\DirectusInitCommand;
+use App\Commands\Directus\DirectusRemoveCommand;
+use App\Commands\Directus\DirectusShowCommand;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Process;
 
-test('directus:init, data:show, and data:remove are registered', function (): void {
+test('directus:init, directus:show, and directus:remove are registered', function (): void {
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('directus:init')
-        ->expectsOutputToContain('data:show')
-        ->expectsOutputToContain('data:remove');
+        ->expectsOutputToContain('directus:show')
+        ->expectsOutputToContain('directus:remove');
 });
 
 test('directus:init deploys Directus with Postgres, Redis, and SeaweedFS S3', function (): void {
@@ -199,7 +199,7 @@ test('directus:init includes zitadel in AUTH_PROVIDERS once sso:wire has registe
     expect($m[1] ?? null)->toBe('local,zitadel');
 });
 
-test('data:show displays status table for Directus', function (): void {
+test('directus:show displays status table for Directus', function (): void {
     $registry = json_encode([
         ['tool' => 'data', 'instance' => 'data-dev-test', 'host' => 'data.dev.test', 'aliases' => [], 'engine' => 'directus'],
     ]);
@@ -210,13 +210,13 @@ test('data:show displays status table for Directus', function (): void {
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan(DataShowCommand::class, [
+    $this->artisan(DirectusShowCommand::class, [
         'environment' => 'local',
     ])
         ->assertExitCode(0);
 });
 
-test('data:show displays which engine the instance runs, read from the registry', function (): void {
+test('directus:show displays which engine the instance runs, read from the registry', function (): void {
     $registry = json_encode([
         ['tool' => 'data', 'instance' => 'data-dev-test', 'host' => 'data.dev.test', 'aliases' => [], 'engine' => 'directus'],
     ]);
@@ -227,7 +227,7 @@ test('data:show displays which engine the instance runs, read from the registry'
         '*' => Process::result(output: ''),
     ]);
 
-    $exit = Artisan::call('data:show local');
+    $exit = Artisan::call('directus:show local');
     $output = Artisan::output();
 
     expect($exit)->toBe(0)
@@ -235,7 +235,7 @@ test('data:show displays which engine the instance runs, read from the registry'
         ->and($output)->toContain('Directus');
 });
 
-test('data:show --domain=all lists every registered instance', function (): void {
+test('directus:show --domain=all lists every registered instance', function (): void {
     $registry = json_encode([
         ['tool' => 'data', 'instance' => 'main', 'host' => 'data.example.test', 'aliases' => []],
         ['tool' => 'data', 'instance' => 'blog', 'host' => 'data-blog.example.test', 'aliases' => []],
@@ -246,29 +246,29 @@ test('data:show --domain=all lists every registered instance', function (): void
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('data:show local --domain=all')
+    $this->artisan('directus:show local --domain=all')
         ->assertExitCode(0)
         ->expectsOutputToContain('data-blog.example.test');
 });
 
-test('data:show --domain=all on a single-instance tool behaves like the default instance', function (): void {
+test('directus:show --domain=all on a single-instance tool behaves like the default instance', function (): void {
     ssoRegistered();
     Process::fake([
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('sso:show local --domain=all')->assertExitCode(0);
+    $this->artisan('zitadel:show local --domain=all')->assertExitCode(0);
 });
 
-test('data:remove tears down Directus stack', function (): void {
-    Process::fake([...registeredToolRemoveFakes('data:remove', 'data-dev-test', 'data.dev.test'),
+test('directus:remove tears down Directus stack', function (): void {
+    Process::fake([...registeredToolRemoveFakes('directus:remove', 'data-dev-test', 'data.dev.test'),
         '*get deployment directus-data-dev-test*' => Process::result(output: 'directus-data-dev-test   1/1   1   1   10d'),
         '*delete*' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan(DataRemoveCommand::class, [
+    $this->artisan(DirectusRemoveCommand::class, [
         'environment' => 'local',
         '--force' => true,
     ])

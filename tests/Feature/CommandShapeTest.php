@@ -168,7 +168,7 @@ test('MissingFlagException names a flag that the command actually defines', func
 });
 
 test('every cluster-inspecting :show resolves its context from {environment}', function (): void {
-    // secrets:show production reported "not installed" about a healthy install
+    // openbao:show production reported "not installed" about a healthy install
     // because it inspected the CURRENT kube-context, using {environment} only to
     // pick a host string. A :show that ignores the environment is worse than no
     // :show — it reports confident, wrong answers about the wrong cluster.

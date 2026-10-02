@@ -6,16 +6,9 @@ use App\Commands\Tool\AbstractToolRemoveCommand;
 use App\Enums\ClusterTool;
 use App\Traits\InteractsWithToolRegistry;
 
-class VpnRemoveCommand extends AbstractToolRemoveCommand
+abstract class VpnRemoveCommand extends AbstractToolRemoveCommand
 {
     use InteractsWithToolRegistry;
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'vpn:remove' is deprecated. Please use 'netbird:remove' instead.");
-
-        return parent::handle();
-    }
 
     protected function tool(): ClusterTool
     {

@@ -2,13 +2,13 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('drive:remove preserves the Commons database and drive-secrets by default', function (): void {
-    Process::fake([...registeredToolRemoveFakes('drive:remove'),
+test('ocis:remove preserves the Commons database and drive-secrets by default', function (): void {
+    Process::fake([...registeredToolRemoveFakes('ocis:remove'),
         '*delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('drive:remove local --force')
+    $this->artisan('ocis:remove local --force')
         ->assertExitCode(0)
         ->doesntExpectOutputToContain('Dropping database')
         ->expectsOutputToContain('Removing Drive resources...')
@@ -18,13 +18,13 @@ test('drive:remove preserves the Commons database and drive-secrets by default',
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'secret/drive-secrets'));
 });
 
-test('drive:remove --purge removes workloads while preserving drive-secrets encryption keys', function (): void {
-    Process::fake([...registeredToolRemoveFakes('drive:remove'),
+test('ocis:remove --purge removes workloads while preserving drive-secrets encryption keys', function (): void {
+    Process::fake([...registeredToolRemoveFakes('ocis:remove'),
         '*delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('drive:remove local --force --purge')
+    $this->artisan('ocis:remove local --force --purge')
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing Drive resources...');
 

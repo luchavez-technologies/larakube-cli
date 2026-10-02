@@ -8,15 +8,8 @@ use App\Enums\ClusterTool;
 use App\Enums\SecretKind;
 use Illuminate\Support\Facades\Process;
 
-class SupportRemoveCommand extends AbstractToolRemoveCommand
+abstract class SupportRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'support:remove' is deprecated. Please use 'chatwoot:remove' instead.");
-
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::SUPPORT;

@@ -1,9 +1,9 @@
 <?php
 
-use App\Commands\Link\LinkRemoveCommand;
+use App\Commands\Kutt\KuttRemoveCommand;
 use Illuminate\Support\Facades\Process;
 
-test('link:remove tears down single default instance cleanly', function (): void {
+test('kutt:remove tears down single default instance cleanly', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'link', 'instance' => 'link-dev-test', 'host' => 'link.dev.test'],
@@ -13,14 +13,14 @@ test('link:remove tears down single default instance cleanly', function (): void
         '*' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan(LinkRemoveCommand::class, [
+    $this->artisan(KuttRemoveCommand::class, [
         'environment' => 'local',
         '--force' => true,
         '--no-interaction' => true,
     ])->assertExitCode(0);
 });
 
-test('link:remove targets explicit domain instance', function (): void {
+test('kutt:remove targets explicit domain instance', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'link', 'instance' => 'go-dev-test', 'host' => 'go.dev.test'],
@@ -30,7 +30,7 @@ test('link:remove targets explicit domain instance', function (): void {
         '*' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan(LinkRemoveCommand::class, [
+    $this->artisan(KuttRemoveCommand::class, [
         'environment' => 'local',
         '--domain' => 'go.dev.test',
         '--force' => true,
@@ -38,7 +38,7 @@ test('link:remove targets explicit domain instance', function (): void {
     ])->assertExitCode(0);
 });
 
-test('link:remove hard-errors non-interactively when 2+ instances are registered and neither --domain nor --all was given', function (): void {
+test('kutt:remove hard-errors non-interactively when 2+ instances are registered and neither --domain nor --all was given', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'link', 'instance' => 'link-dev-test', 'host' => 'link.dev.test'],
@@ -46,14 +46,14 @@ test('link:remove hard-errors non-interactively when 2+ instances are registered
         ]))),
     ]);
 
-    $this->artisan(LinkRemoveCommand::class, [
+    $this->artisan(KuttRemoveCommand::class, [
         'environment' => 'local',
         '--force' => true,
         '--no-interaction' => true,
     ])->run();
 })->throws(RuntimeException::class, 'Pass --domain=<host>');
 
-test('link:remove --all removes all registered instances', function (): void {
+test('kutt:remove --all removes all registered instances', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'link', 'instance' => 'link-dev-test', 'host' => 'link.dev.test'],
@@ -64,7 +64,7 @@ test('link:remove --all removes all registered instances', function (): void {
         '*' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan(LinkRemoveCommand::class, [
+    $this->artisan(KuttRemoveCommand::class, [
         'environment' => 'local',
         '--all' => true,
         '--force' => true,
@@ -72,7 +72,7 @@ test('link:remove --all removes all registered instances', function (): void {
     ])->assertExitCode(0);
 });
 
-test('link:remove --purge drops the Commons postgres database and releases the redis index', function (): void {
+test('kutt:remove --purge drops the Commons postgres database and releases the redis index', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'link', 'instance' => 'link-dev-test', 'host' => 'link.dev.test'],
@@ -88,7 +88,7 @@ test('link:remove --purge drops the Commons postgres database and releases the r
         '*' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan(LinkRemoveCommand::class, [
+    $this->artisan(KuttRemoveCommand::class, [
         'environment' => 'local',
         '--purge' => true,
         '--force' => true,

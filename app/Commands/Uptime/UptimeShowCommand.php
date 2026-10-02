@@ -13,11 +13,11 @@ use function Laravel\Prompts\table;
 
 use LaravelZero\Framework\Commands\Command;
 
-class UptimeShowCommand extends Command
+abstract class UptimeShowCommand extends Command
 {
     use DeploysClusterTool, InteractsWithUptime, LaraKubeOutput, RefusesUnshippedTools;
 
-    protected $signature = 'uptime:show
+    protected $signature = 'kuma:show
         {environment=local : Environment to show Uptime Kuma access for (resolves the Uptime Kuma host)}
         {--context= : Target a specific kube-context (defaults to current context)}';
 
@@ -25,8 +25,6 @@ class UptimeShowCommand extends Command
 
     public function handle(): int
     {
-        $this->laraKubeWarn("[DEPRECATION] 'uptime:show' is deprecated. Please use 'kuma:show' instead.");
-
         if ($this->refuseUnshippedTool(ClusterTool::UPTIME)) {
             return 1;
         }

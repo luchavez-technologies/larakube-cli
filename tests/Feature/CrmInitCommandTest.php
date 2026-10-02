@@ -1,8 +1,8 @@
 <?php
 
-use App\Commands\Crm\CrmRemoveCommand;
-use App\Commands\Crm\CrmShowCommand;
 use App\Commands\Twenty\TwentyInitCommand;
+use App\Commands\Twenty\TwentyRemoveCommand;
+use App\Commands\Twenty\TwentyShowCommand;
 use App\Enums\ClusterTool;
 use Illuminate\Support\Facades\Process;
 
@@ -68,17 +68,17 @@ test('twenty:init detects MinIO rather than assuming SeaweedFS when that\'s what
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'deploy/seaweedfs'));
 });
 
-test('crm:show displays status table for Twenty CRM', function (): void {
+test('twenty:show displays status table for Twenty CRM', function (): void {
     Process::fake([
         '*get deployment *' => Process::result(output: 'twenty-crm-dev-test   1/1   1   1   10d'),
     ]);
 
-    $this->artisan(CrmShowCommand::class, [
+    $this->artisan(TwentyShowCommand::class, [
         'environment' => 'local',
     ])->assertExitCode(0);
 });
 
-test('crm:remove cleans up Twenty CRM resources', function (): void {
+test('twenty:remove cleans up Twenty CRM resources', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => json_encode([
             ['tool' => 'crm', 'instance' => 'crm-dev-test', 'host' => 'crm.dev.test'],
@@ -87,7 +87,7 @@ test('crm:remove cleans up Twenty CRM resources', function (): void {
         '*' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan(CrmRemoveCommand::class, [
+    $this->artisan(TwentyRemoveCommand::class, [
         'environment' => 'local',
         '--force' => true,
         '--no-interaction' => true,

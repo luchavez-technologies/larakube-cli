@@ -39,7 +39,7 @@ class InstanceData extends Data
          * Which backing engine this instance runs, for tools that have more
          * than one (currently only data: "directus" or "pocketbase").
          * Informational only — never the source of truth for a destructive
-         * decision. data:remove still live-probes the cluster (deploymentExists())
+         * decision. directus:remove still live-probes the cluster (deploymentExists())
          * to decide what to tear down, since a stale registry entry must never
          * cause the wrong engine's resources to be deleted or preserved.
          */

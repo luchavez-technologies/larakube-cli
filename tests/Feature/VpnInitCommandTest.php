@@ -148,8 +148,8 @@ test('netbird:init targets the CHOSEN environment\'s own saved context, never th
     }
 });
 
-test('vpn:remove removes netbird vpn namespace when --remove is passed', function (): void {
-    Process::fake([...registeredToolRemoveFakes('vpn:remove'),
+test('netbird:remove removes netbird vpn namespace when --remove is passed', function (): void {
+    Process::fake([...registeredToolRemoveFakes('netbird:remove'),
         '*get namespace larakube-vpn*' => Process::result(output: ''),
         '*get pvc -n larakube-vpn*' => Process::result(output: ''),
         '*get storageclass*' => Process::result(output: ''),
@@ -165,7 +165,7 @@ test('vpn:remove removes netbird vpn namespace when --remove is passed', functio
         vpnInitKubectl().' delete namespace larakube-vpn*' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan('vpn:remove local --force')
+    $this->artisan('netbird:remove local --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing NetBird VPN namespace...')
         ->expectsOutputToContain('removed from larakube-vpn');
@@ -271,7 +271,7 @@ test('netbird:init warns but does not fail when NetBird auth bootstrap fails', f
         ->expectsOutputToContain('Could not bootstrap NetBird auth automatically');
 });
 
-test('vpn:remove also targets the CHOSEN environment\'s own saved context', function (): void {
+test('netbird:remove also targets the CHOSEN environment\'s own saved context', function (): void {
     $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
     $dir = $temporaryDirectory->path();
     $original = getcwd();
@@ -285,7 +285,7 @@ test('vpn:remove also targets the CHOSEN environment\'s own saved context', func
     $config->setCloud('production', new CloudData(ip: '203.0.113.10', user: 'deploy'));
     $config->saveToFile($dir);
 
-    // vpn:remove builds its kubectl through the shared contextKubectl() helper,
+    // netbird:remove builds its kubectl through the shared contextKubectl() helper,
     // which shell-escapes the context rather than interpolating it bare.
     $kubectl = vpnInitKubectl()." --context 'larakube-203.0.113.10'";
 
@@ -316,7 +316,7 @@ test('vpn:remove also targets the CHOSEN environment\'s own saved context', func
         ]);
         Process::preventStrayProcesses();
 
-        $this->artisan('vpn:remove production --force')
+        $this->artisan('netbird:remove production --force')
             ->assertExitCode(0)
             ->expectsOutputToContain('removed from larakube-vpn');
     } finally {
@@ -771,7 +771,7 @@ test('VpnTool satisfies the secrets:wire rotation contract', function (): void {
     expect($vpn->dbSecretRef()['secret'])->not->toBe('netbird-secrets');
 });
 
-test('vpn:remove still unregisters the tool when the namespace is slow to drain', function (): void {
+test('netbird:remove still unregisters the tool when the namespace is slow to drain', function (): void {
     // Confirmed live 2026-08-28: kubectl's finalizer wait outran the 60s default,
     // the timeout threw, and the exception escaped the teardown loop before
     // unregisterTool() ran — leaving a registry entry claiming VPN was installed
@@ -789,7 +789,7 @@ test('vpn:remove still unregisters the tool when the namespace is slow to drain'
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('vpn:remove local --force')->assertExitCode(0);
+    $this->artisan('netbird:remove local --force')->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete namespace larakube-vpn')
         && str_contains($process->command, '--wait=false'));
@@ -956,7 +956,7 @@ test('the bootstrap owner gets an address inside the SSO domain, not the operato
 
 test('netbird:init explains a 412 from /api/setup instead of blaming the dashboard', function (): void {
     // 412 means the STORE already has an owner — the namespace was rebuilt but
-    // the Commons tenant survived, because plain vpn:remove keeps the database.
+    // the Commons tenant survived, because plain netbird:remove keeps the database.
     // /api/setup can never succeed against that store again, so the generic
     // "log into the dashboard once to finish setup" is precisely wrong.
     $kubectl = vpnInitKubectl();
@@ -997,7 +997,7 @@ test('netbird:init explains a 412 from /api/setup instead of blaming the dashboa
     Process::assertDidntRun(fn ($p) => str_starts_with(appliedSecret($p)['name'] ?? '', 'netbird-secrets'));
 });
 
-test('netbird:init allocates exactly the database vpn:remove --purge will drop', function (): void {
+test('netbird:init allocates exactly the database netbird:remove --purge will drop', function (): void {
     // These are computed in two different places, and DROP DATABASE IF EXISTS on
     // a name that never existed reports success — so a mismatch is completely
     // silent. Confirmed live 2026-08-29: --purge left the store fully intact,
@@ -1005,7 +1005,7 @@ test('netbird:init allocates exactly the database vpn:remove --purge will drop',
     $vpn = ClusterTool::VPN;
     $instance = $vpn->instanceSlugFromHost('vpn.luchtech.dev');
 
-    // What vpn:remove --purge drops, via dropCommonsTenants().
+    // What netbird:remove --purge drops, via dropCommonsTenants().
     $purgeTarget = $vpn->commonsDatabases($instance)[0];
 
     expect($purgeTarget)->toBe('netbird_vpn_luchtech_dev');
@@ -1135,7 +1135,7 @@ test('netbird:init recreates the service user and groups after the account was r
 
 test('netbird:init registers the tool even when the gateway does not settle', function (): void {
     // Registration used to sit AFTER the gateway rollout check, so any run that
-    // failed there left VPN unregistered — and the next `vpn:remove --purge`
+    // failed there left VPN unregistered — and the next `netbird:remove --purge`
     // then resolved NO instance, computed the unsuffixed tenant name, and ran
     // DROP DATABASE IF EXISTS against a name that never existed. It reported
     // success while the real database survived untouched. Confirmed live

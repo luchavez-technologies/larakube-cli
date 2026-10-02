@@ -128,6 +128,6 @@ test('n8n:init stops, instead of reporting it live, when the rollout fails', fun
         ->assertExitCode(1);
 });
 
-// flow:remove's own coverage lives in ToolRemoveCommandTest.php (shared
+// n8n:remove's own coverage lives in ToolRemoveCommandTest.php (shared
 // AbstractToolRemoveCommand behavior tested once across tools, including
 // flow) rather than duplicated here.

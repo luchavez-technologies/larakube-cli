@@ -8,16 +8,9 @@ use App\Enums\SharedClusterService;
 use App\Traits\ManagesToolFirewallPorts;
 use Illuminate\Support\Facades\Process;
 
-class GitRemoveCommand extends AbstractToolRemoveCommand
+abstract class GitRemoveCommand extends AbstractToolRemoveCommand
 {
     use ManagesToolFirewallPorts;
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'git:remove' is deprecated. Please use 'forgejo:remove' instead.");
-
-        return parent::handle();
-    }
 
     protected function tool(): ClusterTool
     {

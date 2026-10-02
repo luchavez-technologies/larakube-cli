@@ -276,7 +276,7 @@ abstract class MailInitCommand extends Command
         // repeating "already configured" here would be pure noise. Still
         // shown when genuinely stuck on the old wizard-driven path, or when
         // Commons offers a blob/redis backend this run couldn't wire (a real
-        // gap worth surfacing). mail:show calls printPlexHint() unconditionally
+        // gap worth surfacing). stalwart:show calls printPlexHint() unconditionally
         // — for a later status check, "already configured" IS the useful answer.
         $storesFullyHandled = $storeBootstrap !== null
             && ($storeBootstrap['blob'] !== null || ! $storeBootstrap['commonsOffersBlob'])
@@ -392,7 +392,7 @@ abstract class MailInitCommand extends Command
         // already owns that logical Redis database — every other Commons-Redis
         // tool (Forgejo, Design, Notes, CRM, ...) allocates its own index via
         // the shared registry; Stalwart follows the same convention (released
-        // on mail:remove --purge via MailTool::commonsRedisKeys()).
+        // on stalwart:remove --purge via MailTool::commonsRedisKeys()).
         $redisIndex = in_array('redis', $services, true) ? $this->allocateCommonsRedisIndex($names->redisTenant()) : null;
         $redis = $redisIndex !== null
             ? ['url' => "redis://redis.{$ns}.svc.cluster.local:6379/{$redisIndex}"]

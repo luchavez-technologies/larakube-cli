@@ -12,7 +12,7 @@ use App\Traits\ResolvesStandaloneEnvironment;
 use LaravelZero\Framework\Commands\Command;
 
 /**
- * Proxy to `{tool}:show`, so `tool:show --tool=flow` and `flow:show` are the
+ * Proxy to `{tool}:show`, so `tool:show --tool=flow` and `n8n:show` are the
  * same thing. Two ways in, one implementation: the per-tool command is where
  * tool-specific detail lives, and this is the discoverable entry point for
  * someone who knows they have "some tool" but not its command name.

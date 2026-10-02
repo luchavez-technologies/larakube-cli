@@ -6,15 +6,8 @@ use App\Commands\Tool\AbstractToolRemoveCommand;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 
-class SsoRemoveCommand extends AbstractToolRemoveCommand
+abstract class SsoRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'sso:remove' is deprecated. Please use 'zitadel:remove' instead.");
-
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::SSO;

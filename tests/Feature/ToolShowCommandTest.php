@@ -42,7 +42,7 @@ test('show exits non-zero and points at init when the tool is not installed', fu
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('notes:show local')
+    $this->artisan('outline:show local')
         ->assertExitCode(1)
         ->expectsOutputToContain('is not installed')
         ->expectsOutputToContain('outline:init local');
@@ -53,7 +53,7 @@ test('--json emits a machine-readable object instead of a table', function (): v
         // The registry Secret holds base64'd JSON — a flat list across every tool/instance.
         '*larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
-                ['tool' => 'notes', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.example.com'],
+                ['tool' => 'outline', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.example.com'],
             ])),
         ),
         '*' => Process::result(output: ''),
@@ -61,12 +61,12 @@ test('--json emits a machine-readable object instead of a table', function (): v
 
     // Asserted on the raw buffer rather than expectsOutputToContain(): the whole
     // document is emitted as ONE line() call, which that matcher doesn't split.
-    $exit = Artisan::call('notes:show local --json');
+    $exit = Artisan::call('outline:show local --json');
     $payload = json_decode(Artisan::output(), true);
 
     expect($exit)->toBe(0)
         ->and($payload)->toMatchArray([
-            'tool' => 'notes',
+            'tool' => 'outline',
             'environment' => 'local',
             'installed' => true,
             'namespace' => 'larakube-shared',

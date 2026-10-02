@@ -47,7 +47,7 @@ abstract class FlowInitCommand extends Command
 
         $other = $this->otherFlowEngineOnHost($cluster, $host, $engine);
         if ($other !== null) {
-            $this->laraKubeError("{$host} already runs {$other->tool()->getLabel()}. A host runs one engine: remove it first with `larakube flow:remove {$env} --domain={$host}`, or pick another --domain.");
+            $this->laraKubeError("{$host} already runs {$other->tool()->getLabel()}. A host runs one engine: remove it first with `larakube n8n:remove {$env} --domain={$host}`, or pick another --domain.");
 
             return 1;
         }

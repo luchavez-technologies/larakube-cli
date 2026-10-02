@@ -8,16 +8,9 @@ use App\Enums\ClusterTool;
 use App\Traits\InteractsWithMail;
 use Illuminate\Support\Facades\Process;
 
-class MailRemoveCommand extends AbstractToolRemoveCommand
+abstract class MailRemoveCommand extends AbstractToolRemoveCommand
 {
     use InteractsWithMail;
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'mail:remove' is deprecated. Please use 'stalwart:remove' instead.");
-
-        return parent::handle();
-    }
 
     protected function tool(): ClusterTool
     {

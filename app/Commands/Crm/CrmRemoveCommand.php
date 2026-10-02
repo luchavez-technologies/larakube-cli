@@ -5,15 +5,8 @@ namespace App\Commands\Crm;
 use App\Commands\Tool\AbstractToolRemoveCommand;
 use App\Enums\ClusterTool;
 
-class CrmRemoveCommand extends AbstractToolRemoveCommand
+abstract class CrmRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'crm:remove' is deprecated. Please use 'twenty:remove' instead.");
-
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::CRM;

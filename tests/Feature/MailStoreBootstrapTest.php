@@ -146,7 +146,7 @@ test('stalwart:init explains why it skipped Commons store auto-config instead of
         ->expectsOutputToContain('plex:init');
 });
 
-test('mail:show detects a local wizard-skip install and shows "already configured" instead of wizard instructions', function (): void {
+test('stalwart:show detects a local wizard-skip install and shows "already configured" instead of wizard instructions', function (): void {
     Process::fake([
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   1d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('admin-pass')),
@@ -178,13 +178,13 @@ test('mail:show detects a local wizard-skip install and shows "already configure
         },
     ]);
 
-    $this->artisan('mail:show')
+    $this->artisan('stalwart:show')
         ->assertExitCode(0)
         ->expectsOutputToContain('already configured')
         ->doesntExpectOutputToContain('replace Stalwart\'s embedded RocksDB');
 });
 
-test('mail:show falls back to the original wizard hint when stalwart-config does not exist', function (): void {
+test('stalwart:show falls back to the original wizard hint when stalwart-config does not exist', function (): void {
     Process::fake([
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   1d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('admin-pass')),
@@ -197,7 +197,7 @@ test('mail:show falls back to the original wizard hint when stalwart-config does
         '*' => Process::result(),
     ]);
 
-    $this->artisan('mail:show')
+    $this->artisan('stalwart:show')
         ->assertExitCode(0)
         ->expectsOutputToContain('replace Stalwart\'s embedded RocksDB');
 });

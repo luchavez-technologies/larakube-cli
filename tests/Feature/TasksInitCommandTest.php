@@ -64,14 +64,14 @@ test('planka:init provisions canonical resources and secret', function (): void 
     Process::assertRan(fn ($process) => str_contains((string) $process->command, 'rollout status deployment/planka-'));
 });
 
-test('tasks:remove --purge drops the Commons database and removes canonical resources', function (): void {
-    Process::fake([...registeredToolRemoveFakes('tasks:remove', 'tasks-example-com', 'tasks.example.com'),
+test('planka:remove --purge drops the Commons database and removes canonical resources', function (): void {
+    Process::fake([...registeredToolRemoveFakes('planka:remove', 'tasks-example-com', 'tasks.example.com'),
         '*exec *' => Process::result(output: 'dropped'),
         '*delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('tasks:remove local --force --purge')
+    $this->artisan('planka:remove local --force --purge')
         ->assertExitCode(0)
         ->expectsOutputToContain("Dropping database 'planka_tasks_example_com' from Plex Commons");
 

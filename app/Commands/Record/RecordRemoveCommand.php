@@ -8,15 +8,8 @@ use App\Enums\ClusterTool;
 use App\Enums\SecretKind;
 use Illuminate\Support\Facades\Process;
 
-class RecordRemoveCommand extends AbstractToolRemoveCommand
+abstract class RecordRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'record:remove' is deprecated. Please use 'sendrec:remove' instead.");
-
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::RECORD;

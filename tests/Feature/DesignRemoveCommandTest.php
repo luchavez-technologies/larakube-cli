@@ -6,14 +6,14 @@ use Illuminate\Support\Facades\Process;
  * Regression test for the ClusterTool component refactor — see
  * ChatRemoveCommandTest for the full rationale.
  */
-test('design:remove deletes the same resource set as before the component refactor', function (): void {
-    Process::fake([...registeredToolRemoveFakes('design:remove', 'design-example-com', 'design.example.com'),
+test('penpot:remove deletes the same resource set as before the component refactor', function (): void {
+    Process::fake([...registeredToolRemoveFakes('penpot:remove', 'design-example-com', 'design.example.com'),
         '*get secret penpot-backend-secrets-design-example-com*' => Process::result(output: 'penpot-backend-secrets-design-example-com   Opaque   1   10d'),
         '*delete *' => Process::result(output: 'deleted'),
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('design:remove local --force')
+    $this->artisan('penpot:remove local --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing Penpot resources...');
 

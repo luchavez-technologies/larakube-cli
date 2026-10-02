@@ -8,15 +8,8 @@ use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SecretKind;
 
-class TasksRemoveCommand extends AbstractToolRemoveCommand
+abstract class TasksRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'tasks:remove' is deprecated. Please use 'planka:remove' instead.");
-
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::TASKS;

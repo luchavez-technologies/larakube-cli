@@ -11,11 +11,11 @@ use function Laravel\Prompts\table;
 
 use LaravelZero\Framework\Commands\Command;
 
-class ErrorsShowCommand extends Command
+abstract class ErrorsShowCommand extends Command
 {
     use DeploysClusterTool, InteractsWithErrors, LaraKubeOutput;
 
-    protected $signature = 'errors:show
+    protected $signature = 'glitchtip:show
         {environment=local : Environment to show GlitchTip access for (resolves the GlitchTip host)}
         {--context= : Target a specific kube-context (defaults to current context)}';
 
@@ -23,7 +23,6 @@ class ErrorsShowCommand extends Command
 
     public function handle(): int
     {
-        $this->laraKubeWarn("[DEPRECATION] 'errors:show' is deprecated. Please use 'glitchtip:show' instead.");
         $this->renderHeader();
 
         $env = (string) $this->argument('environment');

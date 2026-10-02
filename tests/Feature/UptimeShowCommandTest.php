@@ -3,12 +3,12 @@
 use App\Enums\ClusterTool;
 use Illuminate\Support\Facades\Process;
 
-test('uptime:show refuses because Uptime Kuma is not yet shipped', function (): void {
+test('kuma:show refuses because Uptime Kuma is not yet shipped', function (): void {
     Process::fake([
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('uptime:show local')
+    $this->artisan('kuma:show local')
         ->assertExitCode(1)
         ->expectsOutputToContain('Status Pages (Uptime Kuma) is not yet shipped');
 

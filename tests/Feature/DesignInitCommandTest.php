@@ -1,8 +1,8 @@
 <?php
 
-use App\Commands\Design\DesignRemoveCommand;
-use App\Commands\Design\DesignShowCommand;
 use App\Commands\Penpot\PenpotInitCommand;
+use App\Commands\Penpot\PenpotRemoveCommand;
+use App\Commands\Penpot\PenpotShowCommand;
 use Illuminate\Support\Facades\Process;
 
 function designCommonsSpec(?string $s3Host = null): array
@@ -150,22 +150,22 @@ test('penpot:init errors instead of guessing when multiple instances are already
     ])->run();
 })->throws(RuntimeException::class, 'pass --domain=<host>');
 
-test('design:show displays Penpot deployment access info', function (): void {
+test('penpot:show displays Penpot deployment access info', function (): void {
     Process::fake([
         '*' => Process::result(output: 'installed'),
     ]);
 
-    $this->artisan(DesignShowCommand::class, [
+    $this->artisan(PenpotShowCommand::class, [
         'environment' => 'local',
     ])->assertExitCode(0);
 });
 
-test('design:remove cleans up Penpot resources', function (): void {
+test('penpot:remove cleans up Penpot resources', function (): void {
     Process::fake([
         '*' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan(DesignRemoveCommand::class, [
+    $this->artisan(PenpotRemoveCommand::class, [
         'environment' => 'local',
         '--force' => true,
         '--no-interaction' => true,

@@ -226,7 +226,7 @@ test('matrix:init --vpn-only aborts when the Middleware apply fails', function (
         ->expectsOutputToContain('Failed to create the VPN-only Middleware');
 });
 
-// chat:remove's own coverage lives in ChatRemoveCommandTest.php (the
+// matrix:remove's own coverage lives in ChatRemoveCommandTest.php (the
 // happy-path resource-set regression test) and the failure-path test moved
 // there below — kept together per-command instead of split across the
 // init and remove test files.

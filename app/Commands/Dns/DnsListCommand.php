@@ -22,24 +22,13 @@ use LaravelZero\Framework\Commands\Command;
  * deleting each other's records, so being able to SEE it — and confirm two
  * clusters differ — is how you diagnose records flapping between them.
  */
-class DnsListCommand extends Command
+abstract class DnsListCommand extends Command
 {
     use DeploysClusterTool, InteractsWithClusterContext, InteractsWithClusterIdentity,
         InteractsWithDnsZones, LaraKubeOutput, ResolvesToolEnvironment;
 
-    protected $signature = 'dns:list
-        {environment? : Environment whose zones to list}
-        {--context=   : Target a specific kube-context}
-        {--json       : Emit one machine-readable JSON array on stdout}';
-
-    protected $description = 'List the Cloudflare zones this cluster manages with ExternalDNS';
-
     public function handle(): int
     {
-        if ($this->getName() === 'dns:list' && ! $this->option('json')) {
-            $this->laraKubeWarn("[DEPRECATION] 'dns:list' is deprecated. Please use 'external-dns:list' instead.");
-        }
-
         if (! $this->option('json')) {
             $this->renderHeader();
         }

@@ -90,7 +90,7 @@ abstract class DataInitCommand extends Command
         if ($this->deploymentExists($kubectl, $ns, $otherNames->deployment())) {
             $otherLabel = $otherEngine === 'pocketbase' ? 'PocketBase' : 'Directus';
             if ($this->cannotPrompt()) {
-                $this->laraKubeError("Host '{$host}' is already in use by {$otherLabel}. Pass a different --domain or remove {$otherLabel} first with 'larakube data:remove --domain={$host}'.");
+                $this->laraKubeError("Host '{$host}' is already in use by {$otherLabel}. Pass a different --domain or remove {$otherLabel} first with 'larakube directus:remove --domain={$host}'.");
 
                 return 1;
             }

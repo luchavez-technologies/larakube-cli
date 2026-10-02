@@ -6,15 +6,8 @@ use App\Commands\Tool\AbstractToolShowCommand;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 
-class WebmailShowCommand extends AbstractToolShowCommand
+abstract class WebmailShowCommand extends AbstractToolShowCommand
 {
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'webmail:show' is deprecated. Please use 'bulwark:show' instead.");
-
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::WEBMAIL;

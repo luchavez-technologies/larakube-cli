@@ -35,13 +35,13 @@ test('a fresh livekit:init points you at the wire command instead of pretending 
         ->expectsOutputToContain('meet:wire local --tool=chat');
 });
 
-test('meet:remove tears down the SFU and its bridge', function (): void {
-    Process::fake([...registeredToolRemoveFakes('meet:remove', instance: 'meet-example-com', host: 'meet.example.com'),
+test('livekit:remove tears down the SFU and its bridge', function (): void {
+    Process::fake([...registeredToolRemoveFakes('livekit:remove', instance: 'meet-example-com', host: 'meet.example.com'),
         '*delete *' => Process::result(output: 'deleted'),
         '*get *' => Process::result(output: '', exitCode: 1),
     ]);
 
-    $this->artisan('meet:remove local --force')
+    $this->artisan('livekit:remove local --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Removing LiveKit (Meet) resources...');
 
@@ -56,13 +56,13 @@ test('meet:remove tears down the SFU and its bridge', function (): void {
         && str_contains($job->command, 'ingress/livekit-meet-example-com'));
 });
 
-test('meet:remove aborts when a delete step fails', function (): void {
-    Process::fake([...registeredToolRemoveFakes('meet:remove', instance: 'meet-example-com', host: 'meet.example.com'),
+test('livekit:remove aborts when a delete step fails', function (): void {
+    Process::fake([...registeredToolRemoveFakes('livekit:remove', instance: 'meet-example-com', host: 'meet.example.com'),
         '*delete *' => Process::result(output: '', exitCode: 1),
         '*get *' => Process::result(output: '', exitCode: 1),
     ]);
 
-    $this->artisan('meet:remove local --force')
+    $this->artisan('livekit:remove local --force')
         ->assertExitCode(1)
         ->expectsOutputToContain('failed to remove');
 });

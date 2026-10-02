@@ -82,7 +82,7 @@ abstract class AbstractToolShowCommand extends Command
         // The registry is a convenience index, NOT the source of truth: only a
         // handful of {tool}:init commands ever call registerDeployedTool(), so
         // trusting it alone reported long-running installs as "not installed"
-        // (sso:show said Zitadel was missing while sso-zitadel had been up for
+        // (zitadel:show said Zitadel was missing while sso-zitadel had been up for
         // days). Fall back to asking the cluster itself, by instance, so an
         // engine- or instance-suffixed Deployment counts as installed too.
         $installed = $this->isToolRegistered($kubectl, $tool, $instance)

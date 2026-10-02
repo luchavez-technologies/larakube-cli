@@ -24,7 +24,7 @@ trait InteractsWithMail
     /**
      * Reverse the install-time port opening on teardown. A mail server that is
      * gone but whose SMTP ports are still open on the firewall is a real
-     * exposure, so this runs from `mail:remove`.
+     * exposure, so this runs from `stalwart:remove`.
      *
      * Thin alias over the generic helper — Stalwart was the first tool to need
      * raw L4 ports, Forgejo's SSH listener the second, so the mechanism lives on

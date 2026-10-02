@@ -212,5 +212,5 @@ test('forgejo:init reads and keeps the brand name on its own instance row when t
         ->and($gitRows->firstWhere('instance', 'git-example-com')['brandName'])->toBe('Acme Git');
 });
 
-// git:remove's own coverage lives in GitRemoveCommandTest.php (the
+// forgejo:remove's own coverage lives in GitRemoveCommandTest.php (the
 // resource-set regression test) rather than duplicated here.

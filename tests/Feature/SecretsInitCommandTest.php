@@ -288,5 +288,5 @@ test('openbao:init patches out a lingering v1alpha1 storedVersion before applyin
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'patch customresourcedefinition secretstores.external-secrets.io'));
 });
 
-// secrets:remove's own coverage lives in SecretsRemoveCommandTest.php (a
+// openbao:remove's own coverage lives in SecretsRemoveCommandTest.php (a
 // stricter test asserting the exact teardown set) rather than duplicated here.

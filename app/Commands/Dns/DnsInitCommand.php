@@ -160,7 +160,7 @@ abstract class DnsInitCommand extends Command
         $this->newLine();
         $this->line('  <fg=gray>A zone with a different Cloudflare account (different token) needs its own group:</>');
         $this->line("  <fg=blue>larakube external-dns:init {$env} --cloudflare-token=…</>");
-        $this->line('  <fg=gray>See everything this cluster manages:</> <fg=blue>larakube dns:list '.$env.'</>');
+        $this->line('  <fg=gray>See everything this cluster manages:</> <fg=blue>larakube external-dns:list '.$env.'</>');
         $this->newLine();
 
         return 0;
@@ -315,7 +315,7 @@ abstract class DnsInitCommand extends Command
                 if ($entry['zone'] === $zone && $entry['slug'] !== $groupSlug) {
                     $this->laraKubeError(
                         "'{$zone}' is already managed by 'external-dns-{$entry['slug']}' — remove it there first "
-                        ."(dns:remove --zone={$zone}), or pass --group={$entry['slug']} here to fold it into that instance.",
+                        ."(external-dns:remove --zone={$zone}), or pass --group={$entry['slug']} here to fold it into that instance.",
                     );
 
                     return false;

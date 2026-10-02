@@ -2,20 +2,20 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('secrets:remove is registered', function (): void {
+test('openbao:remove is registered', function (): void {
     openBaoRegistered();
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
-        ->expectsOutputToContain('secrets:remove');
+        ->expectsOutputToContain('openbao:remove');
 });
 
-test('secrets:remove tears down OpenBao, ESO, and ESO RBAC — but never the shared CRDs', function (): void {
+test('openbao:remove tears down OpenBao, ESO, and ESO RBAC — but never the shared CRDs', function (): void {
     openBaoRegistered();
-    Process::fake([...registeredToolRemoveFakes('secrets:remove'),
+    Process::fake([...registeredToolRemoveFakes('openbao:remove'),
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('secrets:remove', ['environment' => 'production', '--context' => 'ctx', '--force' => true, '--no-interaction' => true])
+    $this->artisan('openbao:remove', ['environment' => 'production', '--context' => 'ctx', '--force' => true, '--no-interaction' => true])
         ->assertExitCode(0);
 
     // The real, single Deployment eso.blade.php actually creates.
@@ -36,20 +36,20 @@ test('secrets:remove tears down OpenBao, ESO, and ESO RBAC — but never the sha
     // custom resource of that type cluster-wide — including OTHER apps'
     // ExternalSecrets (Forgejo, Stalwart), which have creationPolicy: Owner
     // and would cascade further into deleting those apps' live K8s Secrets.
-    // secrets:remove's scope is "remove OpenBao from this environment," not
+    // openbao:remove's scope is "remove OpenBao from this environment," not
     // "remove the sync mechanism cluster-wide" — confirmed live 2026-07-31.
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'crd')
         || str_contains($process->command, 'customresourcedefinition')
         || str_contains($process->command, 'external-secrets.io'));
 });
 
-test('secrets:remove --purge deletes the PVC and bootstrap secret', function (): void {
+test('openbao:remove --purge deletes the PVC and bootstrap secret', function (): void {
     openBaoRegistered();
-    Process::fake([...registeredToolRemoveFakes('secrets:remove'),
+    Process::fake([...registeredToolRemoveFakes('openbao:remove'),
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('secrets:remove', ['environment' => 'production', '--context' => 'ctx', '--force' => true, '--purge' => true, '--no-interaction' => true])
+    $this->artisan('openbao:remove', ['environment' => 'production', '--context' => 'ctx', '--force' => true, '--purge' => true, '--no-interaction' => true])
         ->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete pvc openbao-storage-secrets-example-com'));

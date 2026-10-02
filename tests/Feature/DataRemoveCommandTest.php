@@ -1,9 +1,10 @@
 <?php
 
-use App\Commands\Data\DataRemoveCommand;
+use App\Commands\Directus\DirectusRemoveCommand;
+use App\Commands\PocketBase\PocketBaseRemoveCommand;
 use Illuminate\Support\Facades\Process;
 
-test('data:remove tears down single default instance cleanly', function (): void {
+test('directus:remove tears down single default instance cleanly', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'data', 'instance' => 'data-dev-test', 'host' => 'data.dev.test'],
@@ -14,14 +15,14 @@ test('data:remove tears down single default instance cleanly', function (): void
         '*' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan(DataRemoveCommand::class, [
+    $this->artisan(DirectusRemoveCommand::class, [
         'environment' => 'local',
         '--force' => true,
         '--no-interaction' => true,
     ])->assertExitCode(0);
 });
 
-test('data:remove targets explicit domain instance', function (): void {
+test('directus:remove targets explicit domain instance', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'data', 'instance' => 'blog-dev-test', 'host' => 'blog.dev.test'],
@@ -32,7 +33,7 @@ test('data:remove targets explicit domain instance', function (): void {
         '*' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan(DataRemoveCommand::class, [
+    $this->artisan(DirectusRemoveCommand::class, [
         'environment' => 'local',
         '--domain' => 'blog.dev.test',
         '--force' => true,
@@ -40,7 +41,7 @@ test('data:remove targets explicit domain instance', function (): void {
     ])->assertExitCode(0);
 });
 
-test('data:remove hard-errors non-interactively when 2+ instances are registered and neither --domain nor --all was given', function (): void {
+test('directus:remove hard-errors non-interactively when 2+ instances are registered and neither --domain nor --all was given', function (): void {
     // Previously this silently picked $registered[0] and tore that instance
     // down without telling the operator there was a choice to make — the
     // exact same failure class as the DATA duplicate-registration incident
@@ -53,14 +54,14 @@ test('data:remove hard-errors non-interactively when 2+ instances are registered
         ]))),
     ]);
 
-    $this->artisan(DataRemoveCommand::class, [
+    $this->artisan(DirectusRemoveCommand::class, [
         'environment' => 'local',
         '--force' => true,
         '--no-interaction' => true,
     ])->run();
 })->throws(RuntimeException::class, 'Pass --domain=<host>');
 
-test('data:remove --all removes all registered instances', function (): void {
+test('directus:remove --all removes all registered instances', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'data', 'instance' => 'data-dev-test', 'host' => 'data.dev.test'],
@@ -72,7 +73,7 @@ test('data:remove --all removes all registered instances', function (): void {
         '*' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan(DataRemoveCommand::class, [
+    $this->artisan(DirectusRemoveCommand::class, [
         'environment' => 'local',
         '--all' => true,
         '--force' => true,
@@ -80,11 +81,11 @@ test('data:remove --all removes all registered instances', function (): void {
     ])->assertExitCode(0);
 });
 
-test('data:remove --all --purge deletes every PocketBase instance and its data volume', function (): void {
+test('pocketbase:remove --all --purge deletes every PocketBase instance and its data volume', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'data', 'instance' => 'data-test', 'host' => 'data.test'],
-            ['tool' => 'data', 'instance' => 'data-second-test', 'host' => 'data-second.test'],
+            ['tool' => 'pocketbase', 'instance' => 'data-test', 'host' => 'data.test'],
+            ['tool' => 'pocketbase', 'instance' => 'data-second-test', 'host' => 'data-second.test'],
         ]))),
         '*get deployment directus*' => Process::result(output: ''),
         '*get deployment pocketbase-data-test*' => Process::result(output: 'pocketbase-data-test   1/1   1   1   10d'),
@@ -92,7 +93,7 @@ test('data:remove --all --purge deletes every PocketBase instance and its data v
         '*' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan(DataRemoveCommand::class, [
+    $this->artisan(PocketBaseRemoveCommand::class, [
         'environment' => 'local',
         '--all' => true,
         '--purge' => true,
@@ -106,17 +107,17 @@ test('data:remove --all --purge deletes every PocketBase instance and its data v
     }
 });
 
-test('data:remove without --purge keeps the PocketBase data volume', function (): void {
+test('pocketbase:remove without --purge keeps the PocketBase data volume', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'data', 'instance' => 'data-test', 'host' => 'data.test'],
+            ['tool' => 'pocketbase', 'instance' => 'data-test', 'host' => 'data.test'],
         ]))),
         '*get deployment directus*' => Process::result(output: ''),
         '*get deployment pocketbase-data-test*' => Process::result(output: 'pocketbase-data-test   1/1   1   1   10d'),
         '*' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan(DataRemoveCommand::class, [
+    $this->artisan(PocketBaseRemoveCommand::class, [
         'environment' => 'local',
         '--force' => true,
         '--no-interaction' => true,

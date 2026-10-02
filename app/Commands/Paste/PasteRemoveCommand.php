@@ -7,15 +7,8 @@ use App\Data\ResourceRef;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 
-class PasteRemoveCommand extends AbstractToolRemoveCommand
+abstract class PasteRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'paste:remove' is deprecated. Please use 'yopass:remove' instead.");
-
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::PASTE;

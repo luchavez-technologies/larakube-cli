@@ -8,16 +8,9 @@ use App\Enums\ClusterTool;
 use App\Enums\SecretKind;
 use App\Traits\ReadsClusterSecrets;
 
-class ErrorsRemoveCommand extends AbstractToolRemoveCommand
+abstract class ErrorsRemoveCommand extends AbstractToolRemoveCommand
 {
     use ReadsClusterSecrets;
-
-    public function handle(): int
-    {
-        $this->laraKubeWarn("[DEPRECATION] 'errors:remove' is deprecated. Please use 'glitchtip:remove' instead.");
-
-        return parent::handle();
-    }
 
     protected function tool(): ClusterTool
     {
