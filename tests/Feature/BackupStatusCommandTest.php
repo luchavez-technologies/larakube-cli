@@ -55,6 +55,7 @@ test('backup:status --json reports the destination, schedule and latest backup, 
         ->and($payload['schedule'])->toMatchArray(['scheduled' => true, 'cron' => '0 3 * * *', 'timezone' => 'Asia/Manila', 'suspended' => false, 'lastSuccessfulTime' => '2026-10-03T03:09:00Z'])
         ->and($payload['backups'])->toMatchArray(['available' => true, 'count' => 2, 'incomplete' => 1])
         ->and($payload['backups']['last'])->toBe(['id' => '2026-10-02-030000', 'taken' => '2026-10-02 03:09:00', 'bytes' => 16100, 'items' => 2])
+        ->and(array_column($payload['backups']['entries'], 'id'))->toBe(['2026-10-02-030000', '2026-10-01-030000'])
         ->and($raw)->not->toContain('AK-SECRET')
         ->and($raw)->not->toContain('SK-SECRET')
         ->and($raw)->not->toContain('PASSPHRASE-SECRET');
@@ -68,7 +69,7 @@ test('backup:status does not claim there are no backups when the aws CLI is miss
     Artisan::call('backup:status local --json --no-interaction');
     $payload = json_decode(trim(Artisan::output()), true);
 
-    expect($payload['backups'])->toBe(['available' => false, 'count' => 0, 'incomplete' => 0, 'last' => null])
+    expect($payload['backups'])->toBe(['available' => false, 'count' => 0, 'incomplete' => 0, 'last' => null, 'entries' => []])
         ->and($payload['schedule']['scheduled'])->toBeFalse();
 });
 

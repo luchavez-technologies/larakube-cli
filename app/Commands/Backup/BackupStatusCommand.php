@@ -93,28 +93,26 @@ class BackupStatusCommand extends Command
      * without it reports `available: false` rather than claiming there are none.
      *
      * @param  array<string, string>  $config
-     * @return array{available: bool, count: int, incomplete: int, last: ?array{id: string, taken: string, bytes: int, items: int}}
+     * @return array{available: bool, count: int, incomplete: int, last: ?array{id: string, taken: string, bytes: int, items: int}, entries: list<array{id: string, taken: string, bytes: int, items: int}>}
      */
     protected function backupsAt(array $config): array
     {
         if (trim(Process::run('command -v aws')->output()) === '') {
-            return ['available' => false, 'count' => 0, 'incomplete' => 0, 'last' => null];
+            return ['available' => false, 'count' => 0, 'incomplete' => 0, 'last' => null, 'entries' => []];
         }
 
         $runs = $this->listBackupRuns($config);
         $complete = array_filter($runs, fn (array $run): bool => $run['complete']);
         $last = $complete === [] ? null : $complete[array_key_last($complete)];
+        $entry = fn (array $run): array => ['id' => $run['stamp'], 'taken' => $run['taken'], 'bytes' => $run['bytes'], 'items' => count($run['objects']) - 1];
 
         return [
             'available' => true,
             'count' => count($complete),
             'incomplete' => count($runs) - count($complete),
-            'last' => $last === null ? null : [
-                'id' => $last['stamp'],
-                'taken' => $last['taken'],
-                'bytes' => $last['bytes'],
-                'items' => count($last['objects']) - 1,
-            ],
+            'last' => $last === null ? null : $entry($last),
+            // Newest first, so one call answers both "when was the last backup" and "what is kept".
+            'entries' => array_values(array_map($entry, array_reverse($complete, true))),
         ];
     }
 
