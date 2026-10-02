@@ -4,9 +4,11 @@ namespace App\Commands\Backup;
 
 use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
+use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithBackup;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ReadsCommandOptions;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
@@ -28,17 +30,22 @@ use LaravelZero\Framework\Commands\Command;
  */
 class BackupRunCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithBackup, InteractsWithClusterContext, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, StreamsProcessOutput;
+    use DeploysClusterTool, EmitsJsonOutput, InteractsWithBackup, InteractsWithClusterContext, LaraKubeOutput, ReadsCommandOptions, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, StreamsProcessOutput;
 
     protected $signature = 'backup:run
         {environment=local : Environment whose cluster to back up}
         {--keep-local=     : Also leave the unencrypted archive in this directory}
-        {--context=        : Target a specific kube-context}';
+        {--context=        : Target a specific kube-context}
+        {--json            : Emit one machine-readable JSON result on stdout}';
 
     protected $description = 'Back up every database and irreplaceable volume, encrypted, off-site';
 
     public function handle(): int
     {
+        if ($this->flag('json')) {
+            $this->enableJsonMode();
+        }
+
         $this->renderHeader();
 
         $env = (string) $this->argument('environment');
@@ -211,6 +218,10 @@ class BackupRunCommand extends Command
         }
 
         $size = $this->humanBytes($total);
+
+        if ($this->flag('json')) {
+            $this->jsonOutput(['success' => true, 'backup' => ['id' => $stamp, 'bytes' => $total, 'items' => count($items)]]);
+        }
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Backup complete and off-site.');

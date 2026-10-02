@@ -4,9 +4,11 @@ namespace App\Commands\Backup;
 
 use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
+use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithBackup;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ReadsCommandOptions;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 
 use function Laravel\Prompts\table;
@@ -15,16 +17,23 @@ use LaravelZero\Framework\Commands\Command;
 
 class BackupListCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithBackup, InteractsWithClusterContext, LaraKubeOutput, RequiresFlagsWhenNonInteractive;
+    use DeploysClusterTool, EmitsJsonOutput, InteractsWithBackup, InteractsWithClusterContext, LaraKubeOutput, ReadsCommandOptions, RequiresFlagsWhenNonInteractive;
 
     protected $signature = 'backup:list
         {environment=local : Environment whose backups to list}
-        {--context= : Target a specific kube-context}';
+        {--context= : Target a specific kube-context}
+        {--json : Emit one machine-readable JSON result on stdout}';
 
     protected $description = 'List the backups stored at the off-site destination';
 
     public function handle(): int
     {
+        $json = (bool) $this->flag('json');
+
+        if ($json) {
+            $this->enableJsonMode();
+        }
+
         $this->renderHeader();
 
         $kubectl = Kubectl::forContext($this->resolveToolContext(
@@ -36,12 +45,32 @@ class BackupListCommand extends Command
         if ($config === null) {
             $this->laraKubeError('No backup destination configured. Run `larakube backup:init` first.');
 
+            if ($json) {
+                $this->jsonOutput(['success' => false, 'configured' => false, 'backups' => []]);
+            }
+
             return 1;
         }
 
         $runs = $this->listBackupRuns($config);
         $complete = array_filter($runs, fn (array $r) => $r['complete']);
         $partial = count($runs) - count($complete);
+
+        if ($json) {
+            $this->jsonOutput([
+                'success' => true,
+                'configured' => true,
+                'backups' => array_values(array_map(fn (array $run): array => [
+                    'id' => $run['stamp'],
+                    'taken' => $run['taken'],
+                    'bytes' => $run['bytes'],
+                    'items' => count($run['objects']) - 1,
+                ], array_reverse($complete, true))),
+                'incomplete' => $partial,
+            ]);
+
+            return 0;
+        }
 
         $rows = [];
         foreach (array_reverse($complete, true) as $run) {
