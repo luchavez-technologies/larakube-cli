@@ -130,9 +130,9 @@ test('only tools that can bundle their own storage advertise --no-plex', functio
 test('command name helpers spell the canonical tool:action shape', function (): void {
     ssoRegistered();
     expect(ClusterTool::FLOW->initCommand())->toBe('n8n:init')
-        ->and(ClusterTool::FLOW->removeCommand())->toBe('flow:remove')
-        ->and(ClusterTool::FLOW->showCommand())->toBe('flow:show')
-        ->and(ClusterTool::PASSWORDS->removeCommand())->toBe('passwords:remove');
+        ->and(ClusterTool::FLOW->removeCommand())->toBe('n8n:remove')
+        ->and(ClusterTool::FLOW->showCommand())->toBe('n8n:show')
+        ->and(ClusterTool::PASSWORDS->removeCommand())->toBe('vaultwarden:remove');
 });
 
 test('deploymentName() matches the actual Deployment name each tool\'s own manifest creates', function (): void {
@@ -426,4 +426,11 @@ test('a migrated tool never keeps its category on any resource name', function (
     }
 
     expect($offenders)->toBeEmpty(implode("\n", $offenders));
+});
+
+test('remove and show commands name the tool, and the engine when there is more than one', function (): void {
+    expect(ClusterTool::PASTE->removeCommand())->toBe('yopass:remove')
+        ->and(ClusterTool::DATA->removeCommand())->toBe('directus:remove')
+        ->and(ClusterTool::DATA->removeCommand('pocketbase'))->toBe('pocketbase:remove')
+        ->and(ClusterTool::NOTES->showCommand())->toBe('outline:show');
 });

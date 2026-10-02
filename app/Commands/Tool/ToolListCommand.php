@@ -153,6 +153,7 @@ class ToolListCommand extends Command
                     'label' => $tool->getLabel(),
                     'categories' => array_map(fn ($cat) => $cat->value, $tool->categories()),
                     'installed' => $installed,
+                    'removeCommand' => $tool->removeCommand($entry['engine'] ?? null),
                     'namespace' => $tool->namespace(),
                     'host' => $host,
                     'aliases' => $aliasHosts,

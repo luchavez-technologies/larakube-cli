@@ -690,14 +690,14 @@ enum ClusterTool: string implements HasWorkloadComponents
         return "{$this->canonicalTool()->value}:init";
     }
 
-    public function removeCommand(): string
+    public function removeCommand(?string $engine = null): string
     {
-        return "{$this->value}:remove";
+        return "{$this->canonicalTool($engine)->value}:remove";
     }
 
-    public function showCommand(): string
+    public function showCommand(?string $engine = null): string
     {
-        return "{$this->value}:show";
+        return "{$this->canonicalTool($engine)->value}:show";
     }
 
     /**

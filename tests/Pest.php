@@ -254,7 +254,7 @@ function something(): void
  */
 function registeredToolRemoveFakes(string $removeCommand, string $instance = '', string $host = 'tool.example.com'): array
 {
-    $tool = collect(App\Enums\ClusterTool::cases())->first(fn ($t) => $t->removeCommand() === $removeCommand);
+    $tool = collect(App\Enums\ClusterTool::cases())->first(fn ($t) => $t->removeCommand() === $removeCommand || "{$t->value}:remove" === $removeCommand);
 
     return [
         '*get secret larakube-tools-registry*' => Illuminate\Support\Facades\Process::result(output: base64_encode(json_encode([
