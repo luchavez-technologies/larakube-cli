@@ -32,11 +32,20 @@ while [[ "$#" -gt 0 ]]; do
     esac
 done
 
+# phpacker asks api.github.com for its PHP runtimes on every build, and an
+# anonymous caller gets 60 requests an hour. Borrow the GitHub CLI's login (5000
+# an hour) unless GITHUB_TOKEN is already set.
+if [ -z "$GITHUB_TOKEN" ] && command -v gh >/dev/null 2>&1; then
+    GITHUB_TOKEN="$(gh auth token 2>/dev/null || true)"
+    export GITHUB_TOKEN
+fi
+
 # Helper to run PHP with phar writes enabled (the default php.ini ships
 # phar.readonly=On, which blocks everything build_phar()/build_standalone()
-# below do).
+# below do). variables_order=EGPCS makes $_ENV available: phpacker only reads
+# GITHUB_TOKEN from there, and the default php.ini leaves it empty.
 run_php() {
-    php -d phar.readonly=0 "$@"
+    php -d phar.readonly=0 -d variables_order=EGPCS "$@"
 }
 
 build_phar() {
