@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Process;
  */
 trait InstallsPodman
 {
-    use StreamsProcessOutput;
+    use DetectsWsl, StreamsProcessOutput;
 
     /**
      * The three companions are what make it rootless: user-mode networking
@@ -34,7 +34,7 @@ trait InstallsPodman
         $this->beforePodmanInstall();
 
         $this->laraKubeInfo('Installing rootless Podman...');
-        $code = $this->runStreaming('sudo apt-get install -y podman slirp4netns fuse-overlayfs uidmap');
+        $code = $this->runStreaming($this->privilegePrefix().'apt-get install -y podman slirp4netns fuse-overlayfs uidmap');
 
         if ($code !== 0) {
             $this->laraKubeError('Podman installation failed. See output above.');
@@ -74,8 +74,33 @@ trait InstallsPodman
     {
         $this->runStreaming(
             'echo '.escapeshellarg('unqualified-search-registries = ["docker.io"]')
-            .' | sudo tee /etc/containers/registries.conf.d/larakube.conf >/dev/null',
+            .' | '.$this->privilegePrefix().'tee /etc/containers/registries.conf.d/larakube.conf >/dev/null',
         );
+    }
+
+    /**
+     * What goes in front of a command that needs root. `sudo` needs a password
+     * typed at a terminal, which an app without one cannot give; inside WSL,
+     * Windows can start the command as root without any password instead.
+     */
+    protected function privilegePrefix(): string
+    {
+        if (function_exists('posix_geteuid') && posix_geteuid() === 0) {
+            return '';
+        }
+
+        $distro = (string) getenv('WSL_DISTRO_NAME');
+        if ($distro !== '' && ! $this->hasTerminal() && trim(Process::run('command -v wsl.exe')->output()) !== '') {
+            return 'wsl.exe -d '.escapeshellarg($distro).' -u root -- ';
+        }
+
+        return 'sudo ';
+    }
+
+    /** Whether a person can type a password here (false when run by an app). */
+    protected function hasTerminal(): bool
+    {
+        return defined('STDIN') && stream_isatty(STDIN);
     }
 
     /** Whether apt-get is available (Debian/Ubuntu, incl. the default WSL distros). */
