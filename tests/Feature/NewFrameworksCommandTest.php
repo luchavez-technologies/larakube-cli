@@ -124,6 +124,57 @@ test('the catalog names its categories, each framework\'s fixed arguments and wh
         ->and($laravel['server']['suggested'])->toBe('fpm-nginx');
 
     foreach ($frameworks as $framework) {
-        expect(in_array($framework['category'], array_column($payload['categories'], 'id'), true))->toBeTrue();
+        expect($framework['category'])->toBeIn(array_column($payload['categories'], 'id'));
     }
 });
+
+test('every server framework asks database, cache, storage and search from one shared list', function (): void {
+    $catalog = collect(newFrameworksCatalog())->keyBy('slug');
+
+    foreach (['django', 'fastapi', 'nestjs', 'adonisjs', 'springboot', 'dotnet', 'gin', 'axum'] as $slug) {
+        $fields = collect($catalog[$slug]['fields'])->keyBy('key');
+
+        expect($fields->keys()->all())->toBe(['name', 'database', 'cache', 'storage', 'search'], $slug)
+            ->and($fields['database']['default'])->toBe('postgres')
+            ->and(array_column($fields['storage']['options'], 'value'))->toContain('none')
+            ->and(array_column($fields['search']['options'], 'flag'))->toBe([null, '--meilisearch', '--typesense']);
+    }
+
+    $wordpress = collect($catalog['wordpress']['fields'])->keyBy('key');
+
+    expect(array_column($wordpress['database']['options'], 'value'))->toBe(['mysql', 'mariadb'])
+        ->and(array_column($wordpress['storage']['options'], 'value'))->not->toContain('none')
+        ->and($wordpress->keys()->all())->toBe(['name', 'php', 'database', 'cache', 'storage', 'search'])
+        ->and(array_column(collect($catalog['django']['fields'])->keyBy('key')['cache']['options'], 'value'))->toContain('database');
+});
+
+test('the server stack questions are answered by flags, then by --fast, and never prompt', function (array $input, string $expected): void {
+    $probe = new class extends LaravelZero\Framework\Commands\Command
+    {
+        use App\Traits\AsksServerStack;
+
+        protected $signature = 'probe:stack {--fast}';
+
+        public function handle(): int
+        {
+            $fw = AppFramework::DJANGO;
+            $this->line(implode(',', [
+                $this->askDatabase($fw)->value,
+                $this->askCache($fw)->value,
+                $this->askStorage($fw)?->value ?? 'none',
+                $this->askSearch($fw)?->value ?? 'none',
+            ]));
+
+            return 0;
+        }
+    };
+    Artisan::registerCommand($probe);
+
+    Artisan::call('probe:stack', $input + ['--no-interaction' => true]);
+
+    expect(trim(Artisan::output()))->toBe($expected);
+})->with([
+    '--fast defaults' => [['--fast' => true], 'postgres,redis,minio,none'],
+    'flags win' => [['--fast' => true, '--mysql' => true, '--memcached' => true, '--no-storage' => true, '--typesense' => true], 'mysql,memcached,none,typesense'],
+    'a database cache for Django' => [['--fast' => true, '--database' => true], 'postgres,database,minio,none'],
+]);

@@ -4,10 +4,7 @@ namespace App\Commands\Dotnet;
 
 use App\Data\ConfigData;
 use App\Enums\AppFramework;
-use App\Enums\CacheDriver;
-use App\Enums\DatabaseDriver;
-use App\Enums\SearchDriver;
-use App\Enums\StorageDriver;
+use App\Traits\AsksServerStack;
 use App\Traits\CheckPrerequisites;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
@@ -19,7 +16,6 @@ use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
-use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
@@ -27,7 +23,7 @@ use Random\RandomException;
 
 class DotnetNewCommand extends Command
 {
-    use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, StreamsProcessOutput, SyncsClusterSecrets;
+    use AsksServerStack, CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, StreamsProcessOutput, SyncsClusterSecrets;
 
     /**
      * The name and signature of the console command.
@@ -69,69 +65,10 @@ class DotnetNewCommand extends Command
         $appName = Str::slug($inputName);
         $projectDir = "$projectPath/$appName";
 
-        // 1. DatabaseDriver — PostgreSQL (recommended via Npgsql), MySQL, MariaDB
-        $allowedDbs = [
-            DatabaseDriver::POSTGRESQL->value => DatabaseDriver::POSTGRESQL->getLabel().' (Recommended via Npgsql)',
-            DatabaseDriver::MYSQL->value => DatabaseDriver::MYSQL->getLabel().' (Pomelo EF Core)',
-            DatabaseDriver::MARIADB->value => DatabaseDriver::MARIADB->getLabel(),
-        ];
-
-        $dbValue = $this->option('fast')
-            ? DatabaseDriver::POSTGRESQL->value
-            : select(
-                label: 'Which database engine would you like to use? (Entity Framework Core)',
-                options: $allowedDbs,
-                default: DatabaseDriver::POSTGRESQL->value,
-            );
-        $database = DatabaseDriver::from($dbValue);
-
-        // 2. CacheDriver — Redis (recommended)
-        $allowedCaches = [
-            CacheDriver::REDIS->value => CacheDriver::REDIS->getLabel().' (Recommended)',
-            CacheDriver::MEMCACHED->value => CacheDriver::MEMCACHED->getLabel(),
-        ];
-
-        $cacheValue = $this->option('fast')
-            ? CacheDriver::REDIS->value
-            : select(
-                label: 'Which cache driver would you like to use?',
-                options: $allowedCaches,
-                default: CacheDriver::REDIS->value,
-            );
-        $cacheDriver = CacheDriver::from($cacheValue);
-
-        // 3. StorageDriver — S3-compatible object storage via AWSSDK.S3
-        $allowedStorages = [
-            'none' => 'None',
-            StorageDriver::MINIO->value => StorageDriver::MINIO->getLabel().' (Recommended)',
-            StorageDriver::SEAWEEDFS->value => StorageDriver::SEAWEEDFS->getLabel(),
-            StorageDriver::GARAGE->value => StorageDriver::GARAGE->getLabel(),
-        ];
-
-        $storageValue = $this->option('fast')
-            ? StorageDriver::MINIO->value
-            : select(
-                label: 'Which S3-compatible object storage would you like to use?',
-                options: $allowedStorages,
-                default: StorageDriver::MINIO->value,
-            );
-        $objectStorage = StorageDriver::tryFrom($storageValue);
-
-        // 4. SearchDriver — Meilisearch or Typesense
-        $allowedSearch = [
-            'none' => 'None',
-            SearchDriver::MEILISEARCH->value => SearchDriver::MEILISEARCH->getLabel(),
-            SearchDriver::TYPESENSE->value => SearchDriver::TYPESENSE->getLabel(),
-        ];
-
-        $searchValue = $this->option('fast')
-            ? 'none'
-            : select(
-                label: 'Which search driver would you like to use?',
-                options: $allowedSearch,
-                default: 'none',
-            );
-        $scoutDriver = SearchDriver::tryFrom($searchValue);
+        $database = $this->askDatabase(AppFramework::DOTNET, 'Which database engine would you like to use? (Entity Framework Core)');
+        $cacheDriver = $this->askCache(AppFramework::DOTNET);
+        $objectStorage = $this->askStorage(AppFramework::DOTNET);
+        $scoutDriver = $this->askSearch(AppFramework::DOTNET);
 
         // Build ConfigData
         $config = new ConfigData;

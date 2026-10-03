@@ -124,8 +124,30 @@ class FrameworkCatalog
                 'default' => true,
                 'flag' => '--typescript',
             ]],
-            default => $fields,
+            default => ServerStack::covers($framework) ? [...$fields, ...$this->serverStackFields($framework)] : $fields,
         };
+    }
+
+    /**
+     * The questions every server framework asks, from the same lists its wizard uses.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function serverStackFields(AppFramework $framework): array
+    {
+        $databases = ServerStack::databases($framework);
+        $caches = ServerStack::caches($framework);
+
+        $fields = [
+            $this->select('database', 'Database', $this->options($databases, recommended: $databases[0]), $databases[0]->value),
+            $this->select('cache', 'Cache', $this->options($caches, recommended: $caches[0]), $caches[0]->value),
+            $this->storage(ServerStack::storages(), ServerStack::storageIsOptional($framework)),
+            $this->search(ServerStack::searches($framework)),
+        ];
+
+        return $framework === AppFramework::WORDPRESS
+            ? [$this->select('php', 'PHP version', $this->options(array_values(array_filter(PhpVersion::cases(), fn (PhpVersion $v): bool => (float) $v->value >= 8.2)), recommended: PhpVersion::PHP_8_4), PhpVersion::PHP_8_4->value), ...$fields]
+            : $fields;
     }
 
     /** @return array<string, mixed> */
@@ -343,10 +365,10 @@ class FrameworkCatalog
      * @param  list<StorageDriver>|null  $only
      * @return array<string, mixed>
      */
-    private function storage(?array $only = null): array
+    private function storage(?array $only = null, bool $optional = true): array
     {
         $field = $this->select('storage', 'Object storage', [
-            ['value' => 'none', 'label' => 'None', 'flag' => '--no-storage', 'recommended' => false],
+            ...($optional ? [['value' => 'none', 'label' => 'None', 'flag' => '--no-storage', 'recommended' => false]] : []),
             ...$this->options($only ?? StorageDriver::cases(), recommended: StorageDriver::MINIO),
         ], default: StorageDriver::MINIO->value);
 
