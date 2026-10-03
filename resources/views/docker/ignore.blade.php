@@ -26,6 +26,18 @@ docker-*.yml
 web/app/uploads/*
 @endif
 
+@if($config->framework === \App\Enums\AppFramework::DOTNET)
+# Build output: the image restores and publishes it itself.
+bin
+obj
+@elseif($config->framework === \App\Enums\AppFramework::AXUM)
+# Build output: the image compiles for its own platform.
+target
+@elseif($config->framework === \App\Enums\AppFramework::SPRINGBOOT)
+# Build output and Gradle's cache: the image builds the jar itself.
+build
+.gradle
+@endif
 @if($config->framework?->usesNpm())
 # Dependencies and build output: the image runs `npm ci` and the build itself.
 # A host node_modules copied over them carries the wrong platform's binaries.

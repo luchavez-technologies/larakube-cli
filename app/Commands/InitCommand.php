@@ -7,6 +7,7 @@ use App\Contracts\HasLifecycleHooks;
 use App\Data\ConfigData;
 use App\Enums\AppFramework;
 use App\Enums\PackageManager;
+use App\Services\Scaffolding\ServerStack;
 use App\Traits\CheckPrerequisites;
 use App\Traits\DiffsProjectConfig;
 use App\Traits\GathersInfrastructureConfig;
@@ -98,7 +99,7 @@ class InitCommand extends Command
             return 1;
         }
 
-        if ($framework->isStaticSpa() || $framework === AppFramework::NEXTJS) {
+        if ($framework->isStaticSpa() || $framework === AppFramework::NEXTJS || $framework->isServerApp()) {
             if (! $this->checkPrerequisites(false)) {
                 return 1;
             }
@@ -305,7 +306,7 @@ class InitCommand extends Command
     }
 
     /**
-     * Static sites and Next.js share none of the Laravel wizard: the blueprint
+     * Static sites, Next.js and server apps share none of the Laravel wizard: the blueprint
      * comes from the same builders their `:new` commands use, and Next.js gets
      * the project changes that make it deployable.
      */
@@ -345,6 +346,14 @@ class InitCommand extends Command
             if ($drivers['search']) {
                 $config->setScoutDriver($drivers['search']);
             }
+        } elseif ($framework->isServerApp()) {
+            // The server-app engine deploys the app alone: connection settings
+            // are the app's own environment, so the stack answers stay at the
+            // defaults `:new --fast` records.
+            $config = new ConfigData(id: $name, name: $name, path: $path, framework: $framework);
+            $config->setEnvironments(['local']);
+            $config->setDatabase(ServerStack::databases($framework)[0]);
+            $config->setCacheDriver(ServerStack::caches($framework)[0]);
         } else {
             $config = ConfigData::forStaticSite($framework, $name, $path, $packageManager);
         }

@@ -35,7 +35,7 @@ class DotnetNewCommand extends Command
     /**
      * The console command description.
      */
-    protected $description = 'Scaffold a new ASP.NET Core 9.0 Web API application with Kubernetes infrastructure';
+    protected $description = 'Scaffold a new ASP.NET Core 10.0 Web API application with Kubernetes infrastructure';
 
     /**
      * Execute the console command.
@@ -86,9 +86,9 @@ class DotnetNewCommand extends Command
             $config->setScoutDriver($scoutDriver);
         }
 
-        $this->laraKubeInfo("Scaffolding ASP.NET Core 9.0 Web API: $appName...");
+        $this->laraKubeInfo("Scaffolding ASP.NET Core 10.0 Web API: $appName...");
 
-        // 5. Run `dotnet new webapi` inside a .NET 9 SDK Docker container
+        // 5. Run `dotnet new webapi` inside a .NET 10 SDK Docker container
         $this->runDotnetNewWebapi($appName, $projectPath);
 
         if (! is_dir($projectDir)) {
@@ -111,8 +111,8 @@ class DotnetNewCommand extends Command
         $this->line("  <fg=yellow>cd $appName && larakube up</>");
         $this->newLine();
         $this->line('  <fg=gray>Features configured:</>');
-        $this->line('  <fg=gray>  • ASP.NET Core 9.0 Alpine runner (mcr.microsoft.com/dotnet/aspnet:9.0-alpine)</>');
-        $this->line('  <fg=gray>  • Entity Framework Core database migration init container (dotnet ef database update)</>');
+        $this->line('  <fg=gray>  • ASP.NET Core 10.0 Alpine runner (mcr.microsoft.com/dotnet/aspnet:10.0-alpine)</>');
+        $this->line('  <fg=gray>  • Production image built from Dockerfile.dotnet (SDK build, then the slim runtime)</>');
         $this->line('  <fg=gray>  • Health check endpoint at /healthz</>');
         $this->newLine();
         $this->line('  <fg=gray>Ready to deploy? Create a cloud environment first:</>');
@@ -123,19 +123,19 @@ class DotnetNewCommand extends Command
     }
 
     /**
-     * Run `dotnet new webapi` inside a .NET 9 SDK Docker container.
+     * Run `dotnet new webapi` inside a .NET 10 SDK Docker container.
      */
     protected function runDotnetNewWebapi(string $appName, string $baseDir): void
     {
-        $this->laraKubeInfo('Pulling .NET 9 SDK builder image...');
-        Process::forever()->run($this->pullImageCommand('mcr.microsoft.com/dotnet/sdk:9.0'));
+        $this->laraKubeInfo('Pulling .NET 10 SDK builder image...');
+        Process::forever()->run($this->pullImageCommand('mcr.microsoft.com/dotnet/sdk:10.0'));
 
         $runtime = $this->containerRuntime();
 
         $uid = $this->hostUid();
         $gid = $this->hostGid();
 
-        $cmd = "$runtime run --rm -it -v $baseDir:/app -w /app --user root mcr.microsoft.com/dotnet/sdk:9.0"
+        $cmd = "$runtime run --rm -v $baseDir:/app -w /app --user root mcr.microsoft.com/dotnet/sdk:10.0"
             ." sh -c 'dotnet new webapi -o $appName --no-https'";
 
         $this->runInteractive($cmd);
@@ -143,34 +143,32 @@ class DotnetNewCommand extends Command
         // Chown back to host user
         if (is_dir("$baseDir/$appName")) {
             $this->runStreaming(
-                "$runtime run --rm -v $baseDir:/app --user root mcr.microsoft.com/dotnet/sdk:9.0 chown -R {$this->containerChownSpec($uid, $gid)} /app/$appName",
+                "$runtime run --rm -v $baseDir:/app --user root mcr.microsoft.com/dotnet/sdk:10.0 chown -R {$this->containerChownSpec($uid, $gid)} /app/$appName",
             );
         }
     }
 
     /**
-     * Generate Program.cs for .NET 9 Web API with health check endpoint.
+     * Generate Program.cs for .NET 10 Web API with health check endpoint.
      */
     protected function generateDotnetProgramCs(string $projectDir): void
     {
         $programCs = <<<'CS'
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    app.MapOpenApi();
 }
 
 app.MapHealthChecks("/healthz");
 
-app.MapGet("/", () => new { message = "Welcome to .NET 9 Web API on LaraKube!", status = "ok" });
+app.MapGet("/", () => new { message = "Welcome to .NET 10 Web API on LaraKube!", status = "ok" });
 
 app.Run();
 CS;

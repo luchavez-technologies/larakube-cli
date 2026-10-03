@@ -109,7 +109,7 @@ test('an undetectable project run without prompts asks for --framework', functio
 test('frameworks the LaraKube CLI cannot deploy yet are refused, detected or requested', function (): void {
     Process::fake(initFrameworkFakes());
 
-    initFrameworkInProject(fn (string $p) => file_put_contents("{$p}/go.mod", 'module site'), function (string $project): void {
+    initFrameworkInProject(fn (string $p) => file_put_contents("{$p}/manage.py", '#!/usr/bin/env python'), function (string $project): void {
         $this->artisan('init --no-interaction')
             ->expectsOutputToContain("can't be deployed by the LaraKube CLI yet")
             ->assertExitCode(1);
@@ -146,4 +146,37 @@ test('a static site watches its own framework paths, not Laravel\'s', function (
 
     expect($config->watchPaths)->toContain('docs', 'docusaurus.config.ts', 'sidebars.ts')
         ->not->toContain('app', 'composer.lock');
+});
+
+test('an existing server app is adopted with its own image and the server-app manifests', function (string $framework, array $files, string $dockerfile): void {
+    Process::fake(initFrameworkFakes());
+
+    initFrameworkInProject(function (string $project) use ($files): void {
+        foreach ($files as $name => $contents) {
+            file_put_contents("{$project}/{$name}", $contents);
+        }
+    }, function (string $project) use ($framework, $dockerfile): void {
+        $this->artisan('init --no-interaction')->assertExitCode(0);
+
+        $config = ConfigData::loadFromFile($project);
+
+        expect($config->framework->value)->toBe($framework)
+            ->and(file_exists("{$project}/{$dockerfile}"))->toBeTrue()
+            ->and(file_exists("{$project}/.dockerignore"))->toBeTrue()
+            ->and(file_exists("{$project}/Dockerfile.php"))->toBeFalse()
+            ->and(glob("{$project}/.infrastructure/k8s/overlays/local/preview/deployment.yaml"))->not->toBeEmpty();
+    });
+})->with([
+    'gin' => ['gin', ['go.mod' => "module site\n\ngo 1.23\n", 'main.go' => 'package main'], 'Dockerfile.gin'],
+    'axum' => ['axum', ['Cargo.toml' => "[package]\nname = \"site\"\nversion = \"0.1.0\"\n", 'src/../main.rs' => 'fn main() {}'], 'Dockerfile.axum'],
+    'spring boot' => ['springboot', ['build.gradle.kts' => '', 'settings.gradle.kts' => 'rootProject.name = "site"'], 'Dockerfile.springboot'],
+    '.NET' => ['dotnet', ['Program.cs' => '', 'site.csproj' => '<Project Sdk="Microsoft.NET.Sdk.Web"></Project>'], 'Dockerfile.dotnet'],
+]);
+
+test('every deployable server framework ships a production image template', function (): void {
+    foreach (AppFramework::cases() as $framework) {
+        if ($framework->isDeployable() && $framework->isServerApp()) {
+            expect(view()->exists('docker.'.$framework->value))->toBeTrue("{$framework->value} is deployable but has no docker.{$framework->value} view");
+        }
+    }
 });

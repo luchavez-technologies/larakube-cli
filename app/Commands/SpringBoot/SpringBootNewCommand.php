@@ -65,7 +65,7 @@ class SpringBootNewCommand extends Command
         $appName = Str::slug($inputName);
         $projectDir = "$projectPath/$appName";
 
-        $database = $this->askDatabase(AppFramework::SPRINGBOOT, 'Which database engine would you like to use? (Spring Data JPA + Flyway)');
+        $database = $this->askDatabase(AppFramework::SPRINGBOOT, 'Which database engine would you like to use?');
         $cacheDriver = $this->askCache(AppFramework::SPRINGBOOT);
         $objectStorage = $this->askStorage(AppFramework::SPRINGBOOT);
         $scoutDriver = $this->askSearch(AppFramework::SPRINGBOOT);
@@ -108,7 +108,7 @@ class SpringBootNewCommand extends Command
         $this->newLine();
         $this->line('  <fg=gray>Features configured:</>');
         $this->line('  <fg=gray>  • Spring Boot 3.4 + Java 21 LTS runner (eclipse-temurin:21-jre-alpine)</>');
-        $this->line('  <fg=gray>  • Flyway database migration init container</>');
+        $this->line('  <fg=gray>  • Production image built from Dockerfile.springboot (Gradle build, then a slim JRE)</>');
         $this->line('  <fg=gray>  • Spring Boot Actuator health endpoint at /actuator/health</>');
         $this->newLine();
         $this->line('  <fg=gray>Ready to deploy? Create a cloud environment first:</>');
@@ -154,9 +154,6 @@ repositories {
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
-    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
-    implementation("org.flywaydb:flyway-core")
-    implementation("org.flywaydb:flyway-database-postgresql")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
 }
 

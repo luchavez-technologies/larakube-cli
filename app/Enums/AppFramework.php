@@ -211,6 +211,7 @@ enum AppFramework: string implements HasLabel, RequiresPhpExtensions
         return in_array($this, [
             self::LARAVEL, self::STATAMIC, self::WORDPRESS,
             self::NEXTJS,
+            self::SPRINGBOOT, self::DOTNET, self::GIN, self::AXUM,
             self::ASTRO, self::VITE, self::DOCUSAURUS,
         ], true);
     }
