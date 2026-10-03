@@ -67,10 +67,10 @@ class ToolAddCommand extends Command
         $exitCode = 0;
 
         foreach ($tools as $tool) {
-            $this->line("Proxying to {$tool->initCommand()}...");
+            $this->line("Deploying {$tool->initInvocation()}...");
             $this->newLine();
 
-            $result = $this->call("{$tool->initCommand()}", $params);
+            $result = $this->call('tool:init', ['--tool' => $tool->canonicalTool()->value] + $params);
 
             if ($result === 0) {
                 // {tool}:init already registered itself WITH its resolved host and instance.

@@ -1,6 +1,5 @@
 <?php
 
-use App\Commands\NetBird\NetBirdInitCommand;
 use App\Data\CloudData;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
@@ -800,7 +799,7 @@ test('waitForTls refuses to continue when only this machine cannot resolve', fun
     // ended in a failed bootstrap and a gateway stuck in
     // CreateContainerConfigError, three steps removed from the actual cause.
     // Confirmed live 2026-08-29, repeatedly.
-    $command = new class extends NetBirdInitCommand
+    $command = new class(ClusterTool::NETBIRD) extends App\Commands\Vpn\VpnInitCommand
     {
         public array $forcedAcme = [];
 
@@ -856,7 +855,7 @@ test('waitForTls refuses to continue when only this machine cannot resolve', fun
 test('waitForTls still forces a fresh ACME attempt when the name resolves fine', function (): void {
     // The complement: with local resolution healthy, a failing TLS probe really
     // is a certificate problem and the retry is the right response.
-    $command = new class extends NetBirdInitCommand
+    $command = new class(ClusterTool::NETBIRD) extends App\Commands\Vpn\VpnInitCommand
     {
         public array $forcedAcme = [];
 

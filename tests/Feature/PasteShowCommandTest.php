@@ -11,5 +11,5 @@ test('yopass:show exits non-zero and points at init when Yopass is not installed
     $this->artisan('yopass:show local')
         ->assertExitCode(1)
         ->expectsOutputToContain('is not installed')
-        ->expectsOutputToContain('yopass:init local');
+        ->expectsOutputToContain('tool:init local --tool=yopass');
 });

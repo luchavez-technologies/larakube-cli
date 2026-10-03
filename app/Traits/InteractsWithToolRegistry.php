@@ -170,7 +170,7 @@ trait InteractsWithToolRegistry
         ))));
 
         if ($hosts === []) {
-            $this->laraKubeError("{$label} is not installed. Run `larakube {$tool->initCommand()}".($env !== '' ? " {$env}" : '').'` first.');
+            $this->laraKubeError("{$label} is not installed. Run `larakube {$tool->initInvocation($env)}` first.");
 
             return;
         }

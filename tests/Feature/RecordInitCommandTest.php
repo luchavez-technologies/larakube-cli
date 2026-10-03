@@ -9,7 +9,6 @@
  * See resolveCommonsS3Endpoints() on InteractsWithPlex.
  */
 
-use App\Commands\Sendrec\SendrecInitCommand;
 use Illuminate\Support\Facades\Process;
 
 function recordCommonsSpec(?string $s3Host): array
@@ -59,7 +58,7 @@ test('sendrec:init keeps S3_ENDPOINT internal but signs S3_PUBLIC_ENDPOINT again
     $appliedManifest = null;
     fakeRecordInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan(SendrecInitCommand::class, [
+    $this->artisan('sendrec:init', [
         'environment' => 'local',
         '--no-interaction' => true,
     ])->assertExitCode(0);
@@ -77,7 +76,7 @@ test('sendrec:init falls back S3_PUBLIC_ENDPOINT to the internal endpoint when t
     $appliedManifest = null;
     fakeRecordInitProcess(null, $appliedManifest);
 
-    $this->artisan(SendrecInitCommand::class, [
+    $this->artisan('sendrec:init', [
         'environment' => 'local',
         '--no-interaction' => true,
     ])->assertExitCode(0);
@@ -95,7 +94,7 @@ test('sendrec:init sets SMTP_TLS to "tls", not the stale "implicit" value that d
     $appliedManifest = null;
     fakeRecordInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan(SendrecInitCommand::class, [
+    $this->artisan('sendrec:init', [
         'environment' => 'local',
         '--no-interaction' => true,
     ])->assertExitCode(0);
@@ -109,7 +108,7 @@ test('sendrec:init returns a failing exit code and does not claim success when k
     $appliedManifest = null;
     fakeRecordInitProcess('files.example.com', $appliedManifest, applyExitCode: 1);
 
-    $this->artisan(SendrecInitCommand::class, [
+    $this->artisan('sendrec:init', [
         'environment' => 'local',
         '--no-interaction' => true,
     ])

@@ -9,7 +9,6 @@
  * from the browser. See resolveCommonsS3Endpoints() on InteractsWithPlex.
  */
 
-use App\Commands\Documenso\DocumensoInitCommand;
 use Illuminate\Support\Facades\Process;
 use Saloon\Http\Faking\MockClient;
 use Saloon\Http\Faking\MockResponse;
@@ -69,7 +68,7 @@ test('documenso:init signs Documenso\'s S3 endpoint against the Commons public h
     $appliedManifest = null;
     fakeSignInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan(DocumensoInitCommand::class, [
+    $this->artisan('documenso:init', [
         'environment' => 'local',
         '--no-interaction' => true,
     ])->assertExitCode(0);
@@ -83,7 +82,7 @@ test('documenso:init falls back to the internal S3 endpoint when the Commons has
     $appliedManifest = null;
     fakeSignInitProcess(null, $appliedManifest);
 
-    $this->artisan(DocumensoInitCommand::class, [
+    $this->artisan('documenso:init', [
         'environment' => 'local',
         '--no-interaction' => true,
     ])->assertExitCode(0);
@@ -103,7 +102,7 @@ test('documenso:init declares the mail:wire/sso:wire static keys as literal valu
     $appliedManifest = null;
     fakeSignInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan(DocumensoInitCommand::class, [
+    $this->artisan('documenso:init', [
         'environment' => 'local',
         '--no-interaction' => true,
     ])->assertExitCode(0);
@@ -129,7 +128,7 @@ test('documenso:init returns a failing exit code and does not claim success when
     $appliedManifest = null;
     fakeSignInitProcess('files.example.com', $appliedManifest, applyExitCode: 1);
 
-    $this->artisan(DocumensoInitCommand::class, [
+    $this->artisan('documenso:init', [
         'environment' => 'local',
         '--no-interaction' => true,
     ])
@@ -174,7 +173,7 @@ test('documenso:init --vpn-only names the Traefik Middleware for its instance, n
         };
     });
 
-    $this->artisan(DocumensoInitCommand::class, [
+    $this->artisan('documenso:init', [
         'environment' => 'local',
         '--vpn-only' => true,
         '--no-interaction' => true,
@@ -194,7 +193,7 @@ test('documenso:init wires Documenso to the Commons headless Chrome by ClusterIP
     $appliedManifest = null;
     fakeSignInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan(DocumensoInitCommand::class, ['environment' => 'local', '--no-interaction' => true])->assertExitCode(0);
+    $this->artisan('documenso:init', ['environment' => 'local', '--no-interaction' => true])->assertExitCode(0);
 
     $names = App\Data\ToolInstance::forHost(App\Enums\ClusterTool::SIGN, 'sign.kube');
 
@@ -235,7 +234,7 @@ test('documenso:init keeps an existing signing certificate, so signed documents 
         };
     });
 
-    $this->artisan(DocumensoInitCommand::class, ['environment' => 'local', '--no-interaction' => true])->assertExitCode(0);
+    $this->artisan('documenso:init', ['environment' => 'local', '--no-interaction' => true])->assertExitCode(0);
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'openssl'));
 });
@@ -247,7 +246,7 @@ test('documenso:init stops when the Commons has no headless Chrome to point Docu
         default => Process::result(output: ''),
     });
 
-    $this->artisan(DocumensoInitCommand::class, ['environment' => 'local', '--no-interaction' => true])
+    $this->artisan('documenso:init', ['environment' => 'local', '--no-interaction' => true])
         ->expectsOutputToContain('Could not find the Commons headless Chrome service')
         ->assertExitCode(1);
 
@@ -267,7 +266,7 @@ test('documenso:init never puts the database role under OpenBao rotation; only s
         '*' => MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
     ]);
 
-    $this->artisan(DocumensoInitCommand::class, [
+    $this->artisan('documenso:init', [
         'environment' => 'local',
         '--no-interaction' => true,
     ])->assertExitCode(0);

@@ -18,6 +18,8 @@ abstract class AbstractToolInitCommand extends Command
 {
     use LaraKubeOutput;
 
+    private bool $legacyAlias = false;
+
     public function __construct(protected ?ClusterTool $initTool = null)
     {
         if ($initTool !== null) {
@@ -28,9 +30,19 @@ abstract class AbstractToolInitCommand extends Command
         parent::__construct();
     }
 
+    /** Called for the old `{tool}:init` names, so they say what replaces them. */
+    public function markAsLegacyAlias(): void
+    {
+        $this->legacyAlias = true;
+    }
+
     public function handle(): int
     {
         $this->renderHeader();
+
+        if ($this->legacyAlias) {
+            $this->line("  <fg=gray>{$this->getName()} is now</> <fg=yellow>tool:init <environment> --tool={$this->tool()->canonicalTool()->value}</><fg=gray>; the old name will be removed.</>");
+        }
 
         return $this->runInit();
     }

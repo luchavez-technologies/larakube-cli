@@ -108,7 +108,7 @@ abstract class AbstractToolShowCommand extends Command
 
         if (! $installed) {
             $this->warn("  {$tool->getLabel()} is not installed in {$tool->namespace()} ('{$env}').");
-            $this->line("  Run <fg=yellow>larakube {$tool->initCommand()} {$env}</> to deploy it.");
+            $this->line("  Run <fg=yellow>larakube {$tool->initInvocation($env)}</> to deploy it.");
 
             return 1;
         }
@@ -137,7 +137,7 @@ abstract class AbstractToolShowCommand extends Command
             }
 
             $this->warn("  No instances of {$tool->getLabel()} are registered in '{$env}'.");
-            $this->line("  Run <fg=yellow>larakube {$tool->initCommand()} {$env}</> to deploy one.");
+            $this->line("  Run <fg=yellow>larakube {$tool->initInvocation($env)}</> to deploy one.");
 
             return 1;
         }
@@ -221,7 +221,7 @@ abstract class AbstractToolShowCommand extends Command
             $tool->getLabel(),
             $host !== null
                 ? "https://{$host}"
-                : "<fg=gray>host not configured — run {$tool->initCommand()} {$env}</>",
+                : "<fg=gray>host not configured — run {$tool->initInvocation($env)}</>",
         ]];
 
         foreach ($aliasHosts as $aliasHost) {

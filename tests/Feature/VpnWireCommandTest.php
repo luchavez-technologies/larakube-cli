@@ -60,7 +60,8 @@ test('vpn:wire creates the Middleware and re-applies the ingress with --vpn-only
     $exit = $command->testWire(App\Enums\ClusterTool::NOTES, 'kubectl', 'local');
 
     expect($exit)->toBe(0)
-        ->and($command->calledWith['command'])->toBe('outline:init')
+        ->and($command->calledWith['command'])->toBe('tool:init')
+        ->and($command->calledWith['arguments']['--tool'])->toBe('outline')
         ->and($command->calledWith['arguments']['--vpn-only'])->toBeTrue()
         ->and($command->calledWith['arguments']['--no-interaction'])->toBeTrue();
 });
@@ -102,7 +103,8 @@ test('vpn:wire --domain= passes the domain through to the re-applied {tool}:init
 
     $command->testWire(App\Enums\ClusterTool::NOTES, 'kubectl', 'local', 'blog.example.com');
 
-    expect($command->calledWith['command'])->toBe('outline:init')
+    expect($command->calledWith['command'])->toBe('tool:init')
+        ->and($command->calledWith['arguments']['--tool'])->toBe('outline')
         ->and($command->calledWith['arguments']['--domain'])->toBe('blog.example.com');
 });
 
@@ -147,6 +149,7 @@ test('vpn:wire --remove re-applies the ingress without the annotation, then dele
     );
 
     expect($exit)->toBe(0)
-        ->and($command->calledWith['command'])->toBe('outline:init')
+        ->and($command->calledWith['command'])->toBe('tool:init')
+        ->and($command->calledWith['arguments']['--tool'])->toBe('outline')
         ->and($command->calledWith['arguments'])->not->toHaveKey('--vpn-only');
 });

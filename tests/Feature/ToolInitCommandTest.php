@@ -64,7 +64,7 @@ test('tool:init takes every option any tool takes, so no tool is out of its reac
     }
 
     expect($definition->hasArgument('environment'))->toBeTrue()
-        ->and(count($definition->getArguments()))->toBe(1);
+        ->and($definition->getArguments())->toHaveCount(1);
 });
 
 test('a command built from the spec alone has the same options as the tool\'s own init command', function (): void {
@@ -88,16 +88,50 @@ test('a command built from the spec alone has the same options as the tool\'s ow
         sort($builtNames);
         sort($ownNames);
 
-        expect($builtNames)->toBe($ownNames, "{$tool->value}: built from the spec, it differs from {$tool->initCommand()}");
-        expect($built->getDescription())->toBe($own->getDescription());
+        expect($builtNames)->toBe($ownNames, "{$tool->value}: built from the spec, it differs from {$tool->initCommand()}")
+            ->and($built->getDescription())->toBe($own->getDescription());
     }
 });
 
 test('the spec describes every tool the init families cover, and nothing is covered twice', function (): void {
     foreach (ClusterTool::shippedCases() as $tool) {
         if (ToolInitCommands::has($tool)) {
-            expect(ToolInitSpec::for($tool))->not->toBeEmpty("{$tool->value} has an init family but no options")
-                ->each->toBeInstanceOf(InitOption::class);
+            expect(ToolInitSpec::for($tool))->not->toBeEmpty("{$tool->value} has an init family but no options")->toContainOnlyInstancesOf(InitOption::class);
         }
     }
+});
+
+test('the old {tool}:init names are a frozen list that can only shrink, and new tools never join it', function (): void {
+    $commands = Artisan::all();
+    $aliased = array_map(fn (ClusterTool $tool): string => $tool->initCommand(), ToolInitCommands::LEGACY_ALIASES);
+
+    // Cut once, when the init commands were merged. Remove entries as aliases are retired; never add one.
+    expect(count(ToolInitCommands::LEGACY_ALIASES))->toBeLessThanOrEqual(32);
+
+    foreach ($aliased as $name) {
+        expect($commands)->toHaveKey($name);
+    }
+
+    foreach (ClusterTool::shippedCases() as $tool) {
+        if (ToolInitCommands::has($tool) && ! in_array($tool, ToolInitCommands::LEGACY_ALIASES, true)) {
+            expect($commands)->not->toHaveKey($tool->initCommand(), "{$tool->value} must be deployed through tool:init only");
+        }
+    }
+});
+
+test('an old {tool}:init name says what replaces it, and tool:init does not', function (): void {
+    toolInitFakes();
+
+    $this->artisan('vaultwarden:init local --no-interaction')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('vaultwarden:init is now');
+
+    $this->artisan('tool:init local --tool=vaultwarden --no-interaction')
+        ->assertExitCode(0)
+        ->doesntExpectOutputToContain('is now');
+});
+
+test('instructions point at tool:init, never at an old name', function (): void {
+    expect(ClusterTool::OUTLINE->initInvocation('production'))->toBe('tool:init production --tool=outline')
+        ->and(ClusterTool::FLOW->initInvocation())->toBe('tool:init --tool=n8n');
 });

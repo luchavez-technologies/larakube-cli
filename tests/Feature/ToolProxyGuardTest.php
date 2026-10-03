@@ -1,6 +1,5 @@
 <?php
 
-use App\Commands\N8n\N8nInitCommand;
 use App\Enums\ClusterTool;
 use App\Http\Integrations\Cloudflare\Requests\GetZoneSettingRequest;
 use App\Http\Integrations\Cloudflare\Requests\ListZonesRequest;
@@ -17,9 +16,9 @@ use Symfony\Component\Console\Output\BufferedOutput;
  * and tools that can't sit behind Cloudflare refuse it. Exercised through
  * n8n:init, which has both --proxied and --vpn-only like most tools.
  */
-function proxyGuardCommand(array $options, string $class = N8nInitCommand::class): object
+function proxyGuardCommand(array $options, ClusterTool $tool = ClusterTool::N8N): object
 {
-    $command = app($class);
+    $command = App\Services\Tools\ToolInitCommands::for($tool);
     $input = new ArrayInput($options, $command->getDefinition());
     $command->setInput($input);
     $command->setOutput(new OutputStyle($input, new BufferedOutput));
@@ -109,7 +108,7 @@ test('local installs are never checked or proxied', function (): void {
 test('a tool whose proxy is on by default falls back to DNS-only instead of failing', function (): void {
     proxyGuardCluster(dnsChallenge: false);
     // No --proxied on the command line: Link's default of 1 applies.
-    $command = proxyGuardCommand([], App\Commands\Kutt\KuttInitCommand::class);
+    $command = proxyGuardCommand([], ClusterTool::KUTT);
 
     guardProxy($command, 'link.example.com', ClusterTool::LINK);
 

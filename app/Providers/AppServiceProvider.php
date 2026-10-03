@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\Tools\ToolInitCommands;
 use Illuminate\Console\Application as Artisan;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -54,6 +55,15 @@ class AppServiceProvider extends ServiceProvider
                 }
             }
         }
+
+        // `{tool}:init` is `tool:init --tool={tool}` under its old name: one
+        // command class per family, registered from a frozen list instead of one
+        // file per tool.
+        Artisan::starting(function ($artisan): void {
+            foreach (ToolInitCommands::legacyAliases() as $command) {
+                $artisan->add($command);
+            }
+        });
 
         // Hide/Remove commands from binary for clean DX
         if (Phar::running() !== '') {

@@ -1,6 +1,5 @@
 <?php
 
-use App\Commands\Twenty\TwentyInitCommand;
 use App\Commands\Twenty\TwentyRemoveCommand;
 use App\Commands\Twenty\TwentyShowCommand;
 use App\Enums\ClusterTool;
@@ -26,7 +25,7 @@ test('twenty:init deploys Twenty CRM using commons postgres and redis', function
         '*get secret*' => Process::result(output: '', exitCode: 1),
     ]);
 
-    $this->artisan(TwentyInitCommand::class, [
+    $this->artisan('twenty:init', [
         'environment' => 'local',
         '--no-interaction' => true,
     ])
@@ -57,7 +56,7 @@ test('twenty:init detects MinIO rather than assuming SeaweedFS when that\'s what
         '*get secret*' => Process::result(output: '', exitCode: 1),
     ]);
 
-    $this->artisan(TwentyInitCommand::class, [
+    $this->artisan('twenty:init', [
         'environment' => 'local',
         '--no-interaction' => true,
     ])
@@ -175,7 +174,7 @@ test('twenty:init errors instead of guessing when multiple instances are already
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan(TwentyInitCommand::class, [
+    $this->artisan('twenty:init', [
         'environment' => 'local',
         '--no-interaction' => true,
     ])->run();

@@ -684,6 +684,15 @@ enum ClusterTool: string implements HasWorkloadComponents
         };
     }
 
+    /**
+     * How a person deploys this tool: `tool:init <environment> --tool=<slug>`.
+     * Hints and instructions name this, never the old `{tool}:init`.
+     */
+    public function initInvocation(string $environment = ''): string
+    {
+        return 'tool:init'.($environment !== '' ? " {$environment}" : '')." --tool={$this->canonicalTool()->value}";
+    }
+
     /** Canonical command names — the one place the `{tool}:{action}` shape is spelled out. */
     public function initCommand(): string
     {

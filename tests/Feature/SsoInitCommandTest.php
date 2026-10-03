@@ -1,6 +1,5 @@
 <?php
 
-use App\Commands\Zitadel\ZitadelInitCommand;
 use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
 use App\Http\Integrations\OpenBao\Requests\DynamicRequest;
 use Illuminate\Support\Facades\Http;
@@ -154,7 +153,7 @@ test('zitadel:init falls back to KV push when the OpenBao DB engine is not mount
 });
 
 test('generated Zitadel admin password always satisfies the default complexity policy', function (): void {
-    $cmd = app(ZitadelInitCommand::class);
+    $cmd = App\Services\Tools\ToolInitCommands::for(App\Enums\ClusterTool::ZITADEL);
 
     $generate = new ReflectionMethod($cmd, 'generateZitadelAdminPassword');
     $generate->setAccessible(true);

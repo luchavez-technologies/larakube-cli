@@ -1,6 +1,5 @@
 <?php
 
-use App\Commands\Directus\DirectusInitCommand;
 use App\Commands\Directus\DirectusRemoveCommand;
 use App\Commands\Directus\DirectusShowCommand;
 use Illuminate\Support\Facades\Artisan;
@@ -29,7 +28,7 @@ test('directus:init deploys Directus with Postgres, Redis, and SeaweedFS S3', fu
         '*rollout status*' => Process::result(output: 'deployment successfully rolled out'),
     ]);
 
-    $this->artisan(DirectusInitCommand::class, [
+    $this->artisan('directus:init', [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -89,7 +88,7 @@ test('directus:init returns a failing exit code and does not claim success when 
         '*rollout status*' => Process::result(output: 'deployment successfully rolled out'),
     ]);
 
-    $this->artisan(DirectusInitCommand::class, [
+    $this->artisan('directus:init', [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -175,7 +174,7 @@ test('directus:init omits zitadel from AUTH_PROVIDERS until sso:wire has actuall
     $appliedManifest = null;
     fakeDataInitProcess(ssoWired: false, appliedManifest: $appliedManifest);
 
-    $this->artisan(DirectusInitCommand::class, [
+    $this->artisan('directus:init', [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -189,7 +188,7 @@ test('directus:init includes zitadel in AUTH_PROVIDERS once sso:wire has registe
     $appliedManifest = null;
     fakeDataInitProcess(ssoWired: true, appliedManifest: $appliedManifest);
 
-    $this->artisan(DirectusInitCommand::class, [
+    $this->artisan('directus:init', [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,

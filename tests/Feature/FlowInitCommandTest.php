@@ -1,7 +1,5 @@
 <?php
 
-use App\Commands\N8n\N8nInitCommand;
-use App\Commands\Windmill\WindmillInitCommand;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -52,7 +50,7 @@ function fakeFlowInitCluster(?array &$seen, array $secret = [], array $liveDeplo
 
 function runFlowInit(string $engine = 'n8n'): Illuminate\Testing\PendingCommand
 {
-    return test()->artisan($engine === 'windmill' ? WindmillInitCommand::class : N8nInitCommand::class, [
+    return test()->artisan($engine === 'windmill' ? 'windmill:init' : 'n8n:init', [
         'environment' => 'local',
         '--domain' => 'flow.example.com',
         '--force' => true,

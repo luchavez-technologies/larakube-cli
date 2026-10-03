@@ -63,7 +63,7 @@ trait TogglesToolProxy
 
         $ingresses = $this->ingressesServing($cluster, $tool->namespace(), $host);
         if ($ingresses === []) {
-            $this->laraKubeError("No Ingress in {$tool->namespace()} serves {$host}. Re-run `larakube {$tool->initCommand()} {$env} --domain={$host}`.");
+            $this->laraKubeError("No Ingress in {$tool->namespace()} serves {$host}. Re-run `larakube {$tool->initInvocation($env)} --domain={$host}`.");
 
             return 1;
         }

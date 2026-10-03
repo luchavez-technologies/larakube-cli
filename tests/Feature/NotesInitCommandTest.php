@@ -9,7 +9,6 @@
  * never resolve it. See resolveCommonsS3Endpoints() on InteractsWithPlex.
  */
 
-use App\Commands\Outline\OutlineInitCommand;
 use Illuminate\Support\Facades\Process;
 
 function notesCommonsSpec(?string $s3Host): array
@@ -63,7 +62,7 @@ test('outline:init signs Outline\'s S3 endpoint against the Commons public host,
     $appliedManifest = null;
     fakeNotesInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan(OutlineInitCommand::class, [
+    $this->artisan('outline:init', [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -83,7 +82,7 @@ test('outline:init wires REDIS_COLLABORATION_URL to the same Commons Redis as RE
     $appliedManifest = null;
     fakeNotesInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan(OutlineInitCommand::class, [
+    $this->artisan('outline:init', [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -136,7 +135,7 @@ test('outline:init registers itself in the cluster tool registry, including the 
         };
     });
 
-    $this->artisan(OutlineInitCommand::class, [
+    $this->artisan('outline:init', [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -154,7 +153,7 @@ test('outline:init falls back to the internal S3 endpoint when the Commons has n
     $appliedManifest = null;
     fakeNotesInitProcess(null, $appliedManifest);
 
-    $this->artisan(OutlineInitCommand::class, [
+    $this->artisan('outline:init', [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -174,7 +173,7 @@ test('outline:init scopes the Service/Ingress name by instance so a second insta
     $appliedManifest = null;
     fakeNotesInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan(OutlineInitCommand::class, [
+    $this->artisan('outline:init', [
         'environment' => 'local',
         '--domain' => 'blog.example.com',
         '--admin-email' => 'admin@example.com',
@@ -194,7 +193,7 @@ test('outline:init returns a failing exit code and does not claim success when k
     $appliedManifest = null;
     fakeNotesInitProcess('files.example.com', $appliedManifest, applyExitCode: 1);
 
-    $this->artisan(OutlineInitCommand::class, [
+    $this->artisan('outline:init', [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -215,7 +214,7 @@ test('outline:init errors instead of guessing when multiple instances are alread
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan(OutlineInitCommand::class, [
+    $this->artisan('outline:init', [
         'environment' => 'local',
         '--no-interaction' => true,
     ])->run();
@@ -236,7 +235,7 @@ test('outline:init unattended with no login provider refuses with the fix, inste
         };
     });
 
-    $this->artisan(OutlineInitCommand::class, [
+    $this->artisan('outline:init', [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,

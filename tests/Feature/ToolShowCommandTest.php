@@ -45,7 +45,7 @@ test('show exits non-zero and points at init when the tool is not installed', fu
     $this->artisan('outline:show local')
         ->assertExitCode(1)
         ->expectsOutputToContain('is not installed')
-        ->expectsOutputToContain('outline:init local');
+        ->expectsOutputToContain('tool:init local --tool=outline');
 });
 
 test('--json emits a machine-readable object instead of a table', function (): void {

@@ -114,7 +114,7 @@ test('openbao runs under its own ServiceAccount with a system:auth-delegator bin
         ->and($deployment['spec']['template']['spec']['serviceAccountName'] ?? null)->toBe('openbao-secrets-example-com');
 });
 
-test('openbao has no auto-unseal hook when autoUnseal is omitted (safe default for other callers of this view — OpenBaoInitCommand always passes it explicitly)', function (): void {
+test('openbao has no auto-unseal hook when autoUnseal is omitted (safe default for other callers of this view — the openbao init always passes it explicitly)', function (): void {
     openBaoRegistered();
     $rendered = view('k8s.secrets.openbao', [
         'namespace' => 'larakube-secrets',

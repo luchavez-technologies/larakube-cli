@@ -78,7 +78,7 @@ trait ResolvesToolEnvironment
         $known = $config ? $config->getCloudEnvironments() : [];
 
         $toolLabel = is_string($tool) ? $tool : $tool->getLabel();
-        $toolCommand = is_string($tool) ? strtolower($tool).':init' : $tool->initCommand();
+        $toolCommand = is_string($tool) ? 'tool:init --tool='.strtolower($tool) : $tool->initInvocation();
 
         // A domain without an environment or context is genuinely ambiguous — refuse rather
         // than guess. This is the specific silent failure this trait exists for.

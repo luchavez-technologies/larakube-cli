@@ -1,6 +1,5 @@
 <?php
 
-use App\Commands\Penpot\PenpotInitCommand;
 use App\Commands\Penpot\PenpotRemoveCommand;
 use App\Commands\Penpot\PenpotShowCommand;
 use Illuminate\Support\Facades\Process;
@@ -53,7 +52,7 @@ test('penpot:init deploys Penpot stack into larakube-shared with Postgres, Redis
     $appliedManifest = null;
     fakeDesignInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan(PenpotInitCommand::class, [
+    $this->artisan('penpot:init', [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -102,7 +101,7 @@ test('penpot:init allocates a real Commons Redis index instead of hardcoding 0',
         };
     });
 
-    $this->artisan(PenpotInitCommand::class, [
+    $this->artisan('penpot:init', [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -117,7 +116,7 @@ test('penpot:init includes penpot-exporter container when --with-exporter flag i
     $appliedManifest = null;
     fakeDesignInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan(PenpotInitCommand::class, [
+    $this->artisan('penpot:init', [
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--with-exporter' => true,
@@ -144,7 +143,7 @@ test('penpot:init errors instead of guessing when multiple instances are already
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan(PenpotInitCommand::class, [
+    $this->artisan('penpot:init', [
         'environment' => 'local',
         '--no-interaction' => true,
     ])->run();

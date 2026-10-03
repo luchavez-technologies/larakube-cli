@@ -221,5 +221,5 @@ test('mail:wire for a tool with no instance at all says how to install it', func
     Process::fake(mailWireRegistryFakes([]));
 
     $this->artisan('mail:wire production --tool=flow --domain=flow.example.com')
-        ->expectsOutputToContain('is not installed. Run `larakube n8n:init production` first.');
+        ->expectsOutputToContain('is not installed. Run `larakube tool:init production --tool=n8n` first.');
 });

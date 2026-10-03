@@ -558,10 +558,6 @@ test('every tool row carries the fields its install form asks, installed or not'
         ->and(collect($rows['vaultwarden']['initFields'])->pluck('key')->all())->not->toContain('adminEmail');
 
     foreach ($rows as $row) {
-        expect($row['initFields'])->toBeArray();
-
-        foreach ($row['initFields'] as $field) {
-            expect($field)->toHaveKeys(['key', 'type', 'label', 'flag']);
-        }
+        expect($row['initFields'])->toBeArray()->each->toHaveKeys(['key', 'type', 'label', 'flag']);
     }
 });

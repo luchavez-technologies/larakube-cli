@@ -1,6 +1,5 @@
 <?php
 
-use App\Commands\Ocis\OcisInitCommand;
 use Illuminate\Support\Facades\Process;
 
 test('ocis:init deploys ocis engine', function (): void {
@@ -12,7 +11,7 @@ test('ocis:init deploys ocis engine', function (): void {
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan(OcisInitCommand::class, [
+    $this->artisan('ocis:init', [
         'environment' => 'local',
         '--domain' => 'drive.test.dev',
         '--no-plex' => true,
