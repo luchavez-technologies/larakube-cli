@@ -874,6 +874,68 @@ enum ClusterTool: string implements HasWorkloadComponents
         };
     }
 
+    /** One line on what the tool is for, shown on its card. */
+    public function tagline(): string
+    {
+        return match ($this->canonicalTool()) {
+            self::POCKETBASE => 'Embedded SQLite & Backend API',
+            self::DIRECTUS => 'Headless CMS & Data Platform',
+            self::N8N => 'Workflow Automation',
+            self::WINDMILL => 'Developer Workflow Engine',
+            self::MATRIX => 'Decentralized Team Chat',
+            self::TWENTY => 'CRM & Customer Management',
+            self::LIVEKIT => 'WebRTC Video Meetings',
+            self::OPENBAO => 'Secrets Vault & Encryption',
+            self::NETBIRD => 'Zero-Trust VPN Mesh',
+            self::ZITADEL => 'Identity Provider & SSO',
+            self::VAULTWARDEN => 'Bitwarden Password Vault',
+            self::KUMA => 'Status Pages & Monitoring',
+            self::GRAFANA => 'Metrics & Observability Dashboards',
+            self::FORGEJO => 'Self-Hosted Git & CI/CD',
+            self::METABASE => 'Business Intelligence',
+            self::GLITCHTIP => 'Error Tracking & Sentry APM',
+            self::OCIS => 'Cloud Storage & File Sync',
+            self::OUTLINE => 'Team Wiki & Knowledge Base',
+            self::TEABLE => 'Spreadsheet Database',
+            self::DOCUMENSO => 'Digital Document Signing',
+            self::CHATWOOT => 'Customer Support & Live Chat',
+            self::UMAMI => 'Privacy-Focused Web Analytics',
+            self::PLAUSIBLE => 'Lightweight Web Analytics',
+            self::HEADLAMP => 'Kubernetes Control Plane Dashboard',
+            self::STALWART => 'All-in-One Mail Server',
+            self::BULWARK => 'Webmail Client',
+            self::PLANKA => 'Kanban Project Management',
+            self::KUTT => 'Link Shortener & Management',
+            self::PENPOT => 'Design & Prototyping',
+            self::RESUME => 'Resume & CV Builder',
+            self::YOPASS => 'Burn-After-Read Secret Sharing',
+            self::SENDREC => 'Screen Recording & Sharing',
+            self::EXTERNAL_DNS => 'Automated DNS Sync',
+            default => $this->getLabel(),
+        };
+    }
+
+    /**
+     * The parts a multi-part tool is made of, in words, for its card. Empty for
+     * a tool that is one workload.
+     *
+     * @return list<string>
+     */
+    public function stack(): array
+    {
+        return match ($this->canonicalTool()) {
+            self::GRAFANA => ['Grafana', 'Prometheus', 'Loki'],
+            self::NETBIRD => ['Management', 'Signal', 'Relay', 'Dashboard', 'Client'],
+            self::MATRIX => ['Synapse', 'Element Web', 'MAS Auth', 'Coturn', 'Admin'],
+            self::TWENTY => ['Twenty App', 'Worker'],
+            self::FORGEJO => ['Forgejo Server', 'Actions Runner'],
+            self::PENPOT => ['Backend', 'Frontend', 'Exporter'],
+            self::GLITCHTIP => ['Web API', 'Worker'],
+            self::LIVEKIT => ['LiveKit Server', 'JWT Auth'],
+            default => [],
+        };
+    }
+
     /**
      * Functional category descriptors for this tool.
      *

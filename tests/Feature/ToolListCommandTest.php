@@ -405,6 +405,8 @@ test('tool:list maps legacy registered tools to canonical tools with multi-categ
         ->and($twentyRow['categories'])->toContain('communication')
         ->and($twentyRow['categories'])->toContain('productivity')
         ->and($twentyRow['categories'])->toContain('backend')
+        ->and($twentyRow['tagline'])->toBe('CRM & Customer Management')
+        ->and($twentyRow['stack'])->toBe(['Twenty App', 'Worker'])
         ->and($twentyRow['categories'])->toContain('database');
 });
 

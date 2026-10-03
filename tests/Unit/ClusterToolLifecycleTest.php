@@ -434,3 +434,13 @@ test('remove and show commands name the tool, and the engine when there is more 
         ->and(ClusterTool::DATA->removeCommand('pocketbase'))->toBe('pocketbase:remove')
         ->and(ClusterTool::NOTES->showCommand())->toBe('outline:show');
 });
+
+test('every shipped tool describes itself for its card', function (): void {
+    foreach (ClusterTool::shippedCases() as $tool) {
+        expect($tool->tagline())->not->toBe('', "{$tool->value} has no tagline")
+            ->and($tool->categories())->not->toBe([], "{$tool->value} has no category");
+    }
+
+    expect(ClusterTool::MATRIX->stack())->toContain('Synapse')
+        ->and(ClusterTool::YOPASS->stack())->toBe([]);
+});

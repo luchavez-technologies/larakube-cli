@@ -151,6 +151,8 @@ class ToolListCommand extends Command
                     'icon' => $tool->icon(),
                     'brand' => $serviceLabel,
                     'label' => $tool->getLabel(),
+                    'tagline' => $tool->tagline(),
+                    'stack' => $tool->stack(),
                     'categories' => array_map(fn ($cat) => $cat->value, $tool->categories()),
                     'installed' => $installed,
                     'removeCommand' => $tool->removeCommand($entry['engine'] ?? null),
