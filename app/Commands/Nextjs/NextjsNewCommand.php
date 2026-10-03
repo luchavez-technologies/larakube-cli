@@ -4,6 +4,9 @@ namespace App\Commands\Nextjs;
 
 use App\Data\ConfigData;
 use App\Enums\AppFramework;
+use App\Enums\DatabaseDriver;
+use App\Enums\SearchDriver;
+use App\Enums\StorageDriver;
 use App\Traits\CheckPrerequisites;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\HasConsoleInteraction;
@@ -37,9 +40,6 @@ class NextjsNewCommand extends Command
                             {--fast : Skip wizard and use ideal defaults}
                             {--no-plex : Skip Plex Commons auto-provisioning and use self-hosted database/redis}';
 
-    /**
-     * The console command description.
-     */
     protected $description = 'Scaffold a new Next.js application with Kubernetes infrastructure (standalone output + Redis cache handler)';
 
     /**
@@ -157,6 +157,17 @@ class NextjsNewCommand extends Command
         $this->renderStarPrompt();
 
         return 0;
+    }
+
+    /**
+     * The console command description.
+     */
+    /** Database, storage and search answers are flags (--postgres, --minio, --no-storage, --meilisearch). */
+    protected function configure(): void
+    {
+        parent::configure();
+
+        $this->addAnswerFlags(DatabaseDriver::class, StorageDriver::class, SearchDriver::class);
     }
 
     /**

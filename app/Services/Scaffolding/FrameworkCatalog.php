@@ -3,6 +3,13 @@
 namespace App\Services\Scaffolding;
 
 use App\Enums\AppFramework;
+use App\Enums\CacheDriver;
+use App\Enums\DatabaseDriver;
+use App\Enums\LaravelFeature;
+use App\Enums\PhpVersion;
+use App\Enums\SearchDriver;
+use App\Enums\StorageDriver;
+use BackedEnum;
 
 /**
  * What a UI needs to offer "new app": every framework, and the fields it asks.
@@ -58,6 +65,7 @@ class FrameworkCatalog
         return match ($framework) {
             AppFramework::LARAVEL => [...$fields, $this->email(), ...$this->laravelFields()],
             AppFramework::STATAMIC => [...$fields, $this->email(), ...$this->statamicFields()],
+            AppFramework::NEXTJS => [...$fields, ...$this->nextjsFields()],
             AppFramework::VITE => [...$fields, $this->template('Template', 'react-ts', [
                 'react-ts' => 'React',
                 'vue-ts' => 'Vue',
@@ -180,13 +188,25 @@ class FrameworkCatalog
     }
 
     /**
-     * Only what `statamic:new` takes as flags today.
-     *
      * @return list<array<string, mixed>>
      */
     private function statamicFields(): array
     {
+        $php = array_values(array_filter(PhpVersion::cases(), fn (PhpVersion $v): bool => (float) $v->value >= 8.2));
+
         return [
+            $this->select('php', 'PHP version', $this->options($php), default: PhpVersion::PHP_8_5->value),
+            $this->select('features', 'Laravel features', $this->options(LaravelFeature::cases()), multiple: true) + [
+                'conflicts' => [[LaravelFeature::HORIZON->value, LaravelFeature::QUEUES->value]],
+            ],
+            $this->select('database', 'Database', $this->options([DatabaseDriver::MYSQL, DatabaseDriver::MARIADB, DatabaseDriver::POSTGRESQL]), default: DatabaseDriver::MYSQL->value) + [
+                'defaultWhen' => [['when' => ['features' => 'ai'], 'value' => 'postgres']],
+            ],
+            $this->select('cache', 'Cache', $this->options(CacheDriver::cases()), default: CacheDriver::REDIS->value) + [
+                'forcedWhen' => [['when' => ['features' => 'horizon'], 'value' => 'redis']],
+            ],
+            $this->storage(),
+            $this->search(),
             [
                 'key' => 'content',
                 'type' => 'select',
@@ -209,5 +229,81 @@ class FrameworkCatalog
                 'flag' => '--starter-kit=',
             ],
         ];
+    }
+
+    /**
+     * Next.js asks for a database, storage and search; its cache is always Redis.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function nextjsFields(): array
+    {
+        return [
+            $this->select('database', 'Database', $this->options([DatabaseDriver::POSTGRESQL, DatabaseDriver::MYSQL, DatabaseDriver::MARIADB], recommended: DatabaseDriver::POSTGRESQL), default: DatabaseDriver::POSTGRESQL->value),
+            $this->storage([StorageDriver::MINIO, StorageDriver::SEAWEEDFS, StorageDriver::GARAGE]),
+            $this->search([SearchDriver::MEILISEARCH, SearchDriver::TYPESENSE]),
+        ];
+    }
+
+    /**
+     * @param  list<BackedEnum>  $cases
+     * @return list<array<string, mixed>>
+     */
+    private function options(array $cases, ?BackedEnum $recommended = null): array
+    {
+        return array_map(fn (BackedEnum $case): array => [
+            'value' => (string) $case->value,
+            'label' => (string) $case->getLabel(),
+            'flag' => "--{$case->value}",
+            'recommended' => $recommended === $case,
+        ], $cases);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $options
+     * @return array<string, mixed>
+     */
+    private function select(string $key, string $label, array $options, ?string $default = null, bool $multiple = false): array
+    {
+        return [
+            'key' => $key,
+            'type' => $multiple ? 'multiselect' : 'select',
+            'label' => $label,
+            'required' => ! $multiple,
+            'multiple' => $multiple,
+            'nullable' => false,
+            'default' => $default,
+            'options' => $options,
+        ];
+    }
+
+    /**
+     * Object storage: a provider, or none (`--no-storage`).
+     *
+     * @param  list<StorageDriver>|null  $only
+     * @return array<string, mixed>
+     */
+    private function storage(?array $only = null): array
+    {
+        $field = $this->select('storage', 'Object storage', [
+            ['value' => 'none', 'label' => 'None', 'flag' => '--no-storage', 'recommended' => false],
+            ...$this->options($only ?? StorageDriver::cases(), recommended: StorageDriver::MINIO),
+        ], default: StorageDriver::MINIO->value);
+
+        return $field;
+    }
+
+    /**
+     * Search: none (no flag), or a driver.
+     *
+     * @param  list<SearchDriver>|null  $only
+     * @return array<string, mixed>
+     */
+    private function search(?array $only = null): array
+    {
+        return $this->select('search', 'Search', [
+            ['value' => 'none', 'label' => 'None', 'flag' => null, 'recommended' => false],
+            ...$this->options($only ?? SearchDriver::cases()),
+        ], default: 'none');
     }
 }

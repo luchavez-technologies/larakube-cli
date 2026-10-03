@@ -33,7 +33,7 @@ test('every framework asks for its name, and a project name is validated by the 
         $name = collect($framework['fields'])->firstWhere('key', 'name');
 
         expect($name)->toMatchArray(['type' => 'text', 'required' => true, 'arg' => 'positional', 'maxLength' => 50, 'reserved' => ['console']])
-            ->and(preg_match('/'.$name['pattern'].'/', 'my-app'))->toBe(1)
+            ->and('my-app')->toMatch('/'.$name['pattern'].'/')
             ->and(preg_match('/'.$name['pattern'].'/', 'My App'))->toBe(0);
     }
 });
@@ -79,5 +79,31 @@ test('every flag the catalog names exists on the command that scaffolds the app'
                 expect($definition->hasOption($option))->toBeTrue("{$framework['command']} has no option --{$option} for {$field['key']}");
             }
         }
+    }
+});
+
+test('Statamic and Next.js ask their driver questions by flag, with none spelled --no-storage', function (): void {
+    $catalog = collect(newFrameworksCatalog())->keyBy('slug');
+    $statamic = collect($catalog['statamic']['fields'])->keyBy('key');
+    $nextjs = collect($catalog['nextjs']['fields'])->keyBy('key');
+
+    expect($statamic->keys()->all())->toBe(['name', 'email', 'php', 'features', 'database', 'cache', 'storage', 'search', 'content', 'starterKit'])
+        ->and(array_column($statamic['php']['options'], 'value'))->not->toContain('8.1')
+        ->and($statamic['cache']['forcedWhen'][0]['value'])->toBe('redis')
+        ->and(collect($statamic['storage']['options'])->firstWhere('value', 'none')['flag'])->toBe('--no-storage')
+        ->and($nextjs->keys()->all())->toBe(['name', 'database', 'storage', 'search'])
+        ->and(array_column($nextjs['database']['options'], 'value'))->toBe(['postgres', 'mysql', 'mariadb'])
+        ->and(collect($nextjs['database']['options'])->firstWhere('value', 'postgres')['recommended'])->toBeTrue();
+});
+
+test('Vite, Astro and Docusaurus offer a curated template that the CLI passes straight through', function (): void {
+    $catalog = collect(newFrameworksCatalog())->keyBy('slug');
+
+    foreach (['vite' => 'react-ts', 'astro' => 'minimal', 'docusaurus' => 'classic'] as $slug => $default) {
+        $template = collect($catalog[$slug]['fields'])->firstWhere('key', 'template');
+
+        expect($template['flag'])->toBe('--template=')
+            ->and($template['default'])->toBe($default)
+            ->and(array_column($template['options'], 'value'))->toContain($default);
     }
 });

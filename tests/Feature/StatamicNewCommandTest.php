@@ -2,6 +2,7 @@
 
 use App\Enums\AppFramework;
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Support\Facades\Artisan;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 // ── AppFramework Enum Tests ──────────────────────────────────────────────────
@@ -253,3 +254,32 @@ test('content lives in the database by default, and --content only accepts datab
         }
     }
 })->throws(InvalidArgumentException::class, '--content must be');
+
+test('every wizard question of statamic:new has a flag, so a headless run asks nothing', function (): void {
+    $definition = Artisan::all()['statamic:new']->getDefinition();
+
+    foreach (['8.4', 'postgres', 'mariadb', 'redis', 'memcached', 'minio', 'meilisearch', 'horizon', 'scout'] as $flag) {
+        expect($definition->hasOption($flag))->toBeTrue("--{$flag} is missing");
+    }
+});
+
+test('the first flag given for a question wins, and a flag outside what Statamic supports is ignored', function (): void {
+    $command = new class extends App\Commands\Statamic\StatamicNewCommand
+    {
+        public function db(): ?App\Enums\DatabaseDriver
+        {
+            return $this->flaggedCase(App\Enums\DatabaseDriver::class, [App\Enums\DatabaseDriver::MYSQL, App\Enums\DatabaseDriver::MARIADB, App\Enums\DatabaseDriver::POSTGRESQL]);
+        }
+
+        public function features(): array
+        {
+            return array_map(fn ($f) => $f->value, $this->flaggedCases(App\Enums\LaravelFeature::class));
+        }
+    };
+
+    $input = new Symfony\Component\Console\Input\ArrayInput(['--sqlite' => true, '--postgres' => true, '--horizon' => true, '--scout' => true], $command->getDefinition());
+    $command->setInput($input);
+
+    expect($command->db())->toBe(App\Enums\DatabaseDriver::POSTGRESQL)
+        ->and($command->features())->toContain('horizon', 'scout');
+});

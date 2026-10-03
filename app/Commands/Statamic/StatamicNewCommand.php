@@ -13,6 +13,7 @@ use App\Enums\PhpVersion;
 use App\Enums\SearchDriver;
 use App\Enums\ServerVariation;
 use App\Enums\StorageDriver;
+use App\Traits\AnswersFromFlags;
 use App\Traits\CheckPrerequisites;
 use App\Traits\GathersInfrastructureConfig;
 use App\Traits\GeneratesProjectInfrastructure;
@@ -42,7 +43,7 @@ use Symfony\Component\Process\Process as SymfonyProcess;
 
 class StatamicNewCommand extends Command
 {
-    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithEnvironments, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ManagesStatamicDatabase, StreamsProcessOutput, SyncsClusterSecrets;
+    use AnswersFromFlags, CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithEnvironments, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ManagesStatamicDatabase, StreamsProcessOutput, SyncsClusterSecrets;
 
     /** The Statamic CLI release line the scaffold installs. */
     private const string STATAMIC_CLI = 'statamic/cli:^3.6';
@@ -112,7 +113,8 @@ class StatamicNewCommand extends Command
 
         // 1. PHP Version. A starter kit may require newer; that is read back from
         // its composer.json after install.
-        $version = $this->option('fast')
+        $supportedPhp = array_values(array_filter(PhpVersion::cases(), fn (PhpVersion $v): bool => (float) $v->value >= 8.2));
+        $version = $this->flaggedCase(PhpVersion::class, $supportedPhp)?->value ?? ($this->option('fast')
             ? PhpVersion::PHP_8_5->value
             : select(
                 label: 'Which PHP version would you like to use?',
@@ -121,7 +123,7 @@ class StatamicNewCommand extends Command
                     ->mapWithKeys(fn ($v) => [$v->value => $v->getLabel()])
                     ->all(),
                 default: PhpVersion::PHP_8_5->value,
-            );
+            ));
         $phpVersion = PhpVersion::from($version);
 
         // Build the config here, not after the prompts: the feature multiselect
@@ -150,7 +152,8 @@ class StatamicNewCommand extends Command
         $featureOptions = LaravelFeature::getSelectOptions($config);
 
         if (! empty($featureOptions)) {
-            $features = $this->option('fast')
+            $flaggedFeatures = array_map(fn (LaravelFeature $f): string => $f->value, $this->flaggedCases(LaravelFeature::class));
+            $features = $flaggedFeatures !== [] ? $flaggedFeatures : ($this->option('fast')
                 ? [LaravelFeature::TASK_SCHEDULING->value, LaravelFeature::HORIZON->value]
                 : multiselect(
                     label: 'Select Laravel features:',
@@ -169,7 +172,7 @@ class StatamicNewCommand extends Command
 
                         return null;
                     },
-                );
+                ));
 
             $config->setFeatures(array_map(
                 fn (string $feature) => LaravelFeature::from($feature),
@@ -194,13 +197,13 @@ class StatamicNewCommand extends Command
             $this->laraKubeInfo('AI SDK detected: PostgreSQL with <fg=cyan;options=bold>pgvector</> is recommended for vector storage.');
         }
 
-        $dbValue = $this->option('fast')
+        $dbValue = $this->flaggedCase(DatabaseDriver::class, array_values(array_filter(DatabaseDriver::cases(), fn (DatabaseDriver $d): bool => isset($allowedDbs[$d->value]))))?->value ?? ($this->option('fast')
             ? $defaultDb
             : select(
                 label: 'Which database engine would you like to use?',
                 options: $allowedDbs,
                 default: $defaultDb,
-            );
+            ));
         $database = DatabaseDriver::from($dbValue);
 
         // 4. CacheDriver — all three available for Statamic (plan §2b)
@@ -214,13 +217,13 @@ class StatamicNewCommand extends Command
             $this->laraKubeInfo('Horizon detected: Auto-selecting Redis for caching and queues.');
             $cacheDriver = CacheDriver::REDIS;
         } else {
-            $cacheValue = $this->option('fast')
+            $cacheValue = $this->flaggedCase(CacheDriver::class)?->value ?? ($this->option('fast')
                 ? CacheDriver::REDIS->value
                 : select(
                     label: 'Which cache driver would you like to use?',
                     options: $allowedCaches,
                     default: CacheDriver::REDIS->value,
-                );
+                ));
             $cacheDriver = CacheDriver::from($cacheValue);
         }
 
@@ -229,13 +232,13 @@ class StatamicNewCommand extends Command
             ->mapWithKeys(fn ($s) => [$s->value => $s->getLabel()])
             ->all();
 
-        $storageValue = $this->option('fast')
+        $storageValue = $this->answeredStorage(StorageDriver::cases()) ?? ($this->option('fast')
             ? StorageDriver::MINIO->value
             : select(
                 label: 'Which S3-compatible object storage would you like to use for Statamic assets?',
                 options: array_merge(['none' => 'None (local filesystem)'], $allowedStorages),
                 default: StorageDriver::MINIO->value,
-            );
+            ));
         $objectStorage = StorageDriver::tryFrom($storageValue);
 
         // 6. SearchDriver — all three via Scout (plan §2c)
@@ -243,13 +246,13 @@ class StatamicNewCommand extends Command
             ->mapWithKeys(fn ($s) => [$s->value => $s->getLabel()])
             ->all();
 
-        $searchValue = $this->option('fast')
+        $searchValue = $this->flaggedCase(SearchDriver::class)?->value ?? ($this->option('fast')
             ? 'none'
             : select(
                 label: 'Which search driver would you like to use?',
                 options: array_merge(['none' => 'None'], $allowedSearch),
                 default: 'none',
-            );
+            ));
         $scoutDriver = SearchDriver::tryFrom($searchValue);
 
         // Apply the driver choices to the config built above.
@@ -351,6 +354,14 @@ class StatamicNewCommand extends Command
             count(array_unique(str_split($password))) < 6 => 'Use more varied characters.',
             default => null,
         };
+    }
+
+    /** Every wizard question has a flag (--postgres, --redis, --minio, --8.4, --scout...), so a headless run asks nothing. */
+    protected function configure(): void
+    {
+        parent::configure();
+
+        $this->addAnswerFlags(PhpVersion::class, LaravelFeature::class, DatabaseDriver::class, CacheDriver::class, StorageDriver::class, SearchDriver::class);
     }
 
     /**

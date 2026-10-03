@@ -18,7 +18,7 @@ use function Laravel\Prompts\select;
  */
 trait PreparesNextjsProject
 {
-    use StreamsProcessOutput;
+    use AnswersFromFlags, StreamsProcessOutput;
 
     /**
      * @return array{database: DatabaseDriver, cache: CacheDriver, storage: ?StorageDriver, search: ?SearchDriver}
@@ -32,13 +32,13 @@ trait PreparesNextjsProject
             DatabaseDriver::MARIADB->value => DatabaseDriver::MARIADB->getLabel(),
         ];
 
-        $dbValue = $fast
+        $dbValue = $this->flaggedCase(DatabaseDriver::class, [DatabaseDriver::POSTGRESQL, DatabaseDriver::MYSQL, DatabaseDriver::MARIADB])?->value ?? ($fast
             ? DatabaseDriver::POSTGRESQL->value
             : select(
                 label: 'Which database engine would you like to use? (via Prisma)',
                 options: $allowedDbs,
                 default: DatabaseDriver::POSTGRESQL->value,
-            );
+            ));
         $database = DatabaseDriver::from($dbValue);
 
         // 2. CacheDriver — Redis ONLY (mandatory for distributed ISR/RSC, plan §2b)
@@ -53,13 +53,13 @@ trait PreparesNextjsProject
             StorageDriver::GARAGE->value => StorageDriver::GARAGE->getLabel(),
         ];
 
-        $storageValue = $fast
+        $storageValue = $this->answeredStorage([StorageDriver::MINIO, StorageDriver::SEAWEEDFS, StorageDriver::GARAGE]) ?? ($fast
             ? StorageDriver::MINIO->value
             : select(
                 label: 'Which S3-compatible object storage would you like to use?',
                 options: $allowedStorages,
                 default: StorageDriver::MINIO->value,
-            );
+            ));
         $objectStorage = StorageDriver::tryFrom($storageValue);
 
         // 4. SearchDriver — Meilisearch or Typesense (plan §2c; database hidden)
@@ -69,13 +69,13 @@ trait PreparesNextjsProject
             SearchDriver::TYPESENSE->value => SearchDriver::TYPESENSE->getLabel().' (typesense-js)',
         ];
 
-        $searchValue = $fast
+        $searchValue = $this->flaggedCase(SearchDriver::class, [SearchDriver::MEILISEARCH, SearchDriver::TYPESENSE])?->value ?? ($fast
             ? 'none'
             : select(
                 label: 'Which search engine would you like to use?',
                 options: $allowedSearch,
                 default: 'none',
-            );
+            ));
         $scoutDriver = SearchDriver::tryFrom($searchValue);
 
         return [
