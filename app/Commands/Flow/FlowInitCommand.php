@@ -2,6 +2,7 @@
 
 namespace App\Commands\Flow;
 
+use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
@@ -24,11 +25,14 @@ use Illuminate\Support\Str;
 
 use function Laravel\Prompts\select;
 
-use LaravelZero\Framework\Commands\Command;
-
-abstract class FlowInitCommand extends Command
+abstract class FlowInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithFlow, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+
+    protected function runInit(): int
+    {
+        return $this->deployFlow();
+    }
 
     protected function deployFlow(): int
     {

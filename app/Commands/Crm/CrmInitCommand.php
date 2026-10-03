@@ -2,6 +2,7 @@
 
 namespace App\Commands\Crm;
 
+use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
@@ -23,12 +24,16 @@ use App\Traits\StreamsProcessOutput;
 use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
-use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class CrmInitCommand extends Command
+abstract class CrmInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithCrm, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
+
+    protected function runInit(): int
+    {
+        return $this->deployCrm();
+    }
 
     protected function deployCrm(): int
     {

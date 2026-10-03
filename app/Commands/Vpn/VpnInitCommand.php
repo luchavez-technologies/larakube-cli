@@ -2,6 +2,7 @@
 
 namespace App\Commands\Vpn;
 
+use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
@@ -31,15 +32,19 @@ use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
-use LaravelZero\Framework\Commands\Command;
 use RuntimeException;
 use Saloon\Exceptions\Request\FatalRequestException;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Throwable;
 
-abstract class VpnInitCommand extends Command
+abstract class VpnInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithPlex, InteractsWithProjectConfig, InteractsWithVolumeSizing, InteractsWithVpn, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
+
+    protected function runInit(): int
+    {
+        return $this->deployVpn();
+    }
 
     protected function deployVpn(): int
     {

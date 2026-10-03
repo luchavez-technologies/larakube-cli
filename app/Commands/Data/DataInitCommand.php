@@ -2,6 +2,7 @@
 
 namespace App\Commands\Data;
 
+use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
@@ -30,12 +31,16 @@ use Illuminate\Support\Str;
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
-use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class DataInitCommand extends Command
+abstract class DataInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithData, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSecrets, InteractsWithVolumeSizing, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
+
+    protected function runInit(): int
+    {
+        return $this->deployData();
+    }
 
     protected function deployData(): int
     {

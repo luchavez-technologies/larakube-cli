@@ -2,6 +2,7 @@
 
 namespace App\Commands\Git;
 
+use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
@@ -29,10 +30,9 @@ use Illuminate\Support\Str;
 
 use function Laravel\Prompts\text;
 
-use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class GitInitCommand extends Command
+abstract class GitInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithGitForge, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
@@ -59,6 +59,11 @@ abstract class GitInitCommand extends Command
      * install Debian's podman-remote client when it is missing.
      */
     protected const JOB_IMAGE = 'node:24-trixie';
+
+    protected function runInit(): int
+    {
+        return $this->deployGit();
+    }
 
     protected function deployGit(): int
     {

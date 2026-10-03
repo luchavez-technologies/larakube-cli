@@ -2,6 +2,7 @@
 
 namespace App\Commands\Chat;
 
+use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
@@ -29,10 +30,9 @@ use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
-use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class ChatInitCommand extends Command
+abstract class ChatInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSso, InteractsWithVolumeSizing, InteractsWithZitadelApi, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, SchedulesCronJobs, StreamsProcessOutput, SyncsClusterSecrets;
 
@@ -41,6 +41,11 @@ abstract class ChatInitCommand extends Command
      * captured 2026-08-21 from https://github.com/element-hq/matrix-authentication-service/releases.
      */
     protected const MAS_IMAGE = 'ghcr.io/element-hq/matrix-authentication-service:1.23.0';
+
+    protected function runInit(): int
+    {
+        return $this->deployChat();
+    }
 
     protected function deployChat(): int
     {

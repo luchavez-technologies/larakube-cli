@@ -2,6 +2,7 @@
 
 namespace App\Commands\Design;
 
+use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
@@ -25,12 +26,16 @@ use App\Traits\SyncsClusterSecrets;
 use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
-use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class DesignInitCommand extends Command
+abstract class DesignInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithDesign, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ReconcilesPenpotFlags, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
+
+    protected function runInit(): int
+    {
+        return $this->deployDesign();
+    }
 
     protected function deployDesign(): int
     {

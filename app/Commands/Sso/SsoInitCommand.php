@@ -2,6 +2,7 @@
 
 namespace App\Commands\Sso;
 
+use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\GlobalConfigData;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
@@ -30,12 +31,16 @@ use Illuminate\Support\Str;
 
 use function Laravel\Prompts\text;
 
-use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class SsoInitCommand extends Command
+abstract class SsoInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithSecrets, InteractsWithSso, InteractsWithVolumeSizing, InteractsWithZitadelApi, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
+
+    protected function runInit(): int
+    {
+        return $this->deploySso();
+    }
 
     protected function deploySso(): int
     {

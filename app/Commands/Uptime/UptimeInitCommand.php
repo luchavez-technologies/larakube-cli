@@ -2,6 +2,7 @@
 
 namespace App\Commands\Uptime;
 
+use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
@@ -20,12 +21,16 @@ use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
-use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class UptimeInitCommand extends Command
+abstract class UptimeInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithTraefik, InteractsWithUptime, InteractsWithVolumeSizing, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
+
+    protected function runInit(): int
+    {
+        return $this->deployUptime();
+    }
 
     protected function deployUptime(): int
     {

@@ -2,6 +2,7 @@
 
 namespace App\Commands\Dashboard;
 
+use App\Commands\Tool\AbstractToolInitCommand;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
@@ -20,12 +21,16 @@ use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
-use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class DashboardInitCommand extends Command
+abstract class DashboardInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithDashboard, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
+
+    protected function runInit(): int
+    {
+        return $this->deployDashboard();
+    }
 
     protected function deployDashboard(): int
     {

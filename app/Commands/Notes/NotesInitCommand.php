@@ -2,6 +2,7 @@
 
 namespace App\Commands\Notes;
 
+use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ConfigData;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
@@ -30,15 +31,19 @@ use Illuminate\Support\Str;
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
-use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class NotesInitCommand extends Command
+abstract class NotesInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithNotes, InteractsWithPlex, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     /** How Outline's OIDC credentials were resolved this run, for the summary. */
     protected string $oidcSource = 'existing';
+
+    protected function runInit(): int
+    {
+        return $this->deployNotes();
+    }
 
     protected function deployNotes(): int
     {

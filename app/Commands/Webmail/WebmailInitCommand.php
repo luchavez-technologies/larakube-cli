@@ -2,6 +2,7 @@
 
 namespace App\Commands\Webmail;
 
+use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ConfigData;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
@@ -23,12 +24,16 @@ use App\Traits\SyncsClusterSecrets;
 use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
-use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class WebmailInitCommand extends Command
+abstract class WebmailInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithBulwark, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithStalwartApi, InteractsWithVolumeSizing, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
+
+    protected function runInit(): int
+    {
+        return $this->deployWebmail();
+    }
 
     protected function deployWebmail(): int
     {

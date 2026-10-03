@@ -2,6 +2,7 @@
 
 namespace App\Commands\Monitor;
 
+use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
@@ -27,12 +28,16 @@ use Illuminate\Support\Str;
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
 
-use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class MonitorInitCommand extends Command
+abstract class MonitorInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMonitoring, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, RunsKubectlSteps, StreamsProcessOutput, SyncsClusterSecrets;
+
+    protected function runInit(): int
+    {
+        return $this->deployMonitoring();
+    }
 
     protected function deployMonitoring(): int
     {

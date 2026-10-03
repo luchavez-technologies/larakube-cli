@@ -2,6 +2,7 @@
 
 namespace App\Commands\Mail;
 
+use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ConfigData;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
@@ -35,12 +36,16 @@ use Illuminate\Support\Str;
 
 use function Laravel\Prompts\confirm;
 
-use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class MailInitCommand extends Command
+abstract class MailInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithRemoteSsh, InteractsWithSecrets, InteractsWithStalwartApi, InteractsWithTraefik, InteractsWithVolumeSizing, LaraKubeOutput, ManagesCloudFirewall, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
+
+    protected function runInit(): int
+    {
+        return $this->deployMail();
+    }
 
     protected function deployMail(): int
     {

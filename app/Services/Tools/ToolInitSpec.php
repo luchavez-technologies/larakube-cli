@@ -317,4 +317,53 @@ final class ToolInitSpec
             array_filter(self::for($tool, $engine), fn (InitOption $option): bool => ! $option->isMechanics()),
         ));
     }
+
+    /**
+     * The command's `{name:init ...}` signature, built from the spec.
+     */
+    public static function signature(ClusterTool $tool): string
+    {
+        $options = array_map(fn (InitOption $option): string => $option->signature(), self::for($tool));
+
+        return $tool->canonicalTool()->value.':init {environment? : Environment this install targets — "local" (default) or cloud.} '.implode(' ', $options);
+    }
+
+    public static function description(ClusterTool $tool): string
+    {
+        return match ($tool->canonicalTool()) {
+            ClusterTool::BULWARK => 'Deploy Bulwark — a JMAP webmail UI for Stalwart — into larakube-shared',
+            ClusterTool::CHATWOOT => 'Deploy the Chatwoot helpdesk stack into larakube-shared',
+            ClusterTool::DIRECTUS => 'Deploy a Directus stack (Postgres + Redis + SeaweedFS) into larakube-shared',
+            ClusterTool::DOCUMENSO => 'Deploy the Documenso electronic signature stack into larakube-shared',
+            ClusterTool::EXTERNAL_DNS => 'Deploy an ExternalDNS instance for one or more Cloudflare zones sharing a token',
+            ClusterTool::FORGEJO => 'Deploy the cluster-wide Forgejo forge, CI/CD runner, and package registry',
+            ClusterTool::GLITCHTIP => 'Deploy the cluster-wide GlitchTip error tracking stack into larakube-shared',
+            ClusterTool::GRAFANA => 'Deploy the cluster-wide monitoring stack (Grafana, Prometheus, Loki, Tempo) into larakube-shared',
+            ClusterTool::HEADLAMP => 'Deploy the CNCF Headlamp Kubernetes web control plane into larakube-shared',
+            ClusterTool::KUMA => 'Deploy the cluster-wide Uptime Kuma status page stack into larakube-shared',
+            ClusterTool::KUTT => 'Deploy the Kutt link shortener stack into larakube-shared',
+            ClusterTool::LIVEKIT => 'Deploy the shared LiveKit SFU (Meet) into larakube-shared',
+            ClusterTool::MATRIX => 'Deploy the Matrix / Synapse chat stack into larakube-shared',
+            ClusterTool::METABASE => 'Deploy the Metabase BI stack into larakube-shared',
+            ClusterTool::N8N => 'Deploy the n8n workflow automation stack into larakube-shared',
+            ClusterTool::NETBIRD => 'Deploy the cluster-wide NetBird VPN stack into larakube-vpn',
+            ClusterTool::OCIS => 'Deploy the oCIS cloud storage and sync stack into larakube-shared',
+            ClusterTool::OPENBAO => 'Deploy OpenBao secrets manager & External Secrets Operator into larakube-secrets',
+            ClusterTool::OUTLINE => 'Deploy the Outline wiki / knowledge base stack into larakube-shared',
+            ClusterTool::PENPOT => 'Deploy the Penpot design & prototyping suite into larakube-shared',
+            ClusterTool::PLANKA => 'Deploy the Planka task management stack into larakube-shared',
+            ClusterTool::PLAUSIBLE => 'Deploy the Plausible web analytics stack into larakube-shared',
+            ClusterTool::POCKETBASE => 'Deploy a PocketBase stack (Embedded SQLite) into larakube-shared',
+            ClusterTool::SENDREC => 'Deploy the Sendrec async video platform stack into larakube-shared',
+            ClusterTool::STALWART => 'Deploy the Stalwart mail server (SMTP/IMAP/JMAP) into larakube-shared',
+            ClusterTool::TEABLE => 'Deploy Teable (spreadsheet database) into larakube-shared',
+            ClusterTool::TWENTY => 'Deploy the Twenty CRM stack into larakube-shared',
+            ClusterTool::UMAMI => 'Deploy the Umami web analytics stack into larakube-shared',
+            ClusterTool::VAULTWARDEN => 'Deploy the cluster-wide Vaultwarden team password manager into larakube-vault',
+            ClusterTool::WINDMILL => 'Deploy the Windmill developer workflow platform into larakube-shared',
+            ClusterTool::YOPASS => 'Deploy Yopass (secure, one-time-read paste sharing) into larakube-shared',
+            ClusterTool::ZITADEL => 'Deploy Zitadel — a self-hosted OIDC/SAML identity provider — into its own larakube-sso namespace',
+            default => 'Deploy '.$tool->getLabel().' into the cluster',
+        };
+    }
 }

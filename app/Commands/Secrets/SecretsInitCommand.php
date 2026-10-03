@@ -2,6 +2,7 @@
 
 namespace App\Commands\Secrets;
 
+use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SecretsBackend;
@@ -20,12 +21,16 @@ use App\Traits\ResolvesToolHost;
 use App\Traits\RunsKubectlSteps;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
-use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class SecretsInitCommand extends Command
+abstract class SecretsInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithPlex, InteractsWithSecrets, InteractsWithVolumeSizing, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, RunsKubectlSteps, StreamsProcessOutput;
+
+    protected function runInit(): int
+    {
+        return $this->deploySecrets();
+    }
 
     protected function deploySecrets(): int
     {

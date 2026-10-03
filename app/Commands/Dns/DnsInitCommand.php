@@ -2,6 +2,7 @@
 
 namespace App\Commands\Dns;
 
+use App\Commands\Tool\AbstractToolInitCommand;
 use App\Enums\ClusterTool;
 use App\Exceptions\MissingFlagException;
 use App\Services\Kubectl;
@@ -20,8 +21,6 @@ use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\text;
-
-use LaravelZero\Framework\Commands\Command;
 
 /**
  * Deploy one ExternalDNS instance per external-dns:init GROUP — a stable name covering
@@ -54,7 +53,7 @@ use LaravelZero\Framework\Commands\Command;
  * State lives in the cluster, never in a project file: DNS is cluster
  * infrastructure and has nothing to do with any Laravel app.
  */
-abstract class DnsInitCommand extends Command
+abstract class DnsInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithCloudflareApi,
         InteractsWithClusterContext, InteractsWithClusterIdentity, InteractsWithDnsZones,
@@ -62,6 +61,11 @@ abstract class DnsInitCommand extends Command
         ResolvesToolEnvironment, StreamsProcessOutput;
 
     private const CLOUDFLARE_TOKEN_ENV = 'LARAKUBE_CLOUDFLARE_TOKEN';
+
+    protected function runInit(): int
+    {
+        return $this->deployDns();
+    }
 
     protected function deployDns(): int
     {

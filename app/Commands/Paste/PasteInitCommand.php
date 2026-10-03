@@ -2,6 +2,7 @@
 
 namespace App\Commands\Paste;
 
+use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
@@ -20,7 +21,6 @@ use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
-use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
@@ -31,9 +31,14 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  * feature is wired to Commons SeaweedFS/MinIO/Garage only when one is
  * enabled, mirroring MailInitCommand's own conditional store wiring.
  */
-abstract class PasteInitCommand extends Command
+abstract class PasteInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPaste, InteractsWithPlex, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
+
+    protected function runInit(): int
+    {
+        return $this->deployPaste();
+    }
 
     protected function deployPaste(): int
     {
