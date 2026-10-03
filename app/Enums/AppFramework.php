@@ -28,6 +28,83 @@ enum AppFramework: string implements HasLabel, RequiresPhpExtensions
         };
     }
 
+    /** One line on what the framework is for, shown on its card. */
+    public function description(): string
+    {
+        return match ($this) {
+            self::LARAVEL => 'A full PHP web app with a database and background queue.',
+            self::STATAMIC => 'A flat-file or database CMS built on top of Laravel.',
+            self::WORDPRESS => 'Modern WordPress with Composer and 12-factor configuration.',
+            self::NEXTJS => 'A React app with server rendering and API routes.',
+            self::DJANGO => 'High-level Python web framework with batteries included.',
+            self::FASTAPI => 'Modern, fast (high-performance) Python API framework.',
+            self::NESTJS => 'Progressive Node.js framework with TypeScript and architecture.',
+            self::ADONISJS => 'TypeScript-first MVC web framework for Node.js.',
+            self::SPRINGBOOT => 'Production-ready Java application framework.',
+            self::DOTNET => 'Cross-platform, high-performance .NET web application.',
+            self::GIN => 'Ultra-fast HTTP web framework written in Go.',
+            self::AXUM => 'Ergonomic and modular web framework built with Tokio and Rust.',
+            self::VITE => 'A single-page app, served as static files.',
+            self::ASTRO => 'A content site, served as static files.',
+            self::DOCUSAURUS => 'A documentation site, served as static files.',
+        };
+    }
+
+    /** Where it sits in a picker: fullstack, cms, frontend or docs. */
+    public function category(): string
+    {
+        return match ($this) {
+            self::STATAMIC, self::WORDPRESS => 'cms',
+            self::VITE, self::ASTRO => 'frontend',
+            self::DOCUSAURUS => 'docs',
+            default => 'fullstack',
+        };
+    }
+
+    /** The language or runtime, as a badge. */
+    public function tech(): string
+    {
+        return match ($this) {
+            self::LARAVEL, self::STATAMIC, self::WORDPRESS => 'PHP',
+            self::NEXTJS, self::VITE => 'React',
+            self::DJANGO, self::FASTAPI => 'Python',
+            self::NESTJS, self::ADONISJS => 'Node',
+            self::SPRINGBOOT => 'Java',
+            self::DOTNET => '.NET',
+            self::GIN => 'Go',
+            self::AXUM => 'Rust',
+            self::ASTRO => 'Astro',
+            self::DOCUSAURUS => 'Docs',
+        };
+    }
+
+    /** The artisan command that scaffolds a new app. */
+    public function scaffoldCommand(): string
+    {
+        return match ($this) {
+            self::LARAVEL => 'new',
+            self::DOCUSAURUS => 'docs:new',
+            default => "{$this->value}:new",
+        };
+    }
+
+    /** Offered in the CLI but kept out of pickers, for now. */
+    public function isHidden(): bool
+    {
+        return $this === self::WORDPRESS;
+    }
+
+    public function comingSoon(): bool
+    {
+        return false;
+    }
+
+    /** What a UI draws for it: an id a renderer knows, or later a URL. */
+    public function logo(): string
+    {
+        return $this->value;
+    }
+
     /**
      * @return list<DatabaseDriver>
      */
