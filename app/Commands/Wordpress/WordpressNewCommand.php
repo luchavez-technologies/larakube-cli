@@ -10,6 +10,7 @@ use App\Enums\PhpVersion;
 use App\Enums\SearchDriver;
 use App\Enums\ServerVariation;
 use App\Enums\StorageDriver;
+use App\Traits\AsksServerStack;
 use App\Traits\CheckPrerequisites;
 use App\Traits\GathersInfrastructureConfig;
 use App\Traits\GeneratesProjectInfrastructure;
@@ -33,7 +34,7 @@ use Random\RandomException;
 
 class WordpressNewCommand extends Command
 {
-    use CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, StreamsProcessOutput, SyncsClusterSecrets;
+    use AsksServerStack, CheckPrerequisites, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, StreamsProcessOutput, SyncsClusterSecrets;
 
     /**
      * The name and signature of the console command.
@@ -83,88 +84,28 @@ class WordpressNewCommand extends Command
         $appName = Str::slug($inputName);
         $projectDir = "$projectPath/$appName";
 
-        // 1. PHP Version
-        $version = $this->option('fast')
+        $supportedPhp = array_values(array_filter(PhpVersion::cases(), fn (PhpVersion $v): bool => (float) $v->value >= 8.2));
+        $version = $this->flaggedCase(PhpVersion::class, $supportedPhp)?->value ?? ($this->option('fast')
             ? PhpVersion::PHP_8_4->value
             : select(
                 label: 'Which PHP version would you like to use?',
-                options: collect(PhpVersion::cases())
-                    ->filter(fn ($v) => (float) $v->value >= 8.2)
+                options: collect($supportedPhp)
                     ->mapWithKeys(fn ($v) => [$v->value => $v->getLabel()])
                     ->all(),
                 default: PhpVersion::PHP_8_4->value,
-            );
+            ));
         $phpVersion = PhpVersion::from($version);
 
-        // 2. DatabaseDriver — MySQL and MariaDB ONLY for WordPress (plan §2a)
-        $allowedDbs = [
-            DatabaseDriver::MYSQL->value => DatabaseDriver::MYSQL->getLabel(),
-            DatabaseDriver::MARIADB->value => DatabaseDriver::MARIADB->getLabel(),
-        ];
-
-        $dbValue = $this->option('fast')
-            ? DatabaseDriver::MYSQL->value
-            : select(
-                label: 'Which database engine? (WordPress supports MySQL/MariaDB only)',
-                options: $allowedDbs,
-                default: DatabaseDriver::MYSQL->value,
-            );
-        $database = DatabaseDriver::from($dbValue);
-
-        // 3. CacheDriver — Redis or Memcached (plan §2b; database hidden for WordPress)
-        $allowedCaches = [
-            CacheDriver::REDIS->value => CacheDriver::REDIS->getLabel().' (Recommended)',
-            CacheDriver::MEMCACHED->value => CacheDriver::MEMCACHED->getLabel(),
-        ];
-
-        $cacheValue = $this->option('fast')
-            ? CacheDriver::REDIS->value
-            : select(
-                label: 'Which cache driver would you like to use?',
-                options: $allowedCaches,
-                default: CacheDriver::REDIS->value,
-            );
-        $cacheDriver = CacheDriver::from($cacheValue);
-
-        // 4. StorageDriver — MANDATORY for WordPress (plan §2d)
-        // Pods are ephemeral; PVC is explicitly not offered.
-        $allowedStorages = [
-            StorageDriver::MINIO->value => StorageDriver::MINIO->getLabel().' (Recommended)',
-            StorageDriver::SEAWEEDFS->value => StorageDriver::SEAWEEDFS->getLabel(),
-            StorageDriver::GARAGE->value => StorageDriver::GARAGE->getLabel(),
-        ];
-
+        $database = $this->askDatabase(AppFramework::WORDPRESS, 'Which database engine? (WordPress supports MySQL/MariaDB only)');
+        $cacheDriver = $this->askCache(AppFramework::WORDPRESS);
         $this->laraKubeInfo('WordPress media offload: A StorageDriver is mandatory (humanmade/s3-uploads will be installed).');
 
-        $storageValue = $this->option('fast')
-            ? StorageDriver::MINIO->value
-            : select(
-                label: 'Which S3-compatible object storage would you like to use for media uploads?',
-                options: $allowedStorages,
-                default: StorageDriver::MINIO->value,
-            );
-        $objectStorage = StorageDriver::from($storageValue);
+        $objectStorage = $this->askStorage(AppFramework::WORDPRESS, 'Which S3-compatible object storage would you like to use for media uploads?');
+        $scoutDriver = $this->askSearch(AppFramework::WORDPRESS, 'Which search deployment would you like to add? (WordPress plugin installation required manually)');
 
-        // 5. SearchDriver — Typesense/Meilisearch deployment only; Scout is hidden (plan §2c)
-        $allowedSearch = [
-            'none' => 'None',
-            SearchDriver::TYPESENSE->value => SearchDriver::TYPESENSE->getLabel().' ("Search with Typesense" plugin)',
-            SearchDriver::MEILISEARCH->value => SearchDriver::MEILISEARCH->getLabel().' (⚠ no maintained official WP plugin)',
-        ];
-
-        $searchValue = $this->option('fast')
-            ? 'none'
-            : select(
-                label: 'Which search deployment would you like to add? (WordPress plugin installation required manually)',
-                options: $allowedSearch,
-                default: 'none',
-            );
-
-        if ($searchValue === SearchDriver::MEILISEARCH->value) {
+        if ($scoutDriver === SearchDriver::MEILISEARCH) {
             warning('Meilisearch has no officially maintained WordPress plugin. You will need to install a community plugin manually.');
         }
-
-        $scoutDriver = SearchDriver::tryFrom($searchValue);
 
         // Build ConfigData
         $config = new ConfigData;
@@ -222,6 +163,13 @@ class WordpressNewCommand extends Command
         $this->renderStarPrompt();
 
         return 0;
+    }
+
+    protected function configure(): void
+    {
+        parent::configure();
+
+        $this->addAnswerFlags(PhpVersion::class, DatabaseDriver::class, CacheDriver::class, StorageDriver::class, SearchDriver::class);
     }
 
     /**
