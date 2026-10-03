@@ -107,3 +107,23 @@ test('Vite, Astro and Docusaurus offer a curated template that the CLI passes st
             ->and(array_column($template['options'], 'value'))->toContain($default);
     }
 });
+
+test('the catalog names its categories, each framework\'s fixed arguments and what is asked up front', function (): void {
+    Artisan::call('new:frameworks --json');
+    $payload = json_decode(trim(Artisan::output()), true);
+    $frameworks = collect($payload['frameworks'])->keyBy('slug');
+    $laravel = collect($frameworks['laravel']['fields'])->keyBy('key');
+
+    expect(array_column($payload['categories'], 'id'))->toBe(['fullstack', 'cms', 'frontend', 'docs'])
+        ->and($frameworks['laravel']['args'])->toBe(['--fast'])
+        ->and($frameworks['statamic']['args'])->toBe(['--fast', '--no-plex'])
+        ->and($frameworks['nextjs']['args'])->toBe(['--fast', '--no-plex'])
+        ->and($laravel['database']['group'])->toBe('essential')
+        ->and($laravel['features']['group'])->toBe('advanced')
+        ->and($laravel['database']['suggested'])->toBe('postgres')
+        ->and($laravel['server']['suggested'])->toBe('fpm-nginx');
+
+    foreach ($frameworks as $framework) {
+        expect(in_array($framework['category'], array_column($payload['categories'], 'id'), true))->toBeTrue();
+    }
+});

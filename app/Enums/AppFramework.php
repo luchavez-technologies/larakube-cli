@@ -88,6 +88,21 @@ enum AppFramework: string implements HasLabel, RequiresPhpExtensions
         };
     }
 
+    /**
+     * What every scaffold run is given besides the answers: the scripted defaults
+     * for anything unanswered, and `--no-plex` where the app is self-contained and
+     * deploying it should not also need the shared Commons on the server.
+     *
+     * @return list<string>
+     */
+    public function scaffoldArgs(): array
+    {
+        return match ($this) {
+            self::STATAMIC, self::WORDPRESS, self::NEXTJS => ['--fast', '--no-plex'],
+            default => ['--fast'],
+        };
+    }
+
     /** Offered in the CLI but kept out of pickers, for now. */
     public function isHidden(): bool
     {

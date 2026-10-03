@@ -26,6 +26,21 @@ class FrameworkCatalog
     public const NAME_PATTERN = '^[a-z][a-z0-9]*(-[a-z0-9]+)*$';
 
     /**
+     * The picker's categories, in order.
+     *
+     * @return list<array{id: string, label: string}>
+     */
+    public function categories(): array
+    {
+        return [
+            ['id' => 'fullstack', 'label' => 'Full Stack'],
+            ['id' => 'cms', 'label' => 'CMS'],
+            ['id' => 'frontend', 'label' => 'Frontend'],
+            ['id' => 'docs', 'label' => 'Docs'],
+        ];
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     public function all(): array
@@ -49,6 +64,7 @@ class FrameworkCatalog
             'hidden' => $framework->isHidden(),
             'comingSoon' => $framework->comingSoon(),
             'command' => $framework->scaffoldCommand(),
+            'args' => $framework->scaffoldArgs(),
             // `init` on an existing project asks for the Let's Encrypt email for these.
             'initEmail' => in_array($framework, [AppFramework::LARAVEL, AppFramework::STATAMIC, AppFramework::WORDPRESS], true),
             'fields' => $this->fields($framework),
@@ -59,6 +75,28 @@ class FrameworkCatalog
      * @return list<array<string, mixed>>
      */
     private function fields(AppFramework $framework): array
+    {
+        return array_map(fn (array $field): array => $field + ['group' => $this->group($framework, $field['key'])], $this->rawFields($framework));
+    }
+
+    /**
+     * What is asked up front, and what sits behind "Advanced".
+     */
+    private function group(AppFramework $framework, string $key): string
+    {
+        $essential = match ($framework) {
+            AppFramework::LARAVEL => ['name', 'email', 'frontend', 'database'],
+            AppFramework::STATAMIC => ['name', 'email', 'database'],
+            default => ['name', 'email', 'template', 'database', 'typescript'],
+        };
+
+        return in_array($key, $essential, true) ? 'essential' : 'advanced';
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function rawFields(AppFramework $framework): array
     {
         $fields = [$this->name()];
 
@@ -103,6 +141,7 @@ class FrameworkCatalog
             'pattern' => self::NAME_PATTERN,
             'maxLength' => 50,
             'reserved' => ['console'],
+            'placeholder' => 'my-first-app',
         ];
     }
 
@@ -116,6 +155,8 @@ class FrameworkCatalog
             'description' => "For your site's SSL certificate.",
             'required' => true,
             'flag' => '--email=',
+            'format' => 'email',
+            'placeholder' => 'you@example.com',
         ];
     }
 
@@ -163,10 +204,26 @@ class FrameworkCatalog
                 }
             }
 
-            $fields[] = $field + $this->laravelRules($question['key']);
+            $fields[] = $field + $this->laravelRules($question['key']) + $this->laravelSuggestion($question['key']);
         }
 
         return $fields;
+    }
+
+    /**
+     * What a GUI for newcomers should preselect, where it differs from the CLI's
+     * `--fast` default: React, PostgreSQL (it joins the shared Commons) and FPM/Nginx.
+     *
+     * @return array<string, string>
+     */
+    private function laravelSuggestion(string $key): array
+    {
+        return match ($key) {
+            'frontend' => ['suggested' => 'react'],
+            'database' => ['suggested' => 'postgres'],
+            'server' => ['suggested' => 'fpm-nginx'],
+            default => [],
+        };
     }
 
     /**
@@ -180,7 +237,10 @@ class FrameworkCatalog
             // Horizon needs Redis, so the cache question isn't asked.
             'cache' => ['forcedWhen' => [['when' => ['features' => 'horizon'], 'value' => 'redis']]],
             // An AI app wants pgvector, so Postgres.
-            'database' => ['defaultWhen' => [['when' => ['features' => 'ai'], 'value' => 'postgres']]],
+            'database' => [
+                'defaultWhen' => [['when' => ['features' => 'ai'], 'value' => 'postgres']],
+                'optionHints' => ['postgres' => 'PostgreSQL joins the shared Plex Commons database when one is running, instead of starting its own.'],
+            ],
             // FrankenPHP serves through Octane.
             'server' => ['implies' => ['frankenphp' => ['features' => 'octane']]],
             default => [],

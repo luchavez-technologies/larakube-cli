@@ -30,7 +30,7 @@ class NewFrameworksCommand extends Command
         $frameworks = (new FrameworkCatalog)->all();
 
         if ($this->flag('json')) {
-            $this->jsonOutput(['success' => true, 'frameworks' => $frameworks]);
+            $this->jsonOutput(['success' => true, 'categories' => (new FrameworkCatalog)->categories(), 'frameworks' => $frameworks]);
 
             return 0;
         }
