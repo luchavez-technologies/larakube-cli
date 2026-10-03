@@ -438,9 +438,11 @@ test('remove and show commands name the tool, and the engine when there is more 
 test('every shipped tool describes itself for its card', function (): void {
     foreach (ClusterTool::shippedCases() as $tool) {
         expect($tool->tagline())->not->toBe('', "{$tool->value} has no tagline")
+            ->and($tool->brandName())->not->toBe('', "{$tool->value} has no name")
+            ->and($tool->logo())->not->toBe('', "{$tool->value} has no logo")
             ->and($tool->categories())->not->toBe([], "{$tool->value} has no category");
     }
 
     expect(ClusterTool::MATRIX->stack())->toContain('Synapse')
-        ->and(ClusterTool::YOPASS->stack())->toBe([]);
+        ->and(ClusterTool::YOPASS->stack())->toBeEmpty();
 });

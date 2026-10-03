@@ -874,6 +874,21 @@ enum ClusterTool: string implements HasWorkloadComponents
         };
     }
 
+    /**
+     * What a UI draws for this tool: an id a renderer knows, or later a URL. It is
+     * the canonical tool's slug, so a client never has to know the category aliases.
+     */
+    public function logo(): string
+    {
+        return $this->canonicalTool()->value;
+    }
+
+    /** Whether the tool needs a paid plan. Every tool is free until LaraKube Cloud says otherwise. */
+    public function isPaid(): bool
+    {
+        return false;
+    }
+
     /** One line on what the tool is for, shown on its card. */
     public function tagline(): string
     {
