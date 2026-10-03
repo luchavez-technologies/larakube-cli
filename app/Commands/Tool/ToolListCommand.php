@@ -168,6 +168,12 @@ class ToolListCommand extends Command
                     'verified' => ! $registryOnly,
                     'requiresAdminEmail' => $tool->requiresAdminEmail($entry['engine'] ?? null),
                     'multiInstance' => $tool->supportsMultipleInstances(),
+                    // The names this instance holds on the shared Commons, so a GUI can find its tenants.
+                    'commons' => $instance === '' ? ['databases' => [], 'redis' => [], 'buckets' => []] : [
+                        'databases' => array_values($tool->commonsDatabases($instance, $entry['engine'] ?? null)),
+                        'redis' => array_values($tool->commonsRedisTenants($instance)),
+                        'buckets' => array_values($tool->commonsBuckets($instance, $entry['engine'] ?? null)),
+                    ],
                     'initFields' => ToolInitSpec::fields($tool, $entry['engine'] ?? null),
                     'vendor' => $vendor,
                     'components' => array_map(fn ($c) => [

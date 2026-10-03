@@ -571,3 +571,18 @@ test('each tool row says whether it can run as more than one instance, so a GUI 
     expect($rows['stalwart']['multiInstance'])->toBeFalse()
         ->and($rows['outline']['multiInstance'])->toBeTrue();
 });
+
+test('an installed tool row names what the instance holds on the Commons', function (): void {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ['tool' => 'outline', 'instance' => 'wiki-example-com', 'installedAt' => '2026-09-01T00:00:00+00:00', 'host' => 'wiki.example.com'],
+        ]))),
+        '*' => Process::result(output: ''),
+    ]);
+
+    Artisan::call('tool:list local --registry-only --json');
+    $row = collect(json_decode(Artisan::output(), true))->firstWhere('tool', 'outline');
+
+    expect($row['commons']['databases'])->not->toBeEmpty()
+        ->and($row['commons'])->toHaveKeys(['databases', 'redis', 'buckets']);
+});
