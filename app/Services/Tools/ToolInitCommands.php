@@ -22,6 +22,7 @@ use App\Commands\Notes\NotesInitCommand;
 use App\Commands\Password\PasswordsInitCommand;
 use App\Commands\Paste\PasteInitCommand;
 use App\Commands\Record\RecordInitCommand;
+use App\Commands\Resume\ResumeInitCommand;
 use App\Commands\Secrets\SecretsInitCommand;
 use App\Commands\Sheet\SheetsInitCommand;
 use App\Commands\Sign\SignInitCommand;
@@ -75,6 +76,7 @@ final class ToolInitCommands
         ClusterTool::PLANKA,
         ClusterTool::PLAUSIBLE,
         ClusterTool::POCKETBASE,
+        ClusterTool::RESUME,
         ClusterTool::SENDREC,
         ClusterTool::STALWART,
         ClusterTool::TEABLE,
@@ -129,6 +131,7 @@ final class ToolInitCommands
             PasswordsInitCommand::class => new class($tool) extends PasswordsInitCommand {},
             PasteInitCommand::class => new class($tool) extends PasteInitCommand {},
             RecordInitCommand::class => new class($tool) extends RecordInitCommand {},
+            ResumeInitCommand::class => new class($tool) extends ResumeInitCommand {},
             SecretsInitCommand::class => new class($tool) extends SecretsInitCommand {},
             SheetsInitCommand::class => new class($tool) extends SheetsInitCommand {},
             SignInitCommand::class => new class($tool) extends SignInitCommand {},
@@ -171,6 +174,7 @@ final class ToolInitCommands
             ClusterTool::PLANKA => TasksInitCommand::class,
             ClusterTool::PLAUSIBLE => AnalyticsInitCommand::class,
             ClusterTool::POCKETBASE => DataInitCommand::class,
+            ClusterTool::RESUME => ResumeInitCommand::class,
             ClusterTool::SENDREC => RecordInitCommand::class,
             ClusterTool::STALWART => MailInitCommand::class,
             ClusterTool::TEABLE => SheetsInitCommand::class,

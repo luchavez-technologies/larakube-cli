@@ -1,6 +1,5 @@
 <?php
 
-use App\Commands\Resume\ResumeInitCommand;
 use Illuminate\Support\Facades\Process;
 
 function resumeCommonsSpec(?string $s3Host): array
@@ -50,7 +49,7 @@ test('resume:init deploys Reactive Resume and applies manifests successfully', f
     $appliedManifest = null;
     fakeResumeInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan(ResumeInitCommand::class, [
+    $this->artisan('resume:init', [
         'environment' => 'local',
         '--no-interaction' => true,
     ])->assertExitCode(0);
@@ -64,7 +63,7 @@ test('resume:init returns a failing exit code when kubectl apply fails', functio
     $appliedManifest = null;
     fakeResumeInitProcess('files.example.com', $appliedManifest, applyExitCode: 1);
 
-    $this->artisan(ResumeInitCommand::class, [
+    $this->artisan('resume:init', [
         'environment' => 'local',
         '--no-interaction' => true,
     ])

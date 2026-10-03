@@ -301,6 +301,13 @@ final class ToolInitSpec
                 InitOption::force(),
                 InitOption::proxied(),
             ],
+            ClusterTool::RESUME => [
+                InitOption::context(),
+                InitOption::domain('Base domain OR full host for Resume (example.com → prefix.example.com)'),
+                InitOption::vpnOnly(),
+                InitOption::force(),
+                InitOption::proxied(),
+            ],
             default => [],
         };
     }
@@ -363,6 +370,7 @@ final class ToolInitSpec
             ClusterTool::WINDMILL => 'Deploy the Windmill developer workflow platform into larakube-shared',
             ClusterTool::YOPASS => 'Deploy Yopass (secure, one-time-read paste sharing) into larakube-shared',
             ClusterTool::ZITADEL => 'Deploy Zitadel — a self-hosted OIDC/SAML identity provider — into its own larakube-sso namespace',
+            ClusterTool::RESUME => 'Deploy the Reactive Resume self-hosted resume builder into larakube-shared',
             default => 'Deploy '.$tool->getLabel().' into the cluster',
         };
     }

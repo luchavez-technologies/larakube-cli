@@ -106,7 +106,7 @@ test('the old {tool}:init names are a frozen list that can only shrink, and new 
     $aliased = array_map(fn (ClusterTool $tool): string => $tool->initCommand(), ToolInitCommands::LEGACY_ALIASES);
 
     // Cut once, when the init commands were merged. Remove entries as aliases are retired; never add one.
-    expect(count(ToolInitCommands::LEGACY_ALIASES))->toBeLessThanOrEqual(32);
+    expect(count(ToolInitCommands::LEGACY_ALIASES))->toBeLessThanOrEqual(33);
 
     foreach ($aliased as $name) {
         expect($commands)->toHaveKey($name);

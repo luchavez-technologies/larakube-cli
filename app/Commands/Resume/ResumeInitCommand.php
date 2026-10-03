@@ -2,6 +2,7 @@
 
 namespace App\Commands\Resume;
 
+use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
@@ -23,26 +24,14 @@ use App\Traits\SyncsClusterSecrets;
 use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
-use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-class ResumeInitCommand extends Command
+abstract class ResumeInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithResume, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
-    protected $signature = 'resume:init
-        {environment? : Environment this install targets — "local" (default) or cloud.}
-        {--context=  : Target a specific kube-context}
-        {--domain=   : Base domain OR full host for Resume (example.com → prefix.example.com)}
-        {--vpn-only  : Restrict access via NetBird VPN IP whitelisting}
-        {--force     : Skip the confirmation prompt}'.self::PROXIED_FLAG;
-
-    protected $description = 'Deploy the Reactive Resume self-hosted resume builder into larakube-shared';
-
-    public function handle(): int
+    protected function runInit(): int
     {
-        $this->renderHeader();
-
         return $this->deployResume();
     }
 
