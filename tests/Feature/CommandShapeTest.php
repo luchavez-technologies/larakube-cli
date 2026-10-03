@@ -178,8 +178,9 @@ test('every cluster-inspecting :show resolves its context from {environment}', f
         $name = basename($path);
 
         // Abstract base + the tool:show proxy + pipeline (reads workflow files,
-        // not a cluster) are legitimately exempt.
-        if (str_starts_with($name, 'Abstract') || str_starts_with($name, 'Tool') || $name === 'PipelineShowCommand.php') {
+        // not a cluster) and services:show (reads the blueprint and .env) are
+        // legitimately exempt.
+        if (str_starts_with($name, 'Abstract') || str_starts_with($name, 'Tool') || in_array($name, ['PipelineShowCommand.php', 'ServicesShowCommand.php'], true)) {
             continue;
         }
 
