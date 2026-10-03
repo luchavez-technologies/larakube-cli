@@ -29,6 +29,7 @@ use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
+use Throwable;
 
 /**
  * Provision real infrastructure with OpenTofu, then hand off to the existing
@@ -71,6 +72,7 @@ class CloudCreateCommand extends Command
         {--aws-region= : AWS region for this run only}
         {--aws-access-key-id= : AWS Access Key ID for this run only}
         {--aws-secret-access-key= : AWS Secret Access Key for this run only}
+        {--cloudflare : After a VPS is ready, set up Cloudflare DNS records and SSL with the token in LARAKUBE_CLOUDFLARE_TOKEN (skipped quietly if it is not set)}
         {--email= : Let\'s Encrypt email, forwarded to cloud:init:doks / cloud:init:gke / cloud:init:eks (managed)}
         {--json : Emit one machine-readable JSON result on stdout}
         {environment? : Inside a project, the environment to bind to this stack. Outside one, used as the stack name.}';
@@ -593,15 +595,49 @@ class CloudCreateCommand extends Command
         $this->laraKubeInfo('✅ VPS provisioning complete!');
         $this->printVpsNextSteps($context, $environment);
 
-        if (! $this->flag('no-interaction') && confirm('Would you like to automate DNS records with Cloudflare for this cluster?')) {
-            $this->call('tool:init', ['--tool' => 'external-dns', 'environment' => $environment ?: 'production', '--context' => $context]);
-        }
-
-        if (! $this->flag('no-interaction') && confirm('Would you like to enable the Cloudflare DNS challenge for SSL certificates (so proxied hosts keep renewing)?', default: true)) {
-            $this->call('tls:init', ['environment' => $environment ?: 'production', '--context' => $context]);
-        }
+        $this->connectCloudflare($environment ?: 'production', $context);
 
         return 0;
+    }
+
+    /**
+     * The optional Cloudflare steps after a VPS is up: DNS records for every tool
+     * and SSL through the DNS challenge. A person at a terminal is asked; a
+     * scripted run (Desktop) opts in with --cloudflare and the token in the
+     * environment. Neither step can fail the server, which already exists: a
+     * problem is reported with how to finish it later.
+     */
+    protected function connectCloudflare(string $environment, string $context): void
+    {
+        $interactive = ! $this->flag('no-interaction');
+        $asked = (bool) $this->flag('cloudflare');
+        $token = trim((string) (getenv('LARAKUBE_CLOUDFLARE_TOKEN') ?: ''));
+
+        if (! $interactive && $asked && $token === '') {
+            $this->laraKubeWarn('--cloudflare was given but no Cloudflare token is set, so DNS and SSL were left for later.');
+
+            return;
+        }
+
+        $steps = [
+            'dns' => ['label' => 'Cloudflare DNS records', 'command' => 'tool:init', 'arguments' => ['--tool' => 'external-dns'], 'question' => 'Would you like to automate DNS records with Cloudflare for this cluster?', 'default' => true],
+            'ssl' => ['label' => 'SSL through the Cloudflare DNS challenge', 'command' => 'tls:init', 'arguments' => [], 'question' => 'Would you like to enable the Cloudflare DNS challenge for SSL certificates (so proxied hosts keep renewing)?', 'default' => true],
+        ];
+
+        foreach ($steps as $step) {
+            $wanted = $interactive ? ($asked || confirm($step['question'], default: $step['default'])) : $asked;
+
+            if (! $wanted) {
+                continue;
+            }
+
+            try {
+                $this->call($step['command'], $step['arguments'] + ['environment' => $environment, '--context' => $context]);
+            } catch (Throwable $e) {
+                $this->laraKubeWarn("{$step['label']} could not be set up: {$e->getMessage()}");
+                $this->laraKubeLine('  <fg=gray>The server is ready. Finish this later from its page in LaraKube Desktop, or with</> <fg=yellow>larakube '.$step['command'].'</><fg=gray>.</>');
+            }
+        }
     }
 
     /** Provision a new managed cluster, merge its kubeconfig, then install Traefik. */
