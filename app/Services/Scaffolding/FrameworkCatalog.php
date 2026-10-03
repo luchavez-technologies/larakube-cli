@@ -2,6 +2,7 @@
 
 namespace App\Services\Scaffolding;
 
+use App\Contracts\PlexProvisionable;
 use App\Enums\AppFramework;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
@@ -76,7 +77,60 @@ class FrameworkCatalog
      */
     private function fields(AppFramework $framework): array
     {
-        return array_map(fn (array $field): array => $field + ['group' => $this->group($framework, $field['key'])], $this->rawFields($framework));
+        $fields = array_map(fn (array $field): array => ($framework->joinsCommons() ? $this->withCommons($field) : $field) + ['group' => $this->group($framework, $field['key'])], $this->rawFields($framework));
+
+        return $framework->joinsCommons() ? [...$fields, $this->commonsOptOut()] : $fields;
+    }
+
+    /**
+     * Marks each option that would be a shared Commons service, so a form can say
+     * what an app will share without knowing which drivers the Commons offers.
+     *
+     * @param  array<string, mixed>  $field
+     * @return array<string, mixed>
+     */
+    private function withCommons(array $field): array
+    {
+        $enum = match ($field['key']) {
+            'database' => DatabaseDriver::class,
+            'cache' => CacheDriver::class,
+            'search' => SearchDriver::class,
+            'storage' => StorageDriver::class,
+            default => null,
+        };
+
+        if ($enum === null || ! isset($field['options'])) {
+            return $field;
+        }
+
+        $field['options'] = array_map(function (array $option) use ($enum): array {
+            $case = $enum::tryFrom($option['value']);
+            $service = $case instanceof PlexProvisionable && $case->isPlexReady() ? $case->commonsServiceName() : null;
+
+            return $service === null ? $option : $option + ['commons' => $service];
+        }, $field['options']);
+
+        return $field;
+    }
+
+    /**
+     * Joining the Commons is the default; this is how an app opts out and runs its own copies.
+     *
+     * @return array<string, mixed>
+     */
+    private function commonsOptOut(): array
+    {
+        return [
+            'key' => 'selfContained',
+            'type' => 'confirm',
+            'role' => 'commons-opt-out',
+            'label' => 'Keep this app self-contained',
+            'description' => 'By default the app shares your computer\'s Commons (database, cache and storage) with your other apps. Tick this to give it its own copies instead.',
+            'required' => false,
+            'default' => false,
+            'flag' => '--no-plex',
+            'group' => 'essential',
+        ];
     }
 
     /**

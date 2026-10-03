@@ -90,17 +90,22 @@ enum AppFramework: string implements HasLabel, RequiresPhpExtensions
 
     /**
      * What every scaffold run is given besides the answers: the scripted defaults
-     * for anything unanswered, and `--no-plex` where the app is self-contained and
-     * deploying it should not also need the shared Commons on the server.
+     * for anything unanswered.
      *
      * @return list<string>
      */
     public function scaffoldArgs(): array
     {
-        return match ($this) {
-            self::STATAMIC, self::WORDPRESS, self::NEXTJS => ['--fast', '--no-plex'],
-            default => ['--fast'],
-        };
+        return ['--fast'];
+    }
+
+    /**
+     * Whether a new app of this kind joins the shared Plex Commons by default
+     * (and takes `--no-plex` to opt out). Server apps run on their own.
+     */
+    public function joinsCommons(): bool
+    {
+        return in_array($this, [self::LARAVEL, self::STATAMIC, self::WORDPRESS, self::NEXTJS], true);
     }
 
     /** Offered in the CLI but kept out of pickers, for now. */

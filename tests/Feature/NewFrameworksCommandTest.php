@@ -44,7 +44,7 @@ test('Laravel asks the same questions as new:options, plus the rules the wizard 
     $fields = collect(collect(newFrameworksCatalog())->firstWhere('slug', 'laravel')['fields'])->keyBy('key');
 
     foreach ($questions as $key => $question) {
-        expect($fields[$key]['options'])->toBe($question['options'])
+        expect(array_map(fn (array $option): array => array_diff_key($option, ['commons' => 1]), $fields[$key]['options']))->toBe($question['options'])
             ->and($fields[$key]['default'])->toBe($question['default'])
             ->and($fields[$key]['type'])->toBe($question['multiple'] ? 'multiselect' : 'select');
     }
@@ -87,11 +87,11 @@ test('Statamic and Next.js ask their driver questions by flag, with none spelled
     $statamic = collect($catalog['statamic']['fields'])->keyBy('key');
     $nextjs = collect($catalog['nextjs']['fields'])->keyBy('key');
 
-    expect($statamic->keys()->all())->toBe(['name', 'email', 'php', 'features', 'database', 'cache', 'storage', 'search', 'content', 'starterKit'])
+    expect($statamic->keys()->all())->toBe(['name', 'email', 'php', 'features', 'database', 'cache', 'storage', 'search', 'content', 'starterKit', 'selfContained'])
         ->and(array_column($statamic['php']['options'], 'value'))->not->toContain('8.1')
         ->and($statamic['cache']['forcedWhen'][0]['value'])->toBe('redis')
         ->and(collect($statamic['storage']['options'])->firstWhere('value', 'none')['flag'])->toBe('--no-storage')
-        ->and($nextjs->keys()->all())->toBe(['name', 'database', 'storage', 'search'])
+        ->and($nextjs->keys()->all())->toBe(['name', 'database', 'storage', 'search', 'selfContained'])
         ->and(array_column($nextjs['database']['options'], 'value'))->toBe(['postgres', 'mysql', 'mariadb'])
         ->and(collect($nextjs['database']['options'])->firstWhere('value', 'postgres')['recommended'])->toBeTrue();
 });
@@ -116,8 +116,8 @@ test('the catalog names its categories, each framework\'s fixed arguments and wh
 
     expect(array_column($payload['categories'], 'id'))->toBe(['fullstack', 'cms', 'frontend', 'docs'])
         ->and($frameworks['laravel']['args'])->toBe(['--fast'])
-        ->and($frameworks['statamic']['args'])->toBe(['--fast', '--no-plex'])
-        ->and($frameworks['nextjs']['args'])->toBe(['--fast', '--no-plex'])
+        ->and($frameworks['statamic']['args'])->toBe(['--fast'])
+        ->and($frameworks['nextjs']['args'])->toBe(['--fast'])
         ->and($laravel['database']['group'])->toBe('essential')
         ->and($laravel['features']['group'])->toBe('advanced')
         ->and($laravel['database']['suggested'])->toBe('postgres')
@@ -144,7 +144,7 @@ test('every server framework asks database, cache, storage and search from one s
 
     expect(array_column($wordpress['database']['options'], 'value'))->toBe(['mysql', 'mariadb'])
         ->and(array_column($wordpress['storage']['options'], 'value'))->not->toContain('none')
-        ->and($wordpress->keys()->all())->toBe(['name', 'php', 'database', 'cache', 'storage', 'search'])
+        ->and($wordpress->keys()->all())->toBe(['name', 'php', 'database', 'cache', 'storage', 'search', 'selfContained'])
         ->and(array_column(collect($catalog['django']['fields'])->keyBy('key')['cache']['options'], 'value'))->toContain('database');
 });
 
@@ -178,3 +178,24 @@ test('the server stack questions are answered by flags, then by --fast, and neve
     'flags win' => [['--fast' => true, '--mysql' => true, '--memcached' => true, '--no-storage' => true, '--typesense' => true], 'mysql,memcached,none,typesense'],
     'a database cache for Django' => [['--fast' => true, '--database' => true], 'postgres,database,minio,none'],
 ]);
+
+test('apps that join the Commons by default offer an opt-out and say which choices are shared', function (): void {
+    $catalog = collect(newFrameworksCatalog())->keyBy('slug');
+
+    foreach (['laravel', 'statamic', 'wordpress', 'nextjs'] as $slug) {
+        $fields = collect($catalog[$slug]['fields'])->keyBy('key');
+        $optOut = collect($catalog[$slug]['fields'])->firstWhere('role', 'commons-opt-out');
+
+        expect($optOut['flag'])->toBe('--no-plex')
+            ->and($optOut['default'])->toBeFalse()
+            ->and(collect($fields['database']['options'])->firstWhere('value', 'postgres') ?? collect($fields['database']['options'])->first())->toHaveKey('commons');
+    }
+
+    $postgres = collect(collect($catalog['laravel']['fields'])->firstWhere('key', 'database')['options'])->firstWhere('value', 'postgres');
+
+    expect($postgres['commons'])->toBe('postgres');
+
+    foreach (['django', 'gin', 'vite'] as $slug) {
+        expect(collect($catalog[$slug]['fields'])->firstWhere('role', 'commons-opt-out'))->toBeNull();
+    }
+});
