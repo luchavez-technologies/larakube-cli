@@ -63,15 +63,7 @@ test('every option the spec names exists on the command, with the same kind', fu
     }
 });
 
-test('what a tool says it needs matches what its init accepts, apart from the gaps still to fix', function (): void {
-    // Each is a real mismatch between ClusterTool's own capability answers and
-    // the options its init takes. Fix one and its entry here must go.
-    $knownGaps = [
-        'admin-email' => ['netbird'],
-        'no-plex' => ['grafana', 'netbird'],
-    ];
-    $found = ['admin-email' => [], 'no-plex' => []];
-
+test('what a tool says it needs matches what its init accepts', function (): void {
     foreach (ClusterTool::cases() as $tool) {
         if ($tool->isLegacy() || ! array_key_exists($tool->initCommand(), toolInitFixture())) {
             continue;
@@ -79,16 +71,8 @@ test('what a tool says it needs matches what its init accepts, apart from the ga
 
         $names = array_map(fn (InitOption $o): string => $o->name, ToolInitSpec::for($tool));
 
-        foreach ([['admin-email', $tool->requiresAdminEmail()], ['no-plex', $tool->supportsNoPlex()]] as [$name, $claims]) {
-            if ($claims !== in_array($name, $names, true)) {
-                $found[$name][] = $tool->value;
-            }
-        }
-    }
-
-    foreach ($found as $name => $tools) {
-        sort($tools);
-        expect($tools)->toBe($knownGaps[$name], "--{$name}: the list of tools whose capability and options disagree changed");
+        expect(in_array('admin-email', $names, true))->toBe($tool->requiresAdminEmail(), "{$tool->value}: --admin-email")
+            ->and(in_array('no-plex', $names, true))->toBe($tool->supportsNoPlex(), "{$tool->value}: --no-plex");
     }
 });
 
@@ -101,7 +85,9 @@ test('the form fields leave out the command mechanics and use the new:frameworks
         ->and($fields['alias']['multiple'])->toBeTrue()
         ->and($fields['vpnOnly']['type'])->toBe('confirm')
         ->and($fields['vpnOnly']['flag'])->toBe('--vpn-only')
-        ->and($fields['adminEmail']['label'])->toBe('Admin email');
+        ->and($fields['adminEmail']['label'])->toBe('Admin email')
+        ->and($fields->pluck('role', 'key')->all())->toBe(['domain' => 'host', 'alias' => 'host', 'adminEmail' => 'account', 'vpnOnly' => 'access', 'proxied' => 'access'])
+        ->and(collect(ToolInitSpec::fields(ClusterTool::GRAFANA))->firstWhere('key', 'noLogs')['role'])->toBe('option');
 });
 
 test('an option builds the signature fragment the init commands use', function (): void {

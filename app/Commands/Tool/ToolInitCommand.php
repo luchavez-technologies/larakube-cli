@@ -5,11 +5,11 @@ namespace App\Commands\Tool;
 use App\Enums\ClusterTool;
 use App\Services\Tools\InitOption;
 use App\Services\Tools\ToolInitCommands;
+use App\Services\Tools\ToolInitOptions;
 use App\Services\Tools\ToolInitSpec;
 use App\Traits\LaraKubeOutput;
 use LaravelZero\Framework\Commands\Command;
 use Symfony\Component\Console\Input\ArrayInput;
-use Symfony\Component\Console\Input\InputOption;
 
 /**
  * Deploys one Cluster Tool: `larakube tool:init <environment> --tool=<slug>`.
@@ -31,8 +31,8 @@ class ToolInitCommand extends Command
     {
         parent::__construct();
 
-        foreach (self::unionOfOptions() as $option) {
-            $this->getDefinition()->addOption($this->inputOption($option));
+        foreach (ToolInitOptions::union() as $option) {
+            $this->getDefinition()->addOption(ToolInitOptions::inputOption($option));
         }
     }
 
@@ -47,7 +47,7 @@ class ToolInitCommand extends Command
         $allowed = array_map(fn (InitOption $option): string => $option->name, ToolInitSpec::for($tool));
         $params = $this->input->getArgument('environment') !== null ? ['environment' => $this->input->getArgument('environment')] : [];
 
-        foreach (self::unionOfOptions() as $option) {
+        foreach (ToolInitOptions::union() as $option) {
             if (! $this->input->hasParameterOption('--'.$option->name)) {
                 continue;
             }
@@ -59,7 +59,7 @@ class ToolInitCommand extends Command
                 return 1;
             }
 
-            $params['--'.$option->name] = $this->forwardedValue($option);
+            $params['--'.$option->name] = ToolInitOptions::forwardedValue($this->input, $option);
         }
 
         $command = ToolInitCommands::for($tool);
@@ -84,53 +84,5 @@ class ToolInitCommand extends Command
         }
 
         return $tool;
-    }
-
-    /**
-     * A flag is on when it was given; a value is what was typed. `--proxied`
-     * is a flag for most tools and a value for the ones that default to it.
-     */
-    private function forwardedValue(InitOption $option): mixed
-    {
-        $given = $this->input->getOption($option->name);
-
-        return $option->kind === InitOption::FLAG ? true : ($given ?? ($option->default ?? true));
-    }
-
-    /**
-     * Every distinct option any tool takes, once. `--proxied` is both a flag
-     * and a `=1` value across tools, so it is registered as an optional value.
-     *
-     * @return array<string, InitOption>
-     */
-    private static function unionOfOptions(): array
-    {
-        $options = [];
-
-        foreach (ClusterTool::shippedCases() as $tool) {
-            if (! ToolInitCommands::has($tool)) {
-                continue;
-            }
-
-            foreach (ToolInitSpec::for($tool) as $option) {
-                $options[$option->name] ??= $option;
-            }
-        }
-
-        return $options;
-    }
-
-    private function inputOption(InitOption $option): InputOption
-    {
-        $mode = match (true) {
-            $option->name === 'proxied' => InputOption::VALUE_OPTIONAL,
-            $option->kind === InitOption::FLAG => InputOption::VALUE_NONE,
-            $option->kind === InitOption::LIST => InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
-            default => InputOption::VALUE_REQUIRED,
-        };
-
-        $description = $option->name === 'domain' ? 'Base domain OR full host for the tool (example.com → prefix.example.com)' : $option->description;
-
-        return new InputOption($option->name, null, $mode, $description, $mode & InputOption::VALUE_IS_ARRAY ? [] : null);
     }
 }

@@ -113,6 +113,7 @@ test('only tools that can bundle their own storage advertise --no-plex', functio
     expect($noPlex)->toEqualCanonicalizing([
         'chat', 'drive', 'errors', 'flow', 'git', 'insights', 'sso',
         'matrix', 'ocis', 'glitchtip', 'n8n', 'windmill', 'forgejo', 'metabase', 'zitadel',
+        'monitor', 'grafana', 'vpn', 'netbird',
     ]);
 
     // A tool that leases no Commons tenant has nothing to bypass. Drive and OCIS are the

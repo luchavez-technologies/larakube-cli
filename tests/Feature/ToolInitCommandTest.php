@@ -135,3 +135,19 @@ test('instructions point at tool:init, never at an old name', function (): void 
     expect(ClusterTool::OUTLINE->initInvocation('production'))->toBe('tool:init production --tool=outline')
         ->and(ClusterTool::FLOW->initInvocation())->toBe('tool:init --tool=n8n');
 });
+
+test('tool:add takes every tool\'s own init options, and refuses one a chosen tool lacks before installing anything', function (): void {
+    $definition = Artisan::all()['tool:add']->getDefinition();
+
+    foreach (['app-name', 'no-plex', 'with-exporter', 'media-retention'] as $name) {
+        expect($definition->hasOption($name))->toBeTrue("tool:add has no --{$name}");
+    }
+
+    toolInitFakes();
+
+    $this->artisan('tool:add local --tool=vaultwarden --app-name=Vault --force --no-interaction')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('has no --app-name option');
+
+    Process::assertNotRan(fn ($process) => str_contains((string) $process->command, 'apply -f'));
+});

@@ -3,6 +3,8 @@
 namespace App\Commands\Tool;
 
 use App\Enums\ClusterTool;
+use App\Services\Tools\InitOption;
+use App\Services\Tools\ToolInitOptions;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\InteractsWithMail;
 use App\Traits\InteractsWithSso;
@@ -19,6 +21,9 @@ class ToolAddCommand extends Command
 {
     use ConfirmsDestructiveAction, InteractsWithMail, InteractsWithSso, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesClusterTool, ResolvesStandaloneEnvironment;
 
+    /** What tool:add already answers itself, so tool-specific options never shadow it. */
+    private const OWN_OPTIONS = ['tool', 'context', 'domain', 'admin-email', 'force', 'wire-mail', 'no-wire-mail', 'wire-sso', 'no-wire-sso'];
+
     protected $signature = 'tool:add
         {environment? : The environment to target}
         {--tool= : Comma-separated tool slugs to install (e.g. flow,passwords)}
@@ -32,6 +37,19 @@ class ToolAddCommand extends Command
         {--force : Skip the confirmation prompt}';
 
     protected $description = 'Interactively discover and install LaraKube shared cluster tools';
+
+    public function __construct()
+    {
+        parent::__construct();
+
+        // Any tool's own init option can be given here (`--app-name=`, `--no-plex`)
+        // and is passed to each tool that takes it.
+        foreach (ToolInitOptions::union() as $option) {
+            if (! $this->getDefinition()->hasOption($option->name)) {
+                $this->getDefinition()->addOption(ToolInitOptions::inputOption($option));
+            }
+        }
+    }
 
     public function handle(): int
     {
@@ -62,6 +80,28 @@ class ToolAddCommand extends Command
         }
         if ($this->option('admin-email')) {
             $params['--admin-email'] = $this->option('admin-email');
+        }
+
+        $extra = array_values(array_filter(
+            ToolInitOptions::union(),
+            fn (InitOption $option): bool => ! in_array($option->name, self::OWN_OPTIONS, true),
+        ));
+        $given = ToolInitOptions::given($this->input, array_map(fn (InitOption $option): string => $option->name, $extra));
+
+        // Refuse before anything is installed, so a tool is never left half
+        // done because a later one does not take an option.
+        foreach ($tools as $tool) {
+            if (($refused = ToolInitOptions::refusedBy($tool, $given)) !== []) {
+                $this->laraKubeError("{$tool->brandName()} has no --{$refused[0]} option.");
+
+                return 1;
+            }
+        }
+
+        foreach ($extra as $option) {
+            if (in_array($option->name, $given, true)) {
+                $params['--'.$option->name] = ToolInitOptions::forwardedValue($this->input, $option);
+            }
         }
 
         $exitCode = 0;

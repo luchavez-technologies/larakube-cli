@@ -97,6 +97,7 @@ final readonly class InitOption
         $field = [
             'key' => lcfirst(str_replace(' ', '', ucwords(str_replace('-', ' ', $this->name)))),
             'type' => $this->kind === self::FLAG ? 'confirm' : 'text',
+            'role' => $this->role(),
             'label' => $this->label(),
             'description' => $this->description,
             'required' => false,
@@ -112,6 +113,20 @@ final readonly class InitOption
         }
 
         return $field;
+    }
+
+    /**
+     * Where a form puts it: `host` and `account` have their own controls,
+     * `access` is who can reach the tool, and every `option` is a plain choice.
+     */
+    private function role(): string
+    {
+        return match ($this->name) {
+            'domain', 'alias' => 'host',
+            'admin-email' => 'account',
+            'vpn-only', 'proxied' => 'access',
+            default => 'option',
+        };
     }
 
     private function label(): string

@@ -679,7 +679,8 @@ enum ClusterTool: string implements HasWorkloadComponents
         return match ($this) {
             self::CHAT, self::MATRIX, self::DRIVE, self::OCIS, self::ERRORS, self::GLITCHTIP,
             self::FLOW, self::N8N, self::WINDMILL, self::GIT, self::FORGEJO,
-            self::INSIGHTS, self::METABASE, self::SSO, self::ZITADEL => true,
+            self::INSIGHTS, self::METABASE, self::SSO, self::ZITADEL,
+            self::MONITOR, self::GRAFANA, self::VPN, self::NETBIRD => true,
             default => false,
         };
     }
@@ -1395,8 +1396,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::OUTLINE,
             self::CHATWOOT,
             self::GLITCHTIP,
-            self::FORGEJO,
-            self::NETBIRD => true,
+            self::FORGEJO => true,
             default => false,
         };
     }
