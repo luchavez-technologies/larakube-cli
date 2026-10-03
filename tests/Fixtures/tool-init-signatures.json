@@ -1,0 +1,936 @@
+{
+ "bulwark:init": {
+  "app-name": {
+   "default": null,
+   "kind": "value"
+  },
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "no-mail-restart": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "chatwoot:init": {
+  "admin-email": {
+   "default": null,
+   "kind": "value"
+  },
+  "app-name": {
+   "default": null,
+   "kind": "value"
+  },
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "logo-url": {
+   "default": null,
+   "kind": "value"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "directus:init": {
+  "admin-email": {
+   "default": null,
+   "kind": "value"
+  },
+  "alias": {
+   "default": [],
+   "kind": "list"
+  },
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": "1",
+   "kind": "value"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "documenso:init": {
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "external-dns:init": {
+  "cloudflare-token": {
+   "default": null,
+   "kind": "value"
+  },
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "group": {
+   "default": null,
+   "kind": "value"
+  },
+  "zone": {
+   "default": [],
+   "kind": "list"
+  }
+ },
+ "forgejo:init": {
+  "admin-email": {
+   "default": null,
+   "kind": "value"
+  },
+  "app-name": {
+   "default": null,
+   "kind": "value"
+  },
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "logo-url": {
+   "default": null,
+   "kind": "value"
+  },
+  "no-plex": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "glitchtip:init": {
+  "admin-email": {
+   "default": null,
+   "kind": "value"
+  },
+  "app-name": {
+   "default": null,
+   "kind": "value"
+  },
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "logo-url": {
+   "default": null,
+   "kind": "value"
+  },
+  "no-plex": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "grafana:init": {
+  "app-name": {
+   "default": null,
+   "kind": "value"
+  },
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "logo-url": {
+   "default": null,
+   "kind": "value"
+  },
+  "no-logs": {
+   "default": false,
+   "kind": "flag"
+  },
+  "no-plex": {
+   "default": false,
+   "kind": "flag"
+  },
+  "no-traces": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  },
+  "with-logs": {
+   "default": false,
+   "kind": "flag"
+  },
+  "with-traces": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "headlamp:init": {
+  "app-name": {
+   "default": null,
+   "kind": "value"
+  },
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "logo-url": {
+   "default": null,
+   "kind": "value"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "kuma:init": {
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "kutt:init": {
+  "app-name": {
+   "default": null,
+   "kind": "value"
+  },
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "logo-url": {
+   "default": null,
+   "kind": "value"
+  },
+  "proxied": {
+   "default": "1",
+   "kind": "value"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "livekit:init": {
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "no-host-port": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "matrix:init": {
+  "app-name": {
+   "default": null,
+   "kind": "value"
+  },
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "logo-url": {
+   "default": null,
+   "kind": "value"
+  },
+  "media-retention": {
+   "default": "30d",
+   "kind": "value"
+  },
+  "no-host-port": {
+   "default": false,
+   "kind": "flag"
+  },
+  "no-plex": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "metabase:init": {
+  "admin-email": {
+   "default": null,
+   "kind": "value"
+  },
+  "app-name": {
+   "default": null,
+   "kind": "value"
+  },
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "logo-url": {
+   "default": null,
+   "kind": "value"
+  },
+  "no-plex": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "n8n:init": {
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "no-plex": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "netbird:init": {
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "no-plex": {
+   "default": false,
+   "kind": "flag"
+  },
+  "sso-domain": {
+   "default": null,
+   "kind": "value"
+  }
+ },
+ "ocis:init": {
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "extensions": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "no-plex": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "openbao:init": {
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "outline:init": {
+  "admin-email": {
+   "default": null,
+   "kind": "value"
+  },
+  "alias": {
+   "default": [],
+   "kind": "list"
+  },
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "penpot:init": {
+  "admin-email": {
+   "default": null,
+   "kind": "value"
+  },
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  },
+  "with-exporter": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "planka:init": {
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "plausible:init": {
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "pocketbase:init": {
+  "admin-email": {
+   "default": null,
+   "kind": "value"
+  },
+  "alias": {
+   "default": [],
+   "kind": "list"
+  },
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": "1",
+   "kind": "value"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "resume:init": {
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "sendrec:init": {
+  "allow-registration": {
+   "default": false,
+   "kind": "flag"
+  },
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "stalwart:init": {
+  "admin-email": {
+   "default": null,
+   "kind": "value"
+  },
+  "alias": {
+   "default": [],
+   "kind": "list"
+  },
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "host-port": {
+   "default": false,
+   "kind": "flag"
+  },
+  "no-host-port": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "teable:init": {
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "twenty:init": {
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "umami:init": {
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "vaultwarden:init": {
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "windmill:init": {
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "no-plex": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "yopass:init": {
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ },
+ "zitadel:init": {
+  "admin-email": {
+   "default": null,
+   "kind": "value"
+  },
+  "context": {
+   "default": null,
+   "kind": "value"
+  },
+  "domain": {
+   "default": null,
+   "kind": "value"
+  },
+  "force": {
+   "default": false,
+   "kind": "flag"
+  },
+  "no-plex": {
+   "default": false,
+   "kind": "flag"
+  },
+  "proxied": {
+   "default": false,
+   "kind": "flag"
+  },
+  "vpn-only": {
+   "default": false,
+   "kind": "flag"
+  }
+ }
+}

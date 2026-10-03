@@ -542,3 +542,26 @@ test('tool:list prunes ghost multi-instance entries that lack both host and name
         ->and(array_column($pocketbaseRows, 'instance'))->toEqualCanonicalizing(['pocket-test-1', 'pocket-test-2'])
         ->and(array_column($pocketbaseRows, 'host'))->toEqualCanonicalizing(['pocket-test-1.larakube.app', 'pocket-test-2.larakube.app']);
 });
+
+test('every tool row carries the fields its install form asks, installed or not', function (): void {
+    Process::fake(['*' => Process::result(output: '')]);
+
+    Artisan::call('tool:list local --registry-only --json');
+    $rows = collect(json_decode(Artisan::output(), true))->keyBy('tool');
+
+    $outline = collect($rows['outline']['initFields'])->keyBy('key');
+
+    expect($rows['outline']['installed'])->toBeFalse()
+        ->and($outline->keys()->all())->toBe(['domain', 'alias', 'adminEmail', 'vpnOnly', 'proxied'])
+        ->and($outline['adminEmail']['flag'])->toBe('--admin-email=')
+        ->and(collect($rows['grafana']['initFields'])->pluck('key')->all())->toContain('noLogs', 'withTraces', 'noPlex')
+        ->and(collect($rows['vaultwarden']['initFields'])->pluck('key')->all())->not->toContain('adminEmail');
+
+    foreach ($rows as $row) {
+        expect($row['initFields'])->toBeArray();
+
+        foreach ($row['initFields'] as $field) {
+            expect($field)->toHaveKeys(['key', 'type', 'label', 'flag']);
+        }
+    }
+});

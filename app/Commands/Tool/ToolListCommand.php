@@ -9,6 +9,7 @@ use App\Contracts\HasSmtpWiring;
 use App\Contracts\UsesForwardAuth;
 use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
+use App\Services\Tools\ToolInitSpec;
 use App\Traits\InteractsWithToolRegistry;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesStandaloneEnvironment;
@@ -166,6 +167,7 @@ class ToolListCommand extends Command
                     'installedAt' => $entry['installedAt'] ?? null,
                     'verified' => ! $registryOnly,
                     'requiresAdminEmail' => $tool->requiresAdminEmail($entry['engine'] ?? null),
+                    'initFields' => ToolInitSpec::fields($tool, $entry['engine'] ?? null),
                     'vendor' => $vendor,
                     'components' => array_map(fn ($c) => [
                         'key' => $c->key,
