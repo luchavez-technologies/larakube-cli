@@ -167,6 +167,7 @@ class ToolListCommand extends Command
                     'installedAt' => $entry['installedAt'] ?? null,
                     'verified' => ! $registryOnly,
                     'requiresAdminEmail' => $tool->requiresAdminEmail($entry['engine'] ?? null),
+                    'multiInstance' => $tool->supportsMultipleInstances(),
                     'initFields' => ToolInitSpec::fields($tool, $entry['engine'] ?? null),
                     'vendor' => $vendor,
                     'components' => array_map(fn ($c) => [

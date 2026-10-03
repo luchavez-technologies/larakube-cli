@@ -561,3 +561,13 @@ test('every tool row carries the fields its install form asks, installed or not'
         expect($row['initFields'])->toBeArray()->each->toHaveKeys(['key', 'type', 'label', 'flag']);
     }
 });
+
+test('each tool row says whether it can run as more than one instance, so a GUI never passes --domain to one that cannot', function (): void {
+    Process::fake(['*' => Process::result(output: '')]);
+
+    Artisan::call('tool:list local --registry-only --json');
+    $rows = collect(json_decode(Artisan::output(), true))->keyBy('tool');
+
+    expect($rows['stalwart']['multiInstance'])->toBeFalse()
+        ->and($rows['outline']['multiInstance'])->toBeTrue();
+});
