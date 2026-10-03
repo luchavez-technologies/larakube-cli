@@ -50,3 +50,18 @@ test('every path that prints one-time steps filters Plex-backed components', fun
             ->and($source)->toContain('isPlexBacked');
     }
 });
+
+test('new reads the blueprint again after joining the Commons, before it prints any steps', function (): void {
+    // plex:join rewrites .larakube.json; the config held in memory predates it,
+    // so without a reload isPlexBacked() never sees the join and the
+    // walkthrough names a bucket the app does not use.
+    $source = (string) file_get_contents(base_path('app/Commands/NewCommand.php'));
+
+    $join = strpos($source, '$this->joinPlexCommons(');
+    $reload = strpos($source, 'ConfigData::loadFromFile($projectPath)', $join);
+    $steps = strpos($source, 'getPostInstallInstructions');
+
+    expect($join)->not->toBeFalse()
+        ->and($reload)->not->toBeFalse('the config is not reloaded after the join')
+        ->and($steps)->toBeGreaterThan($reload);
+});

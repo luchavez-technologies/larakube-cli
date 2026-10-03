@@ -224,6 +224,10 @@ class NewCommand extends Command
         // to its own pods.
         if (! $this->option('no-plex')) {
             $this->joinPlexCommons($config, $projectPath);
+
+            // plex:join rewrote the blueprint; what is printed below must be
+            // read from it, not from the config as it was before the join.
+            $config = ConfigData::loadFromFile($projectPath);
         }
 
         $this->laraKubeInfo("Project $appName created successfully!");
