@@ -7,6 +7,7 @@ use App\Data\StackData;
 use App\Enums\CloudProvider;
 use App\Enums\ManagedProvider;
 use App\Facades\State;
+use App\Services\Cloud\LiveProviderCatalog;
 use App\Services\Kubectl;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\EnsuresKubectl;
@@ -279,10 +280,13 @@ class CloudCreateCommand extends Command
 
         $cloud = CloudProvider::tryFrom($provider) ?? CloudProvider::DO;
 
+        $live = $this->liveCatalog($cloud);
+        $options = $live === null ? $cloud->regions() : array_column($live['regions'], 'label', 'value');
+
         return select(
             label: "{$cloud->label()} region",
-            options: $cloud->regions(),
-            default: $cloud->defaultRegion(),
+            options: $options,
+            default: array_key_exists($cloud->defaultRegion(), $options) ? $cloud->defaultRegion() : array_key_first($options),
             hint: 'Need a different region? Re-run with --region=<slug>.',
         );
     }
@@ -294,8 +298,10 @@ class CloudCreateCommand extends Command
         }
 
         $cloud = CloudProvider::tryFrom($provider) ?? CloudProvider::DO;
-        $options = $kind === 'vps' ? $cloud->vpsSizes() : $cloud->managedSizes();
+        $live = $kind === 'vps' ? $this->liveCatalog($cloud) : null;
+        $options = $live !== null ? array_column($live['sizes'], 'label', 'value') : ($kind === 'vps' ? $cloud->vpsSizes() : $cloud->managedSizes());
         $default = $kind === 'vps' ? $cloud->defaultVpsSize() : $cloud->defaultManagedSize();
+        $default = array_key_exists($default, $options) ? $default : array_key_first($options);
         $label = match (true) {
             $kind !== 'vps' => 'Node size',
             $cloud === CloudProvider::GCP, $cloud === CloudProvider::AWS => 'Machine type',
@@ -309,6 +315,63 @@ class CloudCreateCommand extends Command
             default: $default,
             hint: 'Need a different size? Re-run with --size=<slug>.',
         );
+    }
+
+    /**
+     * The optional Cloudflare steps after a VPS is up: DNS records for every tool
+     * and SSL through the DNS challenge. A person at a terminal is asked; a
+     * scripted run (Desktop) opts in with --cloudflare and the token in the
+     * environment. Neither step can fail the server, which already exists: a
+     * problem is reported with how to finish it later.
+     */
+    protected function connectCloudflare(string $environment, string $context): void
+    {
+        $interactive = ! $this->flag('no-interaction');
+        $asked = (bool) $this->flag('cloudflare');
+        $token = trim((string) (getenv('LARAKUBE_CLOUDFLARE_TOKEN') ?: ''));
+
+        if (! $interactive && $asked && $token === '') {
+            $this->laraKubeWarn('--cloudflare was given but no Cloudflare token is set, so DNS and SSL were left for later.');
+
+            return;
+        }
+
+        $steps = [
+            'dns' => ['label' => 'Cloudflare DNS records', 'command' => 'tool:init', 'arguments' => ['--tool' => 'external-dns'], 'question' => 'Would you like to automate DNS records with Cloudflare for this cluster?', 'default' => true],
+            'ssl' => ['label' => 'SSL through the Cloudflare DNS challenge', 'command' => 'tls:init', 'arguments' => [], 'question' => 'Would you like to enable the Cloudflare DNS challenge for SSL certificates (so proxied hosts keep renewing)?', 'default' => true],
+        ];
+
+        foreach ($steps as $step) {
+            $wanted = $interactive ? ($asked || confirm($step['question'], default: $step['default'])) : $asked;
+
+            if (! $wanted) {
+                continue;
+            }
+
+            try {
+                $this->call($step['command'], $step['arguments'] + ['environment' => $environment, '--context' => $context]);
+            } catch (Throwable $e) {
+                $this->laraKubeWarn("{$step['label']} could not be set up: {$e->getMessage()}");
+                $this->laraKubeLine('  <fg=gray>The server is ready. Finish this later from its page in LaraKube Desktop, or with</> <fg=yellow>larakube '.$step['command'].'</><fg=gray>.</>');
+            }
+        }
+    }
+
+    /**
+     * The provider's current regions, sizes and prices, when this machine is
+     * connected to it; null means the built-in lists apply.
+     *
+     * @return array{regions: list<array{value: string, label: string}>, sizes: list<array{value: string, label: string, monthly: float, currency: string}>}|null
+     */
+    private function liveCatalog(CloudProvider $provider): ?array
+    {
+        $token = match ($provider) {
+            CloudProvider::DO => $this->getDoToken(),
+            CloudProvider::HETZNER => $this->getHetznerToken(),
+            default => null,
+        };
+
+        return (new LiveProviderCatalog)->get($provider, $token);
     }
 
     private function create(): int
@@ -598,46 +661,6 @@ class CloudCreateCommand extends Command
         $this->connectCloudflare($environment ?: 'production', $context);
 
         return 0;
-    }
-
-    /**
-     * The optional Cloudflare steps after a VPS is up: DNS records for every tool
-     * and SSL through the DNS challenge. A person at a terminal is asked; a
-     * scripted run (Desktop) opts in with --cloudflare and the token in the
-     * environment. Neither step can fail the server, which already exists: a
-     * problem is reported with how to finish it later.
-     */
-    protected function connectCloudflare(string $environment, string $context): void
-    {
-        $interactive = ! $this->flag('no-interaction');
-        $asked = (bool) $this->flag('cloudflare');
-        $token = trim((string) (getenv('LARAKUBE_CLOUDFLARE_TOKEN') ?: ''));
-
-        if (! $interactive && $asked && $token === '') {
-            $this->laraKubeWarn('--cloudflare was given but no Cloudflare token is set, so DNS and SSL were left for later.');
-
-            return;
-        }
-
-        $steps = [
-            'dns' => ['label' => 'Cloudflare DNS records', 'command' => 'tool:init', 'arguments' => ['--tool' => 'external-dns'], 'question' => 'Would you like to automate DNS records with Cloudflare for this cluster?', 'default' => true],
-            'ssl' => ['label' => 'SSL through the Cloudflare DNS challenge', 'command' => 'tls:init', 'arguments' => [], 'question' => 'Would you like to enable the Cloudflare DNS challenge for SSL certificates (so proxied hosts keep renewing)?', 'default' => true],
-        ];
-
-        foreach ($steps as $step) {
-            $wanted = $interactive ? ($asked || confirm($step['question'], default: $step['default'])) : $asked;
-
-            if (! $wanted) {
-                continue;
-            }
-
-            try {
-                $this->call($step['command'], $step['arguments'] + ['environment' => $environment, '--context' => $context]);
-            } catch (Throwable $e) {
-                $this->laraKubeWarn("{$step['label']} could not be set up: {$e->getMessage()}");
-                $this->laraKubeLine('  <fg=gray>The server is ready. Finish this later from its page in LaraKube Desktop, or with</> <fg=yellow>larakube '.$step['command'].'</><fg=gray>.</>');
-            }
-        }
     }
 
     /** Provision a new managed cluster, merge its kubeconfig, then install Traefik. */

@@ -4,6 +4,7 @@ namespace App\Commands\Cloud;
 
 use App\Enums\CliTool;
 use App\Enums\CloudProvider;
+use App\Services\Cloud\LiveProviderCatalog;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithAws;
 use App\Traits\InteractsWithGcp;
@@ -28,6 +29,7 @@ class CloudProvidersCommand extends Command
     use EmitsJsonOutput, InteractsWithAws, InteractsWithGcp, InteractsWithHetzner, LaraKubeOutput, ReadsCommandOptions;
 
     protected $signature = 'cloud:providers
+        {--refresh : Ask the providers for current regions, sizes and prices instead of using what was fetched recently}
         {--json : Emit one machine-readable JSON result on stdout}';
 
     protected $description = 'List cloud providers with their regions, sizes, and credential status';
@@ -64,16 +66,35 @@ class CloudProvidersCommand extends Command
      */
     protected function describe(CloudProvider $provider): array
     {
+        $credentials = $this->credentialStatus($provider);
+        $regions = $this->pickerOptions($provider->regions());
+        $sizes = $this->pickerOptions($provider->vpsSizes());
+        $defaultRegion = $provider->defaultRegion();
+        $defaultSize = $provider->defaultVpsSize();
+        // Without a connected account, the prices are the ones written into the CLI.
+        $pricing = ['source' => 'builtin', 'asOf' => null, 'currency' => null];
+
+        $live = $credentials['ready'] ? (new LiveProviderCatalog)->get($provider, $this->tokenFor($provider), $this->flag('refresh')) : null;
+
+        if ($live !== null) {
+            $regions = $live['regions'];
+            $sizes = array_map(fn (array $size): array => ['value' => $size['value'], 'label' => $size['label']], $live['sizes']);
+            $defaultRegion = in_array($defaultRegion, array_column($regions, 'value'), true) ? $defaultRegion : $regions[0]['value'];
+            $defaultSize = $this->defaultSize($provider, $live['sizes']);
+            $pricing = ['source' => $live['source'], 'asOf' => $live['asOf'], 'currency' => $live['currency']];
+        }
+
         return [
             'slug' => $provider->value,
             'label' => $provider->label(),
-            'regions' => $this->pickerOptions($provider->regions()),
-            'defaultRegion' => $provider->defaultRegion(),
-            'vpsSizes' => $this->pickerOptions($provider->vpsSizes()),
-            'defaultVpsSize' => $provider->defaultVpsSize(),
+            'regions' => $regions,
+            'defaultRegion' => $defaultRegion,
+            'vpsSizes' => $sizes,
+            'defaultVpsSize' => $defaultSize,
             'managedSizes' => $this->pickerOptions($provider->managedSizes()),
             'defaultManagedSize' => $provider->defaultManagedSize(),
-            'credentials' => $this->credentialStatus($provider),
+            'pricing' => $pricing,
+            'credentials' => $credentials,
         ];
     }
 
@@ -96,6 +117,38 @@ class CloudProvidersCommand extends Command
             ),
             CloudProvider::GCP => $this->gcpStatus(),
             CloudProvider::AWS => $this->awsStatus(),
+        };
+    }
+
+    /**
+     * Keep the built-in default while the provider still sells it; otherwise the
+     * cheapest size with at least 4 GB (the smallest the tools run comfortably on).
+     *
+     * @param  list<array{value: string, label: string, monthly: float, currency: string}>  $sizes
+     */
+    private function defaultSize(CloudProvider $provider, array $sizes): string
+    {
+        $values = array_column($sizes, 'value');
+
+        if (in_array($provider->defaultVpsSize(), $values, true)) {
+            return $provider->defaultVpsSize();
+        }
+
+        foreach ($sizes as $size) {
+            if (preg_match('/(\d+) GB RAM/', $size['label'], $match) && (int) $match[1] >= 4) {
+                return $size['value'];
+            }
+        }
+
+        return $sizes[0]['value'];
+    }
+
+    private function tokenFor(CloudProvider $provider): ?string
+    {
+        return match ($provider) {
+            CloudProvider::DO => $this->getDoToken() ?: (getenv('TF_VAR_do_token') ?: null),
+            CloudProvider::HETZNER => $this->getHetznerToken(),
+            default => null,
         };
     }
 
