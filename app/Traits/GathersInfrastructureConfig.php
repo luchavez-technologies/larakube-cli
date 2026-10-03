@@ -272,7 +272,7 @@ trait GathersInfrastructureConfig
         $database = select(
             label: 'What primary database engine would you like to use?',
             options: DatabaseDriver::getSelectOptions($config),
-            default: $config->getDatabase()?->value ?? $defaultDb,
+            default: $this->primaryDatabaseDefault($config, $defaultDb),
         );
 
         $config->setDatabase(DatabaseDriver::from($database));
@@ -328,5 +328,19 @@ trait GathersInfrastructureConfig
         $config->resolveDependencies();
 
         return $config;
+    }
+
+    /**
+     * What the primary database question starts at. A database named by a flag
+     * (`--postgres`) is the one the person asked for, so it leads; the
+     * engine's own default only fills in when nothing was named. Without
+     * this, a flagged database became an extra one and SQLite stayed primary,
+     * so the app never joined the Commons for the database it asked for.
+     */
+    protected function primaryDatabaseDefault(ConfigData $config, string $fallback): string
+    {
+        $named = $config->getDatabase() ?? (array_values($config->getDatabases())[0] ?? null);
+
+        return $named?->value ?? $fallback;
     }
 }
