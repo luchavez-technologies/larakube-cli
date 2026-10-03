@@ -114,7 +114,7 @@ trait ResolvesToolHost
      * Three readings are now accepted. A value already starting with this
      * service's own prefix is the full host, used verbatim. So is a host this
      * tool is ALREADY REGISTERED at, even when it does not start with the
-     * prefix — `grafana:init --domain=monitor.luchtech.dev` names the host
+     * prefix — `tool:init --tool=grafana --domain=monitor.luchtech.dev` names the host
      * monitor is serving, but the prefix is `grafana`, so prefixing turned it
      * into `grafana.monitor.luchtech.dev` and built a second, parallel
      * instance: new Deployments, new Ingress, and a fresh Commons database.

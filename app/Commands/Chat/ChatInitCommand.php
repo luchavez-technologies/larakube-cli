@@ -194,7 +194,7 @@ abstract class ChatInitCommand extends AbstractToolInitCommand
         // — MAS with no upstream IdP configured would just sit idle.
         // resolveSsoHostReadOnly() reads the LIVE cluster-registered host
         // first when $kubectl is given, only falling back to local project
-        // config — passing null here (matrix:init loads no ConfigData of its
+        // config — passing null here (tool:init --tool=matrix loads no ConfigData of its
         // own) is safe rather than a missing-context bug.
         $ssoHost = $this->resolveSsoHostReadOnly($env, null, $kubectl);
         $masDeployed = false;
@@ -204,7 +204,7 @@ abstract class ChatInitCommand extends AbstractToolInitCommand
             // Fresh install (or one already off classic OIDC): MAS just
             // became available for the FIRST time this run and nothing else
             // occupies the auth slot, so activate it immediately — a fresh
-            // cluster reaches full MAS-native auth in ONE matrix:init run,
+            // cluster reaches full MAS-native auth in ONE tool:init --tool=matrix run,
             // never needing a separate migration concept at all. Re-runs
             // where MAS was already active skip this (steady state, no
             // pointless restart); an existing install still on classic OIDC
@@ -231,7 +231,7 @@ abstract class ChatInitCommand extends AbstractToolInitCommand
         // On a cloud VPS, punch Coturn's raw UDP/TCP ports through both
         // firewall layers (DO cloud edge + host UFW) — klipper binds them via
         // hostPort, but both default-deny, so TURN silently never connects.
-        // The SFU's own ports belong to `livekit:init`.
+        // The SFU's own ports belong to `tool:init --tool=livekit`.
         $this->openToolPorts(SharedClusterService::CHAT, $env);
 
         $this->laraKubeNewLine();
@@ -265,7 +265,7 @@ abstract class ChatInitCommand extends AbstractToolInitCommand
             // install ever passes through.
             $this->line('  <fg=gray>Element X (mobile):</> <fg=blue>MAS deployed, pending manual migration off classic SSO</>');
         } else {
-            $this->line('  <fg=gray>Element X (mobile):</> <fg=blue>needs Zitadel — run `larakube zitadel:init` first</>');
+            $this->line('  <fg=gray>Element X (mobile):</> <fg=blue>needs Zitadel — run `larakube tool:init --tool=zitadel` first</>');
         }
 
         if ($adminDeployed) {
@@ -289,7 +289,7 @@ abstract class ChatInitCommand extends AbstractToolInitCommand
      * incompatible with Synapse's own oidc_providers: callback, and MAS is a
      * completely separate auth consumer from Synapse itself).
      *
-     * Idempotent and safe on every matrix:init re-run: it never touches
+     * Idempotent and safe on every tool:init --tool=matrix re-run: it never touches
      * Synapse's own auth mode itself — the caller (deployChat()) decides
      * whether to activate it, via activateMasAuthMode() below, based on
      * whether classic OIDC is already occupying that slot. Returns whether
@@ -346,7 +346,7 @@ abstract class ChatInitCommand extends AbstractToolInitCommand
         // 3. Register MAS itself as an independent Zitadel OIDC client.
         $pat = $this->readSsoSecret($kubectl, $this->ssoNamespace(), 'machine-pat');
         if ($pat === null) {
-            $this->laraKubeLine('  <fg=gray>Skipping Matrix Authentication Service — could not reach Zitadel\'s automation credentials (re-run `larakube zitadel:init` to recapture them).</>');
+            $this->laraKubeLine('  <fg=gray>Skipping Matrix Authentication Service — could not reach Zitadel\'s automation credentials (re-run `larakube tool:init --tool=zitadel` to recapture them).</>');
 
             return false;
         }
@@ -516,7 +516,7 @@ abstract class ChatInitCommand extends AbstractToolInitCommand
      * admin privileges the account already holds. Its Ingress is VPN-only
      * unconditionally (see admin.blade.php's own comment on why), so this
      * must ensure the shared VPN Middleware exists even on installs that
-     * never passed matrix:init --vpn-only — a Traefik router referencing a
+     * never passed tool:init --tool=matrix --vpn-only — a Traefik router referencing a
      * missing Middleware 500s every request, not a harmless no-op.
      */
     protected function deployAdmin(string $kubectl, string $ns, string $host, ToolInstance $names, string $env): bool

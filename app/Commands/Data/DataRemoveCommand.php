@@ -20,7 +20,7 @@ abstract class DataRemoveCommand extends AbstractToolRemoveCommand
     protected $signature = 'directus:remove
         {environment=local : Environment to remove Data / Headless CMS from}
         {--context=  : Target a specific kube-context (defaults to the environment\'s saved cloud target)}
-        {--domain=   : The instance\'s domain/host — the same value you gave directus:init, since that IS its identity. Omit for the default instance}
+        {--domain=   : The instance\'s domain/host — the same value you gave tool:init --tool=directus, since that IS its identity. Omit for the default instance}
         {--engine=   : Restrict removal to "directus", "pocketbase", or "all" — only asked when both are deployed for this instance}
         {--all       : Remove all registered instances of this tool}
         {--purge     : Also destroy persistent data — drop the Plex Commons database and release the Redis index. Irreversible.}
@@ -57,7 +57,7 @@ abstract class DataRemoveCommand extends AbstractToolRemoveCommand
 
     /**
      * Two engines can legitimately coexist on a cluster now (as separate
-     * named instances), but never under the SAME instance — directus:init's
+     * named instances), but never under the SAME instance — tool:init --tool=directus's
      * engine-swap step tears down the previous engine before applying a new
      * one. So for any single instance, at most one engine should ever be
      * live at once.
@@ -169,7 +169,7 @@ abstract class DataRemoveCommand extends AbstractToolRemoveCommand
         return $lines;
     }
 
-    /** The volume directus:init gives a PocketBase instance. */
+    /** The volume tool:init --tool=directus gives a PocketBase instance. */
     private function pocketbaseVolume(string $instance): string
     {
         return ToolInstance::forInstance(ClusterTool::DATA, $instance, 'pocketbase')->volume();

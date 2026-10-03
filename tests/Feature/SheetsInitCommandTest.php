@@ -60,7 +60,7 @@ test('sheets ToolInstance resolves canonical database, buckets, redis and secret
         ->and($instance->bucket('teable-private'))->toBe('teable-private-sheet-example-test');
 });
 
-test('teable:init provisions canonical resources and secret', function (): void {
+test('tool:init --tool=teable provisions canonical resources and secret', function (): void {
     Process::fake([
         '*plex-commons*' => Process::result(output: '{"services":{"postgres":{"enabled":true},"redis":{"enabled":true},"seaweedfs":{"enabled":true,"host":"files.example.com"}}}'),
         '*plex-registry*' => Process::result(output: '{"tenants":{}}'),
@@ -73,6 +73,6 @@ test('teable:init provisions canonical resources and secret', function (): void 
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('teable:init local --force')->assertExitCode(0);
+    $this->artisan('tool:init --tool=teable local --force')->assertExitCode(0);
     Process::assertRan(fn ($process) => str_contains((string) $process->command, 'rollout status deployment/teable-'));
 });

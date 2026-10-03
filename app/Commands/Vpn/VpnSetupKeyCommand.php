@@ -41,7 +41,7 @@ class VpnSetupKeyCommand extends Command
         $ns = $this->vpnNamespace();
 
         if (! $this->isVpnInstalled($kubectl, $ns)) {
-            $this->laraKubeError('NetBird is not installed. Run `larakube netbird:init` first.');
+            $this->laraKubeError('NetBird is not installed. Run `larakube tool:init --tool=netbird` first.');
 
             return 1;
         }

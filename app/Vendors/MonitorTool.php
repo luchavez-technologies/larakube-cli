@@ -45,7 +45,7 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
      * it with a PVC, so it was wiped on every pod recreation (a rollout
      * restart, a node reboot, anything). Confirmed live 2026-08-18 — a
      * teammate's dashboard work was lost this way. Dashboards-as-code (the
-     * JSON files grafana:init provisions into the 'LaraKube' folder) were
+     * JSON files tool:init --tool=grafana provisions into the 'LaraKube' folder) were
      * never affected — those are re-read from a ConfigMap on every boot.
      */
     public function commonsDatabaseList(): array

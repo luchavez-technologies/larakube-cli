@@ -25,7 +25,7 @@ use Throwable;
  * only an account WITH a domain can be shared by SSO users. Neither route the
  * operator has produces one:
  *
- *   - /api/setup (what netbird:init uses to bootstrap) never sets a domain at all,
+ *   - /api/setup (what tool:init --tool=netbird uses to bootstrap) never sets a domain at all,
  *     and single-account mode then copies that empty domain onto every later
  *     login, minting a fresh isolated account each time.
  *   - The dashboard cannot help either: with zero accounts it hard-gates on its
@@ -60,7 +60,7 @@ class VpnSsoLoginCommand extends Command
         $ns = $this->vpnNamespace();
 
         if (! $this->isVpnInstalled($kubectl, $ns)) {
-            $this->laraKubeError('NetBird is not installed. Run `larakube netbird:init` first.');
+            $this->laraKubeError('NetBird is not installed. Run `larakube tool:init --tool=netbird` first.');
 
             return 1;
         }
@@ -130,7 +130,7 @@ class VpnSsoLoginCommand extends Command
         // A bare non-empty check let 'netbird.selfhosted' through once already.
         if ($domain === null || $domain === '') {
             $this->laraKubeError('The account was created without an email domain, so SSO users still cannot share it.');
-            $this->line('  <fg=gray>This is the state netbird:init used to leave behind. Retire it with</>');
+            $this->line('  <fg=gray>This is the state tool:init --tool=netbird used to leave behind. Retire it with</>');
             $this->line('  <fg=blue>  larakube sso:wire '.$env.' --tool=vpn</> <fg=gray>and sign in again.</>');
 
             return 1;
@@ -153,7 +153,7 @@ class VpnSsoLoginCommand extends Command
         $this->laraKubeInfo("✅ Account created, owned by the '{$domain}' domain.");
         $this->newLine();
         $this->line('  <fg=gray>Every SSO sign-in from that domain now lands in this same account.</>');
-        $this->line('  <fg=gray>Finish with</> <fg=blue>larakube netbird:init '.$env.'</><fg=gray> — it recreates the service user,</>');
+        $this->line('  <fg=gray>Finish with</> <fg=blue>larakube tool:init --tool=netbird '.$env.'</><fg=gray> — it recreates the service user,</>');
         $this->line('  <fg=gray>the groups, and the gateway key against it.</>');
         $this->newLine();
 

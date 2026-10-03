@@ -83,7 +83,7 @@ trait InteractsWithClusterIdentity
     }
 
     /**
-     * The ExternalDNS ownership ID for one external-dns:init instance on this cluster.
+     * The ExternalDNS ownership ID for one tool:init --tool=external-dns instance on this cluster.
      * Unique across BOTH axes: two clusters sharing a zone, and one cluster
      * managing several instances, both need distinct owners. $identity is
      * the instance's groupSlug() — a single zone's own slug, or an explicit
@@ -103,7 +103,7 @@ trait InteractsWithClusterIdentity
     }
 
     /**
-     * The identity slug for a external-dns:init instance — an explicit --group name
+     * The identity slug for a tool:init --tool=external-dns instance — an explicit --group name
      * when given, otherwise the sole zone's own slug (byte-for-byte the
      * single-zone default that existed before groups did). Deliberately
      * never derived by hashing/joining the whole zone set: that identity

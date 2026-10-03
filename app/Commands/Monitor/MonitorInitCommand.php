@@ -87,7 +87,7 @@ abstract class MonitorInitCommand extends AbstractToolInitCommand
         // --no-plex is the fallback for a cluster with no Plex Commons at
         // all: still-persistent (a PVC survives pod recreation, unlike the
         // old ephemeral-only setup) but plain SQLite, uninvolved in any
-        // backup routine — mirrors forgejo:init's own --no-plex story.
+        // backup routine — mirrors tool:init --tool=forgejo's own --no-plex story.
         $noPlex = (bool) $this->option('no-plex');
         $dbPassword = null;
 
@@ -105,7 +105,7 @@ abstract class MonitorInitCommand extends AbstractToolInitCommand
             // own rotation — see resolveManagedDbPassword()'s docblock (the
             // same gap took Forgejo down 2026-08-15). This is a READ, not a
             // write: it never registers anything with OpenBao itself — only
-            // `secrets:wire` does that. `grafana:init` doesn't know or care
+            // `secrets:wire` does that. `tool:init --tool=grafana` doesn't know or care
             // whether OpenBao exists otherwise; see ADR-adjacent note in
             // GitInitCommand — `{tool}:init` must never call
             // registerStaticRole()/isOpenBaoBootstrapped() to INITIATE
@@ -269,16 +269,16 @@ abstract class MonitorInitCommand extends AbstractToolInitCommand
         $this->line('  Dashboards: '.implode(', ', $dashboards).'.');
         $this->newLine();
         if ($removedLogs) {
-            $this->line('  <fg=yellow>Log aggregation (Loki + Promtail) removed — run <fg=cyan>larakube grafana:init --with-logs</> anytime to re-enable.</>');
+            $this->line('  <fg=yellow>Log aggregation (Loki + Promtail) removed — run <fg=cyan>larakube tool:init --tool=grafana --with-logs</> anytime to re-enable.</>');
         } elseif (! $withLogs) {
             $this->line('  <fg=yellow>Note:</> Log aggregation (Loki + Promtail) is disabled (~300MB RAM saved).');
-            $this->line('  Run <fg=yellow>larakube grafana:init --with-logs</> anytime to enable log search in Grafana.');
+            $this->line('  Run <fg=yellow>larakube tool:init --tool=grafana --with-logs</> anytime to enable log search in Grafana.');
         }
         if ($removedTraces) {
-            $this->line('  <fg=yellow>Tempo removed — run <fg=cyan>larakube grafana:init --with-traces</> anytime to re-enable.</>');
+            $this->line('  <fg=yellow>Tempo removed — run <fg=cyan>larakube tool:init --tool=grafana --with-traces</> anytime to re-enable.</>');
         } elseif (! $withTraces) {
             $this->line('  <fg=yellow>Note:</> Distributed tracing (Tempo) is disabled (~450MB RAM saved).');
-            $this->line('  Run <fg=yellow>larakube grafana:init --with-traces</> anytime to enable trace search in Grafana.');
+            $this->line('  Run <fg=yellow>larakube tool:init --tool=grafana --with-traces</> anytime to enable trace search in Grafana.');
         }
         $this->newLine();
         if ($env === 'local') {

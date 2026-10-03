@@ -17,7 +17,7 @@ abstract class MonitorRemoveCommand extends AbstractToolRemoveCommand
     /**
      * A --no-plex install never leased a Commons Postgres tenant for
      * Grafana — it keeps SQLite on the Grafana PVC instead (see
-     * grafana:init). Its presence is the signal: --purge must not try to
+     * tool:init --tool=grafana). Its presence is the signal: --purge must not try to
      * drop a 'grafana' Commons database that was never allocated.
      */
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
@@ -33,7 +33,7 @@ abstract class MonitorRemoveCommand extends AbstractToolRemoveCommand
      * The monitoring stack is six separate workloads plus cluster-scoped RBAC,
      * so it can't collapse into one delete: the ClusterRole/ClusterRoleBinding
      * live outside the namespace and would survive a namespace-only teardown,
-     * then collide on the next grafana:init.
+     * then collide on the next tool:init --tool=grafana.
      */
     protected function teardown(string $kubectl, string $namespace): bool
     {

@@ -54,7 +54,7 @@ trait InteractsWithMonitoring
     /**
      * Read-only Grafana host for an env: local → grafana.{dev tld}; a cloud env →
      * the host persisted in .larakube.json (null when not configured yet). Never
-     * prompts or persists — that belongs to grafana:init.
+     * prompts or persists — that belongs to tool:init --tool=grafana.
      */
     protected function resolveGrafanaHostReadOnly(string $env, ?ConfigData $config): ?string
     {

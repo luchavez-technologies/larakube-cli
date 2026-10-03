@@ -1,6 +1,6 @@
 # One `tool:init` for Cluster Tools, schema first
 
-**Status:** Stages 0-3 shipped. Stage 4 (retire the `{tool}:init` aliases and rewrite docs/hints) is not started and is gated on Desktop and docs no longer naming them. Alias list: `ToolInitCommands::LEGACY_ALIASES` (frozen, shrink only).
+**Status:** all stages shipped. `{tool}:init` no longer exists; every tool is deployed with `tool:init <environment> --tool=<slug>`. `tool:add` forwards each tool's own init options, and Desktop draws them from `tool:list --json` (`initFields`).
 
 ## Context
 Cluster Tools have 32 concrete `*:init` leaf commands (~30 lines each, 1,040 lines) over 29 abstract category bases (7,888 lines) that hold the real deploy logic in one `deployXxx()` each. Every leaf's `handle()` is `renderHeader(); return $this->deployXxx();`. They differ only in their option sets and a 5-line `resolveEngine()` on five (pocketbase, directus, n8n, windmill, ocis). The flag sets are hand-written per leaf, and Desktop keeps its own hardcoded admin-email slug list (`ClusterToolController.php:108-112`) because the CLI never says what a tool needs. LaraKube Cloud will later feed tool metadata through the CLI, so this must come from the CLI, like `new:frameworks` did for apps.

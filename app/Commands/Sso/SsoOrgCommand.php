@@ -163,7 +163,7 @@ class SsoOrgCommand extends Command
         return 0;
     }
 
-    /** The partner org's own domain. Required — no default, matching external-dns:init/mail:domain's refusal to guess. */
+    /** The partner org's own domain. Required — no default, matching tool:init --tool=external-dns/mail:domain's refusal to guess. */
     protected function resolveZone(): string
     {
         return $this->flagOrPrompt(

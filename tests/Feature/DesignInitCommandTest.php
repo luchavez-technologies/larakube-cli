@@ -48,11 +48,11 @@ function fakeDesignInitProcess(?string $s3Host = null, ?string &$appliedManifest
     });
 }
 
-test('penpot:init deploys Penpot stack into larakube-shared with Postgres, Redis, and S3 endpoints', function (): void {
+test('tool:init --tool=penpot deploys Penpot stack into larakube-shared with Postgres, Redis, and S3 endpoints', function (): void {
     $appliedManifest = null;
     fakeDesignInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan('penpot:init', [
+    $this->artisan('tool:init', ['--tool' => 'penpot',
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -67,7 +67,7 @@ test('penpot:init deploys Penpot stack into larakube-shared with Postgres, Redis
         ->and($appliedManifest)->toContain('https://files.example.com');
 });
 
-test('penpot:init allocates a real Commons Redis index instead of hardcoding 0', function (): void {
+test('tool:init --tool=penpot allocates a real Commons Redis index instead of hardcoding 0', function (): void {
     // Regression guard: PENPOT_REDIS_URI used to hardcode logical DB index 0
     // directly in the Blade template, bypassing allocateCommonsRedisIndex()
     // entirely — so it was never recorded in the tenant registry and could
@@ -101,7 +101,7 @@ test('penpot:init allocates a real Commons Redis index instead of hardcoding 0',
         };
     });
 
-    $this->artisan('penpot:init', [
+    $this->artisan('tool:init', ['--tool' => 'penpot',
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -112,11 +112,11 @@ test('penpot:init allocates a real Commons Redis index instead of hardcoding 0',
         ->and($appliedManifest)->toContain('redis://redis.larakube-plex.svc.cluster.local:6379/1');
 });
 
-test('penpot:init includes penpot-exporter container when --with-exporter flag is set', function (): void {
+test('tool:init --tool=penpot includes penpot-exporter container when --with-exporter flag is set', function (): void {
     $appliedManifest = null;
     fakeDesignInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan('penpot:init', [
+    $this->artisan('tool:init', ['--tool' => 'penpot',
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--with-exporter' => true,
@@ -128,7 +128,7 @@ test('penpot:init includes penpot-exporter container when --with-exporter flag i
         ->and($appliedManifest)->toContain('PENPOT_EXPORTER_URI');
 });
 
-test('penpot:init errors instead of guessing when multiple instances are already registered and --domain is omitted', function (): void {
+test('tool:init --tool=penpot errors instead of guessing when multiple instances are already registered and --domain is omitted', function (): void {
     // Regression guard for the 2026-08-17 incident: a no-flag re-run used to
     // silently derive a fresh instance slug and create a stray, conflicting
     // Deployment/Ingress alongside the real one. Now it must refuse outright
@@ -143,7 +143,7 @@ test('penpot:init errors instead of guessing when multiple instances are already
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('penpot:init', [
+    $this->artisan('tool:init', ['--tool' => 'penpot',
         'environment' => 'local',
         '--no-interaction' => true,
     ])->run();

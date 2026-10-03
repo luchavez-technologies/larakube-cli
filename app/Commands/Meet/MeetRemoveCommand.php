@@ -30,7 +30,7 @@ abstract class MeetRemoveCommand extends AbstractToolRemoveCommand
             $this->teardownComponentsCommand($kubectl, $namespace, $this->resolveInstance($kubectl)),
         );
 
-        // Reverse livekit:init's port opening — LiveKit is gone, but its UDP/TCP
+        // Reverse tool:init --tool=livekit's port opening — LiveKit is gone, but its UDP/TCP
         // ports left open on the cloud firewall are real exposure with nothing
         // behind them.
         $this->closeToolPorts(SharedClusterService::MEET, (string) $this->argument('environment'));

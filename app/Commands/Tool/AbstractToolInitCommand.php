@@ -11,14 +11,12 @@ use LogicException;
 /**
  * What every Cluster Tool's init command stands on. Given a tool, the command
  * takes its name, signature and description from ToolInitSpec, so nothing is
- * written per tool. A command that declares its own signature (the ones still
- * registered under their own name) is left alone.
+ * written per tool. The command is never registered under that name:
+ * `tool:init` builds it for the tool it is asked to deploy.
  */
 abstract class AbstractToolInitCommand extends Command
 {
     use LaraKubeOutput;
-
-    private bool $legacyAlias = false;
 
     public function __construct(protected ?ClusterTool $initTool = null)
     {
@@ -30,19 +28,9 @@ abstract class AbstractToolInitCommand extends Command
         parent::__construct();
     }
 
-    /** Called for the old `{tool}:init` names, so they say what replaces them. */
-    public function markAsLegacyAlias(): void
-    {
-        $this->legacyAlias = true;
-    }
-
     public function handle(): int
     {
         $this->renderHeader();
-
-        if ($this->legacyAlias) {
-            $this->line("  <fg=gray>{$this->getName()} is now</> <fg=yellow>tool:init <environment> --tool={$this->tool()->canonicalTool()->value}</><fg=gray>; the old name will be removed.</>");
-        }
 
         return $this->runInit();
     }

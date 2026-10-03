@@ -59,7 +59,7 @@ test('vpn:join errors when the VPN is not installed for the environment', functi
     [$command, $output] = vpnJoinRunner();
     expect($command->handle())->toBe(1)
         ->and(State::lastError())->toContain("NetBird VPN isn't installed for 'local'.")
-        ->and($output->fetch())->toContain('larakube netbird:init local');
+        ->and($output->fetch())->toContain('larakube tool:init --tool=netbird local');
 });
 
 test('vpn:join errors when no setup key has been bootstrapped yet', function (): void {

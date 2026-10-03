@@ -3,10 +3,10 @@
     native OIDC login; it does not speak Synapse's classic oidc_providers:
     flow (matrix.blade.php's own $oidc block, which Cinny-era/legacy SSO
     clients used). Rendered and applied by ChatInitCommand::deployMas(), a
-    dedicated step within matrix:init itself (not matrix:init's own main
+    dedicated step within tool:init --tool=matrix itself (not tool:init --tool=matrix's own main
     matrix.blade.php render) — it's deployed unconditionally once Zitadel
     is available, same tier as Coturn/the web client, but keeps its own
-    Postgres/Zitadel/config-generation logic separate since matrix:init's
+    Postgres/Zitadel/config-generation logic separate since tool:init --tool=matrix's
     main render has no business generating MAS's DB password/encryption
     keys.
 

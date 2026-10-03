@@ -60,7 +60,7 @@ abstract class PasswordsInitCommand extends AbstractToolInitCommand
         // Allocate Vaultwarden database in Plex Commons Postgres if available
         $dbPassword = Str::random(24);
 
-        // vaultwarden:init doesn't know or care whether OpenBao exists on this
+        // tool:init --tool=vaultwarden doesn't know or care whether OpenBao exists on this
         // cluster — only secrets:wire --tool=passwords may register the
         // static role and hand rotation over to it. This is a
         // READ-only exception: it defers to OpenBao's current password when

@@ -159,7 +159,7 @@ test('openbao gets an auto-unseal postStart hook when autoUnseal is true', funct
     $volumes = $deployment['spec']['template']['spec']['volumes'] ?? [];
     $bootstrap = collect($volumes)->firstWhere('name', 'bootstrap');
     expect($bootstrap)->not->toBeNull();
-    // optional: true — a fresh install (before openbao:init creates
+    // optional: true — a fresh install (before tool:init --tool=openbao creates
     // openbao-secrets-secrets-example-com) must still start; the hook just no-ops.
     expect($bootstrap['secret']['optional'] ?? null)->toBeTrue();
     expect($bootstrap['secret']['secretName'] ?? null)->toBe('openbao-secrets-secrets-example-com');

@@ -64,6 +64,12 @@ class ToolInitCommand extends Command
 
         $command = ToolInitCommands::for($tool);
         $command->setLaravel($this->laravel);
+        // The application's own options (--no-interaction and the rest) are part of what the deploy reads.
+        $command->setApplication($this->getApplication());
+
+        if ($this->option('no-interaction')) {
+            $params['--no-interaction'] = true;
+        }
 
         $input = new ArrayInput($params);
         $input->setInteractive(! $this->option('no-interaction'));
@@ -76,7 +82,8 @@ class ToolInitCommand extends Command
         $tool = ClusterTool::tryFrom(strtolower(trim($slug)));
         $available = array_values(array_filter(ClusterTool::shippedCases(), fn (ClusterTool $case): bool => ToolInitCommands::has($case)));
 
-        if ($tool === null || ! in_array($tool, $available, true)) {
+        // A tool that is not shipped still resolves, so its own init can say why it is refused.
+        if ($tool === null || ! ToolInitCommands::has($tool)) {
             $this->laraKubeError($slug === '' ? 'Say which tool to deploy with --tool=.' : "Unknown tool '{$slug}'.");
             $this->line('  <fg=gray>One of:</> '.implode(', ', array_map(fn (ClusterTool $case): string => $case->value, $available)));
 

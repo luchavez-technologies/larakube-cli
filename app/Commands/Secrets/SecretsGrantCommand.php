@@ -43,7 +43,7 @@ class SecretsGrantCommand extends Command
 
         $toolHost = $this->resolveSecretsHostReadOnly($environment, $config);
         if ($toolHost === null) {
-            $this->laraKubeError("No host configured for the secrets backend in '{$environment}' — run `openbao:init` first.");
+            $this->laraKubeError("No host configured for the secrets backend in '{$environment}' — run `tool:init --tool=openbao` first.");
 
             return 1;
         }

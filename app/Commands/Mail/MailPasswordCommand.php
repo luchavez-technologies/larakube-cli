@@ -54,7 +54,7 @@ class MailPasswordCommand extends Command
         $ns = $this->mailNamespace();
 
         if (! $this->isMailInstalled($kubectl, $ns)) {
-            $this->laraKubeError('Stalwart is not installed. Run `larakube stalwart:init` first.');
+            $this->laraKubeError('Stalwart is not installed. Run `larakube tool:init --tool=stalwart` first.');
 
             return 1;
         }
@@ -158,7 +158,7 @@ class MailPasswordCommand extends Command
 
         if (! $this->isSsoInstalled($ssoKubectl, $ssoNs)) {
             if ($this->option('sso')) {
-                $this->laraKubeError('--sso was requested, but Zitadel is not installed. Run `larakube zitadel:init` first.');
+                $this->laraKubeError('--sso was requested, but Zitadel is not installed. Run `larakube tool:init --tool=zitadel` first.');
             }
 
             return;
@@ -178,7 +178,7 @@ class MailPasswordCommand extends Command
         $pat = $this->readSsoSecret($ssoKubectl, $ssoNs, 'machine-pat');
 
         if ($host === null || $pat === null) {
-            $this->laraKubeError('Mailbox password updated, but could not reach Zitadel\'s automation credentials — re-run `larakube zitadel:init`, then update the SSO password via the console.');
+            $this->laraKubeError('Mailbox password updated, but could not reach Zitadel\'s automation credentials — re-run `larakube tool:init --tool=zitadel`, then update the SSO password via the console.');
 
             return;
         }

@@ -1,5 +1,5 @@
 @php
-    // Rendered both by bulwark:init (which passes these) and by the shared
+    // Rendered both by tool:init --tool=bulwark (which passes these) and by the shared
     // ingress path (which passes only the host), so derive what is missing.
     $instance = ($instance ?? '') !== ''
         ? $instance

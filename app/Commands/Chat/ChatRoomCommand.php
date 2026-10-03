@@ -21,7 +21,7 @@ use LaravelZero\Framework\Commands\Command;
  * members not already in the room.
  *
  * Invite IDs must use the shared homeserver's OWN server_name (the same
- * host matrix:init deployed, e.g. @alice:luchtech.dev) — Synapse has no
+ * host tool:init --tool=matrix deployed, e.g. @alice:luchtech.dev) — Synapse has no
  * federation identity for a partner's own domain (e.g. partner.example); their
  * people are chat:user-created accounts on this same homeserver.
  */
@@ -58,7 +58,7 @@ class ChatRoomCommand extends Command
         $ns = $this->chatNamespace();
 
         if (! $this->isChatInstalled($kubectl, $ns)) {
-            $this->laraKubeError('Chat is not installed. Run `larakube matrix:init` first.');
+            $this->laraKubeError('Chat is not installed. Run `larakube tool:init --tool=matrix` first.');
 
             return 1;
         }
@@ -72,7 +72,7 @@ class ChatRoomCommand extends Command
 
         $adminToken = $this->matrixAdminToken($kubectl, $ns, $host);
         if ($adminToken === null) {
-            $this->laraKubeError('Could not reach Matrix\'s automation credentials — check the Synapse credentials Secret has a registration-secret (re-run `larakube matrix:init` if needed).');
+            $this->laraKubeError('Could not reach Matrix\'s automation credentials — check the Synapse credentials Secret has a registration-secret (re-run `larakube tool:init --tool=matrix` if needed).');
 
             return 1;
         }

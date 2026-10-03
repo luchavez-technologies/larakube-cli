@@ -64,7 +64,7 @@ abstract class SupportInitCommand extends AbstractToolInitCommand
 
         $adminEmail = $this->readSupportSecret($kubectl, $ns, $names->secret(), 'admin-email') ?? $this->resolveAdminEmail($host);
         $dbPassword = $this->readSupportSecret($kubectl, $ns, $names->secret(), 'db-password') ?? Str::random(24);
-        // chatwoot:init doesn't know or care whether OpenBao is installed —
+        // tool:init --tool=chatwoot doesn't know or care whether OpenBao is installed —
         // only secrets:wire --tool=support may register this instance's database
         // static role. This is a READ-only exception: it defers to OpenBao's
         // current password when a PAST secrets:wire run already made it the

@@ -210,7 +210,7 @@ abstract class SsoInitCommand extends AbstractToolInitCommand
         if (! $machinePatCaptured) {
             $this->line('  <fg=yellow>⚠ Automation token not captured yet.</> `larakube sso:wire` and');
             $this->line('  `larakube mail:create --sso` use it to talk to Zitadel\'s API. Re-run');
-            $this->line("  <fg=blue>larakube zitadel:init {$env}</> once the pod is fully ready; if it keeps");
+            $this->line("  <fg=blue>larakube tool:init --tool=zitadel {$env}</> once the pod is fully ready; if it keeps");
             $this->line('  missing, you can still wire tools by hand in the Zitadel console.');
             $this->newLine();
         }

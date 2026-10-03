@@ -44,7 +44,7 @@ class SecretsRotateCommand extends Command
         $kubectl = Kubectl::forContext($context)->prefix();
 
         if (! $this->secretsBackendAvailable($kubectl)) {
-            $this->laraKubeWarn('OpenBao is not deployed. Run `larakube openbao:init` first.');
+            $this->laraKubeWarn('OpenBao is not deployed. Run `larakube tool:init --tool=openbao` first.');
 
             return 1;
         }

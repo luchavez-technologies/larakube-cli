@@ -53,7 +53,7 @@ class SecretsExportCommand extends Command
         $token = $this->readOpenBaoBootstrapSecret($kubectl, $ns, 'root-token');
 
         if ($token === null) {
-            $this->laraKubeError('OpenBao is not bootstrapped on this cluster. Run openbao:init first.');
+            $this->laraKubeError('OpenBao is not bootstrapped on this cluster. Run tool:init --tool=openbao first.');
 
             return 1;
         }

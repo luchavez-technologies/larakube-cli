@@ -4,7 +4,7 @@
      change — NOT kept in lockstep with matrix.blade.php's MAS compat-
      endpoint carve-out. A local chat install with MAS-native auth already
      active would have that carve-out silently dropped on the next `up`
-     until `matrix:init` re-applies it. Low-stakes in practice — Element
+     until `tool:init --tool=matrix` re-applies it. Low-stakes in practice — Element
      X/MAS needs a real public TLS domain, so this combination (local dev +
      active MAS auth) is expected to be rare — but a known, undone gap, not
      an oversight. $webName IS kept in lockstep though — $host is already

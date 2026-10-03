@@ -1,5 +1,5 @@
 @php
-    // `up` reconciles this Ingress with only the host; forgejo:init derives the
+    // `up` reconciles this Ingress with only the host; tool:init --tool=forgejo derives the
     // instance from the host the same way.
     $instance ??= \App\Enums\ClusterTool::GIT->instanceSlugFromHost($host);
     $tool = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::GIT, $instance);

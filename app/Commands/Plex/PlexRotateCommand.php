@@ -149,7 +149,7 @@ class PlexRotateCommand extends Command
 
         $this->line('  <fg=yellow>Literal rotation (OpenBao not bootstrapped).</> <fg=gray>New values are written</>');
         $this->line('  <fg=gray>into .env, so a redeploy IS required before anything uses them.</>');
-        $this->line('  <fg=gray>  Want clean rotation? Run</> <fg=blue>larakube openbao:init</> <fg=gray>first.</>');
+        $this->line('  <fg=gray>  Want clean rotation? Run</> <fg=blue>larakube tool:init --tool=openbao</> <fg=gray>first.</>');
     }
 
     /**

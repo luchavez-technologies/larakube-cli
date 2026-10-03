@@ -32,7 +32,7 @@ class VpnUsersCommand extends Command
 
         if (! $this->isVpnInstalled($kubectl, $ns)) {
             $this->laraKubeError("NetBird VPN isn't installed for '{$env}'.");
-            $this->line("  Run <fg=yellow>larakube netbird:init {$env}</> first.");
+            $this->line("  Run <fg=yellow>larakube tool:init --tool=netbird {$env}</> first.");
 
             return 1;
         }
@@ -46,7 +46,7 @@ class VpnUsersCommand extends Command
 
         $pat = $this->fetchVpnPat($kubectl, $ns);
         if ($pat === null) {
-            $this->laraKubeError("No NetBird admin token found — re-run `larakube netbird:init {$env}` to bootstrap auth.");
+            $this->laraKubeError("No NetBird admin token found — re-run `larakube tool:init --tool=netbird {$env}` to bootstrap auth.");
 
             return 1;
         }

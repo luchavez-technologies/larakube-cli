@@ -12,7 +12,7 @@ abstract class CrmRemoveCommand extends AbstractToolRemoveCommand
         return ClusterTool::CRM;
     }
 
-    // CRM has no bundled-storage mode (no --no-plex in twenty:init — it always
+    // CRM has no bundled-storage mode (no --no-plex in tool:init --tool=twenty — it always
     // leases a Commons Postgres tenant), so the base class's default
     // (never bundled) is correct as-is.
 

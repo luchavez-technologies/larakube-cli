@@ -15,7 +15,7 @@ function capturedRegistrationWrite(string $command): ?array
 }
 
 test('registerDeployedTool merges $extra metadata alongside the host, e.g. adminEmail', function (): void {
-    // directus:init/zitadel:init all pass adminEmail through this same
+    // tool:init --tool=directus/tool:init --tool=zitadel all pass adminEmail through this same
     // seam — a regression here silently drops it from the registry for
     // every one of them at once.
     $trait = new class

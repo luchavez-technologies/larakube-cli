@@ -6,9 +6,9 @@
  * embedded Dex rather than the external IdP.
  *
  * Its reason for existing is keeping two things in step: the password inside
- * Dex, and the copy netbird:init stores in netbird-secrets and prints. Changing only
+ * Dex, and the copy tool:init --tool=netbird stores in netbird-secrets and prints. Changing only
  * the first (a hand-rolled `netbird-mgmt admin user change-password`) leaves
- * the stored copy stale, and the next netbird:init prints a password that does not
+ * the stored copy stale, and the next tool:init --tool=netbird prints a password that does not
  * work.
  */
 
@@ -61,7 +61,7 @@ test('vpn:password never puts the new password in the container process list', f
         && ! str_contains($process->command, '--password hunter2-hunter2'));
 });
 
-test('vpn:password defaults to the account netbird:init created', function (): void {
+test('vpn:password defaults to the account tool:init --tool=netbird created', function (): void {
     $kubectl = vpnPasswordKubectl();
     Process::fake(vpnPasswordFakes($kubectl, adminEmail: 'owner@example.com'));
 

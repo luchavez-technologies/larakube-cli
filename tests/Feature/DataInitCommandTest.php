@@ -5,15 +5,15 @@ use App\Commands\Directus\DirectusShowCommand;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Process;
 
-test('directus:init, directus:show, and directus:remove are registered', function (): void {
+test('tool:init, directus:show and directus:remove are registered', function (): void {
     $this->artisan('list --no-interaction')
         ->assertExitCode(0)
-        ->expectsOutputToContain('directus:init')
+        ->expectsOutputToContain('tool:init')
         ->expectsOutputToContain('directus:show')
         ->expectsOutputToContain('directus:remove');
 });
 
-test('directus:init deploys Directus with Postgres, Redis, and SeaweedFS S3', function (): void {
+test('tool:init --tool=directus deploys Directus with Postgres, Redis, and SeaweedFS S3', function (): void {
     Process::fake([
         '*plex-commons*' => Process::result(output: '{"services":{"postgres":{"enabled":true},"redis":{"enabled":true},"seaweedfs":{"enabled":true}}}'),
         '*plex-registry*' => Process::result(output: '{"tenants":{}}'),
@@ -28,7 +28,7 @@ test('directus:init deploys Directus with Postgres, Redis, and SeaweedFS S3', fu
         '*rollout status*' => Process::result(output: 'deployment successfully rolled out'),
     ]);
 
-    $this->artisan('directus:init', [
+    $this->artisan('tool:init', ['--tool' => 'directus',
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -68,7 +68,7 @@ test('data manifest wires the Commons Redis via the generic REDIS var, not CACHE
     expect($m[1] ?? null)->toBe('redis://redis.larakube-plex.svc.cluster.local:6379/4');
 });
 
-test('directus:init returns a failing exit code and does not claim success when kubectl apply is rejected', function (): void {
+test('tool:init --tool=directus returns a failing exit code and does not claim success when kubectl apply is rejected', function (): void {
     // Regression guard: withSpin()'s success check is `!== false`, and the
     // old runStreaming() call returned an int exit code — never `=== false`
     // — so a rejected kubectl apply still printed a green check and "Directus
@@ -88,7 +88,7 @@ test('directus:init returns a failing exit code and does not claim success when 
         '*rollout status*' => Process::result(output: 'deployment successfully rolled out'),
     ]);
 
-    $this->artisan('directus:init', [
+    $this->artisan('tool:init', ['--tool' => 'directus',
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -101,7 +101,7 @@ test('data manifest declares the mail:wire/sso:wire static keys as literals, not
     // Regression guard: mail:wire/sso:wire set these 6 keys via plain
     // literals (kubectl set env NAME=value), never through the data-smtp/
     // data-oidc Secrets. Declaring them here as valueFrom made a later
-    // directus:init re-run fail — kubectl apply's merge re-adds valueFrom on top
+    // tool:init --tool=directus re-run fail — kubectl apply's merge re-adds valueFrom on top
     // of the live literal value already set, and the two are mutually
     // exclusive (the exact bug confirmed live on Documenso, 2026-08-05).
     $manifest = view('k8s.data.shared', [
@@ -164,7 +164,7 @@ function fakeDataInitProcess(bool $ssoWired, ?string &$appliedManifest): void
     });
 }
 
-test('directus:init omits zitadel from AUTH_PROVIDERS until sso:wire has actually registered it', function (): void {
+test('tool:init --tool=directus omits zitadel from AUTH_PROVIDERS until sso:wire has actually registered it', function (): void {
     // Regression guard for a real incident (2026-08-05): Directus eagerly
     // constructs an OpenIDAuthDriver for every provider named in
     // AUTH_PROVIDERS. Listing "zitadel" unconditionally — before sso:wire
@@ -174,7 +174,7 @@ test('directus:init omits zitadel from AUTH_PROVIDERS until sso:wire has actuall
     $appliedManifest = null;
     fakeDataInitProcess(ssoWired: false, appliedManifest: $appliedManifest);
 
-    $this->artisan('directus:init', [
+    $this->artisan('tool:init', ['--tool' => 'directus',
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -184,11 +184,11 @@ test('directus:init omits zitadel from AUTH_PROVIDERS until sso:wire has actuall
     expect($m[1] ?? null)->toBe('local');
 });
 
-test('directus:init includes zitadel in AUTH_PROVIDERS once sso:wire has registered it', function (): void {
+test('tool:init --tool=directus includes zitadel in AUTH_PROVIDERS once sso:wire has registered it', function (): void {
     $appliedManifest = null;
     fakeDataInitProcess(ssoWired: true, appliedManifest: $appliedManifest);
 
-    $this->artisan('directus:init', [
+    $this->artisan('tool:init', ['--tool' => 'directus',
         'environment' => 'local',
         '--admin-email' => 'admin@example.com',
         '--no-interaction' => true,
@@ -274,20 +274,20 @@ test('directus:remove tears down Directus stack', function (): void {
         ->assertExitCode(0);
 });
 
-test('directus:init refuses to deploy when host is already in use by the other engine in non-interactive mode', function (): void {
+test('tool:init --tool=directus refuses to deploy when host is already in use by the other engine in non-interactive mode', function (): void {
     Process::fake([
         '*get deployment directus-data-dev-test*' => Process::result(output: 'directus-data-dev-test   1/1   1   1   10d'),
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('pocketbase:init local --domain=data.dev.test --admin-email=admin@example.com --force')
+    $this->artisan('tool:init --tool=pocketbase local --domain=data.dev.test --admin-email=admin@example.com --force')
         ->assertExitCode(1)
         ->expectsOutputToContain('already in use by Directus');
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'delete'));
 });
 
-test('directus:init does not conflict with a different instance\'s engine', function (): void {
+test('tool:init --tool=directus does not conflict with a different instance\'s engine', function (): void {
     Process::fake([
         '*get deployment directus-blog-example-com*' => Process::result(output: ''),
         '*get deployment directus-data-dev-test*' => Process::result(output: 'directus-data-dev-test   1/1   1   1   10d'),
@@ -299,7 +299,7 @@ test('directus:init does not conflict with a different instance\'s engine', func
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('pocketbase:init local --domain=blog.example.com --admin-email=admin@example.com --force')
+    $this->artisan('tool:init --tool=pocketbase local --domain=blog.example.com --admin-email=admin@example.com --force')
         ->assertExitCode(0);
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'delete'));

@@ -27,7 +27,7 @@ class MailDeleteCommand extends Command
         {environment=local : Environment whose mail server to target}
         {--email= : Email address of the account to delete}
         {--force    : Skip confirmation prompt}
-        {--sso      : Also remove the matching SSO identity (requires zitadel:init)}
+        {--sso      : Also remove the matching SSO identity (requires tool:init --tool=zitadel)}
         {--no-sso     : Never touch SSO, even interactively}
         {--context= : Target a specific kube-context}';
 
@@ -52,7 +52,7 @@ class MailDeleteCommand extends Command
         $ns = $this->mailNamespace();
 
         if (! $this->isMailInstalled($kubectl, $ns)) {
-            $this->laraKubeError('Stalwart is not installed. Run `larakube stalwart:init` first.');
+            $this->laraKubeError('Stalwart is not installed. Run `larakube tool:init --tool=stalwart` first.');
 
             return 1;
         }
@@ -127,7 +127,7 @@ class MailDeleteCommand extends Command
 
         if (! $this->isSsoInstalled($ssoKubectl, $ssoNs)) {
             if ($this->option('sso')) {
-                $this->laraKubeError('--sso was requested, but Zitadel is not installed. Run `larakube zitadel:init` first.');
+                $this->laraKubeError('--sso was requested, but Zitadel is not installed. Run `larakube tool:init --tool=zitadel` first.');
             }
 
             return;
@@ -143,7 +143,7 @@ class MailDeleteCommand extends Command
         $pat = $this->readSsoSecret($ssoKubectl, $ssoNs, 'machine-pat');
 
         if ($host === null || $pat === null) {
-            $this->laraKubeError('Could not reach Zitadel\'s automation credentials — re-run `larakube zitadel:init` to recapture them, then remove the SSO identity manually via the console.');
+            $this->laraKubeError('Could not reach Zitadel\'s automation credentials — re-run `larakube tool:init --tool=zitadel` to recapture them, then remove the SSO identity manually via the console.');
 
             return;
         }

@@ -94,7 +94,7 @@ test('gitAccess probes the Deployment for the env host, and is null when it is a
         ->and($access['label'])->toBe('Forgejo');
 });
 
-test('ensureForgejoPullSecret copies the registry token forgejo:init minted for the registry host', function (): void {
+test('ensureForgejoPullSecret copies the registry token tool:init --tool=forgejo minted for the registry host', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
     $create = "{$kubectl} create secret docker-registry forgejo-login -n 'demo-production' --docker-server='git.example.com' --docker-username='larakube' --docker-password='tok123' --docker-email=admin@larakube.local";
 

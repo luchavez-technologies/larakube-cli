@@ -3,7 +3,7 @@
 use Illuminate\Support\Facades\Process;
 
 /**
- * Fakes a cluster for n8n:init. $secret seeds the instance's existing
+ * Fakes a cluster for tool:init --tool=n8n. $secret seeds the instance's existing
  * credentials Secret; $liveDeployments are Deployments already running.
  *
  * @param  array<string, string>  $secret
@@ -50,7 +50,8 @@ function fakeFlowInitCluster(?array &$seen, array $secret = [], array $liveDeplo
 
 function runFlowInit(string $engine = 'n8n'): Illuminate\Testing\PendingCommand
 {
-    return test()->artisan($engine === 'windmill' ? 'windmill:init' : 'n8n:init', [
+    return test()->artisan('tool:init', [
+        '--tool' => $engine === 'windmill' ? 'windmill' : 'n8n',
         'environment' => 'local',
         '--domain' => 'flow.example.com',
         '--force' => true,
@@ -58,7 +59,7 @@ function runFlowInit(string $engine = 'n8n'): Illuminate\Testing\PendingCommand
     ]);
 }
 
-test('n8n:init names every n8n resource after its host and pins the image from the N8n class', function (): void {
+test('tool:init --tool=n8n names every n8n resource after its host and pins the image from the N8n class', function (): void {
     fakeFlowInitCluster($seen);
 
     runFlowInit()->assertExitCode(0);
@@ -74,7 +75,7 @@ test('n8n:init names every n8n resource after its host and pins the image from t
         ->and($seen['secret']['metadata']['name'] ?? null)->toBe('n8n-secrets-flow-example-com');
 });
 
-test('n8n:init reuses the instance\'s encryption key and never puts it in argv', function (): void {
+test('tool:init --tool=n8n reuses the instance\'s encryption key and never puts it in argv', function (): void {
     fakeFlowInitCluster($seen, ['encryption-key' => 'kept-encryption-key', 'db-password' => 'kept-db-password']);
 
     runFlowInit()->assertExitCode(0);
@@ -83,7 +84,7 @@ test('n8n:init reuses the instance\'s encryption key and never puts it in argv',
         ->and(base64_decode($seen['secret']['data']['db-password']))->toBe('kept-db-password')->and($seen['commands'])->each->not->toContain('kept-encryption-key');
 });
 
-test('n8n:init refuses a second engine on a host that already runs one', function (): void {
+test('tool:init --tool=n8n refuses a second engine on a host that already runs one', function (): void {
     fakeFlowInitCluster($seen, liveDeployments: ['n8n-flow-example-com']);
 
     runFlowInit('windmill')
@@ -93,7 +94,7 @@ test('n8n:init refuses a second engine on a host that already runs one', functio
     expect($seen['manifest'])->toBeNull();
 });
 
-test('n8n:init windmill names its resources after its host too', function (): void {
+test('windmill names its resources after its host too', function (): void {
     fakeFlowInitCluster($seen);
 
     runFlowInit('windmill')->assertExitCode(0);
@@ -105,10 +106,10 @@ test('n8n:init windmill names its resources after its host too', function (): vo
         ->not->toContain('flow-secrets');
 });
 
-test('n8n:init deploys each engine locally at its default host using Plex Commons Postgres', function (string $engine, string $label): void {
+test('tool:init deploys each engine locally at its default host using Plex Commons Postgres', function (string $engine, string $label): void {
     fakeFlowInitCluster($seen);
 
-    $this->artisan("{$engine}:init local")
+    $this->artisan("tool:init --tool={$engine} local")
         ->assertExitCode(0)
         ->expectsOutputToContain("Applying Flow ({$label}) manifests...")
         ->expectsOutputToContain("Flow ({$label}) stack is live.");
@@ -117,7 +118,7 @@ test('n8n:init deploys each engine locally at its default host using Plex Common
         ->toContain('postgres.larakube-plex.svc.cluster.local');
 })->with([['n8n', 'n8n'], ['windmill', 'Windmill']]);
 
-test('n8n:init stops, instead of reporting it live, when the rollout fails', function (): void {
+test('tool:init --tool=n8n stops, instead of reporting it live, when the rollout fails', function (): void {
     fakeFlowInitCluster($seen, rolloutFails: true);
 
     runFlowInit()

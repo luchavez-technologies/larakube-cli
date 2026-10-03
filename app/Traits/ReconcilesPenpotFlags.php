@@ -7,7 +7,7 @@ use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
 /**
- * The single place Penpot's PENPOT_FLAGS gets computed. penpot:init,
+ * The single place Penpot's PENPOT_FLAGS gets computed. tool:init --tool=penpot,
  * sso:wire, and mail:wire each used to independently union whatever string
  * was already stored with their own addition — a mechanism that can only
  * ever GROW the flag set, never correct it. That's what let `enable-mcp`
@@ -32,7 +32,7 @@ trait ReconcilesPenpotFlags
      * @param  bool|null  $ssoOnly  Explicit true/false when the caller knows
      *                              for certain (sso:wire's own --sso-only option this run); null to
      *                              infer from whatever the live pod currently has, so an unrelated
-     *                              penpot:init/mail:wire run doesn't silently revert a previously
+     *                              tool:init --tool=penpot/mail:wire run doesn't silently revert a previously
      *                              enabled --sso-only mode it knows nothing about.
      */
     protected function resolveDesignPenpotFlags(
@@ -92,11 +92,11 @@ trait ReconcilesPenpotFlags
      * `kubectl set env ... PENPOT_FLAGS=<value>`. See
      * docs/decisions/0018-wire-commands-never-literal-env.md: a literal
      * write desyncs `kubectl apply`'s bookkeeping and permanently breaks
-     * every future `penpot:init` re-apply, which is worse than the problem
+     * every future `tool:init --tool=penpot` re-apply, which is worse than the problem
      * it solved. A rollout restart delivers the same "reaches the pod now"
      * guarantee without ever touching the env array's shape — the
      * Deployment template's optional `secretKeyRef` for PENPOT_FLAGS
-     * (penpot:init's own base manifest) picks up the new Secret value on
+     * (tool:init --tool=penpot's own base manifest) picks up the new Secret value on
      * the restart.
      *
      * Idempotent by construction — a no-op (no restart) when the value is

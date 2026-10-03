@@ -111,7 +111,7 @@ test('every vpn resource carries the identity labels discovery selects on', func
 
 test('the commons tenant is named after the deployment that owns it', function (): void {
     // `netbird-…` ↔ `netbird_…`. The rule that keeps a purge from dropping
-    // nothing: netbird:init and netbird:remove --purge both derive the name here.
+    // nothing: tool:init --tool=netbird and netbird:remove --purge both derive the name here.
     expect(ClusterTool::VPN->commonsDatabases(vpnNames()->instance))
         ->toBe(['netbird_vpn_example_com']);
 });

@@ -100,7 +100,7 @@ abstract class SecretsRemoveCommand extends AbstractToolRemoveCommand
         // (blockOwnerDeletion: true) on the forgejo Secret. openbao:remove's
         // job is "remove OpenBao from this environment," not "remove the
         // sync mechanism cluster-wide" — those are different scopes that
-        // just happen to ship together via openbao:init today.
+        // just happen to ship together via tool:init --tool=openbao today.
         return $ok;
     }
 }

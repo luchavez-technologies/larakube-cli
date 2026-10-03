@@ -46,7 +46,7 @@ class MailRestartCommand extends Command
         $ns = $this->mailNamespace();
 
         if (! $this->isMailInstalled($kubectl, $ns)) {
-            $this->laraKubeError("No Stalwart mail server found in {$ns} for '{$env}'. Deploy it with `larakube stalwart:init {$env}` first.");
+            $this->laraKubeError("No Stalwart mail server found in {$ns} for '{$env}'. Deploy it with `larakube tool:init --tool=stalwart {$env}` first.");
 
             return 1;
         }
@@ -73,7 +73,7 @@ class MailRestartCommand extends Command
 
     /**
      * Which environment the mail server lives in — explicit arg / --env wins,
-     * else prompt with the project's environments (mirrors stalwart:init).
+     * else prompt with the project's environments (mirrors tool:init --tool=stalwart).
      */
     protected function resolveEnvironment(): string
     {

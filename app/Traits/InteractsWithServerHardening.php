@@ -146,7 +146,7 @@ BASH;
     /**
      * Install the NetBird client and join it to the project's VPN, making the
      * VPS HOST itself a peer — unlike the in-cluster `netbird-client` pod
-     * `netbird:init` deploys (which only gets a pod-network IP and can never be
+     * `tool:init --tool=netbird` deploys (which only gets a pod-network IP and can never be
      * what a host firewall keys off of), this gets a real overlay IP that
      * `hardenServerScript()`'s $vpnCidr can restrict SSH/6443 to. Pure builder,
      * same shape as hardenServerScript()/disableRootLoginScript(); orchestrated

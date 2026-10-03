@@ -24,7 +24,7 @@ use LaravelZero\Framework\Commands\Command;
  * Switch a cloud cluster's Let's Encrypt certificates to the Cloudflare DNS
  * challenge, so hosts keep renewing when they're proxied through Cloudflare.
  *
- * Unrelated to ExternalDNS apart from the credential: a token `external-dns:init`
+ * Unrelated to ExternalDNS apart from the credential: a token `tool:init --tool=external-dns`
  * stored is offered for reuse, and one is asked for when it never ran.
  */
 class TlsInitCommand extends Command
@@ -35,7 +35,7 @@ class TlsInitCommand extends Command
     protected $signature = 'tls:init
         {environment? : The cloud environment whose cluster gets the DNS challenge}
         {--context=  : Target a specific kube-context}
-        {--group=    : Reuse the Cloudflare token of this external-dns:init group}
+        {--group=    : Reuse the Cloudflare token of this tool:init --tool=external-dns group}
         {--force     : Skip the confirmation prompt}';
 
     protected $description = 'Issue Let\'s Encrypt certificates through the Cloudflare DNS challenge, so proxied hosts keep renewing';
@@ -114,7 +114,7 @@ class TlsInitCommand extends Command
         }
 
         // Traefik runs in its own namespace and can't read a Secret elsewhere,
-        // so even a reused external-dns:init token is copied. Piped on stdin, never argv.
+        // so even a reused tool:init --tool=external-dns token is copied. Piped on stdin, never argv.
         $stored = Process::input($token)->run(
             "{$kubectl} create secret generic ".self::TRAEFIK_ACME_TOKEN_SECRET.' -n traefik '
             ."--from-file=token=/dev/stdin --dry-run=client -o yaml | {$kubectl} apply -f -",
@@ -161,7 +161,7 @@ class TlsInitCommand extends Command
 
         if ($group !== '') {
             if (! isset($stored[$group])) {
-                $this->laraKubeError("No external-dns:init token is stored for group '{$group}'.");
+                $this->laraKubeError("No tool:init --tool=external-dns token is stored for group '{$group}'.");
                 if ($stored !== []) {
                     $this->line('  <fg=gray>Stored groups:</> '.implode(', ', array_keys($stored)));
                 }
@@ -169,30 +169,30 @@ class TlsInitCommand extends Command
                 return null;
             }
 
-            return [$stored[$group], "reused from external-dns:init ({$group})"];
+            return [$stored[$group], "reused from tool:init --tool=external-dns ({$group})"];
         }
 
         if (count($stored) === 1) {
             $slug = (string) array_key_first($stored);
 
-            if ($this->cannotPrompt() || confirm("Reuse the Cloudflare token external-dns:init stored for '{$slug}'?")) {
-                return [$stored[$slug], "reused from external-dns:init ({$slug})"];
+            if ($this->cannotPrompt() || confirm("Reuse the Cloudflare token tool:init --tool=external-dns stored for '{$slug}'?")) {
+                return [$stored[$slug], "reused from tool:init --tool=external-dns ({$slug})"];
             }
         } elseif (count($stored) > 1) {
             if ($this->cannotPrompt()) {
                 throw new MissingFlagException(
                     'group',
-                    'which external-dns:init group\'s Cloudflare token to reuse ('.implode(', ', array_keys($stored)).')',
+                    'which tool:init --tool=external-dns group\'s Cloudflare token to reuse ('.implode(', ', array_keys($stored)).')',
                     '--group='.array_key_first($stored),
                 );
             }
 
             $slug = (string) select(
-                label: 'Which external-dns:init Cloudflare token should Traefik use?',
+                label: 'Which tool:init --tool=external-dns Cloudflare token should Traefik use?',
                 options: array_combine(array_keys($stored), array_keys($stored)),
             );
 
-            return [$stored[$slug], "reused from external-dns:init ({$slug})"];
+            return [$stored[$slug], "reused from tool:init --tool=external-dns ({$slug})"];
         }
 
         $fromEnv = (string) getenv(self::TLS_TOKEN_ENV);
@@ -208,7 +208,7 @@ class TlsInitCommand extends Command
 
         if ($stored === []) {
             $this->newLine();
-            $this->line('  <fg=gray>No token from</> <fg=blue>external-dns:init</> <fg=gray>on this cluster, and that\'s fine: ExternalDNS isn\'t needed.</>');
+            $this->line('  <fg=gray>No token from</> <fg=blue>tool:init --tool=external-dns</> <fg=gray>on this cluster, and that\'s fine: ExternalDNS isn\'t needed.</>');
             $this->line('  <fg=gray>Your DNS records can stay hand-managed. Traefik only writes short-lived</>');
             $this->line('  <fg=gray>_acme-challenge TXT records while it proves control of a domain.</>');
         }

@@ -64,11 +64,11 @@ function fakeSignInitProcess(?string $s3Host, ?string &$appliedManifest, int $ap
     });
 }
 
-test('documenso:init signs Documenso\'s S3 endpoint against the Commons public host, not cluster-internal DNS', function (): void {
+test('tool:init --tool=documenso signs Documenso\'s S3 endpoint against the Commons public host, not cluster-internal DNS', function (): void {
     $appliedManifest = null;
     fakeSignInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan('documenso:init', [
+    $this->artisan('tool:init', ['--tool' => 'documenso',
         'environment' => 'local',
         '--no-interaction' => true,
     ])->assertExitCode(0);
@@ -78,11 +78,11 @@ test('documenso:init signs Documenso\'s S3 endpoint against the Commons public h
         ->and($appliedManifest)->not->toContain('seaweedfs.larakube-plex.svc.cluster.local');
 });
 
-test('documenso:init falls back to the internal S3 endpoint when the Commons has no public host', function (): void {
+test('tool:init --tool=documenso falls back to the internal S3 endpoint when the Commons has no public host', function (): void {
     $appliedManifest = null;
     fakeSignInitProcess(null, $appliedManifest);
 
-    $this->artisan('documenso:init', [
+    $this->artisan('tool:init', ['--tool' => 'documenso',
         'environment' => 'local',
         '--no-interaction' => true,
     ])->assertExitCode(0);
@@ -91,18 +91,18 @@ test('documenso:init falls back to the internal S3 endpoint when the Commons has
         ->and($appliedManifest)->toContain('http://seaweedfs.larakube-plex.svc.cluster.local:8333');
 });
 
-test('documenso:init declares the mail:wire/sso:wire static keys as literal values, not valueFrom', function (): void {
+test('tool:init --tool=documenso declares the mail:wire/sso:wire static keys as literal values, not valueFrom', function (): void {
     // Regression guard for a real incident (2026-08-05): mail:wire/sso:wire
     // set these 4 names via `kubectl set env NAME=value` (a plain literal),
     // never through the sign-smtp/-oidc Secrets. Declaring them
-    // here as valueFrom made every re-run of documenso:init fail — kubectl
+    // here as valueFrom made every re-run of tool:init --tool=documenso fail — kubectl
     // apply's merge re-added valueFrom on top of the live literal value,
     // and the two are mutually exclusive ("valueFrom: Invalid value: '':
     // may not be specified when `value` is not empty").
     $appliedManifest = null;
     fakeSignInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan('documenso:init', [
+    $this->artisan('tool:init', ['--tool' => 'documenso',
         'environment' => 'local',
         '--no-interaction' => true,
     ])->assertExitCode(0);
@@ -119,7 +119,7 @@ test('documenso:init declares the mail:wire/sso:wire static keys as literal valu
     }
 });
 
-test('documenso:init returns a failing exit code and does not claim success when kubectl apply is rejected', function (): void {
+test('tool:init --tool=documenso returns a failing exit code and does not claim success when kubectl apply is rejected', function (): void {
     // Regression guard: withSpin()'s success check is `!== false`, and the
     // old runStreaming() call returned an int exit code — never `=== false`
     // — so a rejected kubectl apply (like the valueFrom conflict above)
@@ -128,7 +128,7 @@ test('documenso:init returns a failing exit code and does not claim success when
     $appliedManifest = null;
     fakeSignInitProcess('files.example.com', $appliedManifest, applyExitCode: 1);
 
-    $this->artisan('documenso:init', [
+    $this->artisan('tool:init', ['--tool' => 'documenso',
         'environment' => 'local',
         '--no-interaction' => true,
     ])
@@ -136,7 +136,7 @@ test('documenso:init returns a failing exit code and does not claim success when
         ->doesntExpectOutputToContain('Documenso signature stack is live');
 });
 
-test('documenso:init --vpn-only names the Traefik Middleware for its instance, never the main sentinel', function (): void {
+test('tool:init --tool=documenso --vpn-only names the Traefik Middleware for its instance, never the main sentinel', function (): void {
     // Regression guard (2026-08-15): ensureVpnMiddleware()'s $instance
     // default used to be the literal string 'main', which SignTool's
     // vpnMiddlewareTarget() recognized as "no instance" and correctly
@@ -173,7 +173,7 @@ test('documenso:init --vpn-only names the Traefik Middleware for its instance, n
         };
     });
 
-    $this->artisan('documenso:init', [
+    $this->artisan('tool:init', ['--tool' => 'documenso',
         'environment' => 'local',
         '--vpn-only' => true,
         '--no-interaction' => true,
@@ -189,11 +189,11 @@ test('documenso:init --vpn-only names the Traefik Middleware for its instance, n
         ->and($appliedVpnMiddlewareManifest['content'])->not->toContain('-main');
 });
 
-test('documenso:init wires Documenso to the Commons headless Chrome by ClusterIP and mounts its signing certificate', function (): void {
+test('tool:init --tool=documenso wires Documenso to the Commons headless Chrome by ClusterIP and mounts its signing certificate', function (): void {
     $appliedManifest = null;
     fakeSignInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan('documenso:init', ['environment' => 'local', '--no-interaction' => true])->assertExitCode(0);
+    $this->artisan('tool:init', ['--tool' => 'documenso', 'environment' => 'local', '--no-interaction' => true])->assertExitCode(0);
 
     $names = App\Data\ToolInstance::forHost(App\Enums\ClusterTool::SIGN, 'sign.kube');
 
@@ -216,7 +216,7 @@ test('documenso:init wires Documenso to the Commons headless Chrome by ClusterIP
         && str_contains($process->command, '--from-file=passphrase='));
 });
 
-test('documenso:init keeps an existing signing certificate, so signed documents keep verifying', function (): void {
+test('tool:init --tool=documenso keeps an existing signing certificate, so signed documents keep verifying', function (): void {
     $appliedManifest = null;
     $names = App\Data\ToolInstance::forHost(App\Enums\ClusterTool::SIGN, 'sign.kube');
 
@@ -234,26 +234,26 @@ test('documenso:init keeps an existing signing certificate, so signed documents 
         };
     });
 
-    $this->artisan('documenso:init', ['environment' => 'local', '--no-interaction' => true])->assertExitCode(0);
+    $this->artisan('tool:init', ['--tool' => 'documenso', 'environment' => 'local', '--no-interaction' => true])->assertExitCode(0);
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'openssl'));
 });
 
-test('documenso:init stops when the Commons has no headless Chrome to point Documenso at', function (): void {
+test('tool:init --tool=documenso stops when the Commons has no headless Chrome to point Documenso at', function (): void {
     Process::fake(fn ($process) => match (true) {
         str_contains($process->command, 'get configmap plex-commons') => Process::result(output: json_encode(signCommonsSpec('files.example.com'))),
         str_contains($process->command, 'get service headless-shell') => Process::result(output: ''),
         default => Process::result(output: ''),
     });
 
-    $this->artisan('documenso:init', ['environment' => 'local', '--no-interaction' => true])
+    $this->artisan('tool:init', ['--tool' => 'documenso', 'environment' => 'local', '--no-interaction' => true])
         ->expectsOutputToContain('Could not find the Commons headless Chrome service')
         ->assertExitCode(1);
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'apply -f') && str_contains($process->command, 'larakube-sign-documenso'));
 });
 
-test('documenso:init never puts the database role under OpenBao rotation; only secrets:wire does', function (): void {
+test('tool:init --tool=documenso never puts the database role under OpenBao rotation; only secrets:wire does', function (): void {
     // Registering the role here rotates its password at once and on a
     // schedule, but the ExternalSecret that carries each new password into
     // the Secret Documenso reads is created by secrets:wire. Init-registered
@@ -266,7 +266,7 @@ test('documenso:init never puts the database role under OpenBao rotation; only s
         '*' => MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
     ]);
 
-    $this->artisan('documenso:init', [
+    $this->artisan('tool:init', ['--tool' => 'documenso',
         'environment' => 'local',
         '--no-interaction' => true,
     ])->assertExitCode(0);

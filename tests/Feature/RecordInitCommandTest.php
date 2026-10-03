@@ -4,7 +4,7 @@
  * Regression coverage for the browser-facing S3 endpoint bug. Unlike Outline/
  * Documenso, Sendrec supports a genuine internal/public split (S3_ENDPOINT vs
  * S3_PUBLIC_ENDPOINT — confirmed against the binary's own recognised env var
- * names), so sendrec:init must keep S3_ENDPOINT on the fast internal path AND
+ * names), so tool:init --tool=sendrec must keep S3_ENDPOINT on the fast internal path AND
  * set S3_PUBLIC_ENDPOINT for the presigned URLs it hands to the browser.
  * See resolveCommonsS3Endpoints() on InteractsWithPlex.
  */
@@ -54,11 +54,11 @@ function fakeRecordInitProcess(?string $s3Host, ?string &$appliedManifest, int $
     });
 }
 
-test('sendrec:init keeps S3_ENDPOINT internal but signs S3_PUBLIC_ENDPOINT against the Commons public host', function (): void {
+test('tool:init --tool=sendrec keeps S3_ENDPOINT internal but signs S3_PUBLIC_ENDPOINT against the Commons public host', function (): void {
     $appliedManifest = null;
     fakeRecordInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan('sendrec:init', [
+    $this->artisan('tool:init', ['--tool' => 'sendrec',
         'environment' => 'local',
         '--no-interaction' => true,
     ])->assertExitCode(0);
@@ -72,11 +72,11 @@ test('sendrec:init keeps S3_ENDPOINT internal but signs S3_PUBLIC_ENDPOINT again
         ->and($public[1] ?? null)->toBe('https://files.example.com');
 });
 
-test('sendrec:init falls back S3_PUBLIC_ENDPOINT to the internal endpoint when the Commons has no public host', function (): void {
+test('tool:init --tool=sendrec falls back S3_PUBLIC_ENDPOINT to the internal endpoint when the Commons has no public host', function (): void {
     $appliedManifest = null;
     fakeRecordInitProcess(null, $appliedManifest);
 
-    $this->artisan('sendrec:init', [
+    $this->artisan('tool:init', ['--tool' => 'sendrec',
         'environment' => 'local',
         '--no-interaction' => true,
     ])->assertExitCode(0);
@@ -90,11 +90,11 @@ test('sendrec:init falls back S3_PUBLIC_ENDPOINT to the internal endpoint when t
         ->and($public[1] ?? null)->toBe('http://seaweedfs.larakube-plex.svc.cluster.local:8333');
 });
 
-test('sendrec:init sets SMTP_TLS to "tls", not the stale "implicit" value that deadlocks SendRec against Stalwart', function (): void {
+test('tool:init --tool=sendrec sets SMTP_TLS to "tls", not the stale "implicit" value that deadlocks SendRec against Stalwart', function (): void {
     $appliedManifest = null;
     fakeRecordInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan('sendrec:init', [
+    $this->artisan('tool:init', ['--tool' => 'sendrec',
         'environment' => 'local',
         '--no-interaction' => true,
     ])->assertExitCode(0);
@@ -104,11 +104,11 @@ test('sendrec:init sets SMTP_TLS to "tls", not the stale "implicit" value that d
     expect($m[1] ?? null)->toBe('tls');
 });
 
-test('sendrec:init returns a failing exit code and does not claim success when kubectl apply is rejected', function (): void {
+test('tool:init --tool=sendrec returns a failing exit code and does not claim success when kubectl apply is rejected', function (): void {
     $appliedManifest = null;
     fakeRecordInitProcess('files.example.com', $appliedManifest, applyExitCode: 1);
 
-    $this->artisan('sendrec:init', [
+    $this->artisan('tool:init', ['--tool' => 'sendrec',
         'environment' => 'local',
         '--no-interaction' => true,
     ])

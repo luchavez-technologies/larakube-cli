@@ -142,7 +142,7 @@ enum SharedClusterService: string
      * (catch-all SMTP for dev), the Console (a local dev tool), and the Traefik
      * dashboard (not exposed on prod) are local-only; Grafana — and any future
      * cluster-wide metrics/status/observability UI that replaces it — also
-     * belongs on cloud clusters (grafana:init runs everywhere).
+     * belongs on cloud clusters (tool:init --tool=grafana runs everywhere).
      *
      * Declared per case rather than `$this !== GRAFANA` so swapping the metrics
      * UI, or adding a new cloud-eligible global (Uptime Kuma, a status page), is

@@ -45,49 +45,6 @@ use LogicException;
  */
 final class ToolInitCommands
 {
-    /**
-     * The tools whose `{tool}:init` name still works, as a deprecated alias of
-     * `tool:init --tool={tool}`. This list is frozen: it only ever shrinks. A
-     * tool added after it was cut is deployed through `tool:init` alone.
-     *
-     * @var list<ClusterTool>
-     */
-    public const LEGACY_ALIASES = [
-        ClusterTool::BULWARK,
-        ClusterTool::CHATWOOT,
-        ClusterTool::DIRECTUS,
-        ClusterTool::DOCUMENSO,
-        ClusterTool::EXTERNAL_DNS,
-        ClusterTool::FORGEJO,
-        ClusterTool::GLITCHTIP,
-        ClusterTool::GRAFANA,
-        ClusterTool::HEADLAMP,
-        ClusterTool::KUMA,
-        ClusterTool::KUTT,
-        ClusterTool::LIVEKIT,
-        ClusterTool::MATRIX,
-        ClusterTool::METABASE,
-        ClusterTool::N8N,
-        ClusterTool::NETBIRD,
-        ClusterTool::OCIS,
-        ClusterTool::OPENBAO,
-        ClusterTool::OUTLINE,
-        ClusterTool::PENPOT,
-        ClusterTool::PLANKA,
-        ClusterTool::PLAUSIBLE,
-        ClusterTool::POCKETBASE,
-        ClusterTool::RESUME,
-        ClusterTool::SENDREC,
-        ClusterTool::STALWART,
-        ClusterTool::TEABLE,
-        ClusterTool::TWENTY,
-        ClusterTool::UMAMI,
-        ClusterTool::VAULTWARDEN,
-        ClusterTool::WINDMILL,
-        ClusterTool::YOPASS,
-        ClusterTool::ZITADEL,
-    ];
-
     public static function for(ClusterTool $tool): AbstractToolInitCommand
     {
         $base = self::family($tool);
@@ -200,20 +157,5 @@ final class ToolInitCommands
         } catch (LogicException) {
             return false;
         }
-    }
-
-    /**
-     * The commands to register under their old `{tool}:init` names.
-     *
-     * @return list<AbstractToolInitCommand>
-     */
-    public static function legacyAliases(): array
-    {
-        return array_map(function (ClusterTool $tool): AbstractToolInitCommand {
-            $command = self::for($tool);
-            $command->markAsLegacyAlias();
-
-            return $command;
-        }, self::LEGACY_ALIASES);
     }
 }

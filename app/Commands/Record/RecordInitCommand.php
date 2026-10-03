@@ -127,7 +127,7 @@ abstract class RecordInitCommand extends AbstractToolInitCommand
                 // path "{env}" as one object, but every value above is at the
                 // deeper "{env}/{KEY}" path, so it always syncs empty and, as
                 // an Owner-mode ExternalSecret with a 1m refresh, wipes the
-                // `create secret` above on its next reconcile. openbao:init's
+                // `create secret` above on its next reconcile. tool:init --tool=openbao's
                 // own sweep (tool-es.blade.php) is the correct, working path.
             }
         });
@@ -146,7 +146,7 @@ abstract class RecordInitCommand extends AbstractToolInitCommand
             's3AccessKey' => $s3Creds['access'],
             's3SecretKey' => $s3Creds['secret'],
             // The blade reads this to set REGISTRATION_ENABLED. It was never
-            // passed, so it always fell back to false — and since sendrec:init
+            // passed, so it always fell back to false — and since tool:init --tool=sendrec
             // seeds no admin and Sendrec's users table has no role column,
             // that shipped an instance with zero accounts and no way to make
             // one. Open it for the first sign-up, then re-run without the flag.

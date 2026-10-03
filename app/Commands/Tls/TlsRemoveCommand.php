@@ -14,7 +14,7 @@ use LaravelZero\Framework\Commands\Command;
 
 /**
  * Switch a cloud cluster's Let's Encrypt certificates back to the HTTP
- * challenge. Leaves `external-dns:init`'s own tokens and every stored certificate alone.
+ * challenge. Leaves `tool:init --tool=external-dns`'s own tokens and every stored certificate alone.
  */
 class TlsRemoveCommand extends Command
 {

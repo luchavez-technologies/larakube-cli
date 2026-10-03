@@ -12,7 +12,7 @@ use Saloon\Traits\Plugins\HasTimeout;
  * Create a NetBird service user — a machine identity that owns tokens but
  * cannot log in.
  *
- * netbird:init used to hang the CLI's PAT off the human owner created by
+ * tool:init --tool=netbird used to hang the CLI's PAT off the human owner created by
  * /api/setup. That works until the human does: delete them, or drop their role,
  * and every LaraKube→NetBird call in every environment fails at once, with no
  * way back in because the PAT that could mint a replacement died with them.

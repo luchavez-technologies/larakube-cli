@@ -4,7 +4,7 @@ use App\Traits\InteractsWithIngressProxy;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Process;
 
-test('kutt:init deploys Kutt using the Commons postgres and redis', function (): void {
+test('tool:init --tool=kutt deploys Kutt using the Commons postgres and redis', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -23,7 +23,7 @@ test('kutt:init deploys Kutt using the Commons postgres and redis', function ():
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('kutt:init local --no-interaction')
+    $this->artisan('tool:init --tool=kutt local --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying Kutt manifests...')
         ->expectsOutputToContain('Kutt shortener stack is live.');
@@ -68,7 +68,7 @@ test('link manifest carries canonical resource naming and identity labels', func
 test('link manifest declares MAIL_SECURE as a literal, not valueFrom, so a future kubectl apply never conflicts with mail:wire', function (): void {
     // Regression guard: mail:wire sets MAIL_SECURE via a plain literal
     // `kubectl set env NAME=value`, never through the kutt-smtp Secret.
-    // Declaring it here as valueFrom made a later kutt:init re-run fail —
+    // Declaring it here as valueFrom made a later tool:init --tool=kutt re-run fail —
     // kubectl apply's merge re-adds valueFrom on top of the live literal
     // value mail:wire already set, and the two are mutually exclusive
     // (the exact bug confirmed live on Documenso, 2026-08-05).
@@ -148,19 +148,19 @@ test('resolveProxied honors the --proxied flag value and always yields false on 
     'truthy words' => ['yes', true],
 ]);
 
-test('kutt:init --vpn-only refuses — LINK is public infrastructure with no VPN mode', function (): void {
-    $this->artisan('kutt:init local --vpn-only --no-interaction')
+test('tool:init --tool=kutt --vpn-only refuses — LINK is public infrastructure with no VPN mode', function (): void {
+    $this->artisan('tool:init --tool=kutt local --vpn-only --no-interaction')
         ->assertExitCode(1)
         ->expectsOutputToContain("'link' doesn't have a --vpn-only ingress mode.");
 });
 
-test('kutt:init --vpn-only aborts without touching kubectl', function (): void {
+test('tool:init --tool=kutt --vpn-only aborts without touching kubectl', function (): void {
     Process::fake([
         '*get secret kutt-secrets*' => Process::result(output: '', exitCode: 1),
         '*apply -f *' => Process::result(output: '', exitCode: 1),
     ]);
 
-    $this->artisan('kutt:init local --vpn-only --no-interaction')
+    $this->artisan('tool:init --tool=kutt local --vpn-only --no-interaction')
         ->assertExitCode(1)
         ->expectsOutputToContain("'link' doesn't have a --vpn-only ingress mode.");
 });

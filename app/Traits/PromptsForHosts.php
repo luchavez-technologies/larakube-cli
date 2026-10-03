@@ -16,9 +16,9 @@ use function Laravel\Prompts\text;
  * host and stay editable by hand in .larakube.json.
  *
  * Cluster-base infra (monitoring/Grafana) is deliberately NOT prompted here
- * either: it's opt-in PER environment via `grafana:init`, so `env` (which
+ * either: it's opt-in PER environment via `tool:init --tool=grafana`, so `env` (which
  * configures every env up front) is the wrong moment. Its host is prompted at
- * install time by grafana:init and persisted to the same hosts map.
+ * install time by tool:init --tool=grafana and persisted to the same hosts map.
  */
 trait PromptsForHosts
 {

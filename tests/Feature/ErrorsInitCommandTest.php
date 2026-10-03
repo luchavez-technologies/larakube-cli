@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Process;
 
-test('glitchtip:init deploys glitchtip using plex commons postgres and redis', function (): void {
+test('tool:init --tool=glitchtip deploys glitchtip using plex commons postgres and redis', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -20,7 +20,7 @@ test('glitchtip:init deploys glitchtip using plex commons postgres and redis', f
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('glitchtip:init local --admin-email=admin@example.com')
+    $this->artisan('tool:init --tool=glitchtip local --admin-email=admin@example.com')
         ->assertExitCode(0)
         // Per instance, from ToolInstance: never a fixed name every instance shares.
         ->expectsOutputToContain("Allocating database 'glitchtip_errors_")
@@ -31,7 +31,7 @@ test('glitchtip:init deploys glitchtip using plex commons postgres and redis', f
         ->expectsOutputToContain('GlitchTip stack is live.');
 });
 
-test('glitchtip:init deploys standalone glitchtip when --no-plex is passed', function (): void {
+test('tool:init --tool=glitchtip deploys standalone glitchtip when --no-plex is passed', function (): void {
     Process::fake([
         '*get secret*' => Process::result(output: '', exitCode: 1),
         '*delete job*' => Process::result(output: 'deleted'),
@@ -41,7 +41,7 @@ test('glitchtip:init deploys standalone glitchtip when --no-plex is passed', fun
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('glitchtip:init local --no-plex --admin-email=admin@example.com')
+    $this->artisan('tool:init --tool=glitchtip local --no-plex --admin-email=admin@example.com')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying GlitchTip manifests...')
         ->expectsOutputToContain('Waiting for local database...')

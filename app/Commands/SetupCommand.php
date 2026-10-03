@@ -485,7 +485,7 @@ class SetupCommand extends Command
         $this->newLine();
         $this->line('  <fg=gray>Provision a server:</>   <fg=yellow>larakube cloud:create production</>');
         $this->line('  <fg=gray>Or use a cluster you already have, then install a tool:</>');
-        $this->line('  <fg=gray></>                     <fg=yellow>larakube zitadel:init production</>');
+        $this->line('  <fg=gray></>                     <fg=yellow>larakube tool:init --tool=zitadel production</>');
         $this->newLine();
         $this->line('  <fg=gray>Provider CLIs, when you need them:</> <fg=yellow>larakube setup --tools=gcloud,aws,hcloud</>');
         $this->newLine();

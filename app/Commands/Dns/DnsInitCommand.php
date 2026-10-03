@@ -23,13 +23,13 @@ use Illuminate\Support\Facades\Process;
 use function Laravel\Prompts\text;
 
 /**
- * Deploy one ExternalDNS instance per external-dns:init GROUP — a stable name covering
+ * Deploy one ExternalDNS instance per tool:init --tool=external-dns GROUP — a stable name covering
  * one or more Cloudflare zones that share a single API token.
  *
  * Previously a singleton: fixed resource names, no `--domain-filter`, and a
  * hardcoded `--txt-owner-id=larakube`. Three consequences, all real:
  *
- *   1. A second `external-dns:init` overwrote the first, so one cluster could only ever
+ *   1. A second `tool:init --tool=external-dns` overwrote the first, so one cluster could only ever
  *      manage one zone — and only with one Cloudflare account's token.
  *   2. With no domain filter and `--policy=sync`, ExternalDNS managed every
  *      zone the token could see and DELETED records it didn't recognise.
@@ -163,7 +163,7 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
         $this->line("  <fg=gray>Instance:</>   <fg=blue>external-dns-{$groupSlug}</>");
         $this->newLine();
         $this->line('  <fg=gray>A zone with a different Cloudflare account (different token) needs its own group:</>');
-        $this->line("  <fg=blue>larakube external-dns:init {$env} --cloudflare-token=…</>");
+        $this->line("  <fg=blue>larakube tool:init --tool=external-dns {$env} --cloudflare-token=…</>");
         $this->line('  <fg=gray>See everything this cluster manages:</> <fg=blue>larakube external-dns:list '.$env.'</>');
         $this->newLine();
 
@@ -213,7 +213,7 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
             throw new MissingFlagException(
                 'cloudflare-token',
                 'the Cloudflare API token for the zone(s) to manage',
-                'larakube external-dns:init production --cloudflare-token=…',
+                'larakube tool:init --tool=external-dns production --cloudflare-token=…',
             );
         }
 
@@ -291,7 +291,7 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
             throw new MissingFlagException(
                 'group',
                 'a stable name for this multi-zone instance ('.implode(', ', $zones).')',
-                'larakube external-dns:init production --group=shared --cloudflare-token=…',
+                'larakube tool:init --tool=external-dns production --group=shared --cloudflare-token=…',
             );
         }
 

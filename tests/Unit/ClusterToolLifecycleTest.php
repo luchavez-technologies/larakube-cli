@@ -130,7 +130,7 @@ test('only tools that can bundle their own storage advertise --no-plex', functio
 
 test('command name helpers spell the canonical tool:action shape', function (): void {
     ssoRegistered();
-    expect(ClusterTool::FLOW->initCommand())->toBe('n8n:init')
+    expect(ClusterTool::FLOW->initInvocation())->toBe('tool:init --tool=n8n')
         ->and(ClusterTool::FLOW->removeCommand())->toBe('n8n:remove')
         ->and(ClusterTool::FLOW->showCommand())->toBe('n8n:show')
         ->and(ClusterTool::PASSWORDS->removeCommand())->toBe('vaultwarden:remove');

@@ -58,7 +58,7 @@ trait InteractsWithVpn
      * tool registry rather than threaded through a dozen signatures.
      *
      * Empty string when VPN is not registered yet — which is exactly right for
-     * a first `netbird:init`, whose resources are rendered from the host it already
+     * a first `tool:init --tool=netbird`, whose resources are rendered from the host it already
      * has and which registers itself only after deploying.
      */
     protected function vpnInstance(string $kubectl): string
@@ -118,7 +118,7 @@ trait InteractsWithVpn
     }
 
     /**
-     * Host-based siblings, for netbird:init — which renders and waits on these
+     * Host-based siblings, for tool:init --tool=netbird — which renders and waits on these
      * resources BEFORE it registers the tool, so the registry lookup the two
      * above use would still come back empty.
      */
@@ -162,7 +162,7 @@ trait InteractsWithVpn
     }
 
     /**
-     * Read the reusable setup key `netbird:init` bootstrapped, from the k8s Secret
+     * Read the reusable setup key `tool:init --tool=netbird` bootstrapped, from the k8s Secret
      * it wrote (`kubectl create secret ... vpn-secrets`). One bootstrap,
      * shared by every teammate with kubectl access — used by both `vpn:join`
      * (this developer's own machine) and `cloud:harden` (the VPS host itself).
@@ -176,7 +176,7 @@ trait InteractsWithVpn
 
     /**
      * Read the NetBird owner's Personal Access Token from the same k8s Secret
-     * `netbird:init` bootstrapped (`vpn-secrets`), same shape as
+     * `tool:init --tool=netbird` bootstrapped (`vpn-secrets`), same shape as
      * fetchVpnSetupKey() but the `pat` field instead of `setup-key`. Used to
      * call NetBird's REST API (minting/listing/revoking setup keys) on the
      * operator's behalf — vpn:grant/vpn:revoke/vpn:users.
@@ -317,7 +317,7 @@ trait InteractsWithVpn
     /**
      * Ids for the cluster-level groups, creating whichever are missing.
      *
-     * netbird:init is cluster-scoped while a blueprint is per-project, so it cannot
+     * tool:init --tool=netbird is cluster-scoped while a blueprint is per-project, so it cannot
      * enumerate the apps or environments sharing this cluster — only these two
      * groups are knowable at install time. Per-app-environment groups
      * (`{project}-{env}`, mirroring the namespace convention) are created lazily
@@ -386,7 +386,7 @@ trait InteractsWithVpn
      * Soonest expiry among the credentials LaraKube stores, as whole days from
      * now, keyed by label. Empty when nothing could be read.
      *
-     * netbird:init mints the PAT and the setup key in one call, so they expire
+     * tool:init --tool=netbird mints the PAT and the setup key in one call, so they expire
      * within milliseconds of each other — and once the PAT is gone it cannot
      * mint its own replacement, leaving no API path back in. Surfacing the
      * countdown is what makes `vpn:rotate` a safety net rather than something
@@ -863,7 +863,7 @@ trait InteractsWithVpn
         }
 
         if (! $this->reconcileVpnSplitDns($kubectl, $ns, $host, $pat, $env)) {
-            $this->laraKubeWarn('Ingress updated, but split-DNS did not reconcile — run `larakube netbird:init '.$env.'` to retry.');
+            $this->laraKubeWarn('Ingress updated, but split-DNS did not reconcile — run `larakube tool:init --tool=netbird '.$env.'` to retry.');
         }
     }
 
@@ -895,7 +895,7 @@ trait InteractsWithVpn
      *
      * Create-if-absent, never apply: an existing Corefile holds the gateway
      * address reconcileVpnSplitDns() worked out, and overwriting it on every
-     * netbird:init would black-hole every VPN-only host until the reconcile ran
+     * tool:init --tool=netbird would black-hole every VPN-only host until the reconcile ran
      * again. This exists only so the gateway pod has something to mount on the
      * very first install, or after the ConfigMap is renamed.
      */
@@ -924,7 +924,7 @@ trait InteractsWithVpn
             // The NetBird host, not one of $hosts: the ConfigMap is named for
             // the VPN instance that mounts it, while $hosts are the VPN-only
             // hosts it answers for. The registry is deliberately not consulted
-            // — a first netbird:init reconciles split-DNS before it registers, and
+            // — a first tool:init --tool=netbird reconciles split-DNS before it registers, and
             // an unnamed instance would write a ConfigMap nothing mounts.
             'instance' => ClusterTool::VPN->instanceSlugFromHost($vpnHost),
         ])->render();

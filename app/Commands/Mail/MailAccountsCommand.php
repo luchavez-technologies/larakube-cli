@@ -42,7 +42,7 @@ class MailAccountsCommand extends Command
         $ns = $this->mailNamespace();
 
         if (! $this->isMailInstalled($kubectl, $ns)) {
-            $this->laraKubeError('Stalwart is not installed. Run `larakube stalwart:init` first.');
+            $this->laraKubeError('Stalwart is not installed. Run `larakube tool:init --tool=stalwart` first.');
 
             return 1;
         }

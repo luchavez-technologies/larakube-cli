@@ -20,7 +20,7 @@ function stalwartJmapBody(mixed $pendingRequest): array
     return json_decode(json_encode($pendingRequest->getRequest()->body()->all()), true);
 }
 
-test('stalwart:init local wires BlobStore, InMemoryStore, and SearchStore via JMAP when Commons offers seaweedfs, redis, and meilisearch', function (): void {
+test('tool:init --tool=stalwart local wires BlobStore, InMemoryStore, and SearchStore via JMAP when Commons offers seaweedfs, redis, and meilisearch', function (): void {
     $captured = [];
 
     Process::fake([
@@ -66,12 +66,12 @@ test('stalwart:init local wires BlobStore, InMemoryStore, and SearchStore via JM
         },
     ]);
 
-    $this->artisan('stalwart:init local --admin-email=admin@luchtech.dev --no-interaction')
+    $this->artisan('tool:init --tool=stalwart local --admin-email=admin@luchtech.dev --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('Stalwart mail server is live.')
         // Every store Commons offers got auto-configured (real-time ✔ above)
         // — printPlexHint()'s "already configured" section would be pure
-        // noise here, so stalwart:init skips it entirely in this case.
+        // noise here, so tool:init --tool=stalwart skips it entirely in this case.
         ->doesntExpectOutputToContain('Configure remaining stores');
 
     expect($captured)->toHaveKeys(['x:BlobStore/set', 'x:InMemoryStore/set', 'x:SearchStore/set']);
@@ -92,7 +92,7 @@ test('stalwart:init local wires BlobStore, InMemoryStore, and SearchStore via JM
         ->and($search['httpAuth'])->toBe(['@type' => 'Bearer', 'bearerToken' => ['@type' => 'EnvironmentVariable', 'variableName' => 'STALWART_SEARCH_MEILI_KEY']]);
 });
 
-test('stalwart:init local falls back to SearchStore "Default" (reuse Data store) when Meilisearch is not enabled', function (): void {
+test('tool:init --tool=stalwart local falls back to SearchStore "Default" (reuse Data store) when Meilisearch is not enabled', function (): void {
     $captured = [];
 
     Process::fake([
@@ -123,7 +123,7 @@ test('stalwart:init local falls back to SearchStore "Default" (reuse Data store)
         },
     ]);
 
-    $this->artisan('stalwart:init local --admin-email=admin@luchtech.dev --no-interaction')
+    $this->artisan('tool:init --tool=stalwart local --admin-email=admin@luchtech.dev --no-interaction')
         ->assertExitCode(0);
 
     expect($captured)->toHaveKey('x:SearchStore/set')
@@ -131,7 +131,7 @@ test('stalwart:init local falls back to SearchStore "Default" (reuse Data store)
         ->and($captured['x:SearchStore/set']['update']['singleton'])->toBe(['@type' => 'Default']);
 });
 
-test('stalwart:init explains why it skipped Commons store auto-config instead of staying silent', function (): void {
+test('tool:init --tool=stalwart explains why it skipped Commons store auto-config instead of staying silent', function (): void {
     // No plex-commons ConfigMap on the cluster: a legitimate skip, but it used
     // to print nothing at all, which is indistinguishable from a broken run.
     Process::fake([
@@ -141,7 +141,7 @@ test('stalwart:init explains why it skipped Commons store auto-config instead of
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('stalwart:init local --domain=example.com --no-interaction --force')
+    $this->artisan('tool:init --tool=stalwart local --domain=example.com --no-interaction --force')
         ->expectsOutputToContain('no Plex Commons')
         ->expectsOutputToContain('plex:init');
 });

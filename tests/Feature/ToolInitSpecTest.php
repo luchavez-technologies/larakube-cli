@@ -2,8 +2,8 @@
 
 use App\Enums\ClusterTool;
 use App\Services\Tools\InitOption;
+use App\Services\Tools\ToolInitCommands;
 use App\Services\Tools\ToolInitSpec;
-use Illuminate\Support\Facades\Artisan;
 
 /**
  * The init spec is the only description of a Cluster Tool's init options. The
@@ -18,7 +18,7 @@ function toolInitFixture(): array
 function toolForInitCommand(string $command): ClusterTool
 {
     foreach (ClusterTool::cases() as $tool) {
-        if (! $tool->isLegacy() && $tool->initCommand() === $command) {
+        if (! $tool->isLegacy() && "{$tool->canonicalTool()->value}:init" === $command) {
             return $tool;
         }
     }
@@ -47,10 +47,8 @@ test('the spec says what every init command accepts, and nothing else', function
 });
 
 test('every option the spec names exists on the command, with the same kind', function (): void {
-    $commands = Artisan::all();
-
     foreach (toolInitFixture() as $command => $options) {
-        $definition = $commands[$command]->getDefinition();
+        $definition = ToolInitCommands::for(toolForInitCommand($command))->getDefinition();
 
         foreach (ToolInitSpec::for(toolForInitCommand($command)) as $option) {
             expect($definition->hasOption($option->name))->toBeTrue("{$command} has no --{$option->name}");
@@ -65,7 +63,7 @@ test('every option the spec names exists on the command, with the same kind', fu
 
 test('what a tool says it needs matches what its init accepts', function (): void {
     foreach (ClusterTool::cases() as $tool) {
-        if ($tool->isLegacy() || ! array_key_exists($tool->initCommand(), toolInitFixture())) {
+        if ($tool->isLegacy() || ! array_key_exists("{$tool->canonicalTool()->value}:init", toolInitFixture())) {
             continue;
         }
 

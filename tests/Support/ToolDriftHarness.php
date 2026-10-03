@@ -5,6 +5,7 @@ namespace Tests\Support;
 use App\Data\ResourceRef;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
+use App\Services\Tools\ToolInitCommands;
 use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
@@ -123,7 +124,7 @@ final class ToolDriftHarness
         $rowsBefore = count($this->toolRows);
         $tenantsBefore = array_keys($this->tenants);
 
-        $failure = $this->artisan($this->tool->initCommand(), ['--domain' => $domain, '--force' => true]);
+        $failure = $this->artisan('tool:init', ['--domain' => $domain, '--force' => true]);
         if ($failure !== null) {
             return $failure;
         }
@@ -170,8 +171,12 @@ final class ToolDriftHarness
     /** Null on success, else a one-line reason. */
     private function artisan(string $command, array $options): ?string
     {
-        $definition = Artisan::all()[$command]->getDefinition();
-        $parameters = ['environment' => 'production', '--context' => 'drift-ctx', '--no-interaction' => true];
+        // Only options the command takes are passed; tool:init refuses the rest, so its
+        // allowed set is the chosen tool's own.
+        $isInit = $command === 'tool:init';
+        $definition = $isInit ? ToolInitCommands::for($this->tool)->getDefinition() : Artisan::all()[$command]->getDefinition();
+        $parameters = ['environment' => 'production', '--context' => 'drift-ctx', '--no-interaction' => true]
+            + ($isInit ? ['--tool' => $this->tool->canonicalTool()->value] : []);
 
         foreach ($options + ['--admin-email' => 'admin@example.com', '--email' => 'admin@example.com'] as $name => $value) {
             if ($definition->hasOption(ltrim($name, '-'))) {

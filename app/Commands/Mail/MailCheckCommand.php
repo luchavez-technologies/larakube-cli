@@ -60,7 +60,7 @@ class MailCheckCommand extends Command
         $host = (string) $this->resolveMailHostReadOnly($env, $config);
 
         if ($host === '') {
-            $this->laraKubeError("No mail host configured for '{$env}'. Run `larakube stalwart:init {$env}` first.");
+            $this->laraKubeError("No mail host configured for '{$env}'. Run `larakube tool:init --tool=stalwart {$env}` first.");
 
             return 1;
         }
@@ -75,7 +75,7 @@ class MailCheckCommand extends Command
             "{$kubectl} get deployment {$deployment} -n {$ns} -o jsonpath='{.status.readyReplicas}'",
         )->output());
         $this->report($ready === '1' ? 'ok' : 'fail', 'Mail server pod is running',
-            "Deploy it: larakube stalwart:init {$env}");
+            "Deploy it: larakube tool:init --tool=stalwart {$env}");
 
         // --- Admin console -------------------------------------------------
         $code = $this->httpStatus("https://{$host}/admin");
@@ -88,7 +88,7 @@ class MailCheckCommand extends Command
         // --- DNS (public resolver, so a stale local cache never lies) ------
         $ip = $this->dig($host, 'A')[0] ?? null;
         $this->report($ip ? 'ok' : 'fail', "DNS · A record for {$host}".($ip ? " → {$ip}" : ''),
-            'ExternalDNS should create this — check your Cloudflare token / `larakube external-dns:init`.');
+            'ExternalDNS should create this — check your Cloudflare token / `larakube tool:init --tool=external-dns`.');
 
         $mxOk = $this->digHasTarget($domain, 'MX', $host);
         $this->report($mxOk ? 'ok' : 'fail', "DNS · MX for {$domain} → {$host}",
@@ -123,9 +123,9 @@ class MailCheckCommand extends Command
         $this->laraKubeLine('  <fg=gray>Mail ports (reachability from here):</>');
         $ports = [
             25 => ['SMTP (inbound MX)', 'warn', 'Needed to receive external mail. A fail here can also be YOUR network blocking outbound 25.'],
-            465 => ['Submissions / SSL', 'fail', 'Clients send through 465. stalwart:init opens it on both firewall layers — check the firewall.'],
+            465 => ['Submissions / SSL', 'fail', 'Clients send through 465. tool:init --tool=stalwart opens it on both firewall layers — check the firewall.'],
             587 => ['Submission / STARTTLS', 'warn', 'Optional — LaraKube uses 465 (implicit TLS) everywhere. Add a 587 listener only if a client specifically needs STARTTLS.'],
-            993 => ['IMAPS', 'fail', 'Clients read mail on 993. stalwart:init opens it — check the firewall.'],
+            993 => ['IMAPS', 'fail', 'Clients read mail on 993. tool:init --tool=stalwart opens it — check the firewall.'],
             4190 => ['ManageSieve', 'warn', 'Optional — server-side mail filters.'],
         ];
         foreach ($ports as $port => [$label, $failSeverity, $hint]) {

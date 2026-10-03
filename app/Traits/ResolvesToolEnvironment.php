@@ -21,7 +21,7 @@ use function Laravel\Prompts\select;
  *     }
  *
  * Passing `--domain` forced the environment to `local`. So
- * `larakube openbao:init --domain=example.com` resolved the RIGHT hostname
+ * `larakube tool:init --tool=openbao --domain=example.com` resolved the RIGHT hostname
  * (secrets.example.com) but the WRONG environment, which then cascaded:
  * resolveToolContext('local') returns a null context, so the manifests applied
  * to whatever kube-context happened to be current, and the templates rendered

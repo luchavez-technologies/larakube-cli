@@ -323,7 +323,7 @@ abstract class GitInitCommand extends AbstractToolInitCommand
             if ($registryToken === null) {
                 $this->laraKubeError(
                     'Could not mint the package registry token — Forgejo is up, but pushing packages '
-                    ."to it will fail. Re-run `larakube forgejo:init {$env}` once the pod is healthy.",
+                    ."to it will fail. Re-run `larakube tool:init --tool=forgejo {$env}` once the pod is healthy.",
                 );
             }
         }
@@ -346,7 +346,7 @@ abstract class GitInitCommand extends AbstractToolInitCommand
                 // MUST be passed. `register` is idempotent but NOT label-preserving:
                 // called without --labels it rewrites the existing runner's
                 // agent_labels to empty. The daemon only declares its labels when
-                // it starts, so a re-run of forgejo:init against an already-running
+                // it starts, so a re-run of tool:init --tool=forgejo against an already-running
                 // runner silently strips them — every job then queues forever on
                 // "Waiting for a runner with the following label: ubuntu-latest"
                 // while the runner sits there, online and idle.
@@ -406,7 +406,7 @@ abstract class GitInitCommand extends AbstractToolInitCommand
         // Forgejo never registered itself here — the only registry write it
         // ever got was an incidental side effect of resolveToolBranding()
         // saving a custom --app-name/--logo-url, which only fires when one
-        // was actually passed. Every plain `forgejo:init` left the tool entirely
+        // was actually passed. Every plain `tool:init --tool=forgejo` left the tool entirely
         // absent from the registry: no host, so tool:list/tool:show and any
         // `git:` -domain targeting had nothing to find.
         $this->registerDeployedTool(ClusterTool::GIT, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);

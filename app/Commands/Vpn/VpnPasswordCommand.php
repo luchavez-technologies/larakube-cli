@@ -23,7 +23,7 @@ class VpnPasswordCommand extends Command
 
     protected $signature = 'vpn:password
         {environment=local : Environment whose NetBird VPN to target}
-        {--email=    : Embedded IdP user to reset (defaults to the account netbird:init created)}
+        {--email=    : Embedded IdP user to reset (defaults to the account tool:init --tool=netbird created)}
         {--password= : New password (auto-generated if omitted)}
         {--force     : Skip the confirmation prompt}
         {--context=  : Target a specific kube-context}';
@@ -40,7 +40,7 @@ class VpnPasswordCommand extends Command
         $ns = $this->vpnNamespace();
 
         if (! $this->isVpnInstalled($kubectl, $ns)) {
-            $this->laraKubeError('NetBird is not installed. Run `larakube netbird:init` first.');
+            $this->laraKubeError('NetBird is not installed. Run `larakube tool:init --tool=netbird` first.');
 
             return 1;
         }
@@ -94,7 +94,7 @@ class VpnPasswordCommand extends Command
         // PAT and setup key, and a full recreate would drop them. Keeping the
         // stored copy in step is the whole point of this command — a hand-rolled
         // `netbird-mgmt admin user change-password` leaves it stale, and then
-        // netbird:init prints a password that no longer works.
+        // tool:init --tool=netbird prints a password that no longer works.
         $patched = $this->withSpin('Recording it in vpn-secrets...', fn () => Kubectl::fromPrefix($kubectl)->patchSecret(
             $ns, $this->vpnSecret($kubectl), ['admin-email' => $email, 'admin-password' => $password],
         )->ok);

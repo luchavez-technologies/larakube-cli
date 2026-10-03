@@ -74,7 +74,7 @@ trait InteractsWithGitForge
     }
 
     /**
-     * Copy the registry credentials `forgejo:init` minted (git-secrets-{instance},
+     * Copy the registry credentials `tool:init --tool=forgejo` minted (git-secrets-{instance},
      * the instance being the registry host's slug) into the project namespace
      * as the `forgejo-login` pull secret.
      */

@@ -1,5 +1,5 @@
 @php
-    // Rendered both by outline:init (which passes these) and by the shared
+    // Rendered both by tool:init --tool=outline (which passes these) and by the shared
     // ingress path (which passes only the host), so derive what is missing.
     $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::NOTES->instanceSlugFromHost($host) : null);
     $names = $instance ? \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::NOTES, $instance) : null;

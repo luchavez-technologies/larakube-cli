@@ -695,11 +695,6 @@ enum ClusterTool: string implements HasWorkloadComponents
     }
 
     /** Canonical command names — the one place the `{tool}:{action}` shape is spelled out. */
-    public function initCommand(): string
-    {
-        return "{$this->canonicalTool()->value}:init";
-    }
-
     public function removeCommand(?string $engine = null): string
     {
         return "{$this->canonicalTool($engine)->value}:remove";
@@ -1359,7 +1354,7 @@ enum ClusterTool: string implements HasWorkloadComponents
      *    `LoadBalancer` (2222), same collision risk on a single-node cluster.
      *  - An architectural singleton: MAIL/SSO/SECRETS/MONITOR/VPN are each
      *    "the one X for this cluster" that every other tool's mail:wire/
-     *    sso:wire/SyncsClusterSecrets/grafana:init assumes exists exactly
+     *    sso:wire/SyncsClusterSecrets/tool:init --tool=grafana assumes exists exactly
      *    once. WEBMAIL is 1:1 bound to the one Stalwart. DASHBOARD is one
      *    view into the one cluster. DNS already has its own multi-tenancy
      *    scheme keyed by `--zone`, not this generic `--instance` mechanism.

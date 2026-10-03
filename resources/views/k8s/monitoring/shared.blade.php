@@ -780,7 +780,7 @@ data:
 @endif
 ---
 # Dashboards-as-code: one static provider scans /var/lib/grafana/dashboards
-# every 10s, so dashboard JSON ConfigMaps added/removed by grafana:init take
+# every 10s, so dashboard JSON ConfigMaps added/removed by tool:init --tool=grafana take
 # effect without a Grafana restart (unlike datasources, which load at startup).
 apiVersion: v1
 kind: ConfigMap

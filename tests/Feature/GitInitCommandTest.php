@@ -9,7 +9,7 @@ afterEach(function (): void {
     MockClient::destroyGlobal();
 });
 
-test('forgejo:init deploys forgejo using plex commons seaweedfs by default', function (): void {
+test('tool:init --tool=forgejo deploys forgejo using plex commons seaweedfs by default', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -27,7 +27,7 @@ test('forgejo:init deploys forgejo using plex commons seaweedfs by default', fun
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('forgejo:init local --no-interaction --admin-email=admin@example.com')
+    $this->artisan('tool:init --tool=forgejo local --no-interaction --admin-email=admin@example.com')
         ->assertExitCode(0)
         ->expectsOutputToContain('Creating object-storage bucket')
         ->expectsOutputToContain('Applying Forgejo core manifests...')
@@ -35,7 +35,7 @@ test('forgejo:init deploys forgejo using plex commons seaweedfs by default', fun
         ->expectsOutputToContain('Forgejo forge and Actions runner are live.');
 });
 
-test('forgejo:init never registers an OpenBao static role itself — only secrets:wire may hand rotation over', function (): void {
+test('tool:init --tool=forgejo never registers an OpenBao static role itself — only secrets:wire may hand rotation over', function (): void {
     // {tool}:init must not know or care whether OpenBao is installed; it
     // just writes a locally-generated password directly into git-secrets
     // (see the Deployment template's db-password key, rendered straight
@@ -78,7 +78,7 @@ test('forgejo:init never registers an OpenBao static role itself — only secret
         ], default: ['data' => []]),
     ]);
 
-    $this->artisan('forgejo:init local --no-interaction --admin-email=admin@example.com')
+    $this->artisan('tool:init --tool=forgejo local --no-interaction --admin-email=admin@example.com')
         ->assertExitCode(0)
         ->expectsOutputToContain('Forgejo forge and Actions runner are live.');
 
@@ -86,7 +86,7 @@ test('forgejo:init never registers an OpenBao static role itself — only secret
     Saloon::assertNotSent(fn ($request) => str_contains($request->resolveEndpoint(), '/v1/database/static-roles/'));
 });
 
-test('forgejo:init deploys standalone forgejo when --no-plex is passed', function (): void {
+test('tool:init --tool=forgejo deploys standalone forgejo when --no-plex is passed', function (): void {
     Process::fake([
         '*get secret forgejo-admin*' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
@@ -95,14 +95,14 @@ test('forgejo:init deploys standalone forgejo when --no-plex is passed', functio
         '*exec *' => Process::result(output: 'success'),
     ]);
 
-    $this->artisan('forgejo:init local --no-plex --no-interaction --admin-email=admin@example.com')
+    $this->artisan('tool:init --tool=forgejo local --no-plex --no-interaction --admin-email=admin@example.com')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying Forgejo core manifests...')
         ->expectsOutputToContain('Initializing Forgejo admin user...')
         ->expectsOutputToContain('Forgejo forge and Actions runner are live.');
 });
 
-test('forgejo:init fails when --admin-email is missing in non-interactive mode', function (): void {
+test('tool:init --tool=forgejo fails when --admin-email is missing in non-interactive mode', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -112,14 +112,14 @@ test('forgejo:init fails when --admin-email is missing in non-interactive mode',
         '*exec *' => Process::result(output: 'success'),
     ]);
 
-    $this->artisan('forgejo:init local --no-interaction');
+    $this->artisan('tool:init --tool=forgejo local --no-interaction');
 })->throws(App\Exceptions\MissingFlagException::class, 'Missing required --admin-email');
 
-test('forgejo:init registers itself in the cluster tool registry, including the admin email', function (): void {
-    // Regression guard: forgejo:init's only registry write was an incidental
+test('tool:init --tool=forgejo registers itself in the cluster tool registry, including the admin email', function (): void {
+    // Regression guard: tool:init --tool=forgejo's only registry write was an incidental
     // side effect of resolveToolBranding() saving a custom --app-name/
     // --logo-url — which only fires when one was actually passed. Every
-    // plain forgejo:init left Forgejo entirely absent from the registry.
+    // plain tool:init --tool=forgejo left Forgejo entirely absent from the registry.
     $captured = null;
 
     Process::fake([
@@ -150,7 +150,7 @@ test('forgejo:init registers itself in the cluster tool registry, including the 
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('forgejo:init local --no-interaction --admin-email=admin@example.com')
+    $this->artisan('tool:init --tool=forgejo local --no-interaction --admin-email=admin@example.com')
         ->assertExitCode(0);
 
     expect($captured)->not->toBeNull();
@@ -160,7 +160,7 @@ test('forgejo:init registers itself in the cluster tool registry, including the 
         ->and($gitEntry['adminEmail'])->toBe('admin@example.com');
 });
 
-test('forgejo:init reads and keeps the brand name on its own instance row when the registry holds other git rows', function (): void {
+test('tool:init --tool=forgejo reads and keeps the brand name on its own instance row when the registry holds other git rows', function (): void {
     // With more than one git row, an instance-less lookup matched nothing:
     // every run prompted for the brand again and appended another row.
     $registry = [
@@ -202,7 +202,7 @@ test('forgejo:init reads and keeps the brand name on its own instance row when t
         '*rollout *' => Process::result(output: 'rollout success'),
     ]);
 
-    $this->artisan('forgejo:init local --domain=git.example.com --no-interaction --admin-email=admin@example.com')
+    $this->artisan('tool:init --tool=forgejo local --domain=git.example.com --no-interaction --admin-email=admin@example.com')
         ->assertExitCode(0);
 
     expect($manifests)->toHaveCount(2)->each->toContain('value: "Acme Git"');

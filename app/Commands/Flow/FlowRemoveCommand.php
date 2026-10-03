@@ -28,7 +28,7 @@ abstract class FlowRemoveCommand extends AbstractToolRemoveCommand
         return null;
     }
 
-    /** `n8n:init --no-plex` labels its Deployment; that install leased no Commons tenant. */
+    /** `tool:init --tool=n8n --no-plex` labels its Deployment; that install leased no Commons tenant. */
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
         foreach ($this->installedNames($this->resolveInstance($kubectl)) as $names) {

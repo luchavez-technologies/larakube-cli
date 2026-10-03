@@ -19,8 +19,8 @@ test('forCommonsResource returns null for a genuine Application Tenant', functio
         ->and(ClusterTool::forCommonsResource('demo-production'))->toBeNull();
 });
 
-test('PASSWORDS is wired into openbaoSyncConfig so openbao:init actually maintains its credentials Secret', function (): void {
-    // DATABASE_URL lives in the Secret vaultwarden:init itself creates and
+test('PASSWORDS is wired into openbaoSyncConfig so tool:init --tool=openbao actually maintains its credentials Secret', function (): void {
+    // DATABASE_URL lives in the Secret tool:init --tool=vaultwarden itself creates and
     // controls (alongside admin-token/plain-token). secrets:wire's dynamic
     // ExternalSecret merges (creationPolicy: Merge) a rotated value into that
     // same Secret, so the name has to be the one the manifest writes.

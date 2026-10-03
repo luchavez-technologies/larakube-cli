@@ -220,7 +220,7 @@ abstract class SecretsInitCommand extends AbstractToolInitCommand
      * no working path to initialization at all), then create the
      * ClusterSecretStore that wires ESO to OpenBao, then create ExternalSecrets
      * for every installed tool that has secrets in OpenBao. Idempotent:
-     * re-running openbao:init applies the same resources.
+     * re-running tool:init --tool=openbao applies the same resources.
      */
     protected function wireEsoToOpenBao(string $kubectl, string $ns): bool
     {
@@ -234,7 +234,7 @@ abstract class SecretsInitCommand extends AbstractToolInitCommand
         // A genuinely fresh OpenBao (unlike Vault's dev mode) has no secret/
         // KV mount at all — every pushClusterSecret()/KV-fallback write
         // across the whole CLI assumes it exists. Fatal, not a warning: with
-        // no KV backend, openbao:init would appear to succeed while quietly
+        // no KV backend, tool:init --tool=openbao would appear to succeed while quietly
         // breaking every tool that falls back to it.
         if (! $this->ensureKvSecretsEngineMounted($kubectl, $ns, $token)) {
             $this->laraKubeError('Could not mount the secret/ KV engine on OpenBao — check kubectl access to the cluster above and re-run.');

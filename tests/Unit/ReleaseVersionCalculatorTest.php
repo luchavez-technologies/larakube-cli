@@ -48,8 +48,8 @@ test('breaking change in pre-v1 bumps minor not major', function (): void {
     $commits = [
         [
             'hash' => 'abc1234567',
-            'subject' => 'feat(data)!: remove legacy directus:init command',
-            'body' => 'BREAKING CHANGE: The directus:init command has been removed.',
+            'subject' => 'feat(data)!: remove legacy tool:init --tool=directus command',
+            'body' => 'BREAKING CHANGE: The tool:init --tool=directus command has been removed.',
         ],
     ];
 

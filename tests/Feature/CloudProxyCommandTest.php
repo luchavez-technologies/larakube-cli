@@ -124,7 +124,7 @@ test('cloud:proxy refuses hosts no ExternalDNS on the cluster manages', function
     cloudProxyInProject(function (string $project): void {
         $this->artisan('cloud:proxy production')
             ->expectsOutputToContain('site.example.com')
-            ->expectsOutputToContain('larakube external-dns:init production')
+            ->expectsOutputToContain('larakube tool:init --tool=external-dns production')
             ->assertExitCode(1);
 
         expect(ConfigData::loadFromFile($project)->isProxied('production'))->toBeFalse();

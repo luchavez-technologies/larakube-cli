@@ -253,9 +253,9 @@ class ToolListCommand extends Command
             }
 
             // 4. Secrets (OpenBao KV → ExternalSecret sync). Two different
-            // ExternalSecrets can carry this: the bare-named one openbao:init's
+            // ExternalSecrets can carry this: the bare-named one tool:init --tool=openbao's
             // static KV-mirror sweep maintains, or the dynamic '{secret}-db' one
-            // secrets:wire creates — and openbao:init deliberately skips the
+            // secrets:wire creates — and tool:init --tool=openbao deliberately skips the
             // static one once the dynamic one exists (they'd otherwise race),
             // so a tool that's actually been secrets:wire'd only ever has the
             // '-db' name. Checking just the bare name meant this column showed

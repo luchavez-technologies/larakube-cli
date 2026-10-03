@@ -33,7 +33,7 @@ test('every consumer can actually call what resolveToolContext depends on', func
     // call time, on the real command. That is exactly what happened: a regex
     // removed canPromptForContext() along with the method above it, phpstan
     // stayed green, and the unit test STUBBED the missing method, so the whole
-    // suite passed while `larakube directus:init` was fatal on the first prompt.
+    // suite passed while `larakube tool:init --tool=directus` was fatal on the first prompt.
     $required = ['resolveToolContext', 'recordedContextFor', 'canPromptForContext', 'kubeContextChoices'];
 
     $commands = deploysClusterToolCommands();

@@ -1,6 +1,6 @@
 {{--
-  One ExternalDNS instance per external-dns:init GROUP — one or more Cloudflare zones
-  that share a single API token (docs/decisions — see external-dns:init's own docblock
+  One ExternalDNS instance per tool:init --tool=external-dns GROUP — one or more Cloudflare zones
+  that share a single API token (docs/decisions — see tool:init --tool=external-dns's own docblock
   for why token-sharing, not zone count, is the actual isolation boundary).
 
   Every name is suffixed with the group slug so several groups — including

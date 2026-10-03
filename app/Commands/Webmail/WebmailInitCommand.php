@@ -58,14 +58,14 @@ abstract class WebmailInitCommand extends AbstractToolInitCommand
         // Bulwark is a client for Stalwart — refuse if there's no Stalwart to
         // point it at, rather than deploy a webmail that can't reach a server.
         if (! $this->isMailInstalled($kubectl, $ns)) {
-            $this->laraKubeError('Stalwart is not installed. Run `larakube stalwart:init` first — Bulwark is a webmail client for it.');
+            $this->laraKubeError('Stalwart is not installed. Run `larakube tool:init --tool=stalwart` first — Bulwark is a webmail client for it.');
 
             return 1;
         }
 
         $mailHost = $this->resolveMailHostReadOnly($env, $config, $kubectl);
         if (! $mailHost) {
-            $this->laraKubeError("No Stalwart host is configured for '{$env}'. Run `larakube stalwart:init {$env}` first.");
+            $this->laraKubeError("No Stalwart host is configured for '{$env}'. Run `larakube tool:init --tool=stalwart {$env}` first.");
 
             return 1;
         }
@@ -107,7 +107,7 @@ abstract class WebmailInitCommand extends AbstractToolInitCommand
                 // the deeper "{env}/{KEY}" path, so it always syncs empty
                 // and, as an Owner-mode ExternalSecret with a 1m refresh,
                 // wipes the `create secret` above on its next reconcile.
-                // openbao:init's own sweep (tool-es.blade.php) is the
+                // tool:init --tool=openbao's own sweep (tool-es.blade.php) is the
                 // correct, working path.
             }
         });

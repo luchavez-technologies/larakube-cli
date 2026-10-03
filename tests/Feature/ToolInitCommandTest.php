@@ -67,32 +67,6 @@ test('tool:init takes every option any tool takes, so no tool is out of its reac
         ->and($definition->getArguments())->toHaveCount(1);
 });
 
-test('a command built from the spec alone has the same options as the tool\'s own init command', function (): void {
-    $commands = Artisan::all();
-
-    foreach (ClusterTool::shippedCases() as $tool) {
-        if (! ToolInitCommands::has($tool)) {
-            continue;
-        }
-
-        $built = ToolInitCommands::for($tool);
-        $own = $commands[$tool->initCommand()] ?? null;
-
-        expect($built)->toBeInstanceOf(AbstractToolInitCommand::class)
-            ->and($built->getName())->toBe($tool->initCommand())
-            ->and($own)->not->toBeNull();
-
-        $names = fn ($command): array => array_values(array_diff(array_keys($command->getDefinition()->getOptions()), array_keys($commands['about']->getDefinition()->getOptions())));
-        $builtNames = $names($built);
-        $ownNames = $names($own);
-        sort($builtNames);
-        sort($ownNames);
-
-        expect($builtNames)->toBe($ownNames, "{$tool->value}: built from the spec, it differs from {$tool->initCommand()}")
-            ->and($built->getDescription())->toBe($own->getDescription());
-    }
-});
-
 test('the spec describes every tool the init families cover, and nothing is covered twice', function (): void {
     foreach (ClusterTool::shippedCases() as $tool) {
         if (ToolInitCommands::has($tool)) {
@@ -101,34 +75,38 @@ test('the spec describes every tool the init families cover, and nothing is cove
     }
 });
 
-test('the old {tool}:init names are a frozen list that can only shrink, and new tools never join it', function (): void {
+test('every tool is deployed through tool:init, and no {tool}:init command exists', function (): void {
     $commands = Artisan::all();
-    $aliased = array_map(fn (ClusterTool $tool): string => $tool->initCommand(), ToolInitCommands::LEGACY_ALIASES);
 
-    // Cut once, when the init commands were merged. Remove entries as aliases are retired; never add one.
-    expect(count(ToolInitCommands::LEGACY_ALIASES))->toBeLessThanOrEqual(33);
-
-    foreach ($aliased as $name) {
-        expect($commands)->toHaveKey($name);
-    }
+    expect($commands)->toHaveKey('tool:init');
 
     foreach (ClusterTool::shippedCases() as $tool) {
-        if (ToolInitCommands::has($tool) && ! in_array($tool, ToolInitCommands::LEGACY_ALIASES, true)) {
-            expect($commands)->not->toHaveKey($tool->initCommand(), "{$tool->value} must be deployed through tool:init only");
+        if (ToolInitCommands::has($tool)) {
+            expect($commands)->not->toHaveKey("{$tool->canonicalTool()->value}:init", "{$tool->value} still has its own init command");
         }
     }
-});
 
-test('an old {tool}:init name says what replaces it, and tool:init does not', function (): void {
     toolInitFakes();
 
-    $this->artisan('vaultwarden:init local --no-interaction')
-        ->assertExitCode(0)
-        ->expectsOutputToContain('vaultwarden:init is now');
+    $this->artisan('tool:init local --tool=vaultwarden --no-interaction')->assertExitCode(0)->doesntExpectOutputToContain('is now');
+});
 
-    $this->artisan('tool:init local --tool=vaultwarden --no-interaction')
-        ->assertExitCode(0)
-        ->doesntExpectOutputToContain('is now');
+test('a command built from the spec has the name, options and description the spec gives', function (): void {
+    foreach (ClusterTool::shippedCases() as $tool) {
+        if (! ToolInitCommands::has($tool)) {
+            continue;
+        }
+
+        $built = ToolInitCommands::for($tool);
+        $names = array_values(array_diff(array_keys($built->getDefinition()->getOptions()), array_keys(Artisan::all()['about']->getDefinition()->getOptions())));
+        $spec = array_map(fn (InitOption $option): string => $option->name, ToolInitSpec::for($tool));
+        sort($names);
+        sort($spec);
+
+        expect($built)->toBeInstanceOf(AbstractToolInitCommand::class)
+            ->and($names)->toBe($spec, "{$tool->value}: the built command and the spec differ")
+            ->and($built->getDescription())->toBe(ToolInitSpec::description($tool));
+    }
 });
 
 test('instructions point at tool:init, never at an old name', function (): void {

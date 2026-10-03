@@ -60,7 +60,7 @@ abstract class DataInitCommand extends AbstractToolInitCommand
         // SEPARATE resolveInstanceForDomain($domainOption) for $instance)
         // could drift apart: DATA's default host can be pocket.luchtech.dev
         // while the service hostPrefix is 'data', so a plain re-run of
-        // directus:init without --domain used to derive the slug
+        // tool:init --tool=directus without --domain used to derive the slug
         // 'pocket-luchtech-dev', deploy a SECOND PocketBase from scratch
         // (data-pocketbase-{slug}) and register it as a duplicate row
         // (confirmed live 2026-08-09).

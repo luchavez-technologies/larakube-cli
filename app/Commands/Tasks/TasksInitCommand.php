@@ -57,7 +57,7 @@ abstract class TasksInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        // planka:init doesn't know or care whether OpenBao is installed —
+        // tool:init --tool=planka doesn't know or care whether OpenBao is installed —
         // only secrets:wire --tool=tasks may register this instance's database
         // static role. This is a READ-only exception: it defers to OpenBao's
         // current password when a PAST secrets:wire run already made it the

@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\ClusterTool;
+use App\Services\Tools\ToolInitCommands;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Process;
 
@@ -25,8 +26,11 @@ test('every tool has a remove command and none of them still accept --remove on 
     $commands = $this->app->make(Kernel::class)->all();
 
     foreach (ClusterTool::shippedCases() as $tool) {
-        expect($commands)->toHaveKey($tool->removeCommand())
-            ->and($commands[$tool->initCommand()]->getDefinition()->hasOption('remove'))->toBeFalse("{$tool->initCommand()} still carries the decoupled --remove flag");
+        expect($commands)->toHaveKey($tool->removeCommand());
+
+        if (ToolInitCommands::has($tool)) {
+            expect(ToolInitCommands::for($tool)->getDefinition()->hasOption('remove'))->toBeFalse("{$tool->value}'s init still carries the decoupled --remove flag");
+        }
     }
 });
 

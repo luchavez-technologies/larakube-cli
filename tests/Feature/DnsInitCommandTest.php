@@ -9,7 +9,7 @@ use Saloon\Http\Faking\MockResponse;
 use Saloon\Laravel\Facades\Saloon;
 
 /**
- * ExternalDNS is now one instance per external-dns:init GROUP — a stable name covering
+ * ExternalDNS is now one instance per tool:init --tool=external-dns GROUP — a stable name covering
  * one or more Cloudflare zones that share a single API token, discovered from
  * the token itself (Cloudflare's own `GET /zones`), not retyped by hand. The
  * safety properties: --domain-filter (one per zone in the group; without at
@@ -54,38 +54,38 @@ afterEach(function (): void {
     MockClient::destroyGlobal();
 });
 
-test('external-dns:init refuses the local environment', function (): void {
-    $this->artisan('external-dns:init local')
+test('tool:init --tool=external-dns refuses the local environment', function (): void {
+    $this->artisan('tool:init --tool=external-dns local')
         ->expectsOutputToContain('only supported on cloud environments')
         ->assertExitCode(1);
 });
 
-test('external-dns:init requires a token before anything else', function (): void {
+test('tool:init --tool=external-dns requires a token before anything else', function (): void {
     Process::fake(dnsFakes());
 
-    $this->artisan('external-dns:init prod --context=ctx --no-interaction --force')->run();
+    $this->artisan('tool:init --tool=external-dns prod --context=ctx --no-interaction --force')->run();
 })->throws(MissingFlagException::class, 'Missing required --cloudflare-token');
 
-test('external-dns:init manages the sole zone the token can see when --zone= is omitted', function (): void {
+test('tool:init --tool=external-dns manages the sole zone the token can see when --zone= is omitted', function (): void {
     Process::fake(dnsFakes());
     dnsZonesSaloonFake(['example.com']);
 
-    $this->artisan('external-dns:init prod --context=ctx --cloudflare-token=t --no-interaction --force')
+    $this->artisan('tool:init --tool=external-dns prod --context=ctx --cloudflare-token=t --no-interaction --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('ExternalDNS is managing example.com');
 });
 
-test('external-dns:init requires --group= when the token covers multiple zones and none is given', function (): void {
+test('tool:init --tool=external-dns requires --group= when the token covers multiple zones and none is given', function (): void {
     // An unfiltered/unnamed multi-zone instance is exactly the ambiguity this
     // flag exists to avoid guessing at — a stable identity must never be
     // derived from a mutable zone set (see groupSlug()'s own docblock).
     Process::fake(dnsFakes());
     dnsZonesSaloonFake(['ourfridays.com', 'larakube.app']);
 
-    $this->artisan('external-dns:init prod --context=ctx --cloudflare-token=t --no-interaction --force')->run();
+    $this->artisan('tool:init --tool=external-dns prod --context=ctx --cloudflare-token=t --no-interaction --force')->run();
 })->throws(MissingFlagException::class, 'Missing required --group');
 
-test('external-dns:init confines the instance to one zone and gives it a cluster-unique owner', function (): void {
+test('tool:init --tool=external-dns confines the instance to one zone and gives it a cluster-unique owner', function (): void {
     $applied = null;
 
     Process::fake(dnsFakes('abc12345', [
@@ -100,7 +100,7 @@ test('external-dns:init confines the instance to one zone and gives it a cluster
     ]));
     dnsZonesSaloonFake(['example.com']);
 
-    $this->artisan('external-dns:init prod --context=ctx --zone=example.com --cloudflare-token=t --no-interaction --force')
+    $this->artisan('tool:init --tool=external-dns prod --context=ctx --zone=example.com --cloudflare-token=t --no-interaction --force')
         ->assertExitCode(0);
 
     expect($applied)->not->toBeNull('the ExternalDNS manifest was never applied')
@@ -108,7 +108,7 @@ test('external-dns:init confines the instance to one zone and gives it a cluster
         ->and($applied)->toContain('--txt-owner-id=larakube-abc12345-example-com');
 });
 
-test('external-dns:init manages several zones sharing one token under one named group', function (): void {
+test('tool:init --tool=external-dns manages several zones sharing one token under one named group', function (): void {
     $applied = null;
 
     Process::fake(dnsFakes('abc12345', [
@@ -123,7 +123,7 @@ test('external-dns:init manages several zones sharing one token under one named 
     ]));
     dnsZonesSaloonFake(['ourfridays.com', 'larakube.app']);
 
-    $this->artisan('external-dns:init prod --context=ctx --group=shared --cloudflare-token=t --no-interaction --force')
+    $this->artisan('tool:init --tool=external-dns prod --context=ctx --group=shared --cloudflare-token=t --no-interaction --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('ExternalDNS is managing ourfridays.com, larakube.app')
         ->expectsOutputToContain('external-dns-shared');
@@ -134,7 +134,7 @@ test('external-dns:init manages several zones sharing one token under one named 
         ->and($applied)->toContain('--txt-owner-id=larakube-abc12345-shared');
 });
 
-test('external-dns:init --zone= narrows discovery to a subset of what the token can see', function (): void {
+test('tool:init --tool=external-dns --zone= narrows discovery to a subset of what the token can see', function (): void {
     $applied = null;
 
     Process::fake(dnsFakes('abc12345', [
@@ -149,7 +149,7 @@ test('external-dns:init --zone= narrows discovery to a subset of what the token 
     ]));
     dnsZonesSaloonFake(['ourfridays.com', 'larakube.app', 'nexa.site']);
 
-    $this->artisan('external-dns:init prod --context=ctx --group=shared --zone=ourfridays.com --zone=larakube.app --cloudflare-token=t --no-interaction --force')
+    $this->artisan('tool:init --tool=external-dns prod --context=ctx --group=shared --zone=ourfridays.com --zone=larakube.app --cloudflare-token=t --no-interaction --force')
         ->assertExitCode(0);
 
     expect($applied)->toContain('--domain-filter=ourfridays.com')
@@ -157,16 +157,16 @@ test('external-dns:init --zone= narrows discovery to a subset of what the token 
         ->and($applied)->not->toContain('--domain-filter=nexa.site');
 });
 
-test('external-dns:init refuses when --zone= names something the token cannot see', function (): void {
+test('tool:init --tool=external-dns refuses when --zone= names something the token cannot see', function (): void {
     Process::fake(dnsFakes());
     dnsZonesSaloonFake(['example.com']);
 
-    $this->artisan('external-dns:init prod --context=ctx --zone=other.example --cloudflare-token=t --no-interaction --force')
+    $this->artisan('tool:init --tool=external-dns prod --context=ctx --zone=other.example --cloudflare-token=t --no-interaction --force')
         ->expectsOutputToContain("can't see: other.example")
         ->assertExitCode(1);
 });
 
-test('external-dns:init refuses when a zone in scope is already managed under a different instance', function (): void {
+test('tool:init --tool=external-dns refuses when a zone in scope is already managed under a different instance', function (): void {
     Process::fake(dnsFakes('abc12345', [
         '*get deployments*' => Process::result(output: (string) json_encode(['items' => [[
             'metadata' => [
@@ -179,7 +179,7 @@ test('external-dns:init refuses when a zone in scope is already managed under a 
     ]));
     dnsZonesSaloonFake(['example.com']);
 
-    $this->artisan('external-dns:init prod --context=ctx --group=different-name --zone=example.com --cloudflare-token=t --no-interaction --force')
+    $this->artisan('tool:init --tool=external-dns prod --context=ctx --group=different-name --zone=example.com --cloudflare-token=t --no-interaction --force')
         ->expectsOutputToContain("already managed by 'external-dns-example-com'")
         ->assertExitCode(1);
 });
@@ -204,7 +204,7 @@ test('two clusters managing the same zone get different owner ids', function ():
         ]));
         dnsZonesSaloonFake(['example.com']);
 
-        $this->artisan('external-dns:init prod --context=ctx --zone=example.com --cloudflare-token=t --no-interaction --force')
+        $this->artisan('tool:init --tool=external-dns prod --context=ctx --zone=example.com --cloudflare-token=t --no-interaction --force')
             ->assertExitCode(0);
 
         preg_match('/--txt-owner-id=(\S+)/', (string) $applied, $m);
@@ -216,7 +216,7 @@ test('two clusters managing the same zone get different owner ids', function ():
         ->and($owners[0])->not->toBe($owners[1]);
 });
 
-test('external-dns:init refuses to deploy when it cannot establish a cluster identity', function (): void {
+test('tool:init --tool=external-dns refuses to deploy when it cannot establish a cluster identity', function (): void {
     // Falling back to a shared constant owner id is the bug — better to refuse.
     Process::fake(dnsFakes('', [
         '*get configmap larakube-cluster*' => Process::result(output: '', exitCode: 1),
@@ -224,7 +224,7 @@ test('external-dns:init refuses to deploy when it cannot establish a cluster ide
     ]));
     dnsZonesSaloonFake(['example.com']);
 
-    $this->artisan('external-dns:init prod --context=ctx --zone=example.com --cloudflare-token=t --no-interaction --force')
+    $this->artisan('tool:init --tool=external-dns prod --context=ctx --zone=example.com --cloudflare-token=t --no-interaction --force')
         ->assertExitCode(1);
 });
 
@@ -243,7 +243,7 @@ test('the token secret is named after the resolved group', function (): void {
     ]));
     dnsZonesSaloonFake(['other.co.uk']);
 
-    $this->artisan('external-dns:init prod --context=ctx --zone=other.co.uk --cloudflare-token=second-account-token --no-interaction --force')
+    $this->artisan('tool:init --tool=external-dns prod --context=ctx --zone=other.co.uk --cloudflare-token=second-account-token --no-interaction --force')
         ->assertExitCode(0);
 
     expect($secret['metadata']['name'])->toBe('cloudflare-token-other-co-uk')
@@ -413,7 +413,7 @@ test('external-dns:list shows one row per zone for a multi-zone group, sharing t
         ->and($payload[0]['slug'])->toBe($payload[1]['slug']);
 });
 
-test('external-dns:init reuses the stored Cloudflare token instead of demanding it again', function (): void {
+test('tool:init --tool=external-dns reuses the stored Cloudflare token instead of demanding it again', function (): void {
     // Re-applying the manifest — to pick up a new flag, say — used to prompt for
     // the credential and then OVERWRITE the stored one with whatever was typed.
     // Worse, a token with a different zone scope resolves to a different group
@@ -427,12 +427,12 @@ test('external-dns:init reuses the stored Cloudflare token instead of demanding 
 
     dnsZonesSaloonFake(['luchtech.dev']);
 
-    $this->artisan('external-dns:init prod --context=ctx --no-interaction --force')
+    $this->artisan('tool:init --tool=external-dns prod --context=ctx --no-interaction --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Reusing the stored Cloudflare token');
 });
 
-test('external-dns:init takes the token from LARAKUBE_CLOUDFLARE_TOKEN so it never reaches argv', function (): void {
+test('tool:init --tool=external-dns takes the token from LARAKUBE_CLOUDFLARE_TOKEN so it never reaches argv', function (): void {
     $secret = null;
     Process::fake(dnsFakes('abc12345', [
         '*apply -f -*' => function ($process) use (&$secret) {
@@ -448,7 +448,7 @@ test('external-dns:init takes the token from LARAKUBE_CLOUDFLARE_TOKEN so it nev
     putenv('LARAKUBE_CLOUDFLARE_TOKEN=env-token');
 
     try {
-        $this->artisan('external-dns:init prod --context=ctx --no-interaction --force')->assertExitCode(0);
+        $this->artisan('tool:init --tool=external-dns prod --context=ctx --no-interaction --force')->assertExitCode(0);
     } finally {
         putenv('LARAKUBE_CLOUDFLARE_TOKEN');
     }

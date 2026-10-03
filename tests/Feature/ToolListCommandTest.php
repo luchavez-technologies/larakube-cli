@@ -137,7 +137,7 @@ test('tool:list surfaces OpenBao KV secret sync status for wired and unwired too
 });
 
 test('tool:list also treats the dynamic "{secret}-db" ExternalSecret as synced, not just the bare legacy name', function (): void {
-    // Regression guard: openbao:init's static KV-mirror sweep deliberately
+    // Regression guard: tool:init --tool=openbao's static KV-mirror sweep deliberately
     // skips creating the bare-named ExternalSecret once a tool's dynamic
     // '{secret}-db' one exists (secrets:wire's own, to avoid racing it) — so
     // a properly secrets:wire'd tool only ever HAS the '-db' name. Checking

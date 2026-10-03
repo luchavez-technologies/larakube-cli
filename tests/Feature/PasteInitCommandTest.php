@@ -61,7 +61,7 @@ test('paste ingress applies the vpn-only middleware referencing the exact name P
 });
 
 /**
- * Every registry save yopass:init makes, in order. `plex-registry` is re-read
+ * Every registry save tool:init --tool=yopass makes, in order. `plex-registry` is re-read
  * from $current on each call, so later saves see earlier allocations.
  */
 function pasteInitRegistryFakes(array &$saved): array
@@ -90,11 +90,11 @@ function pasteInitRegistryFakes(array &$saved): array
     ];
 }
 
-test('yopass:init gives each instance its own Commons Redis tenant and bucket', function (): void {
+test('tool:init --tool=yopass gives each instance its own Commons Redis tenant and bucket', function (): void {
     $saved = [];
     Process::fake(pasteInitRegistryFakes($saved));
 
-    $this->artisan('yopass:init local --domain=paste.check.example.com --force --no-interaction')->run();
+    $this->artisan('tool:init --tool=yopass local --domain=paste.check.example.com --force --no-interaction')->run();
 
     $tenants = end($saved)['tenants'] ?? [];
 

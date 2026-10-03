@@ -4,9 +4,9 @@ use App\Commands\Snapshot\SnapshotInitCommand;
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Exceptions\AmbiguousEnvironmentException;
+use App\Services\Tools\ToolInitCommands;
 use App\Traits\DeploysClusterTool;
 use App\Traits\ResolvesToolEnvironment;
-use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -235,19 +235,16 @@ test('standalone interactive prompt resolves to local if user selects local cont
 });
 
 test('no init command still forces the environment from --domain', function (): void {
-    $commands = app(Kernel::class)->all();
-
     foreach (ClusterTool::cases() as $tool) {
-        $command = $commands[$tool->initCommand()] ?? null;
-        if ($command === null) {
+        if ($tool->isLegacy() || ! ToolInitCommands::has($tool)) {
             continue;
         }
 
-        $source = (string) file_get_contents((new ReflectionClass($command))->getFileName());
+        $source = (string) file_get_contents((new ReflectionClass(ToolInitCommands::family($tool)))->getFileName());
 
         expect($source)->not->toContain(
             "option('no-interaction') || \$this->option('domain')",
-            "{$tool->initCommand()} still lets --domain decide the environment",
+            "{$tool->value}'s init still lets --domain decide the environment",
         );
     }
 });

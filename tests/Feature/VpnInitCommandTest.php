@@ -46,7 +46,7 @@ function vpnManagementConfigFixture(string $host, string $relaySecret = 'existin
     ])->render());
 }
 
-test('netbird:init deploys netbird vpn to larakube-vpn', function (): void {
+test('tool:init --tool=netbird deploys netbird vpn to larakube-vpn', function (): void {
     $kubectl = vpnInitKubectl();
 
     Process::fake([
@@ -70,14 +70,14 @@ test('netbird:init deploys netbird vpn to larakube-vpn', function (): void {
         '*rollout status deploy/netbird-dashboard*' => Process::result(output: 'rollout success'),
         '*get secret netbird-oidc*' => Process::result(output: '', exitCode: 1),
         '*rollout status deployment/netbird-client*' => Process::result(output: 'rollout success'),
-        // Already bootstrapped — netbird:init should skip auth/config setup entirely, no Http calls made.
+        // Already bootstrapped — tool:init --tool=netbird should skip auth/config setup entirely, no Http calls made.
         '*get secret netbird-secrets*' => Process::result(output: 'netbird-secrets', exitCode: 0),
         '*get secret netbird-config*' => Process::result(output: vpnManagementConfigFixture('vpn.'.GlobalConfigData::load()->getLocalTld()), exitCode: 0),
         '*larakube-tools-registry*' => Process::result(output: ''),
         '*create namespace larakube-shared*' => Process::result(output: 'created'),
     ]);
 
-    $this->artisan('netbird:init local')
+    $this->artisan('tool:init --tool=netbird local')
         ->assertExitCode(0)
         ->expectsOutputToContain('Ensuring namespace larakube-vpn...')
         ->expectsOutputToContain('Applying NetBird VPN manifests...')
@@ -90,7 +90,7 @@ test('netbird:init deploys netbird vpn to larakube-vpn', function (): void {
     Saloon::assertNothingSent();
 });
 
-test('netbird:init targets the CHOSEN environment\'s own saved context, never the ambient current context', function (): void {
+test('tool:init --tool=netbird targets the CHOSEN environment\'s own saved context, never the ambient current context', function (): void {
     $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
     $dir = $temporaryDirectory->path();
     $original = getcwd();
@@ -136,7 +136,7 @@ test('netbird:init targets the CHOSEN environment\'s own saved context, never th
         ]);
         Process::preventStrayProcesses();
 
-        $this->artisan('netbird:init production --domain=example.com')
+        $this->artisan('tool:init --tool=netbird production --domain=example.com')
             ->assertExitCode(0)
             ->expectsOutputToContain('NetBird VPN stack is live.');
 
@@ -170,7 +170,7 @@ test('netbird:remove removes netbird vpn namespace when --remove is passed', fun
         ->expectsOutputToContain('removed from larakube-vpn');
 });
 
-test('netbird:init bootstraps NetBird auth non-interactively on first run', function (): void {
+test('tool:init --tool=netbird bootstraps NetBird auth non-interactively on first run', function (): void {
     $kubectl = vpnInitKubectl();
 
     Process::fake([
@@ -208,7 +208,7 @@ test('netbird:init bootstraps NetBird auth non-interactively on first run', func
         CreateSetupKeyRequest::class => MockResponse::make(['key' => 'nb_setup_key_test']),
     ]);
 
-    $this->artisan('netbird:init local')->assertExitCode(0);
+    $this->artisan('tool:init --tool=netbird local')->assertExitCode(0);
 
     Saloon::assertSent(fn ($request) => $request instanceof SetupOwnerRequest
         && $request->body()->get('create_pat') === true);
@@ -234,7 +234,7 @@ test('netbird:init bootstraps NetBird auth non-interactively on first run', func
         && isset(appliedSecret($process)['data']['admin-email'], appliedSecret($process)['data']['admin-password']));
 });
 
-test('netbird:init warns but does not fail when NetBird auth bootstrap fails', function (): void {
+test('tool:init --tool=netbird warns but does not fail when NetBird auth bootstrap fails', function (): void {
     $kubectl = vpnInitKubectl();
 
     Process::fake([
@@ -265,7 +265,7 @@ test('netbird:init warns but does not fail when NetBird auth bootstrap fails', f
         SetupOwnerRequest::class => MockResponse::make(status: 500),
     ]);
 
-    $this->artisan('netbird:init local')
+    $this->artisan('tool:init --tool=netbird local')
         ->assertExitCode(0)
         ->expectsOutputToContain('Could not bootstrap NetBird auth automatically');
 });
@@ -324,7 +324,7 @@ test('netbird:remove also targets the CHOSEN environment\'s own saved context', 
     }
 });
 
-test('netbird:init re-renders management.json from the PRESERVED relay secret + encryption key, and restarts management only when content actually changed', function (): void {
+test('tool:init --tool=netbird re-renders management.json from the PRESERVED relay secret + encryption key, and restarts management only when content actually changed', function (): void {
     // Regression guard for a real live incident, 2026-08-25: the original
     // ensureVpnConfig() skipped entirely once the Secret existed — a
     // genuine template fix (e.g. the /oauth2 issuer suffix, see
@@ -375,7 +375,7 @@ test('netbird:init re-renders management.json from the PRESERVED relay secret + 
         '*create namespace larakube-shared*' => Process::result(output: 'created'),
     ]);
 
-    $this->artisan('netbird:init local')
+    $this->artisan('tool:init --tool=netbird local')
         ->assertExitCode(0)
         ->expectsOutputToContain('Restarting NetBird Management to pick up config changes...');
 
@@ -385,7 +385,7 @@ test('netbird:init re-renders management.json from the PRESERVED relay secret + 
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/netbird'));
 });
 
-test('netbird:init does NOT restart management when the re-rendered config is byte-identical to what is already deployed', function (): void {
+test('tool:init --tool=netbird does NOT restart management when the re-rendered config is byte-identical to what is already deployed', function (): void {
     $kubectl = vpnInitKubectl();
     $host = 'vpn.'.GlobalConfigData::load()->getLocalTld();
 
@@ -416,7 +416,7 @@ test('netbird:init does NOT restart management when the re-rendered config is by
         '*create namespace larakube-shared*' => Process::result(output: 'created'),
     ]);
 
-    $this->artisan('netbird:init local')
+    $this->artisan('tool:init --tool=netbird local')
         ->assertExitCode(0)
         ->doesntExpectOutputToContain('Restarting NetBird Management to pick up config changes...');
 
@@ -424,7 +424,7 @@ test('netbird:init does NOT restart management when the re-rendered config is by
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/netbird'));
 });
 
-test('netbird:init generates the relay secret + management.json on first run', function (): void {
+test('tool:init --tool=netbird generates the relay secret + management.json on first run', function (): void {
     $kubectl = vpnInitKubectl();
 
     Process::fake([
@@ -453,7 +453,7 @@ test('netbird:init generates the relay secret + management.json on first run', f
         '*create secret generic*' => Process::result(output: 'secret/netbird-config created'),
     ]);
 
-    $this->artisan('netbird:init local')->assertExitCode(0);
+    $this->artisan('tool:init --tool=netbird local')->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'netbird-config')
         && isset(appliedSecret($process)['data']['relay-secret'], appliedSecret($process)['data']['management.json']));
@@ -491,7 +491,7 @@ test('the management manifest always carries a single-account domain we chose', 
         ->not->toContain('- management');
 });
 
-test('netbird:init deploys the dashboard and waits for it', function (): void {
+test('tool:init --tool=netbird deploys the dashboard and waits for it', function (): void {
     $kubectl = vpnInitKubectl();
 
     Process::fake([
@@ -522,12 +522,12 @@ test('netbird:init deploys the dashboard and waits for it', function (): void {
         '*create namespace larakube-shared*' => Process::result(output: 'created'),
     ]);
 
-    $this->artisan('netbird:init local')
+    $this->artisan('tool:init --tool=netbird local')
         ->assertExitCode(0)
         ->expectsOutputToContain('Waiting for NetBird Dashboard...');
 });
 
-test('netbird:init warns when single-account mode did not come up', function (): void {
+test('tool:init --tool=netbird warns when single-account mode did not come up', function (): void {
     // The stack can deploy perfectly and still be useless to the next teammate:
     // with the mode off, every SSO login mints its own account and its own /16.
     $kubectl = vpnInitKubectl();
@@ -560,14 +560,14 @@ test('netbird:init warns when single-account mode did not come up', function ():
     ]);
 
     // A warning, never a failure — the deploy did succeed, and exiting non-zero
-    // would make netbird:init un-runnable on the one cluster that needs fixing.
-    $this->artisan('netbird:init local --force')
+    // would make tool:init --tool=netbird un-runnable on the one cluster that needs fixing.
+    $this->artisan('tool:init --tool=netbird local --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('Single-account mode is OFF')
         ->expectsOutputToContain('4 accounts');
 });
 
-test('netbird:init reuses an existing larakube-cli service user rather than creating a second', function (): void {
+test('tool:init --tool=netbird reuses an existing larakube-cli service user rather than creating a second', function (): void {
     $kubectl = vpnInitKubectl();
 
     Process::fake([
@@ -607,7 +607,7 @@ test('netbird:init reuses an existing larakube-cli service user rather than crea
         CreateSetupKeyRequest::class => MockResponse::make(['key' => 'nb_setup_key_test']),
     ]);
 
-    $this->artisan('netbird:init local')->assertExitCode(0);
+    $this->artisan('tool:init --tool=netbird local')->assertExitCode(0);
 
     // Two identically-named service users is a confusing thing to leave in
     // someone's dashboard forever, so a retry must adopt the one already there.
@@ -616,7 +616,7 @@ test('netbird:init reuses an existing larakube-cli service user rather than crea
         && str_contains($request->resolveEndpoint(), 'svc-existing'));
 });
 
-test('netbird:init falls back to the owner token when the service user cannot be created', function (): void {
+test('tool:init --tool=netbird falls back to the owner token when the service user cannot be created', function (): void {
     // A NetBird that will not create a service user is still a working NetBird.
     // Failing the whole deploy over it would leave the cluster with no VPN at
     // all, rather than one with a slightly worse token.
@@ -656,7 +656,7 @@ test('netbird:init falls back to the owner token when the service user cannot be
         CreateSetupKeyRequest::class => MockResponse::make(['key' => 'nb_setup_key_test']),
     ]);
 
-    $this->artisan('netbird:init local')
+    $this->artisan('tool:init --tool=netbird local')
         ->assertExitCode(0)
         ->expectsOutputToContain('Could not create a NetBird service user');
 
@@ -703,8 +703,8 @@ test('--no-plex leaves NetBird on its own SQLite store', function (): void {
         ->not->toContain('netbird-store');
 });
 
-test('netbird:init defers to the OpenBao-owned password when the tenant is already wired', function (): void {
-    // Re-running netbird:init must not clobber a rotated password back to a fresh
+test('tool:init --tool=netbird defers to the OpenBao-owned password when the tenant is already wired', function (): void {
+    // Re-running tool:init --tool=netbird must not clobber a rotated password back to a fresh
     // local one — that leaves the Secret and Postgres disagreeing until the next
     // rotation, which is how tools crash-loop with 28P01 on their next restart.
     $kubectl = vpnInitKubectl();
@@ -747,7 +747,7 @@ test('netbird:init defers to the OpenBao-owned password when the tenant is alrea
 
     Http::fake(['localhost:*' => Http::response(['data' => ['password' => 'openbao-owned-pw']])]);
 
-    $this->artisan('netbird:init local --force')->assertExitCode(0);
+    $this->artisan('tool:init --tool=netbird local --force')->assertExitCode(0);
 })->group('vpn-openbao');
 
 test('VpnTool satisfies the secrets:wire rotation contract', function (): void {
@@ -946,14 +946,14 @@ test('the bootstrap owner gets an address inside the SSO domain, not the operato
         CreateSetupKeyRequest::class => MockResponse::make(['key' => 'k']),
     ]);
 
-    $this->artisan('netbird:init local')->assertExitCode(0);
+    $this->artisan('tool:init --tool=netbird local')->assertExitCode(0);
 
     $tld = GlobalConfigData::load()->getLocalTld();
     Saloon::assertSent(fn ($request) => $request instanceof SetupOwnerRequest
         && $request->body()->get('email') === "admin@{$tld}");
 });
 
-test('netbird:init explains a 412 from /api/setup instead of blaming the dashboard', function (): void {
+test('tool:init --tool=netbird explains a 412 from /api/setup instead of blaming the dashboard', function (): void {
     // 412 means the STORE already has an owner — the namespace was rebuilt but
     // the Commons tenant survived, because plain netbird:remove keeps the database.
     // /api/setup can never succeed against that store again, so the generic
@@ -987,7 +987,7 @@ test('netbird:init explains a 412 from /api/setup instead of blaming the dashboa
         SetupOwnerRequest::class => MockResponse::make(['message' => 'setup already completed'], 412),
     ]);
 
-    $this->artisan('netbird:init local')
+    $this->artisan('tool:init --tool=netbird local')
         ->assertExitCode(0)
         ->expectsOutputToContain('--purge')
         ->expectsOutputToContain('vpn:setup-key');
@@ -996,11 +996,11 @@ test('netbird:init explains a 412 from /api/setup instead of blaming the dashboa
     Process::assertDidntRun(fn ($p) => str_starts_with(appliedSecret($p)['name'] ?? '', 'netbird-secrets'));
 });
 
-test('netbird:init allocates exactly the database netbird:remove --purge will drop', function (): void {
+test('tool:init --tool=netbird allocates exactly the database netbird:remove --purge will drop', function (): void {
     // These are computed in two different places, and DROP DATABASE IF EXISTS on
     // a name that never existed reports success — so a mismatch is completely
     // silent. Confirmed live 2026-08-29: --purge left the store fully intact,
-    // and the next netbird:init failed with "setup already completed".
+    // and the next tool:init --tool=netbird failed with "setup already completed".
     $vpn = ClusterTool::VPN;
     $instance = $vpn->instanceSlugFromHost('vpn.luchtech.dev');
 
@@ -1009,7 +1009,7 @@ test('netbird:init allocates exactly the database netbird:remove --purge will dr
 
     expect($purgeTarget)->toBe('netbird_vpn_luchtech_dev');
 
-    // And what netbird:init renders into the DSN must be the same string.
+    // And what tool:init --tool=netbird renders into the DSN must be the same string.
     $manifest = view('k8s.vpn.shared', [
         'host' => 'vpn.luchtech.dev',
         'isLocal' => false,
@@ -1022,7 +1022,7 @@ test('netbird:init allocates exactly the database netbird:remove --purge will dr
     expect($manifest)->toContain("user={$purgeTarget} password=\$(DB_PASSWORD) dbname={$purgeTarget}");
 });
 
-test('netbird:init seeds the PAT into OpenBao so its ExternalSecret is green from the first install', function (): void {
+test('tool:init --tool=netbird seeds the PAT into OpenBao so its ExternalSecret is green from the first install', function (): void {
     // creationPolicy: Merge means an unpopulated KV key parks the ExternalSecret
     // at SecretMissing forever — the same red noise this cluster already carries
     // from data-secrets-db and link-kutt-secrets-db.
@@ -1070,7 +1070,7 @@ test('netbird:init seeds the PAT into OpenBao so its ExternalSecret is green fro
         DynamicRequest::class => MockResponse::make(['data' => ['value' => 'ok']]),
     ]);
 
-    $this->artisan('netbird:init local')->assertExitCode(0);
+    $this->artisan('tool:init --tool=netbird local')->assertExitCode(0);
 
     // The service-user token, not the owner's — the one actually stored.
     Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
@@ -1078,7 +1078,7 @@ test('netbird:init seeds the PAT into OpenBao so its ExternalSecret is green fro
         && str_contains($request->resolveEndpoint(), '_PAT'));
 });
 
-test('netbird:init recreates the service user and groups after the account was replaced', function (): void {
+test('tool:init --tool=netbird recreates the service user and groups after the account was replaced', function (): void {
     // bootstrapVpnAuth() returns early once the credentials Secret exists, so
     // anything it owns is created once per ACCOUNT lifetime — and sso:wire
     // replaces the account under it. Before this was lifted out of that gate, a
@@ -1124,7 +1124,7 @@ test('netbird:init recreates the service user and groups after the account was r
         CreateGroupRequest::class => MockResponse::make(['id' => 'grp']),
     ]);
 
-    $this->artisan('netbird:init local')->assertExitCode(0);
+    $this->artisan('tool:init --tool=netbird local')->assertExitCode(0);
 
     // The service user is recreated in the NEW account...
     Saloon::assertSent(fn ($request) => $request instanceof CreateServiceUserRequest);
@@ -1132,7 +1132,7 @@ test('netbird:init recreates the service user and groups after the account was r
     Saloon::assertSent(fn ($request) => $request instanceof CreateGroupRequest);
 });
 
-test('netbird:init registers the tool even when the gateway does not settle', function (): void {
+test('tool:init --tool=netbird registers the tool even when the gateway does not settle', function (): void {
     // Registration used to sit AFTER the gateway rollout check, so any run that
     // failed there left VPN unregistered — and the next `netbird:remove --purge`
     // then resolved NO instance, computed the unsuffixed tenant name, and ran
@@ -1168,7 +1168,7 @@ test('netbird:init registers the tool even when the gateway does not settle', fu
 
     Saloon::fake([ListUsersRequest::class => MockResponse::make(['message' => 'nope'], 500)]);
 
-    $this->artisan('netbird:init local')->assertExitCode(1);
+    $this->artisan('tool:init --tool=netbird local')->assertExitCode(1);
 
     // Registered anyway: a gateway that has not settled is a DEGRADED install,
     // not an absent one, and the registry is what --purge resolves the tenant
@@ -1177,7 +1177,7 @@ test('netbird:init registers the tool even when the gateway does not settle', fu
         && str_contains($p->command, 'create'));
 });
 
-test('netbird:init keeps the owner token, which is the only one that can retire the account', function (): void {
+test('tool:init --tool=netbird keeps the owner token, which is the only one that can retire the account', function (): void {
     // NetBird permits account deletion to the OWNER only. The larakube-cli
     // service user is an admin and gets 403 — and cannot mint a token for the
     // owner to borrow either (also 403, both confirmed live 2026-08-29). So
@@ -1220,7 +1220,7 @@ test('netbird:init keeps the owner token, which is the only one that can retire 
         CreateSetupKeyRequest::class => MockResponse::make(['key' => 'k']),
     ]);
 
-    $this->artisan('netbird:init local')->assertExitCode(0);
+    $this->artisan('tool:init --tool=netbird local')->assertExitCode(0);
 
     // Routine work uses the service user's token; the owner's is kept beside it
     // purely for the owner-only operations.

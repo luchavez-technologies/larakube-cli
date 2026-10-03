@@ -16,7 +16,7 @@ trait InteractsWithDnsZones
 {
     /**
      * Every zone this cluster manages, one row per zone — newest listing
-     * order irrelevant. A single external-dns:init instance can now cover 2+ zones
+     * order irrelevant. A single tool:init --tool=external-dns instance can now cover 2+ zones
      * that share one Cloudflare token (`larakube.io/dns-domain` is a
      * comma-joined list in that case); this splits it back out so each zone
      * still gets its own row, with multiple rows naturally sharing the same

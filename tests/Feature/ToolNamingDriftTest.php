@@ -46,8 +46,8 @@ function toolNamingHarnessPending(): array
     return [
         'dns' => 'not a per-host tool: needs a Cloudflare token and manages zones',
         'external-dns' => 'not a per-host tool: needs a Cloudflare token and manages zones',
-        'notes' => 'Outline needs a login provider: without Zitadel, outline:init refuses unattended',
-        'outline' => 'Outline needs a login provider: without Zitadel, outline:init refuses unattended',
+        'notes' => 'Outline needs a login provider: without Zitadel, tool:init --tool=outline refuses unattended',
+        'outline' => 'Outline needs a login provider: without Zitadel, tool:init --tool=outline refuses unattended',
         'secrets' => 'OpenBao init talks to its HTTP API',
         'openbao' => 'OpenBao init talks to its HTTP API',
         'webmail' => 'needs Mail installed first',

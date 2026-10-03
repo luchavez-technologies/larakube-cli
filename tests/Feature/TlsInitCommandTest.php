@@ -28,7 +28,7 @@ function tlsInitIngresses(array $hosts, array $annotations = []): string
 }
 
 /**
- * @param  array<string, string>  $storedTokens  external-dns:init groups => token
+ * @param  array<string, string>  $storedTokens  tool:init --tool=external-dns groups => token
  */
 function tlsInitFakes(array $storedTokens, array $hosts, array &$captured, array $overrides = []): array
 {
@@ -90,7 +90,7 @@ test('tls:init refuses local clusters', function (): void {
         ->assertExitCode(1);
 });
 
-test('tls:init reuses the external-dns:init token and renders the DNS challenge with the cluster\'s own ACME email', function (): void {
+test('tls:init reuses the tool:init --tool=external-dns token and renders the DNS challenge with the cluster\'s own ACME email', function (): void {
     $captured = [];
     Process::fake(tlsInitFakes(['example-com' => 'cf-token-123'], ['app.example.com', 'example.org'], $captured, [
         '*get secret traefik-acme-cloudflare -n traefik -o name*' => Process::result(output: 'secret/traefik-acme-cloudflare'),
@@ -179,7 +179,7 @@ test('a token that can read but not write DNS stops tls:init before Traefik is t
         ->and($captured['manifest'])->toBeNull();
 });
 
-test('without external-dns:init, a non-interactive run takes the token from LARAKUBE_CLOUDFLARE_TOKEN', function (): void {
+test('without tool:init --tool=external-dns, a non-interactive run takes the token from LARAKUBE_CLOUDFLARE_TOKEN', function (): void {
     putenv('LARAKUBE_CLOUDFLARE_TOKEN=env-token-456');
     $captured = [];
     Process::fake(tlsInitFakes([], ['app.example.com'], $captured));
@@ -190,7 +190,7 @@ test('without external-dns:init, a non-interactive run takes the token from LARA
     expect($captured['token'])->toBe('env-token-456');
 });
 
-test('without external-dns:init or LARAKUBE_CLOUDFLARE_TOKEN, a non-interactive run fails and names the variable', function (): void {
+test('without tool:init --tool=external-dns or LARAKUBE_CLOUDFLARE_TOKEN, a non-interactive run fails and names the variable', function (): void {
     $captured = [];
     Process::fake(tlsInitFakes([], ['app.example.com'], $captured));
     tlsInitCloudflare();
@@ -202,7 +202,7 @@ test('without external-dns:init or LARAKUBE_CLOUDFLARE_TOKEN, a non-interactive 
     Saloon::assertNotSent(ListZonesRequest::class);
 });
 
-test('several external-dns:init tokens need --group= when running non-interactively', function (): void {
+test('several tool:init --tool=external-dns tokens need --group= when running non-interactively', function (): void {
     $captured = [];
     Process::fake(tlsInitFakes(['example-com' => 'token-a', 'example-org' => 'token-b'], ['app.example.com'], $captured));
     tlsInitCloudflare();
@@ -210,7 +210,7 @@ test('several external-dns:init tokens need --group= when running non-interactiv
     $this->artisan('tls:init production --context=ctx --force --no-interaction')->run();
 })->throws(MissingFlagException::class, 'Missing required --group');
 
-test('--group= picks that external-dns:init group\'s token', function (): void {
+test('--group= picks that tool:init --tool=external-dns group\'s token', function (): void {
     $captured = [];
     Process::fake(tlsInitFakes(['example-com' => 'token-a', 'example-org' => 'token-b'], ['app.example.com'], $captured));
     tlsInitCloudflare();

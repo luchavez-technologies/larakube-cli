@@ -14,7 +14,7 @@ use Symfony\Component\Console\Output\BufferedOutput;
 /**
  * `{tool}:init --proxied` gets cloud:proxy's checks before anything deploys,
  * and tools that can't sit behind Cloudflare refuse it. Exercised through
- * n8n:init, which has both --proxied and --vpn-only like most tools.
+ * tool:init --tool=n8n, which has both --proxied and --vpn-only like most tools.
  */
 function proxyGuardCommand(array $options, ClusterTool $tool = ClusterTool::N8N): object
 {

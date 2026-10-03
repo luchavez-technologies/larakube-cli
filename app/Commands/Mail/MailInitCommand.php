@@ -276,7 +276,7 @@ abstract class MailInitCommand extends AbstractToolInitCommand
         $this->line('  <fg=gray>Ports 25/465/587/993/4190 must be reachable.  Wire a tool:</> <fg=blue>larakube mail:wire</>');
         $this->newLine();
 
-        // Skip entirely once nothing is left to report: stalwart:init already
+        // Skip entirely once nothing is left to report: tool:init --tool=stalwart already
         // printed a real-time ✔ for every store it just configured above —
         // repeating "already configured" here would be pure noise. Still
         // shown when genuinely stuck on the old wizard-driven path, or when
@@ -299,9 +299,9 @@ abstract class MailInitCommand extends AbstractToolInitCommand
     }
 
     /**
-     * Offer to add the Bulwark webmail UI right after stalwart:init — the discovery
+     * Offer to add the Bulwark webmail UI right after tool:init --tool=stalwart — the discovery
      * hook, mirroring tool:add's offerMailWiring()/offerSsoWiring(). Opt-in and
-     * interactive-only: webmail is NOT bundled into stalwart:init (not every install
+     * interactive-only: webmail is NOT bundled into tool:init --tool=stalwart (not every install
      * wants a browser UI, and we don't couple the critical mail deploy to a
      * separate tool's failure modes), this just makes it discoverable.
      */
@@ -312,14 +312,14 @@ abstract class MailInitCommand extends AbstractToolInitCommand
         }
 
         if (! confirm(label: "Also deploy a browser webmail UI (Bulwark) so your team isn't limited to Apple Mail/Thunderbird?", default: false)) {
-            $this->laraKubeLine("  <fg=gray>You can add it later:</> <fg=blue>larakube bulwark:init {$env}</>");
+            $this->laraKubeLine("  <fg=gray>You can add it later:</> <fg=blue>larakube tool:init --tool=bulwark {$env}</>");
 
             return;
         }
 
-        // bulwark:init resolves its own host (local → webmail.{tld}; cloud →
+        // tool:init --tool=bulwark resolves its own host (local → webmail.{tld}; cloud →
         // prompt/persist) and handles the Stalwart CORS flip + restart itself.
-        $this->call('bulwark:init', ['environment' => $env]);
+        $this->call('tool:init', ['--tool' => 'bulwark', 'environment' => $env]);
     }
 
     /**
@@ -509,7 +509,7 @@ abstract class MailInitCommand extends AbstractToolInitCommand
 
         if (! $this->secretsBackendAvailable($kubectl)) {
             $this->line('  <fg=gray>Skipped Postgres store auto-config: Secrets backend is not bootstrapped, so there is</>');
-            $this->line('  <fg=gray>  nowhere to sync STALWART_STORE_PASSWORD. Run</> <fg=blue>larakube openbao:init</><fg=gray>, or paste the</>');
+            $this->line('  <fg=gray>  nowhere to sync STALWART_STORE_PASSWORD. Run</> <fg=blue>larakube tool:init --tool=openbao</><fg=gray>, or paste the</>');
             $this->line('  <fg=gray>  password from the store details printed below straight into the wizard.</>');
 
             return;
@@ -626,7 +626,7 @@ abstract class MailInitCommand extends AbstractToolInitCommand
         // "production" as one object, but the value pushed above is at the
         // deeper "production/STALWART_STORE_PASSWORD" path, so it always
         // syncs empty and, as an Owner-mode ExternalSecret with a 1m
-        // refresh, wipes out the correct one openbao:init already maintains
+        // refresh, wipes out the correct one tool:init --tool=openbao already maintains
         // (tool-es.blade.php) on its next reconcile. Reconcile that existing
         // ExternalSecret instead of creating a second, conflicting one.
         $synced = $this->withSpin(
@@ -654,7 +654,7 @@ abstract class MailInitCommand extends AbstractToolInitCommand
 
         if (! $synced) {
             $this->laraKubeError('Stored the password in OpenBao, but the sync into the cluster did not confirm in time.');
-            $this->line('  <fg=gray>Check</> <fg=yellow>kubectl get externalsecret '.$dynamicSecretName.' -n '.$ns.'</> <fg=gray>— run</> <fg=blue>larakube openbao:init</> <fg=gray>if it is missing. Or use the password directly:</>');
+            $this->line('  <fg=gray>Check</> <fg=yellow>kubectl get externalsecret '.$dynamicSecretName.' -n '.$ns.'</> <fg=gray>— run</> <fg=blue>larakube tool:init --tool=openbao</> <fg=gray>if it is missing. Or use the password directly:</>');
             $this->line('  <fg=yellow>'.$password.'</>');
 
             return;

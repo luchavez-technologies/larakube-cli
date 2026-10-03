@@ -9,8 +9,8 @@ afterEach(function (): void {
     MockClient::destroyGlobal();
 });
 
-test('vaultwarden:init never registers an OpenBao static role itself — only secrets:wire may hand rotation over', function (): void {
-    // Same design principle enforced for forgejo:init/grafana:init: {tool}:init
+test('tool:init --tool=vaultwarden never registers an OpenBao static role itself — only secrets:wire may hand rotation over', function (): void {
+    // Same design principle enforced for tool:init --tool=forgejo/tool:init --tool=grafana: {tool}:init
     // must not know or care whether OpenBao is installed. It writes a
     // locally-generated DATABASE_URL directly into its credentials Secret (see the
     // Deployment template's secretKeyRef, rendered straight from the PHP
@@ -42,7 +42,7 @@ test('vaultwarden:init never registers an OpenBao static role itself — only se
         ], default: ['data' => []]),
     ]);
 
-    $this->artisan('vaultwarden:init local --no-interaction')
+    $this->artisan('tool:init --tool=vaultwarden local --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('Vaultwarden stack is live.');
 

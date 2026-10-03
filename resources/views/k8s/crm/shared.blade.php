@@ -1,5 +1,5 @@
 @php
-    // Every name comes from ToolInstance (ADR 0021). Rendered by twenty:init
+    // Every name comes from ToolInstance (ADR 0021). Rendered by tool:init --tool=twenty
     // (which passes the instance) and by anything that passes only the host.
     $instance = ($instance ?? '') !== ''
         ? $instance

@@ -236,7 +236,7 @@ test('resolveInstanceForDomain derives a fresh slug instead of returning a stale
     // host-derived instances existed) recorded instance: '' and was never
     // corrected since — resolveInstanceTargetsForDomain() found this match
     // and returned [''] unconditionally, so every caller of the singular
-    // resolveInstanceForDomain() (secrets:wire, secrets:rotate, stalwart:init)
+    // resolveInstanceForDomain() (secrets:wire, secrets:rotate, tool:init --tool=stalwart)
     // kept resolving to '' and targeting bare resource names against an
     // install that had already been renamed to a real instance-suffixed
     // slug, with no way to recover short of re-registering successfully —

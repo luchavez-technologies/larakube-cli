@@ -72,7 +72,7 @@ test('vpn:wire --domain= passes the domain through to the re-applied {tool}:init
     // instance's Deployment was actually being restricted — a --domain=
     // targeting a non-default instance would silently re-apply the wrong
     // one's ingress. Captures the args passed to $this->call() instead of
-    // actually invoking outline:init (which has its own heavy dependencies).
+    // actually invoking tool:init --tool=outline (which has its own heavy dependencies).
     $command = new class extends App\Commands\Vpn\VpnWireCommand
     {
         public array $calledWith = [];

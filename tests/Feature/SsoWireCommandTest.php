@@ -71,7 +71,7 @@ test('sso:wire errors when Zitadel is not installed', function (): void {
 });
 
 test('sso:wire resolves a cloud tool host from the cluster registry when .larakube.json has none', function (): void {
-    // Regression for a real live failure 2026-08-06: headlamp:init records
+    // Regression for a real live failure 2026-08-06: tool:init --tool=headlamp records
     // Headlamp's host via ResolvesToolHost::promptForCloudHost(), which
     // persists to the CLUSTER REGISTRY, not .larakube.json — the project
     // file's `hosts` map never gets a `dashboard` entry at all. sso:wire's
@@ -195,7 +195,7 @@ test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, ne
     // ADR 0018: sso_only_vars merged into $staticVars must land in the
     // Secret (reached via --from=secret) — a literal `set env KEY=value`
     // pass would desync kubectl apply's bookkeeping for the next
-    // grafana:init re-apply, exactly the bug this test guards against.
+    // tool:init --tool=grafana re-apply, exactly the bug this test guards against.
     Process::fake([
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment*grafana*' => Process::result(output: 'grafana-grafana-dev-test   1/1   1   1   10d'),

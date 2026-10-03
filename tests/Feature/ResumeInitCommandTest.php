@@ -45,11 +45,11 @@ function fakeResumeInitProcess(?string $s3Host, ?string &$appliedManifest, int $
     });
 }
 
-test('resume:init deploys Reactive Resume and applies manifests successfully', function (): void {
+test('tool:init --tool=resume deploys Reactive Resume and applies manifests successfully', function (): void {
     $appliedManifest = null;
     fakeResumeInitProcess('files.example.com', $appliedManifest);
 
-    $this->artisan('resume:init', [
+    $this->artisan('tool:init', ['--tool' => 'resume',
         'environment' => 'local',
         '--no-interaction' => true,
     ])->assertExitCode(0);
@@ -59,11 +59,11 @@ test('resume:init deploys Reactive Resume and applies manifests successfully', f
         ->and($appliedManifest)->toContain('amruthpillai/reactive-resume');
 });
 
-test('resume:init returns a failing exit code when kubectl apply fails', function (): void {
+test('tool:init --tool=resume returns a failing exit code when kubectl apply fails', function (): void {
     $appliedManifest = null;
     fakeResumeInitProcess('files.example.com', $appliedManifest, applyExitCode: 1);
 
-    $this->artisan('resume:init', [
+    $this->artisan('tool:init', ['--tool' => 'resume',
         'environment' => 'local',
         '--no-interaction' => true,
     ])

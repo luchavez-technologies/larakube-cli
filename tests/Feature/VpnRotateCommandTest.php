@@ -3,7 +3,7 @@
 /**
  * vpn:rotate replaces the stored NetBird PAT + setup key BEFORE they expire.
  *
- * It matters because netbird:init mints both in one call, so they expire within
+ * It matters because tool:init --tool=netbird mints both in one call, so they expire within
  * milliseconds of each other — once the PAT is dead it cannot mint its own
  * replacement, and recovery is manual. This command only works while the
  * current PAT is still valid, which is precisely why it must not half-apply.
@@ -105,7 +105,7 @@ test('vpn:rotate says how to recover when the stored PAT is already dead', funct
 });
 
 test('vpn:rotate finds the larakube-cli service user when NetBird does not flag it as current', function (): void {
-    // netbird:init now hangs the PAT off a service user. If a NetBird release ever
+    // tool:init --tool=netbird now hangs the PAT off a service user. If a NetBird release ever
     // stops setting is_current for service-user tokens, the difference is
     // vpn:rotate renewing the PAT vs a hard lockout on day 365.
     $kubectl = vpnRotateKubectl();

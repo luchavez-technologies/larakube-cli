@@ -19,7 +19,7 @@ abstract class DataShowCommand extends AbstractToolShowCommand
     /**
      * A Data instance can run either engine, and nothing about the host or
      * URL reveals which — the registry's `engine` field (recorded by
-     * directus:init) is the only place this is answered without a live
+     * tool:init --tool=directus) is the only place this is answered without a live
      * `kubectl get deployment` probe.
      */
     protected function rows(?string $host, string $env, string $kubectl, string $instance = ''): array

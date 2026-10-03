@@ -16,7 +16,7 @@ use LaravelZero\Framework\Commands\Command;
 /**
  * Switch Chat's sign-in from classic SSO (Synapse's own oidc_providers) to the
  * Matrix Authentication Service, which Element X requires. Recorded, so later
- * `matrix:init` runs keep it.
+ * `tool:init --tool=matrix` runs keep it.
  */
 class ChatUseMasCommand extends Command
 {
@@ -38,7 +38,7 @@ class ChatUseMasCommand extends Command
         $ns = ClusterTool::CHAT->namespace();
 
         if ($this->readChatWiredMas($kubectl, $ns) === null) {
-            $this->laraKubeError('MAS isn\'t deployed for Chat here. Run `larakube matrix:init '.$env.'` first (it deploys MAS when Zitadel is installed).');
+            $this->laraKubeError('MAS isn\'t deployed for Chat here. Run `larakube tool:init --tool=matrix '.$env.'` first (it deploys MAS when Zitadel is installed).');
 
             return 1;
         }
@@ -63,7 +63,7 @@ class ChatUseMasCommand extends Command
         if (! $this->kubectlStep('Waiting for Synapse...', fn () => Kubectl::fromPrefix($kubectl)->rolloutStatus($ns, $this->chatNames($kubectl)->deployment(), 180))) {
             return 1;
         }
-        $this->laraKubeInfo('✅ Chat signs in through MAS; matrix:init keeps it that way.');
+        $this->laraKubeInfo('✅ Chat signs in through MAS; tool:init --tool=matrix keeps it that way.');
 
         return 0;
     }

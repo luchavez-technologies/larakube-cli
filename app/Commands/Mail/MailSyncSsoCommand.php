@@ -45,7 +45,7 @@ class MailSyncSsoCommand extends Command
         $mailNs = $this->mailNamespace();
 
         if (! $this->isMailInstalled($mailKubectl, $mailNs)) {
-            $this->laraKubeError('Stalwart is not installed. Run `larakube stalwart:init` first.');
+            $this->laraKubeError('Stalwart is not installed. Run `larakube tool:init --tool=stalwart` first.');
 
             return 1;
         }
@@ -54,7 +54,7 @@ class MailSyncSsoCommand extends Command
         $ssoNs = $this->ssoNamespace();
 
         if (! $this->isSsoInstalled($ssoKubectl, $ssoNs)) {
-            $this->laraKubeError('Zitadel SSO is not installed. Run `larakube zitadel:init` first.');
+            $this->laraKubeError('Zitadel SSO is not installed. Run `larakube tool:init --tool=zitadel` first.');
 
             return 1;
         }
@@ -63,7 +63,7 @@ class MailSyncSsoCommand extends Command
         $pat = $this->readSsoSecret($ssoKubectl, $ssoNs, 'machine-pat');
 
         if ($ssoHost === null || $pat === null) {
-            $this->laraKubeError('Could not read Zitadel automation token. Re-run `larakube zitadel:init`.');
+            $this->laraKubeError('Could not read Zitadel automation token. Re-run `larakube tool:init --tool=zitadel`.');
 
             return 1;
         }

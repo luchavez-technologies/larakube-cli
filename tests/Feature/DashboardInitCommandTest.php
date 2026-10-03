@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Process;
 
 pest()->use(InteractsWithToolRegistry::class);
 
-test('headlamp:init deploys CNCF Headlamp into larakube-shared', function (): void {
+test('tool:init --tool=headlamp deploys CNCF Headlamp into larakube-shared', function (): void {
     Process::fake([
         '*get secret *' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
@@ -17,7 +17,7 @@ test('headlamp:init deploys CNCF Headlamp into larakube-shared', function (): vo
         '*exec *' => Process::result(output: 'success'),
     ]);
 
-    $this->artisan('headlamp:init local --no-interaction')
+    $this->artisan('tool:init --tool=headlamp local --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('Applying Headlamp Control Plane manifests...')
         ->expectsOutputToContain('CNCF Headlamp Kubernetes Control Plane is live.');
@@ -27,7 +27,7 @@ test('headlamp:init deploys CNCF Headlamp into larakube-shared', function (): vo
     });
 });
 
-test('headlamp:init --vpn-only creates the Traefik Middleware before applying manifests', function (): void {
+test('tool:init --tool=headlamp --vpn-only creates the Traefik Middleware before applying manifests', function (): void {
     Process::fake([
         '*get secret *' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
@@ -38,7 +38,7 @@ test('headlamp:init --vpn-only creates the Traefik Middleware before applying ma
         '*exec *' => Process::result(output: 'success'),
     ]);
 
-    $this->artisan('headlamp:init local --vpn-only --no-interaction')
+    $this->artisan('tool:init --tool=headlamp local --vpn-only --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('Ensuring VPN-only Middleware for Kubernetes Control Plane (Headlamp)...')
         ->expectsOutputToContain('CNCF Headlamp Kubernetes Control Plane is live.');

@@ -51,7 +51,7 @@ class VpnJoinCommand extends Command
 
         if (! $this->isVpnInstalled($kubectl, $ns)) {
             $this->laraKubeError("NetBird VPN isn't installed for '{$env}'.");
-            $this->line("  Run <fg=yellow>larakube netbird:init {$env}</> first.");
+            $this->line("  Run <fg=yellow>larakube tool:init --tool=netbird {$env}</> first.");
 
             return 1;
         }
@@ -92,7 +92,7 @@ class VpnJoinCommand extends Command
         } else {
             $key = $this->fetchVpnSetupKey($kubectl, $ns);
             if ($key === null) {
-                $this->laraKubeError("No NetBird setup key found — re-run `larakube netbird:init {$env}` to bootstrap auth, or mint one manually in the NetBird dashboard.");
+                $this->laraKubeError("No NetBird setup key found — re-run `larakube tool:init --tool=netbird {$env}` to bootstrap auth, or mint one manually in the NetBird dashboard.");
 
                 return 1;
             }

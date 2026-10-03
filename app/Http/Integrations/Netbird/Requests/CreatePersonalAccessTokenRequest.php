@@ -10,7 +10,7 @@ use Saloon\Traits\Plugins\HasTimeout;
 
 /**
  * Mint a new PAT for a user. NetBird caps a PAT's lifetime, so the token
- * netbird:init bootstraps with expires — and when it does, every LaraKube→NetBird
+ * tool:init --tool=netbird bootstraps with expires — and when it does, every LaraKube→NetBird
  * call stops working at once. This is what lets vpn:rotate mint a replacement
  * while the current one is still valid.
  */

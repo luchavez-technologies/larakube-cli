@@ -49,7 +49,7 @@ class MeetWireCommand extends Command
         $ns = $this->meetNamespace();
 
         if (! $this->isMeetInstalled($kubectl, $ns)) {
-            $this->laraKubeError("Meet is not installed on this cluster. Run `larakube livekit:init {$env}` first.");
+            $this->laraKubeError("Meet is not installed on this cluster. Run `larakube tool:init --tool=livekit {$env}` first.");
 
             return 1;
         }
@@ -121,7 +121,7 @@ class MeetWireCommand extends Command
         }
 
         // 3. Point Synapse at the bridge and record the wiring so a later
-        //    matrix:init re-render does not silently drop it.
+        //    tool:init --tool=matrix re-render does not silently drop it.
         if (! $this->wireSynapseCalling($kubectl, $ns, $jwtUrl)) {
             return 1;
         }
@@ -178,7 +178,7 @@ class MeetWireCommand extends Command
 
     /**
      * Rewrite Synapse's calling block in place and restart it. The Meet Secret
-     * is what matrix:init reads back on re-run.
+     * is what tool:init --tool=matrix reads back on re-run.
      */
     protected function wireSynapseCalling(string $kubectl, string $ns, string $jwtUrl): bool
     {
@@ -204,7 +204,7 @@ class MeetWireCommand extends Command
                 return;
             }
 
-            // Read back MAS's public issuer (if matrix:init has already
+            // Read back MAS's public issuer (if tool:init --tool=matrix has already
             // activated MAS-native auth) so wiring calling here doesn't
             // clobber Element X's auth-discovery well-known key — the two
             // concerns share one YAML top-level key.

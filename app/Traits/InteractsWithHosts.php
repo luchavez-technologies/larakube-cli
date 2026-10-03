@@ -171,7 +171,7 @@ trait InteractsWithHosts
      * RE-POINTED by reconcileSharedCluster() when already present — `up` never
      * auto-installs them — so their host is only synced once the same presence
      * probe confirms they're actually there. Otherwise a project that never ran
-     * `grafana:init` would get a "grafana.<tld>" entry pointing at an Ingress
+     * `tool:init --tool=grafana` would get a "grafana.<tld>" entry pointing at an Ingress
      * that was never created.
      *
      * Unlike ensureHostsAreSet() this is fully automated (no confirm prompt) because

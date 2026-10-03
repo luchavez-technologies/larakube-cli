@@ -3,7 +3,7 @@
 use Symfony\Component\Yaml\Yaml;
 
 /**
- * Regression guard for a real live incident, 2026-08-24: `netbird:init production`
+ * Regression guard for a real live incident, 2026-08-24: `tool:init --tool=netbird production`
  * reported "Could not apply the NetBird VPN manifest" even though every other
  * resource in the same multi-doc apply succeeded. Root cause, isolated with
  * Blade::render() on minimal fixtures: an indented `@if`/`@endif` (or

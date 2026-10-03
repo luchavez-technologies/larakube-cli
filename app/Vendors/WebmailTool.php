@@ -67,7 +67,7 @@ final class WebmailTool implements ClusterToolVendor, HasDeploymentBaseName, Has
                     ['kind' => 'ingress', 'name' => $deployment],
                     ['kind' => 'secret', 'name' => $canonical($name('webmail-bulwark-secrets'))],
                     // Not a backup target: Bulwark regenerates its admin
-                    // config and settings-sync on the next bulwark:init.
+                    // config and settings-sync on the next tool:init --tool=bulwark.
                     ['kind' => 'pvc', 'name' => $canonical($name('webmail-bulwark-storage'))],
                 ],
             ),

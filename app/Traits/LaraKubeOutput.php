@@ -386,7 +386,7 @@ trait LaraKubeOutput
      * callbacks actually hand back report failure: a process EXIT CODE is 0
      * on success and truthy on every failure, and a ProcessResult object is
      * truthy whatever the command did. Both were rendering a tick over a
-     * failed step — `livekit:init` announced the SFU was live while its pod sat
+     * failed step — `tool:init --tool=livekit` announced the SFU was live while its pod sat
      * unschedulable. Normalising here fixes every call site at once instead
      * of asking each one to remember.
      */

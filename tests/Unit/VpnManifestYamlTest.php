@@ -23,7 +23,7 @@ test('vpn shared manifest renders as valid multi-document YAML', function (): vo
     }
 
     // Instance-suffixed, because that is what ships: the templates derive
-    // `vpn-example-com` from the host they are handed, exactly as netbird:init
+    // `vpn-example-com` from the host they are handed, exactly as tool:init --tool=netbird
     // does. A bare `netbird` here would assert a name nothing ever creates.
     expect($kinds)->toContain('Deployment/netbird-vpn-example-com')
         ->toContain('Deployment/netbird-signal-vpn-example-com')

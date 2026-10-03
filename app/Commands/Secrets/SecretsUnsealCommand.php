@@ -28,7 +28,7 @@ class SecretsUnsealCommand extends Command
         $ns = $this->secretsNamespace();
 
         if (! $this->isOpenBaoBootstrapped($kubectl, $ns)) {
-            $this->laraKubeError('OpenBao is not deployed. Run `larakube openbao:init` first.');
+            $this->laraKubeError('OpenBao is not deployed. Run `larakube tool:init --tool=openbao` first.');
 
             return 1;
         }
@@ -41,7 +41,7 @@ class SecretsUnsealCommand extends Command
         }
 
         if (! ($initStatus['initialized'] ?? false)) {
-            $this->laraKubeError('OpenBao has never been initialized. Run `larakube openbao:init` first.');
+            $this->laraKubeError('OpenBao has never been initialized. Run `larakube tool:init --tool=openbao` first.');
 
             return 1;
         }

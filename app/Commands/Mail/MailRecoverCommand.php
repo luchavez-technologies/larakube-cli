@@ -61,13 +61,13 @@ class MailRecoverCommand extends Command
         $ns = $this->mailNamespace();
 
         if (! $this->isMailInstalled($kubectl, $ns)) {
-            $this->laraKubeError('Stalwart is not installed. Run `larakube stalwart:init` first.');
+            $this->laraKubeError('Stalwart is not installed. Run `larakube tool:init --tool=stalwart` first.');
 
             return 1;
         }
 
         if ($this->readMailSecret($kubectl, $ns, 'admin-password') === null) {
-            $this->laraKubeError('No recovery-admin credential found in the Stalwart credentials Secret — cannot recover. The mail server may need STALWART_RECOVERY_ADMIN restored (see `larakube stalwart:init`).');
+            $this->laraKubeError('No recovery-admin credential found in the Stalwart credentials Secret — cannot recover. The mail server may need STALWART_RECOVERY_ADMIN restored (see `larakube tool:init --tool=stalwart`).');
 
             return 1;
         }

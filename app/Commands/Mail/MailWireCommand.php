@@ -80,14 +80,14 @@ class MailWireCommand extends Command
         $targets = $this->resolveTargets($kubectl);
 
         if (! $this->isMailInstalled($kubectl, $ns)) {
-            $this->laraKubeError('Stalwart is not installed. Run `larakube stalwart:init` first.');
+            $this->laraKubeError('Stalwart is not installed. Run `larakube tool:init --tool=stalwart` first.');
 
             return 1;
         }
 
         $mailHost = $this->resolveMailHostReadOnly($env, $config, $kubectl);
         if (! $mailHost) {
-            $this->laraKubeError("No Stalwart host is configured for '{$env}'. Run `larakube stalwart:init {$env}` first.");
+            $this->laraKubeError("No Stalwart host is configured for '{$env}'. Run `larakube tool:init --tool=stalwart {$env}` first.");
 
             return 1;
         }
@@ -321,14 +321,14 @@ class MailWireCommand extends Command
         if ($tool->category() === ClusterTool::SSO) {
             $pat = $this->readSsoSecret($kubectl, $this->ssoNamespace(), 'machine-pat');
             if ($pat === null) {
-                $this->laraKubeError('Could not read Zitadel automation PAT. Ensure zitadel:init has completed.');
+                $this->laraKubeError('Could not read Zitadel automation PAT. Ensure tool:init --tool=zitadel has completed.');
 
                 return false;
             }
 
             $ssoHost = $this->resolveSsoHostReadOnly($env, null, $kubectl);
             if ($ssoHost === null) {
-                $this->laraKubeError("Could not resolve Zitadel's host for '{$env}'. Re-run `larakube zitadel:init {$env}` so the host is persisted.");
+                $this->laraKubeError("Could not resolve Zitadel's host for '{$env}'. Re-run `larakube tool:init --tool=zitadel {$env}` so the host is persisted.");
 
                 return false;
             }
@@ -488,7 +488,7 @@ class MailWireCommand extends Command
      * ignore whatever string lands here entirely — every smtpEnv()
      * implementation except CRM's hardcodes its deployment name — so an
      * empty placeholder is safe for them. Host-derived tools (CRM, and DATA
-     * once directus:init registers correctly) have no unsuffixed deployment at
+     * once tool:init --tool=directus registers correctly) have no unsuffixed deployment at
      * all; for those, the registry's real instance is the only name that
      * will ever match a live Deployment. Multiple registered instances is
      * genuinely ambiguous and needs an explicit --instance=, same as every
@@ -531,7 +531,7 @@ class MailWireCommand extends Command
 
     /**
      * Synapse reads mail settings from homeserver.yaml, not env: store them in
-     * Synapse's SMTP Secret (so matrix:init re-renders the email: block) and re-render the
+     * Synapse's SMTP Secret (so tool:init --tool=matrix re-renders the email: block) and re-render the
      * config, keeping any OIDC/MAS wiring. Mirror of MailUnwireCommand's
      * unwireSynapseSmtp(). Credentials travel on stdin, never argv.
      */

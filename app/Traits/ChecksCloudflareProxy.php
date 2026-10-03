@@ -110,7 +110,7 @@ trait ChecksCloudflareProxy
             foreach ($unmanaged as $host) {
                 $this->line("  <fg=red>•</> {$host}");
             }
-            $this->line("  <fg=gray>Manage their zone with</> <fg=blue>larakube external-dns:init {$env}</><fg=gray>, or turn on the orange cloud in Cloudflare yourself.</>");
+            $this->line("  <fg=gray>Manage their zone with</> <fg=blue>larakube tool:init --tool=external-dns {$env}</><fg=gray>, or turn on the orange cloud in Cloudflare yourself.</>");
 
             return false;
         }

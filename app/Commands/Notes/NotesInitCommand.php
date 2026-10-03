@@ -218,7 +218,7 @@ abstract class NotesInitCommand extends AbstractToolInitCommand
      *  2. Zitadel is installed → register the OIDC app AND write the secret here,
      *     before the Outline Deployment exists. sso:wire can't do this — it
      *     requires the Deployment to already be running — and Outline can't
-     *     start without OIDC, so outline:init owns the bootstrap itself.
+     *     start without OIDC, so tool:init --tool=outline owns the bootstrap itself.
      *  3. External SSO → prompt for the five OIDC fields, create the secret.
      *
      * The secret keys are the Outline env-var names (OIDC_CLIENT_ID, …), which
@@ -244,8 +244,8 @@ abstract class NotesInitCommand extends AbstractToolInitCommand
         // ask, and the client secret must not travel as a flag.
         if ($this->cannotPrompt()) {
             $this->laraKubeError('Outline needs a login provider (OIDC), and none is set up.');
-            $this->line('  Run <fg=blue>larakube zitadel:init</> first (outline:init then wires Zitadel itself), or run');
-            $this->line('  <fg=blue>larakube outline:init</> interactively to enter an external provider.');
+            $this->line('  Run <fg=blue>larakube tool:init --tool=zitadel</> first (tool:init --tool=outline then wires Zitadel itself), or run');
+            $this->line('  <fg=blue>larakube tool:init --tool=outline</> interactively to enter an external provider.');
 
             return false;
         }
@@ -254,7 +254,7 @@ abstract class NotesInitCommand extends AbstractToolInitCommand
         $this->line('  <fg=yellow>Outline requires an OIDC provider for login.</>');
         $this->line('  No Zitadel installation detected. You can:');
         $this->newLine();
-        $this->line('    1. Install Zitadel:  <fg=blue>larakube zitadel:init</> (outline:init then wires it for you)');
+        $this->line('    1. Install Zitadel:  <fg=blue>larakube tool:init --tool=zitadel</> (tool:init --tool=outline then wires it for you)');
         $this->line('    2. Provide external OIDC details below');
         $this->newLine();
 
@@ -262,12 +262,12 @@ abstract class NotesInitCommand extends AbstractToolInitCommand
             label: 'How would you like to authenticate Outline?',
             options: [
                 'external' => 'I have an external OIDC provider',
-                'zitadel' => 'Install Zitadel first (run zitadel:init)',
+                'zitadel' => 'Install Zitadel first (run tool:init --tool=zitadel)',
             ],
         );
 
         if ($source === 'zitadel') {
-            $this->line('  Run <fg=blue>larakube zitadel:init</>, then re-run <fg=blue>larakube outline:init</> — it wires Zitadel automatically.');
+            $this->line('  Run <fg=blue>larakube tool:init --tool=zitadel</>, then re-run <fg=blue>larakube tool:init --tool=outline</> — it wires Zitadel automatically.');
 
             return false;
         }
@@ -301,14 +301,14 @@ abstract class NotesInitCommand extends AbstractToolInitCommand
 
         $ssoHost = $this->resolveSsoHostReadOnly($env, $config, $kubectl);
         if ($ssoHost === null) {
-            $this->laraKubeError("Zitadel is installed but its host for '{$env}' could not be resolved — re-run `larakube zitadel:init {$env}`.");
+            $this->laraKubeError("Zitadel is installed but its host for '{$env}' could not be resolved — re-run `larakube tool:init --tool=zitadel {$env}`.");
 
             return false;
         }
 
         $pat = $this->readSsoSecret($kubectl, $this->ssoNamespace(), 'machine-pat');
         if ($pat === null) {
-            $this->laraKubeError('Could not read Zitadel automation credentials — re-run `larakube zitadel:init`.');
+            $this->laraKubeError('Could not read Zitadel automation credentials — re-run `larakube tool:init --tool=zitadel`.');
 
             return false;
         }

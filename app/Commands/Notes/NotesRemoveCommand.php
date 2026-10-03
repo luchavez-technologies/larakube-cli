@@ -15,7 +15,7 @@ abstract class NotesRemoveCommand extends AbstractToolRemoveCommand
     }
 
     /**
-     * Instance-scoped, matching exactly what outline:init names (see
+     * Instance-scoped, matching exactly what tool:init --tool=outline names (see
      * NotesInitCommand::deployNotes()) — deployment/service/ingress/secrets
      * all suffix by instance except the SMTP secret, which mail:wire still
      * writes to a single fixed name (notes-outline-smtp) for every instance

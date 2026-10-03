@@ -4,7 +4,7 @@
  * ADR 0018: applyDesignPenpotFlags() must deliver a changed PENPOT_FLAGS
  * value via `kubectl rollout restart`, never a literal `kubectl set env
  * ... PENPOT_FLAGS=<value>` — the latter desyncs kubectl apply's
- * bookkeeping and permanently breaks the next `penpot:init` re-apply. It
+ * bookkeeping and permanently breaks the next `tool:init --tool=penpot` re-apply. It
  * must also stay a no-op (no restart) when the value hasn't actually
  * changed, preserving the original real-downtime-avoidance guarantee on
  * Penpot's Recreate-strategy Deployment.

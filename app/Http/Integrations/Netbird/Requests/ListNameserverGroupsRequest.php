@@ -6,7 +6,7 @@ use Saloon\Enums\Method;
 use Saloon\Http\Request;
 use Saloon\Traits\Plugins\HasTimeout;
 
-/** Every nameserver group in the account — the list `netbird:init` reconciles against so a re-run updates its group instead of stacking duplicates. */
+/** Every nameserver group in the account — the list `tool:init --tool=netbird` reconciles against so a re-run updates its group instead of stacking duplicates. */
 class ListNameserverGroupsRequest extends Request
 {
     use HasTimeout;
