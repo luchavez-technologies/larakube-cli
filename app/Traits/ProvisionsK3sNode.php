@@ -36,6 +36,10 @@ trait ProvisionsK3sNode
         $installK3s = $this->k3sInstallCommand($this->k3sVersion($config), [
             '--disable=traefik',
             '--tls-san='.$ip,
+            // Kubernetes refuses a node name over 63 bytes, and GCP's internal host name
+            // (name.zone.c.project-id.internal) can pass that, so the node never registers.
+            // The short host name is the instance's own name and always fits.
+            '--node-name="$(hostname -s)"',
             '--write-kubeconfig-mode 644',
             '--kubelet-arg=fail-swap-on=false',
             // Encrypts Secret data at rest in k3s's datastore (AES-CBC) — otherwise

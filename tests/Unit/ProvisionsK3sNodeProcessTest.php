@@ -35,3 +35,28 @@ test('traefikInstalledOnContext reflects whether the traefik Deployment exists o
     Process::fake(["{$kubectl} get deployment -n traefik traefik" => Process::result(exitCode: 1)]);
     expect(k3sNodeHelper()->traefikInstalled('larakube-1.2.3.4'))->toBeFalse();
 });
+
+test('k3s is installed with the short host name as its node name, so a long cloud host name cannot stop the node registering', function (): void {
+    Process::fake(['*' => Process::result(output: 'ok')]);
+
+    $helper = new class
+    {
+        use ProvisionsK3sNode;
+
+        public function install(): bool
+        {
+            return $this->installK3s('root', '203.0.113.9', '22', '/tmp/key', null);
+        }
+    };
+    $helper->install();
+
+    // The script goes over SSH either as the command or on its standard input.
+    $sent = [];
+    Process::assertRan(function ($process) use (&$sent): bool {
+        $sent[] = (is_array($process->command) ? implode(' ', $process->command) : (string) $process->command).' '.(string) ($process->input ?? '');
+
+        return true;
+    });
+
+    expect(implode("\n", $sent))->toContain('--node-name="$(hostname -s)"');
+});
