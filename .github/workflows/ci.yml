@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -37,7 +37,7 @@ jobs:
           coverage: none
 
       - name: Cache Composer dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/composer
@@ -216,13 +216,13 @@ jobs:
 
       - name: Checkout CLI repo
         if: steps.tap_token.outputs.ok == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: cli
 
       - name: Checkout Homebrew tap
         if: steps.tap_token.outputs.ok == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: luchavez-technologies/homebrew-larakube
           token: ${{ secrets.TAP_GITHUB_TOKEN }}
@@ -280,13 +280,13 @@ jobs:
 
       - name: Checkout CLI repo
         if: steps.tap_token.outputs.ok == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: cli
 
       - name: Checkout Homebrew tap
         if: steps.tap_token.outputs.ok == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: luchavez-technologies/homebrew-larakube
           token: ${{ secrets.TAP_GITHUB_TOKEN }}
