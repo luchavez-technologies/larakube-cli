@@ -333,10 +333,11 @@ class NewCommand extends Command
 
         if ($builder !== null) {
             $this->laraKubeInfo("Pulling builder image: $builder...");
-            $prebuilt = Process::forever()->run($this->pullImageCommand($builder))->successful();
+            $pull = Process::forever()->run($this->pullImageCommand($builder));
+            $prebuilt = $pull->successful();
 
             if (! $prebuilt) {
-                $this->laraKubeWarn('Could not pull the prebuilt builder image; setting one up from the base image instead.');
+                $this->laraKubeWarn('Could not pull the prebuilt builder image ('.BuilderImage::pullFailure($pull->errorOutput()).'); setting one up from the base image instead.');
             }
         }
 

@@ -43,4 +43,12 @@ final class BuilderImage
             ? $new
             : "{$prepare} && composer config -g bin-dir /usr/local/bin && composer global require laravel/installer && {$new}";
     }
+
+    /** Why a pull failed, as the one line worth showing: the last thing the container engine said on stderr. */
+    public static function pullFailure(string $errorOutput): string
+    {
+        $lines = array_values(array_filter(array_map('trim', explode("\n", $errorOutput)), fn (string $line): bool => $line !== ''));
+
+        return $lines === [] ? 'no reason was given' : (string) end($lines);
+    }
 }

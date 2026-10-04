@@ -138,7 +138,12 @@ class DjangoNewCommand extends Command
 
         if ($builder !== null) {
             $this->laraKubeInfo("Pulling builder image: $builder...");
-            $prebuilt = Process::forever()->run($this->pullImageCommand($builder))->successful();
+            $pull = Process::forever()->run($this->pullImageCommand($builder));
+            $prebuilt = $pull->successful();
+
+            if (! $prebuilt) {
+                $this->laraKubeWarn('Could not pull the prebuilt builder image ('.BuilderImage::pullFailure($pull->errorOutput()).'); using the Python base image instead.');
+            }
         }
 
         if ($prebuilt) {

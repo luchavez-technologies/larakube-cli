@@ -33,3 +33,8 @@ test('the Python builder names Django\'s image, and Statamic and Django use thei
     expect($statamic)->toContain('BuilderImage::php(')->toContain('Could not pull the prebuilt builder image')
         ->and($django)->toContain('BuilderImage::python(')->toContain('pip install --no-cache-dir django && ');
 });
+
+test('a failed pull is explained by the last line the container engine printed', function (): void {
+    expect(BuilderImage::pullFailure("Trying to pull ghcr.io/x...\nError: initializing source docker://ghcr.io/x: unauthorized\n"))->toBe('Error: initializing source docker://ghcr.io/x: unauthorized')
+        ->and(BuilderImage::pullFailure(''))->toBe('no reason was given');
+});
