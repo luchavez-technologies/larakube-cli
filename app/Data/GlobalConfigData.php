@@ -76,6 +76,14 @@ class GlobalConfigData extends Data
         public ?string $awsAccessKeyId = null,
         /** AWS Secret Access Key (optional). */
         public ?string $awsSecretAccessKey = null,
+        /**
+         * Per-app domain shares made by `larakube share:domain`: the zone, the tunnel and the public
+         * address of each service. No token is kept here.
+         * Shape: ['appname' => ['zone' => 'example.com', 'accountId' => '…', 'tunnelId' => '…', 'urls' => ['web' => 'https://…']]]
+         *
+         * @var array<string, array<string, mixed>>
+         */
+        public array $shareDomains = [],
     ) {}
 
     public function getEmail(): ?string
@@ -159,6 +167,24 @@ class GlobalConfigData extends Data
             $this->shareUrls[$appName] ?? [],
             $urls,
         ));
+    }
+
+    /** @return array<string, mixed>|null */
+    public function getShareDomain(string $appName): ?array
+    {
+        return $this->shareDomains[$appName] ?? null;
+    }
+
+    /** @param  array<string, mixed>|null  $share  null forgets it */
+    public function setShareDomain(string $appName, ?array $share): void
+    {
+        if ($share === null) {
+            unset($this->shareDomains[$appName]);
+
+            return;
+        }
+
+        $this->shareDomains[$appName] = $share;
     }
 
     public function getDefaultCloudProvider(): ?string
@@ -337,7 +363,7 @@ class GlobalConfigData extends Data
         // experimental features, for one). Keys this class does not own are carried over untouched.
         $data = array_merge(array_diff_key(self::readJsonFile($path) ?? [], $this->toArray()), $this->toArray());
         // Empty associative maps must serialize as {} not [] in JSON.
-        foreach (['shareUrls', 'stacks', 'tofuPassphrases'] as $mapKey) {
+        foreach (['shareUrls', 'shareDomains', 'stacks', 'tofuPassphrases'] as $mapKey) {
             if (empty($data[$mapKey])) {
                 $data[$mapKey] = new stdClass;
             }

@@ -27,6 +27,7 @@ class CreateDnsRecordRequest extends Request implements HasBody
         protected readonly string $name,
         protected readonly string $content,
         protected readonly int $ttl,
+        protected readonly bool $proxied = false,
     ) {}
 
     /**
@@ -39,11 +40,12 @@ class CreateDnsRecordRequest extends Request implements HasBody
 
     protected function defaultBody(): array
     {
-        return [
+        return array_filter([
             'type' => $this->type,
             'name' => $this->name,
             'content' => $this->content,
             'ttl' => $this->ttl,
-        ];
+            'proxied' => $this->proxied ?: null,
+        ], fn (mixed $value): bool => $value !== null);
     }
 }

@@ -26,6 +26,7 @@ class PatchDnsRecordRequest extends Request implements HasBody
         protected readonly string $recordId,
         protected readonly string $content,
         protected readonly int $ttl,
+        protected readonly bool $proxied = false,
     ) {}
 
     /**
@@ -38,6 +39,6 @@ class PatchDnsRecordRequest extends Request implements HasBody
 
     protected function defaultBody(): array
     {
-        return ['content' => $this->content, 'ttl' => $this->ttl];
+        return array_filter(['content' => $this->content, 'ttl' => $this->ttl, 'proxied' => $this->proxied ?: null], fn (mixed $value): bool => $value !== null);
     }
 }

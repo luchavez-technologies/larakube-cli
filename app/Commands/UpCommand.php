@@ -9,6 +9,7 @@ use App\Enums\DatabaseDriver;
 use App\Enums\SearchDriver;
 use App\Enums\StorageDriver;
 use App\Services\Kubectl;
+use App\Traits\AppliesShareEnvironment;
 use App\Traits\CollectsReminders;
 use App\Traits\DeploysMonitoringExporters;
 use App\Traits\DetectsWsl;
@@ -20,6 +21,7 @@ use App\Traits\InteractsWithArchitecturalEngine;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithDocker;
 use App\Traits\InteractsWithEnvironments;
+use App\Traits\InteractsWithGlobalConfig;
 use App\Traits\InteractsWithHosts;
 use App\Traits\InteractsWithKustomize;
 use App\Traits\InteractsWithPlex;
@@ -41,7 +43,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class UpCommand extends Command
 {
-    use CollectsReminders, DeploysMonitoringExporters, DetectsWsl, EnsuresHostDependencies, GeneratesProjectInfrastructure, HasConsoleInteraction, InstallsPodman, InteractsWithArchitecturalEngine, InteractsWithClusterContext, InteractsWithDocker, InteractsWithEnvironments, InteractsWithHosts, InteractsWithKustomize, InteractsWithPlex, InteractsWithProjectConfig, InteractsWithSslTrust, InteractsWithTraefik, LaraKubeOutput, ManagesCompanions, ManagesLocalCa, StreamsProcessOutput;
+    use AppliesShareEnvironment, CollectsReminders, DeploysMonitoringExporters, DetectsWsl, EnsuresHostDependencies, GeneratesProjectInfrastructure, HasConsoleInteraction, InstallsPodman, InteractsWithArchitecturalEngine, InteractsWithClusterContext, InteractsWithDocker, InteractsWithEnvironments, InteractsWithGlobalConfig, InteractsWithHosts, InteractsWithKustomize, InteractsWithPlex, InteractsWithProjectConfig, InteractsWithSslTrust, InteractsWithTraefik, LaraKubeOutput, ManagesCompanions, ManagesLocalCa, StreamsProcessOutput;
 
     /**
      * The name and signature of the console command.
@@ -601,6 +603,10 @@ class UpCommand extends Command
 
         $this->newLine();
         $this->showServiceLinks($config, $environment);
+
+        if ($environment === 'local') {
+            $this->reapplyDomainShare($config, $appName, $this->getNamespace('local', $appName));
+        }
 
         $this->showCompanionAccess($config, $appName, $environment);
 

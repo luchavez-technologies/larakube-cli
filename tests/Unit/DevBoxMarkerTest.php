@@ -31,7 +31,8 @@ test('on a dev box the viewing hint says where to see the app and how to get a l
     expect($hint)->toContain('open only on the box')
         ->toContain('larakube share')
         ->toContain('Share preview')
-        ->toContain('--token');
+        ->toContain('larakube share:domain')
+        ->toContain('your own Cloudflare domain');
 });
 
 test('the service links point a dev box at share instead of leaving only box-local addresses', function (): void {

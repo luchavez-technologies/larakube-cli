@@ -170,12 +170,12 @@ trait InteractsWithCloudflareApi
             : null;
 
         if ($existingId !== null) {
-            $update = $connector->send(PatchDnsRecordRequest::make($zoneId, $existingId, $target, $ttl));
+            $update = $connector->send(PatchDnsRecordRequest::make($zoneId, $existingId, $target, $ttl, $proxied));
 
             return $update->successful() && Arr::get($update->json(), 'success') === true;
         }
 
-        $create = $connector->send(CreateDnsRecordRequest::make($zoneId, 'CNAME', $name, $target, $ttl));
+        $create = $connector->send(CreateDnsRecordRequest::make($zoneId, 'CNAME', $name, $target, $ttl, $proxied));
 
         return $create->successful() && Arr::get($create->json(), 'success') === true;
     }

@@ -1,0 +1,25 @@
+<?php
+
+namespace App\Http\Integrations\Cloudflare\Requests;
+
+use Saloon\Enums\Method;
+use Saloon\Http\Request;
+use Saloon\Traits\Plugins\HasTimeout;
+
+class DeleteTunnelRequest extends Request
+{
+    use HasTimeout;
+
+    protected int $connectTimeout = 60;
+
+    protected int $requestTimeout = 120;
+
+    protected Method $method = Method::DELETE;
+
+    public function __construct(protected readonly string $accountId, protected readonly string $tunnelId) {}
+
+    public function resolveEndpoint(): string
+    {
+        return "client/v4/accounts/{$this->accountId}/cfd_tunnel/{$this->tunnelId}";
+    }
+}

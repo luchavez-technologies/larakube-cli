@@ -1,3 +1,17 @@
+@if(!empty($token))
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}-token
+  namespace: {{ $namespace }}
+  labels:
+    app.kubernetes.io/managed-by: larakube
+    larakube.dev/role: share
+type: Opaque
+stringData:
+  TUNNEL_TOKEN: {!! json_encode($token) !!}
+---
+@endif
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -25,8 +39,12 @@ spec:
             - tunnel
             - --no-autoupdate
             - run
-            - --token
-            - {{ $token }}
+          env:
+            - name: TUNNEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}-token
+                  key: TUNNEL_TOKEN
 @else
           args:
             - tunnel
