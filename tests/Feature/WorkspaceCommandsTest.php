@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Process;
  */
 function fakeWorkspaceCluster(?array &$seen, array $existing = [], array $secret = [], bool $imagePresent = true): void
 {
-    $seen = ['manifest' => null, 'secret' => null, 'commands' => []];
+    $seen = ['manifest' => null, 'secret' => null, 'commands' => [], 'dockerfile' => null];
 
     Process::fake(function ($process) use (&$seen, $existing, $secret, $imagePresent) {
         $cmd = is_array($process->command) ? implode(' ', $process->command) : (string) $process->command;
@@ -61,6 +61,16 @@ function fakeWorkspaceCluster(?array &$seen, array $existing = [], array $secret
             return Process::result(output: isset($secret[$key]) ? base64_encode($secret[$key]) : '');
         }
 
+        if (str_contains($cmd, ' images -q')) {
+            return Process::result(output: $imagePresent ? 'sha256:abc' : '');
+        }
+
+        if (preg_match('/ build .* -f \'?([^\' ]+Dockerfile)/', $cmd, $m) === 1) {
+            $seen['dockerfile'] = is_file($m[1]) ? file_get_contents($m[1]) : false;
+
+            return Process::result();
+        }
+
         if (str_contains($cmd, 'k3s ctr images ls')) {
             return Process::result(output: $imagePresent ? WorkspaceSpec::image() : '');
         }
@@ -101,7 +111,15 @@ test('workspace:create applies the manifest and keeps a secret with a password a
     expect($seen['manifest'])->toContain('name: ws-api')
         ->and($seen['secret']['metadata']['name'])->toBe('workspace')
         ->and(base64_decode($seen['secret']['data']['deploy-key.pub']))->toBe('ssh-ed25519 AAAA workspace')
-        ->and(strlen(base64_decode($seen['secret']['data']['password'])))->toBe(24);
+        ->and(base64_decode($seen['secret']['data']['password']))->toHaveLength(24);
+});
+
+test('workspace:create builds the image from a real Dockerfile when the cluster does not have it', function (): void {
+    fakeWorkspaceCluster($seen, imagePresent: false);
+
+    workspaceCreate()->assertExitCode(0);
+
+    expect($seen['dockerfile'])->toBeString()->toContain('code-server');
 });
 
 test('workspace:create run again keeps the password and the deploy key that are already in the cluster', function (): void {
@@ -131,9 +149,8 @@ test('workspace:create needs to be told which server when it cannot ask', functi
     fakeWorkspaceCluster($seen);
 
     expect(fn () => $this->artisan('workspace:create', ['--name' => 'api', '--repo' => 'https://github.com/acme/app', '--no-interaction' => true])->run())
-        ->toThrow(App\Exceptions\MissingFlagException::class);
-
-    expect($seen['manifest'])->toBeNull();
+        ->toThrow(App\Exceptions\MissingFlagException::class)
+        ->and($seen['manifest'])->toBeNull();
 });
 
 test('workspace:list reports each workspace with its status as JSON and withholds the password', function (): void {

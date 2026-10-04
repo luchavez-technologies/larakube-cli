@@ -203,11 +203,12 @@ class WorkspaceCreateCommand extends Command
 
         $platform = $ssh !== null ? ($this->detectNodePlatformOverSsh($ssh) ?? 'linux/amd64') : '';
         $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
-        file_put_contents($dir->path('Dockerfile'), (new WorkspaceSpec)->dockerfile());
+        $dockerfile = $dir->path().'/Dockerfile';
+        file_put_contents($dockerfile, (new WorkspaceSpec)->dockerfile());
 
         $this->laraKubeInfo('Building the workspace image (a few minutes the first time)...');
 
-        if ($this->runStreaming($this->buildImageCommand($image, $dir->path('Dockerfile'), $dir->path(), $platform)) !== 0) {
+        if ($this->runStreaming($this->buildImageCommand($image, $dockerfile, $dir->path(), $platform)) !== 0) {
             return false;
         }
 
