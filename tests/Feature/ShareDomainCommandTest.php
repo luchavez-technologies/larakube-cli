@@ -282,3 +282,25 @@ test('up on a dev box puts a running domain share back into the app, and does no
         expect($probe->reapply($config))->toBeFalse();
     });
 });
+
+test('share:show reports the stable names a project has and whether the tunnel is running, and says none when it has none', function (): void {
+    putenv('CLOUDFLARE_API_TOKEN='.DOMAIN_SHARE_SECRET);
+    Saloon::fake(cloudflareFor());
+    domainShareCluster($commands);
+
+    inDomainShareProject(function (): void {
+        $exit = Artisan::call('share:show', ['environment' => 'local', '--json' => true, '--no-interaction' => true]);
+
+        expect($exit)->toBe(0)
+            ->and(domainShareJson())->toBe(['success' => true, 'mode' => 'none', 'zone' => null, 'urls' => [], 'running' => false]);
+
+        Artisan::call('share:domain', ['--domain' => 'example.com', '--box' => 'box1', '--json' => true, '--no-interaction' => true]);
+        Artisan::call('share:show', ['environment' => 'local', '--json' => true, '--no-interaction' => true]);
+        $shown = domainShareJson();
+
+        expect($shown)->toMatchArray(['success' => true, 'mode' => 'domain', 'zone' => 'example.com', 'running' => true])
+            ->and($shown['urls']['web'])->toBe('https://shop-box1.example.com')
+            ->and(Artisan::call('share:show', ['environment' => 'production', '--json' => true, '--no-interaction' => true]))->toBe(1)
+            ->and(domainShareJson()['error'])->toContain('only for the local environment');
+    });
+});
