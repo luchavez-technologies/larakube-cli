@@ -37,6 +37,11 @@ function localImageHarness(bool $podman): object
             return $this->buildTargetedImage('shop:local', $dockerfile, dirname($dockerfile), 1000, 1000);
         }
 
+        public function buildApp(App\Data\ConfigData $config): bool
+        {
+            return $this->buildImage($config);
+        }
+
         public function warm(): void
         {
             $this->warmSudo();
@@ -142,4 +147,22 @@ test('an image that could not be loaded into k3s is reported as a failure', func
     };
 
     expect($harness->sideloadImage())->toBeFalse();
+});
+
+test('the app image runs as the user who owns the project files, not a guessed 1000', function (): void {
+    Process::fake([
+        'id -u' => Process::result(output: "1001\n"),
+        'id -g' => Process::result(output: "1002\n"),
+        '*' => Process::result(output: ''),
+    ]);
+    $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
+    file_put_contents($dir->path().'/Dockerfile.php', "FROM scratch AS base\nFROM base AS development\n");
+    $harness = localImageHarness(podman: true);
+
+    $harness->buildApp(new App\Data\ConfigData(name: 'shop', path: $dir->path()));
+
+    $build = collect($harness->ran)->first(fn (string $command): bool => str_contains($command, ' build '));
+
+    expect($build)->toContain('--build-arg USER_ID=1001')
+        ->toContain('--build-arg GROUP_ID=1002');
 });

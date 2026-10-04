@@ -107,8 +107,9 @@ trait InteractsWithDocker
      */
     protected function buildImage(ConfigData $config): bool
     {
-        $uid = function_exists('posix_getuid') ? posix_getuid() : 1000;
-        $gid = function_exists('posix_getgid') ? posix_getgid() : 1000;
+        // The container user must own the project files, so it takes the real uid and gid of whoever runs this.
+        $uid = $this->hostUid();
+        $gid = $this->hostGid();
         $appName = $config->getName();
         $path = $config->getPath();
 
