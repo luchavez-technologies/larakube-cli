@@ -51,6 +51,24 @@ trait AppliesShareEnvironment
     }
 
     /**
+     * The public names the project is actually using: its local environment's public hosts, as share's
+     * service keys with full URLs. Empty when the project is private.
+     *
+     * @return array<string, string>
+     */
+    protected function publicUrls(ConfigData $config): array
+    {
+        $byHostKey = array_flip(self::HOST_KEYS);
+        $urls = [];
+
+        foreach ($config->getEnvironment('local')?->publicHosts ?? [] as $hostKey => $host) {
+            $urls[$byHostKey[$hostKey] ?? $hostKey] = 'https://'.$host;
+        }
+
+        return $urls;
+    }
+
+    /**
      * Make these names the local environment's hosts, or none to go back to the local names. Saved to the
      * gitignored local file, so the next `up` builds `.env`, the Vite config and the ingress from them.
      *

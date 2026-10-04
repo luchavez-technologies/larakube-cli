@@ -41,8 +41,9 @@ class ShareShowCommand extends Command
 
         $kubectl = Kubectl::forContext($this->environmentContextOrCurrent($config, $environment));
 
+        // What the project is using, not what an earlier share left behind.
         $saved = $this->getGlobalConfig()->getShareDomain($appName);
-        $urls = is_array($saved['urls'] ?? null) ? $saved['urls'] : [];
+        $urls = $this->publicUrls($config);
         $running = false;
 
         if ($urls !== []) {
