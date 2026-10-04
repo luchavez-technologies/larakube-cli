@@ -143,6 +143,7 @@ test('share:domain gives every service a stable name, routes and DNS record, and
         expect($all)->toContain('apply -f')
             ->and($all)->toContain('set env deployment/web AWS_URL=')
             ->and($all)->toContain('s3-shop-box1.example.com')
+            ->and($all)->toContain("VITE_DEV_ORIGIN='https://vite-shop-box1.example.com'")
             ->and($all)->not->toContain(DOMAIN_SHARE_SECRET)
             ->and($all)->not->toContain('connector-token-value');
     });

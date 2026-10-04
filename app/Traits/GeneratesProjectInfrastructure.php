@@ -206,8 +206,7 @@ trait GeneratesProjectInfrastructure
             $content = preg_replace('/(defineConfig\s*\(\s*\{)/', "$1\n{$harden}", $content);
             file_put_contents($viteFile, $content);
         } elseif ($isManagedTemplate) {
-            $content = preg_replace("/origin:\s*['\"][^'\"]+['\"]/", "origin: 'https://{$viteHost}'", $content, 1);
-            $content = preg_replace("/(hmr:\s*\{\s*host:\s*)['\"][^'\"]+['\"]/", "$1'{$viteHost}'", $content, 1);
+            $content = $this->alignManagedViteServer($content, $viteHost);
             file_put_contents($viteFile, $content);
         } elseif (($merged = $this->mergeIntoViteServerBlock($content, $viteHost)) !== null) {
             // Laravel's Vite+ starter kits ship their OWN `server` block (a
@@ -321,7 +320,7 @@ trait GeneratesProjectInfrastructure
         $additions = [];
         $managed = [
             'cors' => 'true',
-            'origin' => "'https://{$viteHost}'",
+            'origin' => "process.env.VITE_DEV_ORIGIN || 'https://{$viteHost}'",
             'host' => "'0.0.0.0'",
             'port' => '5173',
             'strictPort' => 'true',
@@ -334,9 +333,7 @@ trait GeneratesProjectInfrastructure
         }
 
         if (! in_array('hmr', $existing, true)) {
-            $additions[] = "{$inner}hmr: {";
-            $additions[] = "{$inner}    host: '{$viteHost}',";
-            $additions[] = "{$inner}},";
+            array_push($additions, ...$this->viteHmrLines($viteHost, $inner));
         }
 
         $ignore = "'**/.infrastructure/volume_data/**'";
@@ -362,6 +359,60 @@ trait GeneratesProjectInfrastructure
         $newBody = "\n".implode("\n", $additions).$body;
 
         return substr($content, 0, $open + 1).$newBody.substr($content, $close);
+    }
+
+    /**
+     * The `hmr` block of the managed server config. Its host and the dev server's origin can be
+     * overridden by the environment, which is how a shared project points the browser's scripts and
+     * hot reload at its public names; the defaults are the local names.
+     *
+     * @return list<string>
+     */
+    protected function viteHmrLines(string $viteHost, string $indent): array
+    {
+        return [
+            "{$indent}hmr: {",
+            "{$indent}    host: process.env.VITE_HMR_HOST || '{$viteHost}',",
+            "{$indent}    ...(process.env.VITE_HMR_CLIENT_PORT",
+            "{$indent}        ? {",
+            "{$indent}              clientPort: parseInt(process.env.VITE_HMR_CLIENT_PORT),",
+            "{$indent}              protocol: process.env.VITE_HMR_PROTOCOL || 'wss',",
+            "{$indent}          }",
+            "{$indent}        : {}),",
+            "{$indent}},",
+        ];
+    }
+
+    /**
+     * Realign a config this CLI wrote to the current host: `origin` and the `hmr` block are rewritten
+     * in the environment-aware form, whether the file has that or the older literal-only one.
+     */
+    protected function alignManagedViteServer(string $content, string $viteHost): string
+    {
+        $content = preg_replace(
+            "/origin:\s*(?:process\.env\.[A-Z_]+\s*\|\|\s*)?['\"][^'\"]+['\"]/",
+            "origin: process.env.VITE_DEV_ORIGIN || 'https://{$viteHost}'",
+            $content,
+            1,
+        ) ?? $content;
+
+        if (preg_match('/^([ \t]*)hmr:\s*\{/m', $content, $match, PREG_OFFSET_CAPTURE) !== 1) {
+            return $content;
+        }
+
+        $start = $match[0][1];
+        $open = strpos($content, '{', $start);
+        $close = $open === false ? null : $this->matchingBracePosition($content, $open);
+
+        if ($close === null) {
+            return $content;
+        }
+
+        $lines = $this->viteHmrLines($viteHost, $match[1][0]);
+        // The block replaces everything from the `hmr:` key to its closing brace and comma.
+        $end = $close + 1 + (($content[$close + 1] ?? '') === ',' ? 1 : 0);
+
+        return substr($content, 0, $start).implode("\n", $lines).substr($content, $end);
     }
 
     /** Index of the brace closing the one at $open, or null if unbalanced. */

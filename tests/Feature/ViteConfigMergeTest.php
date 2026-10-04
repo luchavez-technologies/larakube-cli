@@ -37,8 +37,8 @@ test('our HMR keys are merged into a server block somebody else wrote', function
     $merged = viteMergeHarness()->merge(vitePlusConfig(), 'vite.app.test');
 
     expect($merged)->not->toBeNull()
-        ->and($merged)->toContain("origin: 'https://vite.app.test'")
-        ->and($merged)->toContain("host: 'vite.app.test'")
+        ->and($merged)->toContain("origin: process.env.VITE_DEV_ORIGIN || 'https://vite.app.test'")
+        ->and($merged)->toContain("host: process.env.VITE_HMR_HOST || 'vite.app.test'")
         ->and($merged)->toContain('strictPort: true')
         ->and($merged)->toContain('port: 5173');
 });
@@ -61,7 +61,7 @@ test('a value the developer already set is never overwritten', function (): void
         ->and($merged)->toContain('strictPort: false,')
         ->and($merged)->not->toContain('port: 5173')
         // …while the keys they did NOT set still get added.
-        ->and($merged)->toContain("origin: 'https://vite.app.test'");
+        ->and($merged)->toContain("origin: process.env.VITE_DEV_ORIGIN || 'https://vite.app.test'");
 });
 
 test('the merged block is marked so re-runs realign instead of re-merging', function (): void {

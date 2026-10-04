@@ -63,11 +63,12 @@ trait AppliesShareEnvironment
             $restartNeeded[] = 'web';
         }
 
-        // HMR: inject VITE_HMR_HOST/PORT/PROTOCOL so the Vite server tells browsers
-        // to connect via the public tunnel URL instead of the local .kube hostname
+        // HMR: inject VITE_DEV_ORIGIN (where the browser loads scripts and fonts from) and
+        // VITE_HMR_HOST/PORT/PROTOCOL (the hot-reload socket) so the Vite server tells browsers
+        // to use the public tunnel URL instead of the local .kube hostname
         if (isset($urls['hmr'])) {
             $hmrHost = preg_replace('#^https?://#', '', rtrim($urls['hmr'], '/'));
-            Process::run(Kubectl::current()->prefix().' set env deployment/node VITE_HMR_HOST='.escapeshellarg($hmrHost)." VITE_HMR_CLIENT_PORT=443 VITE_HMR_PROTOCOL=wss -n {$namespace}");
+            Process::run(Kubectl::current()->prefix().' set env deployment/node VITE_HMR_HOST='.escapeshellarg($hmrHost).' VITE_DEV_ORIGIN='.escapeshellarg('https://'.$hmrHost)." VITE_HMR_CLIENT_PORT=443 VITE_HMR_PROTOCOL=wss -n {$namespace}");
             $restartNeeded[] = 'node';
         }
 
@@ -98,7 +99,7 @@ trait AppliesShareEnvironment
 
             // Remove deployment-level env overrides (no-op if they were never set)
             Process::run(Kubectl::current()->prefix()." set env deployment/web AWS_URL- -n {$namespace}");
-            Process::run(Kubectl::current()->prefix()." set env deployment/node VITE_HMR_HOST- VITE_HMR_CLIENT_PORT- VITE_HMR_PROTOCOL- VITE_REVERB_HOST- VITE_REVERB_PORT- VITE_REVERB_SCHEME- -n {$namespace}");
+            Process::run(Kubectl::current()->prefix()." set env deployment/node VITE_HMR_HOST- VITE_DEV_ORIGIN- VITE_HMR_CLIENT_PORT- VITE_HMR_PROTOCOL- VITE_REVERB_HOST- VITE_REVERB_PORT- VITE_REVERB_SCHEME- -n {$namespace}");
 
             // Restart to pick up original ConfigMap values
             Process::run(Kubectl::current()->prefix()." rollout restart deployment/web -n {$namespace}");
