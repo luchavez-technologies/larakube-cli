@@ -13,7 +13,7 @@ use InvalidArgumentException;
 class WorkspaceSpec
 {
     /** code-server release the image installs. */
-    public const CODE_SERVER_VERSION = '4.139.1';
+    public const CODE_SERVER_VERSION = '4.140.0';
 
     /** The password and deploy key live in this Secret in the workspace's namespace. */
     public const SECRET = 'workspace';
