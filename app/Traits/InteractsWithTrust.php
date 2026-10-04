@@ -10,6 +10,9 @@ trait InteractsWithTrust
 {
     use DetectsWsl, InteractsWithOs, LaraKubeOutput, ManagesLocalCa, StreamsProcessOutput;
 
+    /** Where systemd-resolved is told to ask dnsmasq for the local TLDs. */
+    protected const string RESOLVED_DROP_IN = '/etc/systemd/resolved.conf.d/larakube.conf';
+
     protected function installCaToKeychain(string $caPath): int
     {
         $caTemporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
@@ -240,6 +243,47 @@ trait InteractsWithTrust
         return $matches[1] ?? [];
     }
 
+    /**
+     * True on a Linux machine whose resolver is systemd-resolved (Ubuntu's default). It answers from its own
+     * stub and its upstream, so dnsmasq on 127.0.0.1 is never asked unless resolved is told to route the TLD there.
+     */
+    protected function systemdResolvedActive(): bool
+    {
+        return $this->isLinux() && Process::run('systemctl is-active --quiet systemd-resolved')->successful();
+    }
+
+    /** The drop-in that routes every given TLD (and only those) from systemd-resolved to dnsmasq. */
+    protected function buildResolvedDropIn(array $tlds): string
+    {
+        $domains = implode(' ', array_map(fn (string $tld): string => '~'.$tld, array_values(array_unique($tlds))));
+
+        return "[Resolve]\nDNS=127.0.0.1\nDomains={$domains}\n";
+    }
+
+    /** Every TLD an existing drop-in routes to dnsmasq. */
+    protected function parseResolvedDropInTlds(string $content): array
+    {
+        if (preg_match('/^Domains=(.*)$/m', $content, $line) !== 1) {
+            return [];
+        }
+
+        preg_match_all('/~([^\s~]+)/', $line[1], $matches);
+
+        return $matches[1];
+    }
+
+    /** True when systemd-resolved is in use and does not yet send $tld to dnsmasq. */
+    protected function resolvedMissingTld(string $tld): bool
+    {
+        if (! $this->systemdResolvedActive()) {
+            return false;
+        }
+
+        $existing = file_exists(self::RESOLVED_DROP_IN) ? (string) file_get_contents(self::RESOLVED_DROP_IN) : '';
+
+        return ! in_array($tld, $this->parseResolvedDropInTlds($existing), true);
+    }
+
     /** dnsmasq conf content wildcarding every given TLD to 127.0.0.1. */
     protected function buildDnsmasqConf(array $tlds): string
     {
@@ -271,7 +315,9 @@ trait InteractsWithTrust
         $existingTlds = $this->parseDnsmasqTlds($existingConf);
         $tlds = array_unique(array_merge($existingTlds, [$tld]));
 
-        $resolverMissing = $this->isDarwin() && ! file_exists('/etc/resolver/'.$tld);
+        $resolverMissing = $this->isDarwin()
+            ? ! file_exists('/etc/resolver/'.$tld)
+            : $this->resolvedMissingTld($tld);
 
         if (in_array($tld, $existingTlds, true) && ! $resolverMissing) {
             return; // already covered — no sudo, no restart needed
@@ -308,10 +354,33 @@ trait InteractsWithTrust
             $this->runInteractive('sudo cp '.escapeshellarg($tmpConf).' '.escapeshellarg($confPath));
             $temporaryDirectory->delete();
             $this->runInteractive('sudo systemctl restart dnsmasq');
+
+            if ($this->systemdResolvedActive()) {
+                $this->routeResolvedToDnsmasq($tlds);
+            }
         }
 
         $covered = implode(', ', array_map(fn (string $t) => "*.{$t}", $tlds));
         $this->laraKubeInfo("dnsmasq configured: {$covered} → 127.0.0.1");
+    }
+
+    /**
+     * Tell systemd-resolved to ask dnsmasq for these TLDs. Without it the system resolver never consults
+     * dnsmasq, and `*.kube` names do not resolve even though dnsmasq is running and configured.
+     */
+    protected function routeResolvedToDnsmasq(array $tlds): void
+    {
+        $existing = file_exists(self::RESOLVED_DROP_IN) ? (string) file_get_contents(self::RESOLVED_DROP_IN) : '';
+        $all = array_unique(array_merge($this->parseResolvedDropInTlds($existing), $tlds));
+
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmp = $temporaryDirectory->path().'/larakube-resolved.conf';
+        file_put_contents($tmp, $this->buildResolvedDropIn($all));
+
+        $this->runInteractive('sudo mkdir -p '.escapeshellarg(dirname(self::RESOLVED_DROP_IN)));
+        $this->runInteractive('sudo cp '.escapeshellarg($tmp).' '.escapeshellarg(self::RESOLVED_DROP_IN));
+        $temporaryDirectory->delete();
+        $this->runInteractive('sudo systemctl restart systemd-resolved');
     }
 
     /**

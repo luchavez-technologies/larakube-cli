@@ -17,6 +17,16 @@ function dnsmasqHarness(): object
         {
             return $this->buildDnsmasqConf($tlds);
         }
+
+        public function resolved(array $tlds): string
+        {
+            return $this->buildResolvedDropIn($tlds);
+        }
+
+        public function resolvedTlds(string $content): array
+        {
+            return $this->parseResolvedDropInTlds($content);
+        }
     };
 }
 
@@ -52,4 +62,18 @@ test('merging a new TLD into existing conf content keeps prior TLDs covered', fu
     $merged = array_unique(array_merge($harness->tlds($existing), ['test']));
 
     expect($merged)->toBe(['kube', 'test']);
+});
+
+test('the systemd-resolved drop-in routes only the local TLDs to dnsmasq on 127.0.0.1', function (): void {
+    $content = dnsmasqHarness()->resolved(['kube', 'test', 'kube']);
+
+    expect($content)->toBe("[Resolve]\nDNS=127.0.0.1\nDomains=~kube ~test\n");
+});
+
+test('the TLDs of an existing drop-in are read back, so adding one keeps the others', function (): void {
+    $harness = dnsmasqHarness();
+
+    expect($harness->resolvedTlds($harness->resolved(['kube', 'test'])))->toBe(['kube', 'test'])
+        ->and($harness->resolvedTlds(''))->toBe([])
+        ->and($harness->resolvedTlds("[Resolve]\nDNS=1.1.1.1\n"))->toBe([]);
 });
