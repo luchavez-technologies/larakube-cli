@@ -80,7 +80,7 @@ class WorkspaceSpec
     }
 
     /**
-     * @param  array{name: string, repo: string, branch: string, size: string, gitName: string, gitEmail: string, framework: AppFramework, runtime: WorkspaceRuntime, runtimeVersion: string, image?: string, replicas?: int}  $workspace
+     * @param  array{name: string, repo: string, branch: string, size: string, gitName: string, gitEmail: string, framework: AppFramework, runtime: WorkspaceRuntime, runtimeVersion: string, image?: string, pullPolicy?: string, replicas?: int}  $workspace
      */
     public function manifest(array $workspace): string
     {
@@ -106,7 +106,7 @@ class WorkspaceSpec
             'devPorts' => array_column($workspace['framework']->devPorts(), 'port'),
             'image' => $workspace['image'] ?? self::image($workspace['runtime'], $workspace['runtimeVersion']),
             // The published tags move with each rebuild; a custom image is only pulled when it is missing.
-            'pullPolicy' => isset($workspace['image']) ? 'IfNotPresent' : 'Always',
+            'pullPolicy' => $workspace['pullPolicy'] ?? (isset($workspace['image']) ? 'IfNotPresent' : 'Always'),
             ...$sizes[$workspace['size']],
         ])->render();
     }

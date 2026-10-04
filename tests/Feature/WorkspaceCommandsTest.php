@@ -226,7 +226,7 @@ test('workspace:images lists the published images the CLI pulls, one per version
 test('workspace:create pulls the published image and pulls it again on every start', function (): void {
     fakeWorkspaceCluster($seen);
 
-    workspaceCreate(['--framework' => 'nextjs'])->assertExitCode(0);
+    workspaceCreate(['--framework' => 'nextjs', '--context' => 'larakube-203.0.113.9'])->assertExitCode(0);
 
     expect($seen['manifest'])->toContain('image: ghcr.io/luchavez-technologies/larakube-workspace/node:24')
         ->toContain('imagePullPolicy: Always');
@@ -261,4 +261,13 @@ test('workspace:options says which runtimes have an image', function (): void {
         ->and(collect($options['runtimes'])->firstWhere('value', 'python')['published'])->toBeFalse()
         ->and(collect($options['frameworks'])->firstWhere('value', 'django')['available'])->toBeFalse()
         ->and(collect($options['frameworks'])->firstWhere('value', 'laravel')['available'])->toBeTrue();
+});
+
+test('a local cluster that shares the computer\'s Docker gets the image pulled here and starts from that copy', function (): void {
+    fakeWorkspaceCluster($seen);
+
+    workspaceCreate(['--framework' => 'nextjs'])->assertExitCode(0);
+
+    Process::assertRan(fn ($process): bool => str_contains(is_array($process->command) ? implode(' ', $process->command) : (string) $process->command, "pull 'ghcr.io/luchavez-technologies/larakube-workspace/node:24'"));
+    expect($seen['manifest'])->toContain('imagePullPolicy: IfNotPresent');
 });

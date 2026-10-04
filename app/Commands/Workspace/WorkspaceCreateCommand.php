@@ -11,6 +11,7 @@ use App\Traits\InteractsWithGlobalConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ReadsCommandOptions;
 use App\Traits\RequiresFlagsWhenNonInteractive;
+use App\Traits\ResolvesContainerRuntime;
 use App\Traits\TargetsWorkspaceServer;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -29,7 +30,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  */
 class WorkspaceCreateCommand extends Command
 {
-    use EmitsJsonOutput, InteractsWithGlobalConfig, LaraKubeOutput, ReadsCommandOptions, RequiresFlagsWhenNonInteractive, TargetsWorkspaceServer;
+    use EmitsJsonOutput, InteractsWithGlobalConfig, LaraKubeOutput, ReadsCommandOptions, RequiresFlagsWhenNonInteractive, ResolvesContainerRuntime, TargetsWorkspaceServer;
 
     protected $signature = 'workspace:create
         {--stack= : The server to create it on (a server made with cloud:create)}
@@ -115,6 +116,21 @@ class WorkspaceCreateCommand extends Command
 
         $namespace = WorkspaceSpec::namespaceFor($name);
         $spec = new WorkspaceSpec;
+        $pullPolicy = null;
+
+        // A local cluster that shares the computer's Docker (OrbStack, Docker Desktop...) pulls through the
+        // daemon with whatever registry logins this computer has, which can reject even a public image.
+        // Pulling it here, where that works, and starting from the local copy avoids the cluster's own pull.
+        if ($image === null && $this->sharesHostDocker($server['context'])) {
+            $ref = WorkspaceSpec::image($runtime, $runtimeVersion);
+            $this->laraKubeInfo("Pulling {$ref} on this computer...");
+
+            if (Process::forever()->run($this->containerRuntime().' pull '.escapeshellarg($ref))->successful()) {
+                $pullPolicy = 'IfNotPresent';
+            } else {
+                $this->laraKubeWarn('Could not pull it here; the cluster will try on its own.');
+            }
+        }
 
         $this->laraKubeInfo("Creating workspace '{$name}'...");
 
@@ -127,6 +143,7 @@ class WorkspaceCreateCommand extends Command
             'runtime' => $runtime,
             'runtimeVersion' => $runtimeVersion,
             ...($image !== null ? ['image' => $image] : []),
+            ...($pullPolicy !== null ? ['pullPolicy' => $pullPolicy] : []),
             'gitName' => (string) ($this->flag('git-name') ?: $this->gitConfig('user.name') ?: 'LaraKube Workspace'),
             'gitEmail' => (string) ($this->flag('git-email') ?: $this->gitConfig('user.email') ?: 'workspace@localhost'),
         ]));
@@ -207,5 +224,11 @@ class WorkspaceCreateCommand extends Command
         }
 
         return ['private' => (string) file_get_contents($file), 'public' => (string) file_get_contents($file.'.pub')];
+    }
+
+    /** Local clusters whose container runtime is the host's own Docker; native k3s has its own containerd. */
+    private function sharesHostDocker(string $context): bool
+    {
+        return Kubectl::isLocalContextName($context) && $context !== 'k3s-larakube';
     }
 }
