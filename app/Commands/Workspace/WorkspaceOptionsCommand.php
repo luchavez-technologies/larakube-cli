@@ -35,12 +35,14 @@ class WorkspaceOptionsCommand extends Command
             'label' => $runtime->label(),
             'versions' => $runtime->versions(),
             'defaultVersion' => $runtime->defaultVersion(),
+            'published' => $runtime->published(),
         ], WorkspaceRuntime::cases());
 
         $frameworks = array_map(fn (AppFramework $framework): array => [
             'value' => $framework->value,
             'label' => $framework->getLabel(),
             'runtime' => $framework->workspaceRuntime()->value,
+            'available' => $framework->workspaceRuntime()->published(),
             'devCommand' => $framework->devCommand(),
             'devPorts' => $framework->devPorts(),
         ], AppFramework::cases());

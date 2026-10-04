@@ -12,8 +12,8 @@ use InvalidArgumentException;
  */
 class WorkspaceSpec
 {
-    /** code-server release the image installs. */
-    public const CODE_SERVER_VERSION = '4.140.0';
+    /** Where the published workspace images live: the larakube-workspace repository's packages. */
+    public const REGISTRY = 'ghcr.io/luchavez-technologies/larakube-workspace';
 
     /** The password and deploy key live in this Secret in the workspace's namespace. */
     public const SECRET = 'workspace';
@@ -44,7 +44,7 @@ class WorkspaceSpec
 
     public static function image(WorkspaceRuntime $runtime, string $version): string
     {
-        return "larakube/workspace:{$runtime->value}{$version}-cs".self::CODE_SERVER_VERSION;
+        return self::REGISTRY."/{$runtime->value}:{$version}";
     }
 
     /** The image and its build base both come from the runtime; an unknown version is refused. */
@@ -79,18 +79,8 @@ class WorkspaceSpec
         return preg_match('#^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$#', $branch) === 1 && ! str_contains($branch, '..');
     }
 
-    public function dockerfile(WorkspaceRuntime $runtime, string $version): string
-    {
-        return view('workspace.dockerfile', [
-            'base' => $runtime->baseImage($version),
-            'codeServerVersion' => self::CODE_SERVER_VERSION,
-            'installNode' => $runtime->needsNode(),
-            'phpExtensions' => $runtime->phpExtensions(),
-        ])->render();
-    }
-
     /**
-     * @param  array{name: string, repo: string, branch: string, size: string, gitName: string, gitEmail: string, framework: AppFramework, runtime: WorkspaceRuntime, runtimeVersion: string, replicas?: int}  $workspace
+     * @param  array{name: string, repo: string, branch: string, size: string, gitName: string, gitEmail: string, framework: AppFramework, runtime: WorkspaceRuntime, runtimeVersion: string, image?: string, replicas?: int}  $workspace
      */
     public function manifest(array $workspace): string
     {
@@ -114,7 +104,9 @@ class WorkspaceSpec
             'runtime' => $workspace['runtime']->value,
             'runtimeVersion' => $workspace['runtimeVersion'],
             'devPorts' => array_column($workspace['framework']->devPorts(), 'port'),
-            'image' => self::image($workspace['runtime'], $workspace['runtimeVersion']),
+            'image' => $workspace['image'] ?? self::image($workspace['runtime'], $workspace['runtimeVersion']),
+            // The published tags move with each rebuild; a custom image is only pulled when it is missing.
+            'pullPolicy' => isset($workspace['image']) ? 'IfNotPresent' : 'Always',
             ...$sizes[$workspace['size']],
         ])->render();
     }

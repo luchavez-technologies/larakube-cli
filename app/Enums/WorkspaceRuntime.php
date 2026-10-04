@@ -52,34 +52,13 @@ enum WorkspaceRuntime: string
         };
     }
 
-    /** The image the workspace image is built on. PHP uses the same family as the deployed app. */
-    public function baseImage(string $version): string
-    {
-        return match ($this) {
-            self::PHP => "docker.io/serversideup/php:{$version}-cli",
-            self::NODE => "docker.io/library/node:{$version}-bookworm",
-            self::PYTHON => "docker.io/library/python:{$version}-bookworm",
-            self::JAVA => "docker.io/library/eclipse-temurin:{$version}-jdk",
-            self::DOTNET => "mcr.microsoft.com/dotnet/sdk:{$version}",
-            self::GO => "docker.io/library/golang:{$version}-bookworm",
-            self::RUST => "docker.io/library/rust:{$version}-bookworm",
-        };
-    }
-
-    /** Whether Node has to be added: a PHP app builds its assets with Vite. */
-    public function needsNode(): bool
-    {
-        return $this === self::PHP;
-    }
-
     /**
-     * PHP extensions installed on top of the base, which already carries the common ones.
-     *
-     * @return list<string>
+     * Whether an image for this runtime is published. A runtime is switched on here once its
+     * image exists in the larakube-workspace repository (its images.json).
      */
-    public function phpExtensions(): array
+    public function published(): bool
     {
-        return $this === self::PHP ? ['pdo_mysql', 'pdo_pgsql', 'intl', 'zip', 'gd', 'bcmath', 'pcntl', 'redis'] : [];
+        return in_array($this, [self::PHP, self::NODE], true);
     }
 
     /** Memory a workspace of this runtime tends to need; the sizes in WorkspaceSpec are chosen against it. */

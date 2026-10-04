@@ -116,7 +116,7 @@ spec:
       containers:
         - name: editor
           image: {{ $image }}
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: {{ $pullPolicy }}
           command: ["/bin/bash", "-c"]
           args:
             - |

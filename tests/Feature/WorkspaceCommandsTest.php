@@ -12,11 +12,11 @@ use Illuminate\Support\Facades\Process;
  * @param  list<string>  $existing
  * @param  array{manifest: ?string, secret: ?array, commands: list<string>}|null  $seen
  */
-function fakeWorkspaceCluster(?array &$seen, array $existing = [], array $secret = [], bool $imagePresent = true): void
+function fakeWorkspaceCluster(?array &$seen, array $existing = [], array $secret = []): void
 {
-    $seen = ['manifest' => null, 'secret' => null, 'commands' => [], 'dockerfile' => null];
+    $seen = ['manifest' => null, 'secret' => null, 'commands' => []];
 
-    Process::fake(function ($process) use (&$seen, $existing, $secret, $imagePresent) {
+    Process::fake(function ($process) use (&$seen, $existing, $secret) {
         $cmd = is_array($process->command) ? implode(' ', $process->command) : (string) $process->command;
         $seen['commands'][] = $cmd;
 
@@ -61,20 +61,6 @@ function fakeWorkspaceCluster(?array &$seen, array $existing = [], array $secret
             $key = str_replace('\\', '', $m[1]);
 
             return Process::result(output: isset($secret[$key]) ? base64_encode($secret[$key]) : '');
-        }
-
-        if (str_contains($cmd, ' images -q')) {
-            return Process::result(output: $imagePresent ? 'sha256:abc' : '');
-        }
-
-        if (preg_match('/ build .* -f \'?([^\' ]+Dockerfile)/', $cmd, $m) === 1) {
-            $seen['dockerfile'] = is_file($m[1]) ? file_get_contents($m[1]) : false;
-
-            return Process::result();
-        }
-
-        if (str_contains($cmd, 'k3s ctr images ls')) {
-            return Process::result(output: $imagePresent ? WorkspaceSpec::image(WorkspaceRuntime::PHP, '8.4') : '');
         }
 
         return Process::result(output: 'ok');
@@ -125,14 +111,6 @@ test('workspace:create applies the manifest and keeps a secret with a password a
         ->and($seen['secret']['metadata']['name'])->toBe('workspace')
         ->and(base64_decode($seen['secret']['data']['deploy-key.pub']))->toBe('ssh-ed25519 AAAA workspace')
         ->and(base64_decode($seen['secret']['data']['password']))->toHaveLength(24);
-});
-
-test('workspace:create builds the image from a real Dockerfile when the cluster does not have it', function (): void {
-    fakeWorkspaceCluster($seen, imagePresent: false);
-
-    workspaceCreate()->assertExitCode(0);
-
-    expect($seen['dockerfile'])->toBeString()->toContain('code-server');
 });
 
 test('workspace:create run again keeps the password and the deploy key that are already in the cluster', function (): void {
@@ -209,28 +187,10 @@ test('every framework has a runtime, a dev command and dev ports that never use 
         ->and(array_column($framework->devPorts(), 'port'))->not->toContain(8080);
 })->with(AppFramework::cases());
 
-test('every runtime offers versions, a default among them, and a base image', function (WorkspaceRuntime $runtime): void {
+test('every runtime offers versions, with a default among them', function (WorkspaceRuntime $runtime): void {
     expect($runtime->versions())->not->toBeEmpty()
-        ->and($runtime->versions())->toContain($runtime->defaultVersion())
-        ->and($runtime->baseImage($runtime->defaultVersion()))->toContain($runtime->defaultVersion());
+        ->and($runtime->versions())->toContain($runtime->defaultVersion());
 })->with(WorkspaceRuntime::cases());
-
-test('the PHP workspace builds on the Server Side Up image the deployed app uses', function (): void {
-    $dockerfile = (new WorkspaceSpec)->dockerfile(WorkspaceRuntime::PHP, '8.3');
-
-    expect($dockerfile)->toContain('FROM docker.io/serversideup/php:8.3-cli')
-        ->toContain('install-php-extensions')
-        ->toContain('nodesource')
-        ->toContain('code-server');
-});
-
-test('a runtime that ships its own Node or has no PHP gets neither', function (): void {
-    $dockerfile = (new WorkspaceSpec)->dockerfile(WorkspaceRuntime::PYTHON, '3.13');
-
-    expect($dockerfile)->toContain('FROM docker.io/library/python:3.13-bookworm')
-        ->not->toContain('nodesource')
-        ->not->toContain('install-php-extensions');
-});
 
 test('the manifest exposes the framework\'s dev ports on the pod and the Service', function (): void {
     $manifest = (new WorkspaceSpec)->manifest(['name' => 'api', 'repo' => 'https://github.com/acme/app', 'branch' => 'main', 'size' => 'small', 'gitName' => 'Dev', 'gitEmail' => 'dev@example.com', 'framework' => AppFramework::NEXTJS, 'runtime' => WorkspaceRuntime::NODE, 'runtimeVersion' => '24']);
@@ -238,18 +198,6 @@ test('the manifest exposes the framework\'s dev ports on the pod and the Service
     expect($manifest)->toContain('containerPort: 3000')
         ->toContain('name: dev-3000')
         ->toContain('image: '.WorkspaceSpec::image(WorkspaceRuntime::NODE, '24'));
-});
-
-test('workspace:create builds the image for the framework\'s runtime and refuses what is not offered', function (): void {
-    fakeWorkspaceCluster($seen, imagePresent: false);
-
-    workspaceCreate(['--framework' => 'django'])->assertExitCode(0);
-
-    expect($seen['dockerfile'])->toContain('FROM docker.io/library/python:3.13-bookworm')
-        ->and($seen['manifest'])->toContain('larakube.dev/workspace-runtime: "python"');
-
-    workspaceCreate(['--framework' => 'nope'])->expectsOutputToContain("Unknown framework 'nope'")->assertExitCode(1);
-    workspaceCreate(['--runtime-version' => '5.6'])->expectsOutputToContain('is not offered')->assertExitCode(1);
 });
 
 test('workspace:options lists runtimes and frameworks with their dev commands', function (): void {
@@ -263,22 +211,54 @@ test('workspace:options lists runtimes and frameworks with their dev commands', 
         ->and(collect($options['runtimes'])->firstWhere('value', 'python')['versions'])->toContain('3.13');
 });
 
-test('workspace:images lists every runtime and version with its base, and the pinned code-server', function (): void {
+test('workspace:images lists the published images the CLI pulls, one per version', function (): void {
     Illuminate\Support\Facades\Artisan::call('workspace:images', ['--json' => true]);
 
     $result = json_decode(trim(Illuminate\Support\Facades\Artisan::output()), true);
-    $php84 = collect($result['images'])->first(fn (array $i): bool => $i['runtime'] === 'php' && $i['version'] === '8.4');
+    $images = collect($result['images']);
+    $published = collect(WorkspaceRuntime::cases())->filter(fn (WorkspaceRuntime $r): bool => $r->published());
 
-    expect($result['codeServer'])->toBe(WorkspaceSpec::CODE_SERVER_VERSION)
-        ->and($php84['base'])->toBe('docker.io/serversideup/php:8.4-cli')
-        ->and(count($result['images']))->toBe(array_sum(array_map(fn (WorkspaceRuntime $r): int => count($r->versions()), WorkspaceRuntime::cases())));
+    expect($images->firstWhere('image', 'ghcr.io/luchavez-technologies/larakube-workspace/php:8.4'))->not->toBeNull()
+        ->and($images->pluck('runtime')->unique()->sort()->values()->all())->toBe($published->map(fn (WorkspaceRuntime $r): string => $r->value)->sort()->values()->all())
+        ->and($images)->toHaveCount($published->sum(fn (WorkspaceRuntime $r): int => count($r->versions())));
 });
 
-test('workspace:dockerfile prints the recipe the images are built from, and refuses what is not offered', function (): void {
-    Illuminate\Support\Facades\Artisan::call('workspace:dockerfile', ['--runtime' => 'node', '--runtime-version' => '24']);
+test('workspace:create pulls the published image and pulls it again on every start', function (): void {
+    fakeWorkspaceCluster($seen);
 
-    expect(Illuminate\Support\Facades\Artisan::output())->toContain('FROM docker.io/library/node:24-bookworm');
+    workspaceCreate(['--framework' => 'nextjs'])->assertExitCode(0);
 
-    $this->artisan('workspace:dockerfile', ['--runtime' => 'node', '--runtime-version' => '3'])->expectsOutputToContain('is not offered')->assertExitCode(1);
-    $this->artisan('workspace:dockerfile', ['--runtime' => 'cobol'])->expectsOutputToContain('Choose a --runtime')->assertExitCode(1);
+    expect($seen['manifest'])->toContain('image: ghcr.io/luchavez-technologies/larakube-workspace/node:24')
+        ->toContain('imagePullPolicy: Always');
+    Process::assertNotRan(fn ($process): bool => str_contains(is_array($process->command) ? implode(' ', $process->command) : (string) $process->command, 'docker'));
+});
+
+test('workspace:create refuses a runtime with no published image unless a custom one is given', function (): void {
+    fakeWorkspaceCluster($seen);
+
+    workspaceCreate(['--framework' => 'django'])->expectsOutputToContain('no published Python workspace image')->assertExitCode(1);
+
+    expect($seen['manifest'])->toBeNull();
+
+    workspaceCreate(['--framework' => 'django', '--image' => 'registry.example.com/team/workspace-python:3.13'])->assertExitCode(0);
+
+    expect($seen['manifest'])->toContain('image: registry.example.com/team/workspace-python:3.13')
+        ->toContain('imagePullPolicy: IfNotPresent');
+});
+
+test('workspace:create refuses an image reference that is not one', function (): void {
+    fakeWorkspaceCluster($seen);
+
+    workspaceCreate(['--image' => 'x; rm -rf /'])->expectsOutputToContain('is not an image reference')->assertExitCode(1);
+});
+
+test('workspace:options says which runtimes have an image', function (): void {
+    Illuminate\Support\Facades\Artisan::call('workspace:options', ['--json' => true]);
+
+    $options = json_decode(trim(Illuminate\Support\Facades\Artisan::output()), true);
+
+    expect(collect($options['runtimes'])->firstWhere('value', 'php')['published'])->toBeTrue()
+        ->and(collect($options['runtimes'])->firstWhere('value', 'python')['published'])->toBeFalse()
+        ->and(collect($options['frameworks'])->firstWhere('value', 'django')['available'])->toBeFalse()
+        ->and(collect($options['frameworks'])->firstWhere('value', 'laravel')['available'])->toBeTrue();
 });

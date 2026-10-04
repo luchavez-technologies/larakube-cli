@@ -2,14 +2,12 @@
 
 namespace App\Commands\Workspace;
 
-use App\Data\StackData;
 use App\Enums\AppFramework;
 use App\Enums\WorkspaceRuntime;
 use App\Services\Kubectl;
 use App\Services\Workspace\WorkspaceSpec;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithGlobalConfig;
-use App\Traits\InteractsWithRemoteDeploy;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ReadsCommandOptions;
 use App\Traits\RequiresFlagsWhenNonInteractive;
@@ -31,7 +29,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  */
 class WorkspaceCreateCommand extends Command
 {
-    use EmitsJsonOutput, InteractsWithGlobalConfig, InteractsWithRemoteDeploy, LaraKubeOutput, ReadsCommandOptions, RequiresFlagsWhenNonInteractive, TargetsWorkspaceServer;
+    use EmitsJsonOutput, InteractsWithGlobalConfig, LaraKubeOutput, ReadsCommandOptions, RequiresFlagsWhenNonInteractive, TargetsWorkspaceServer;
 
     protected $signature = 'workspace:create
         {--stack= : The server to create it on (a server made with cloud:create)}
@@ -45,7 +43,7 @@ class WorkspaceCreateCommand extends Command
         {--size= : small or standard}
         {--git-name= : Name for commits made in the workspace}
         {--git-email= : Email for commits made in the workspace}
-        {--rebuild : Build and ship the workspace image again}
+        {--image= : Run this image instead of the published one (it must follow the larakube-workspace image contract)}
         {--json : Emit one machine-readable JSON result on stdout}';
 
     protected $description = 'Create a development workspace (browser editor + your repository) on a server';
@@ -91,6 +89,16 @@ class WorkspaceCreateCommand extends Command
             return $this->failWith("Unknown runtime '{$this->flag('runtime')}'. Choose one of: ".implode(', ', array_column(WorkspaceRuntime::cases(), 'value')).'.');
         }
 
+        $image = $this->flag('image') ? (string) $this->flag('image') : null;
+
+        if ($image !== null && preg_match('#^[a-z0-9][a-z0-9._/:@-]{2,200}$#', $image) !== 1) {
+            return $this->failWith("'{$image}' is not an image reference.");
+        }
+
+        if ($image === null && ! $runtime->published()) {
+            return $this->failWith("There is no published {$runtime->label()} workspace image yet. Use --image to run your own.");
+        }
+
         if (! WorkspaceSpec::validVersion($runtime, $runtimeVersion)) {
             return $this->failWith("{$runtime->label()} {$runtimeVersion} is not offered. Choose one of: ".implode(', ', $runtime->versions()).'.');
         }
@@ -103,10 +111,6 @@ class WorkspaceCreateCommand extends Command
 
         if (! $kubectl->raw(['get', '--raw=/readyz', '--request-timeout=8s'])->ok) {
             return $this->failWith("The server's Kubernetes is not answering ({$server['context']}).");
-        }
-
-        if (! $this->ensureWorkspaceImage($server['stack'], $runtime, $runtimeVersion, (bool) $this->flag('rebuild'))) {
-            return $this->failWith('The workspace image could not be built or shipped to the server.');
         }
 
         $namespace = WorkspaceSpec::namespaceFor($name);
@@ -122,6 +126,7 @@ class WorkspaceCreateCommand extends Command
             'framework' => $framework,
             'runtime' => $runtime,
             'runtimeVersion' => $runtimeVersion,
+            ...($image !== null ? ['image' => $image] : []),
             'gitName' => (string) ($this->flag('git-name') ?: $this->gitConfig('user.name') ?: 'LaraKube Workspace'),
             'gitEmail' => (string) ($this->flag('git-email') ?: $this->gitConfig('user.email') ?: 'workspace@localhost'),
         ]));
@@ -202,45 +207,5 @@ class WorkspaceCreateCommand extends Command
         }
 
         return ['private' => (string) file_get_contents($file), 'public' => (string) file_get_contents($file.'.pub')];
-    }
-
-    /**
-     * Make sure the node can run the workspace image: build it here and, for a
-     * server over SSH, stream it into the node's k3s. A local cluster shares the
-     * host's images, so building is enough.
-     */
-    private function ensureWorkspaceImage(?StackData $stack, WorkspaceRuntime $runtime, string $runtimeVersion, bool $rebuild): bool
-    {
-        $image = WorkspaceSpec::image($runtime, $runtimeVersion);
-        $ssh = $stack !== null && $stack->ip !== null && $stack->sshKey !== null && is_file($stack->sshKey)
-            ? $this->sshBaseCommand('larakube', $stack->ip, 22, $stack->sshKey)
-            : null;
-
-        $present = $ssh !== null
-            ? str_contains(Process::run($ssh.' '.escapeshellarg('sudo k3s ctr images ls -q'))->output(), $image)
-            : trim(Process::run($this->imageQuietLookupCommand($image))->output()) !== '';
-
-        if ($present && ! $rebuild) {
-            return true;
-        }
-
-        $platform = $ssh !== null ? ($this->detectNodePlatformOverSsh($ssh) ?? 'linux/amd64') : '';
-        $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
-        $dockerfile = $dir->path().'/Dockerfile';
-        file_put_contents($dockerfile, (new WorkspaceSpec)->dockerfile($runtime, $runtimeVersion));
-
-        $this->laraKubeInfo('Building the workspace image (a few minutes the first time)...');
-
-        if ($this->runStreaming($this->buildImageCommand($image, $dockerfile, $dir->path(), $platform)) !== 0) {
-            return false;
-        }
-
-        if ($ssh === null) {
-            return true;
-        }
-
-        $this->laraKubeInfo('Sending the image to the server...');
-
-        return $this->runStreaming($this->sideloadOverSshCommand($image, $ssh)) === 0;
     }
 }
