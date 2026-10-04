@@ -70,4 +70,18 @@ trait StreamsProcessOutput
 
         return Process::forever()->tty()->run($command)->exitCode();
     }
+
+    /**
+     * Ask for the sudo password now, with an explanation, so a later piped `sudo` does not stall on a prompt
+     * nobody sees. Passwordless sudo (a dev box, a CI machine) needs nothing, and `sudo -v` fails there
+     * without a terminal.
+     */
+    protected function warmSudo(): void
+    {
+        if (Process::run('sudo -n true')->successful()) {
+            return;
+        }
+
+        $this->runInteractive('sudo -v');
+    }
 }

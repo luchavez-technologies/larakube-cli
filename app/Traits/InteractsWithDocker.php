@@ -105,7 +105,7 @@ trait InteractsWithDocker
     /**
      * Build the local project image.
      */
-    protected function buildImage(ConfigData $config): void
+    protected function buildImage(ConfigData $config): bool
     {
         $uid = function_exists('posix_getuid') ? posix_getuid() : 1000;
         $gid = function_exists('posix_getgid') ? posix_getgid() : 1000;
@@ -117,7 +117,8 @@ trait InteractsWithDocker
         $dockerfile = $config->framework === AppFramework::NEXTJS
             ? "$path/Dockerfile.nextjs"
             : "$path/Dockerfile.php";
-        $this->buildTargetedImage("$appName:local", $dockerfile, $path, $uid, $gid);
+
+        return $this->buildTargetedImage("$appName:local", $dockerfile, $path, $uid, $gid);
     }
 
     /**
@@ -180,10 +181,10 @@ trait InteractsWithDocker
         return true;
     }
 
-    protected function buildTargetedImage(string $imageTag, string $dockerfile, string $path, int $uid, int $gid): void
+    protected function buildTargetedImage(string $imageTag, string $dockerfile, string $path, int $uid, int $gid): bool
     {
         if (! file_exists($dockerfile)) {
-            return;
+            return true;
         }
 
         $this->laraKubeInfo("Building local image '$imageTag'...");
@@ -199,7 +200,8 @@ trait InteractsWithDocker
 
         // Plain `build` (no BuildKit/cross-arch features here) aliases cleanly
         // between the runtimes, so a straight binary swap is enough.
-        $this->runStreaming($this->containerRuntime()." build $target $buildArgs -t $imageTag -f $dockerfile $path");
+        // Named the way the cluster will look it up (Podman would otherwise call it localhost/<name>).
+        $this->runStreaming($this->containerRuntime()." build $target $buildArgs -t ".escapeshellarg($this->localImageRef($imageTag))." -f $dockerfile $path");
 
         // --- 🛡 LOCAL IMAGE BRIDGE ---
         // Images built on the host Docker engine are invisible to a local
@@ -207,7 +209,7 @@ trait InteractsWithDocker
         // image to whichever local engine is active so `larakube up` "just
         // works" without a registry. Remote/registry-backed clusters need
         // nothing here.
-        $this->sideloadToActiveCluster($imageTag);
+        return $this->sideloadToActiveCluster($imageTag);
     }
 
     /**
@@ -215,15 +217,15 @@ trait InteractsWithDocker
      * can run it without a registry. No-op for remote/registry-backed clusters
      * (and OrbStack, which reads host Docker images directly).
      */
-    protected function sideloadToActiveCluster(string $imageTag): void
+    protected function sideloadToActiveCluster(string $imageTag): bool
     {
         $context = trim(Process::run(Kubectl::current()->prefix().' config current-context')->output());
 
         if (! $this->resolveSideloadTarget($context)) {
-            return; // Remote/registry-backed cluster — the image is pulled, not sideloaded.
+            return true; // Remote/registry-backed cluster — the image is pulled, not sideloaded.
         }
 
-        $this->sideloadIntoK3s($imageTag);
+        return $this->sideloadIntoK3s($imageTag);
     }
 
     /**
@@ -260,7 +262,7 @@ trait InteractsWithDocker
      * Docker), so stream the image straight into its store with `k3s ctr images
      * import`. Requires sudo because the k3s containerd socket is root-owned.
      */
-    protected function sideloadIntoK3s(string $imageTag): void
+    protected function sideloadIntoK3s(string $imageTag): bool
     {
         $this->laraKubeInfo("Importing '$imageTag' into k3s (containerd)...");
         $this->line('  <fg=gray>k3s uses containerd; importing requires sudo.</>');
@@ -271,7 +273,7 @@ trait InteractsWithDocker
         // through the Process facade — Process::fake() intercepts it — but a
         // suite that forgets to fake still must not stop on a password prompt.
         if (! app()->runningUnitTests()) {
-            $this->runInteractive('sudo -v');
+            $this->warmSudo();
         }
 
         // Streamed via the Process facade (not passthru) so it's fakeable and
@@ -284,6 +286,8 @@ trait InteractsWithDocker
             $this->line('  The local image is not visible to k3s, so pods will likely fail');
             $this->line('  with ImagePullBackOff.');
         }
+
+        return $code === 0;
     }
 
     /**

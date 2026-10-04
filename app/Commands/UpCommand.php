@@ -394,18 +394,25 @@ class UpCommand extends Command
         // 1. Build image if local (Docker-Compose logic: only if missing or forced)
         if ($environment === 'local' && ! $this->option('no-build')) {
             $imageTag = "{$appName}:local";
+            $imageReady = true;
 
             if ($this->option('build') || ! $this->imageExists($imageTag)) {
                 // Forced, or no image in Docker yet → build (which also sideloads).
-                $this->buildImage($config);
+                $imageReady = $this->buildImage($config);
             } elseif ($this->imageInActiveCluster($imageTag) === false) {
                 // Image is in Docker but the active cluster can't see it — typically
                 // the cluster was recreated or you switched contexts. Import it
                 // without a needless rebuild so pods don't hit ImagePullBackOff.
                 $this->laraKubeInfo("Image '$imageTag' exists but is missing from the active cluster — importing...");
-                $this->sideloadToActiveCluster($imageTag);
+                $imageReady = $this->sideloadToActiveCluster($imageTag);
             } else {
                 $this->laraKubeInfo("Using existing image '$imageTag' (Use --build to force a rebuild)");
+            }
+
+            if (! $imageReady) {
+                $this->laraKubeError('The app image could not be loaded into the cluster, so the app cannot start. Fix the error above, then run larakube up again.');
+
+                return 1;
             }
         }
 
@@ -791,7 +798,7 @@ class UpCommand extends Command
         }
 
         // Pre-warm sudo so the credential prompt is interactive.
-        $this->runInteractive('sudo -v');
+        $this->warmSudo();
         if (! Process::run('sudo -n true')->successful()) {
             $this->laraKubeError('sudo authentication failed. Docker installation requires elevated privileges.');
 

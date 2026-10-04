@@ -143,7 +143,7 @@ trait InteractsWithHosts
 
         if (confirm('Would you like LaraKube to sync your /etc/hosts?')) {
             $this->line('  <fg=gray>LaraKube requires sudo privileges to update /etc/hosts</>');
-            $this->runInteractive('sudo -v');
+            $this->warmSudo();
 
             $success = $this->withSpin('Syncing /etc/hosts...', function () use ($currentHosts, $blockIdentifier, $newEntry) {
                 $newHosts = $this->applyHostsBlock($currentHosts, $blockIdentifier, $newEntry);
@@ -249,7 +249,7 @@ trait InteractsWithHosts
         // hosts — see docblock), but the sudo password prompt that follows
         // needs SOME explanation, or it looks like it's coming from nowhere.
         $this->line("  <fg=gray>Updating /etc/hosts for {$appName} (requires sudo)...</>");
-        $this->runInteractive('sudo -v');
+        $this->warmSudo();
 
         if (! $this->writeToEtcHosts($updated)) {
             $this->laraKubeWarn("Failed to update /etc/hosts for {$appName}. Check your sudo permissions.");
@@ -282,7 +282,7 @@ trait InteractsWithHosts
         }
 
         $this->line("  <fg=gray>Removing stale /etc/hosts entry for {$appName} (dnsmasq already covers this TLD)...</>");
-        $this->runInteractive('sudo -v');
+        $this->warmSudo();
 
         if (! $this->writeToEtcHosts($stripped)) {
             $this->laraKubeWarn("Failed to update /etc/hosts for {$appName}. Check your sudo permissions.");
