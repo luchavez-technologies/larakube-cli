@@ -25,18 +25,18 @@ test('the script that leaves the marker quotes the name and can be run again', f
         ->toContain('> "$HOME/.larakube/devbox"');
 });
 
-test('on a dev box the viewing hint says where to see the app and how to get a link that stays', function (): void {
+test('on a dev box the viewing hint says the addresses are box-local and names the one way to make the app public', function (): void {
     $hint = implode(' ', DevBoxMarker::viewingHint());
 
     expect($hint)->toContain('open only on the box')
         ->toContain('larakube share')
-        ->toContain('Share preview')
-        ->toContain('larakube share:domain')
-        ->toContain('your own Cloudflare domain');
+        ->not->toContain('share:domain')
+        ->not->toContain('Share preview');
 });
 
 test('the service links point a dev box at share instead of leaving only box-local addresses', function (): void {
     $source = (string) file_get_contents(base_path('app/Traits/LaraKubeOutput.php'));
 
-    expect($source)->toContain("if (\$environment === 'local' && DevBoxMarker::isHere())");
+    expect($source)->toContain("if (\$environment === 'local' && DevBoxMarker::isHere() && ")
+        ->toContain('publicHosts');
 });

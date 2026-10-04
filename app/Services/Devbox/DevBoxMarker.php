@@ -46,8 +46,7 @@ final class DevBoxMarker
     {
         return [
             'This is a dev box, so these addresses open only on the box itself.',
-            'To see the app from your computer: larakube share (a temporary public link), or Share preview in LaraKube Desktop.',
-            'For names that stay, with your own Cloudflare domain: larakube share:domain (app, Vite, Reverb and storage), or Use my domain in LaraKube Desktop.',
+            'To make the app public, with names that stay the same: larakube share (or Share in LaraKube Desktop).',
         ];
     }
 }

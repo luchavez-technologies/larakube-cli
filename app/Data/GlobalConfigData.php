@@ -25,15 +25,6 @@ class GlobalConfigData extends Data
         public array $aiKeys = [],
         public ?string $lastStarPromptAt = null,
         public string $localTld = self::DEFAULT_TLD,
-        /** Cloudflare named-tunnel token reused across share sessions (optional). */
-        public ?string $shareToken = null,
-        /**
-         * Per-app named-tunnel URLs stored after the first `larakube share` with a token.
-         * Shape: ['appname' => ['web' => 'https://…', 'hmr' => 'https://…', 'storage' => 'https://…']]
-         *
-         * @var array<string, array<string, string>>
-         */
-        public array $shareUrls = [],
         /** DigitalOcean API token, passed to OpenTofu as TF_VAR_do_token (never written into HCL). */
         public ?string $doToken = null,
         /** Hetzner Cloud API token, passed to OpenTofu as TF_VAR_hcloud_token (never written into HCL). */
@@ -77,7 +68,7 @@ class GlobalConfigData extends Data
         /** AWS Secret Access Key (optional). */
         public ?string $awsSecretAccessKey = null,
         /**
-         * Per-app domain shares made by `larakube share:domain`: the zone, the tunnel and the public
+         * Per-app domain shares made by `larakube share`: the zone, the tunnel and the public
          * address of each service. No token is kept here.
          * Shape: ['appname' => ['zone' => 'example.com', 'accountId' => '…', 'tunnelId' => '…', 'urls' => ['web' => 'https://…']]]
          *
@@ -144,31 +135,7 @@ class GlobalConfigData extends Data
         $this->lastStarPromptAt = $lastStarPromptAt->toString();
     }
 
-    public function getShareToken(): ?string
-    {
-        return $this->shareToken;
-    }
-
-    public function setShareToken(?string $token): void
-    {
-        $this->shareToken = $token;
-    }
-
     /** Stored named-tunnel URLs for one app (returns empty array if not yet configured). */
-    public function getShareUrls(string $appName): array
-    {
-        return $this->shareUrls[$appName] ?? [];
-    }
-
-    /** Persist named-tunnel URLs for one app (merges with any existing keys). */
-    public function setShareUrls(string $appName, array $urls): void
-    {
-        $this->shareUrls[$appName] = array_filter(array_merge(
-            $this->shareUrls[$appName] ?? [],
-            $urls,
-        ));
-    }
-
     /** @return array<string, mixed>|null */
     public function getShareDomain(string $appName): ?array
     {
@@ -363,7 +330,7 @@ class GlobalConfigData extends Data
         // experimental features, for one). Keys this class does not own are carried over untouched.
         $data = array_merge(array_diff_key(self::readJsonFile($path) ?? [], $this->toArray()), $this->toArray());
         // Empty associative maps must serialize as {} not [] in JSON.
-        foreach (['shareUrls', 'shareDomains', 'stacks', 'tofuPassphrases'] as $mapKey) {
+        foreach (['shareDomains', 'stacks', 'tofuPassphrases'] as $mapKey) {
             if (empty($data[$mapKey])) {
                 $data[$mapKey] = new stdClass;
             }

@@ -1,14 +1,8 @@
     server: {
         cors: true,
-        origin: process.env.VITE_DEV_ORIGIN || 'https://{{ $viteHost }}',
+        origin: 'https://{{ $viteHost }}',
         hmr: {
-            host: process.env.VITE_HMR_HOST || '{{ $viteHost }}',
-            ...(process.env.VITE_HMR_CLIENT_PORT
-                ? {
-                      clientPort: parseInt(process.env.VITE_HMR_CLIENT_PORT),
-                      protocol: process.env.VITE_HMR_PROTOCOL || 'wss',
-                  }
-                : {}),
+            host: '{{ $viteHost }}',
         },
         host: '0.0.0.0',
         port: 5173,

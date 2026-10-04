@@ -1,4 +1,3 @@
-@if(!empty($token))
 apiVersion: v1
 kind: Secret
 metadata:
@@ -11,7 +10,6 @@ type: Opaque
 stringData:
   TUNNEL_TOKEN: {!! json_encode($token) !!}
 ---
-@endif
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -34,7 +32,6 @@ spec:
       containers:
         - name: cloudflared
           image: cloudflare/cloudflared:2026.7.3
-@if(!empty($token))
           args:
             - tunnel
             - --no-autoupdate
@@ -45,13 +42,6 @@ spec:
                 secretKeyRef:
                   name: {{ $name }}-token
                   key: TUNNEL_TOKEN
-@else
-          args:
-            - tunnel
-            - --url
-            - {{ $targetUrl }}
-            - --no-autoupdate
-@endif
           resources:
             requests:
               cpu: 10m

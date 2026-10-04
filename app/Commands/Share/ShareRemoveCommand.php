@@ -11,15 +11,15 @@ use function Laravel\Prompts\confirm;
 use LaravelZero\Framework\Commands\Command;
 use RuntimeException;
 
-class ShareDomainRemoveCommand extends Command
+class ShareRemoveCommand extends Command
 {
     use AppliesShareEnvironment, SharesUnderDomain;
 
-    protected $signature = 'share:domain-remove
+    protected $signature = 'share:remove
         {--force : Remove without asking}
         {--json : Emit one machine-readable JSON result on stdout}';
 
-    protected $description = 'Remove the project\'s public names: the connector, the tunnel and its DNS records (reads CLOUDFLARE_API_TOKEN)';
+    protected $description = 'Take the project\'s public names down: the connector, the tunnel, its DNS records and the names; up is private again (reads CLOUDFLARE_API_TOKEN)';
 
     public function handle(): int
     {
@@ -35,16 +35,18 @@ class ShareDomainRemoveCommand extends Command
             return 1;
         }
 
-        [, $appName, $namespace] = $project;
+        [$config, $appName, $namespace] = $project;
 
         $globalConfig = $this->getGlobalConfig();
         $saved = $globalConfig->getShareDomain($appName);
 
         if ($saved === null) {
-            return $this->failed('This project has no public names from share:domain.');
+            return $this->failed('This project has no public names from share.');
         }
 
-        if (! $this->option('force') && ! $this->cannotPrompt() && ! confirm('Remove '.implode(', ', array_map(fn (string $url): string => preg_replace('#^https://#', '', $url), $saved['urls'] ?? [])).'? The links stop working.', false)) {
+        $hosts = array_map(fn (string $url): string => preg_replace('#^https://#', '', $url), array_values($saved['urls'] ?? []));
+
+        if (! $this->option('force') && ! $this->cannotPrompt() && ! confirm('Remove '.implode(', ', $hosts).'? The links stop working.', false)) {
             $this->laraKubeInfo('Nothing removed.');
 
             return 0;
@@ -57,9 +59,7 @@ class ShareDomainRemoveCommand extends Command
         }
 
         // The connector has to be gone before Cloudflare will delete a tunnel that was running.
-        $this->stopShare($namespace);
-
-        $hosts = array_map(fn (string $url): string => preg_replace('#^https://#', '', $url), array_values($saved['urls'] ?? []));
+        $this->removeConnector($namespace);
 
         try {
             (new DomainShare($token))->remove((string) $saved['accountId'], (string) $saved['zoneId'], (string) $saved['tunnelId'], $hosts);
@@ -69,6 +69,10 @@ class ShareDomainRemoveCommand extends Command
 
         $globalConfig->setShareDomain($appName, null);
         $globalConfig->save();
+
+        // Back to the local names, and up builds everything from them again.
+        $this->setPublicHosts($config, []);
+        $this->call('up', ['environment' => 'local', '--no-console' => true, '--no-test' => true, '--no-interaction' => true]);
 
         if ($this->flag('json')) {
             $this->jsonOutput(['success' => true, 'removed' => true]);

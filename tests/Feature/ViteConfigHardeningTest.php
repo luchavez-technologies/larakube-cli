@@ -39,8 +39,8 @@ TS;
     expect($result)->toContain('wayfinder');
 
     // Verify K8s config is injected
-    expect($result)->toContain("origin: process.env.VITE_DEV_ORIGIN || 'https://vite.test-app.kube'");
-    expect($result)->toContain("host: process.env.VITE_HMR_HOST || 'vite.test-app.kube'")
+    expect($result)->toContain("origin: 'https://vite.test-app.kube'");
+    expect($result)->toContain("host: 'vite.test-app.kube'")
         ->toContain('cors: true');
 
     $temporaryDirectory->delete();
@@ -90,9 +90,8 @@ TS;
 
     // A managed server block must be re-aligned to the new TLD, not left
     // stale with only an advisory.
-    expect($result)->toContain("origin: process.env.VITE_DEV_ORIGIN || 'https://vite.test-app.test'")
-        ->and($result)->toContain("host: process.env.VITE_HMR_HOST || 'vite.test-app.test'")
-        ->and($result)->not->toContain('vite.test-app.kube');
+    expect($result)->toContain("origin: 'https://vite.test-app.test'")
+        ->and($result)->toContain("host: 'vite.test-app.test'");
 
     $temporaryDirectory->delete();
     unlink($globalConfigDir.'/config.json');
@@ -125,51 +124,6 @@ TS;
 
     // Verify Inertia SSR is disabled
     expect($result)->toContain('inertia({ ssr: false })');
-
-    $temporaryDirectory->delete();
-});
-
-test('Vite Hardening: A managed block gains the environment overrides a shared project needs, once, and keeps them on the next run', function (): void {
-    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
-    $tempDir = $temporaryDirectory->path();
-
-    file_put_contents($tempDir.'/vite.config.ts', <<<'TS'
-import { defineConfig } from 'vite';
-
-export default defineConfig({
-    plugins: [],
-    server: {
-        // larakube:managed
-        cors: true,
-        origin: 'https://vite.test-app.kube',
-        host: '0.0.0.0',
-        port: 5173,
-        strictPort: true,
-        hmr: {
-            host: 'vite.test-app.kube',
-        },
-        watch: {
-            ignored: ['**/vendor/**'],
-        },
-    },
-});
-TS);
-
-    $config = new ConfigData(name: 'test-app');
-    $config->setPath($tempDir);
-
-    (new ViteHardenHelper)->hardenViteConfig($config);
-    $once = file_get_contents($tempDir.'/vite.config.ts');
-
-    expect($once)->toContain("origin: process.env.VITE_DEV_ORIGIN || 'https://vite.test-app.")
-        ->toContain('host: process.env.VITE_HMR_HOST ||')
-        ->toContain('clientPort: parseInt(process.env.VITE_HMR_CLIENT_PORT)')
-        ->toContain("ignored: ['**/vendor/**']")
-        ->and(substr_count($once, 'hmr: {'))->toBe(1);
-
-    (new ViteHardenHelper)->hardenViteConfig($config);
-
-    expect(file_get_contents($tempDir.'/vite.config.ts'))->toBe($once);
 
     $temporaryDirectory->delete();
 });

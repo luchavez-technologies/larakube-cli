@@ -1,3 +1,5 @@
+> **Superseded by `share-one-way.md`.** This file records how the first version was built and tested; follow the new plan.
+
 # Dev box: share a project under your own domain
 
 ## Problem

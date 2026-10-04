@@ -2,170 +2,117 @@
 
 namespace App\Traits;
 
+use App\Data\ConfigData;
 use App\Enums\LaravelFeature;
 use App\Enums\StorageDriver;
 use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 /**
- * What every way of sharing a project does to the cluster: which services get a public address, the
- * deployment env that points the browser at those addresses, and taking it all down again.
+ * What `share` and `share:remove` do to the project and its cluster: which services get a public name,
+ * the names as the project's own hosts, and the tunnel connector that carries them.
  */
 trait AppliesShareEnvironment
 {
+    /** Share's service key → the host key the project's config uses for it. */
+    private const array HOST_KEYS = [
+        'web' => 'web',
+        'hmr' => 'vite',
+        'reverb' => 'reverb',
+        'storage' => 's3',
+        'storage-console' => 's3-console',
+    ];
+
     /**
-     * Build the map of pod-name → [targetUrl, urlKey] for the services we need to expose.
-     * urlKey matches the key used in $urls ('web', 'hmr', 'reverb', 'storage', 'storage-console').
+     * The services the browser talks to and where each lives inside the cluster.
+     *
+     * @return array<string, string> [share service key => in-cluster URL]
      */
-    protected function buildServiceMap(mixed $config, string $appName, string $namespace): array
+    protected function shareTargets(ConfigData $config): array
     {
-        $map = [
-            'larakube-share-web' => ['targetUrl' => 'http://web:80', 'urlKey' => 'web'],
-        ];
+        $targets = ['web' => 'http://web:80'];
 
         if ($config->getFrontend()?->requiresNodePod()) {
-            $map['larakube-share-hmr'] = ['targetUrl' => 'http://node:5173', 'urlKey' => 'hmr'];
+            $targets['hmr'] = 'http://node:5173';
         }
 
         if ($config->hasFeature(LaravelFeature::REVERB, 'local')) {
-            $map['larakube-share-reverb'] = ['targetUrl' => 'http://reverb:8080', 'urlKey' => 'reverb'];
+            $targets['reverb'] = 'http://reverb:8080';
         }
 
         $storage = $config->getObjectStorage();
         if ($storage instanceof StorageDriver) {
-            $map['larakube-share-storage'] = [
-                'targetUrl' => "http://{$storage->getPodName()}:{$storage->port()}",
-                'urlKey' => 'storage',
-            ];
-            $map['larakube-share-storage-console'] = [
-                'targetUrl' => "http://{$storage->getPodName()}:{$storage->consolePort()}",
-                'urlKey' => 'storage-console',
-            ];
+            $targets['storage'] = "http://{$storage->getPodName()}:{$storage->port()}";
+            $targets['storage-console'] = "http://{$storage->getPodName()}:{$storage->consolePort()}";
         }
 
-        return $map;
+        return $targets;
     }
 
     /**
-     * Patch the cluster deployments with public URLs so the running app generates
-     * correct external links. All patches are deployment-level overrides — the
-     * original ConfigMap values are untouched and restored when the share stops.
+     * Make these names the local environment's hosts, or none to go back to the local names. Saved to the
+     * gitignored local file, so the next `up` builds `.env`, the Vite config and the ingress from them.
+     *
+     * @param  array<string, string>  $hostsByShareKey  [share service key => public host]
      */
-    protected function applyEnvPatches(mixed $config, string $appName, string $namespace, array $urls): void
+    protected function setPublicHosts(ConfigData $config, array $hostsByShareKey): void
     {
-        $ns = escapeshellarg($namespace);
-        $restartNeeded = [];
-
-        // Storage: update AWS_URL on the web deployment so Storage::url() generates public links
-        if (isset($urls['storage'])) {
-            $storageUrl = rtrim($urls['storage'], '/');
-            Process::run(Kubectl::current()->prefix().' set env deployment/web AWS_URL='.escapeshellarg($storageUrl)." -n {$namespace}");
-            $restartNeeded[] = 'web';
+        $names = [];
+        foreach ($hostsByShareKey as $service => $host) {
+            $names[self::HOST_KEYS[$service] ?? $service] = $host;
         }
 
-        // HMR: inject VITE_DEV_ORIGIN (where the browser loads scripts and fonts from) and
-        // VITE_HMR_HOST/PORT/PROTOCOL (the hot-reload socket) so the Vite server tells browsers
-        // to use the public tunnel URL instead of the local .kube hostname
-        if (isset($urls['hmr'])) {
-            $hmrHost = preg_replace('#^https?://#', '', rtrim($urls['hmr'], '/'));
-            Process::run(Kubectl::current()->prefix().' set env deployment/node VITE_HMR_HOST='.escapeshellarg($hmrHost).' VITE_DEV_ORIGIN='.escapeshellarg('https://'.$hmrHost)." VITE_HMR_CLIENT_PORT=443 VITE_HMR_PROTOCOL=wss -n {$namespace}");
-            $restartNeeded[] = 'node';
-        }
+        $config->addEnvironment('local');
+        $env = $config->getEnvironment('local');
+        $env->hosts = array_merge(array_diff_key($env->hosts, $env->publicHosts), $names);
+        $env->publicHosts = $names;
 
-        // Reverb: inject VITE_REVERB_HOST/PORT/SCHEME so Laravel Echo in the
-        // browser connects via the public tunnel URL instead of the internal
-        // cluster host. The server-side REVERB_HOST/PORT (Laravel → Reverb,
-        // pod-to-pod) stay untouched — only the browser-facing VITE_REVERB_*
-        // vars need to change, same split as HMR's VITE_HMR_* above.
-        if (isset($urls['reverb'])) {
-            $reverbHost = preg_replace('#^https?://#', '', rtrim($urls['reverb'], '/'));
-            Process::run(Kubectl::current()->prefix().' set env deployment/node VITE_REVERB_HOST='.escapeshellarg($reverbHost)." VITE_REVERB_PORT=443 VITE_REVERB_SCHEME=https -n {$namespace}");
-            $restartNeeded[] = 'node';
-        }
-
-        if (! empty($restartNeeded)) {
-            $targets = implode(' ', array_map(fn ($d) => "deployment/{$d}", array_unique($restartNeeded)));
-            Process::run(Kubectl::current()->prefix()." rollout restart {$targets} -n {$namespace}");
-            Process::timeout(70)->run(Kubectl::current()->prefix()." rollout status {$targets} -n {$namespace} --timeout=60s");
-        }
+        $config->saveToFile((string) getcwd());
     }
 
-    protected function stopShare(string $namespace): void
+    /** The connector pod: it reads its token from a Secret, never from its arguments. */
+    protected function deployConnector(string $namespace, string $tunnelToken): void
     {
-        $this->withSpin('Stopping tunnels and restoring env...', function () use ($namespace) {
-            // Remove all share pods (label-selector covers both B and A pods)
-            Process::run(Kubectl::current()->prefix()." delete deployment -l larakube.dev/role=share -n {$namespace} --ignore-not-found");
-            Process::run(Kubectl::current()->prefix()." delete secret -l larakube.dev/role=share -n {$namespace} --ignore-not-found");
+        $this->withSpin('Deploying the Cloudflare tunnel connector...', function () use ($namespace, $tunnelToken): bool {
+            $manifest = view('k8s.cloudflared.deployment', [
+                'name' => 'larakube-share',
+                'namespace' => $namespace,
+                'token' => $tunnelToken,
+            ])->render();
 
-            // Remove deployment-level env overrides (no-op if they were never set)
-            Process::run(Kubectl::current()->prefix()." set env deployment/web AWS_URL- -n {$namespace}");
-            Process::run(Kubectl::current()->prefix()." set env deployment/node VITE_HMR_HOST- VITE_DEV_ORIGIN- VITE_HMR_CLIENT_PORT- VITE_HMR_PROTOCOL- VITE_REVERB_HOST- VITE_REVERB_PORT- VITE_REVERB_SCHEME- -n {$namespace}");
-
-            // Restart to pick up original ConfigMap values
-            Process::run(Kubectl::current()->prefix()." rollout restart deployment/web -n {$namespace}");
-            Process::run(Kubectl::current()->prefix()." rollout restart deployment/node -n {$namespace}");
+            $temporaryDirectory = TemporaryDirectory::make();
+            $file = $temporaryDirectory->path().'/larakube-share.yaml';
+            file_put_contents($file, $manifest);
+            Process::run(Kubectl::current()->prefix().' apply -f '.escapeshellarg($file));
+            $temporaryDirectory->delete();
 
             return true;
         });
-
-        $this->laraKubeInfo('Tunnel stopped and env restored.');
     }
 
-    protected function printShareUrls(array $urls, string $mode, bool $waiting = true): void
+    protected function removeConnector(string $namespace): void
     {
-        $modeLabel = $mode === 'named' ? '(named tunnel — stable)' : '(quick tunnel — random URL)';
-        $this->laraKubeNewLine();
-        $this->laraKubeInfo("🌐 Your project is now public {$modeLabel}");
-        $this->laraKubeNewLine();
+        $this->withSpin('Stopping the tunnel connector...', function () use ($namespace): bool {
+            Process::run(Kubectl::current()->prefix()." delete deployment,secret -l larakube.dev/role=share -n {$namespace} --ignore-not-found");
 
-        if (isset($urls['web'])) {
-            $this->line('  <fg=gray>Web app  :</> <fg=cyan;options=bold>'.$urls['web'].'</>');
-        }
-        if (isset($urls['hmr'])) {
-            $this->line('  <fg=gray>Vite HMR :</> <fg=cyan>'.$urls['hmr'].'</>');
-        }
-        if (isset($urls['reverb'])) {
-            $this->line('  <fg=gray>Reverb   :</> <fg=cyan>'.$urls['reverb'].'</>');
-        }
-        if (isset($urls['storage'])) {
-            $this->line('  <fg=gray>Storage  :</> <fg=cyan>'.$urls['storage'].'</>');
-        }
-        if (isset($urls['storage-console'])) {
-            $this->line('  <fg=gray>S3 Console:</> <fg=cyan>'.$urls['storage-console'].'</>');
-        }
-
-        $this->laraKubeNewLine();
-
-        if ($waiting) {
-            $this->line('  Press <fg=yellow>Ctrl+C</> or run <fg=yellow>larakube share --stop</> to stop sharing.');
-        }
+            return true;
+        });
     }
 
-    /**
-     * After `up` re-applies the manifests, put the public addresses of a running domain share back into
-     * the deployments (the apply resets them) and say what they are. Does nothing when the project has
-     * no domain share or its connector is not running.
-     */
-    protected function reapplyDomainShare(mixed $config, string $appName, string $namespace): bool
+    /** @param  array<string, string>  $urls */
+    protected function printShareUrls(array $urls): void
     {
-        $saved = $this->getGlobalConfig()->getShareDomain($appName);
+        $labels = ['web' => 'Web app', 'hmr' => 'Vite HMR', 'reverb' => 'Reverb', 'storage' => 'Storage', 'storage-console' => 'S3 Console'];
 
-        if ($saved === null || empty($saved['urls'])) {
-            return false;
+        $this->laraKubeNewLine();
+        $this->laraKubeInfo('🌐 Your project is public, with names that stay the same');
+        $this->laraKubeNewLine();
+
+        foreach ($urls as $service => $url) {
+            $this->line('  <fg=gray>'.str_pad(($labels[$service] ?? $service), 10).':</> <fg=cyan'.($service === 'web' ? ';options=bold' : '').'>'.$url.'</>');
         }
 
-        $running = Process::run(Kubectl::current()->prefix().' get deployment larakube-share -n '.escapeshellarg($namespace).' -o name');
-
-        if (! $running->successful() || trim($running->output()) === '') {
-            return false;
-        }
-
-        // A stop leaves the connector at zero; the names are meant to be up, so bring it back.
-        Process::run(Kubectl::current()->prefix().' scale deployment/larakube-share --replicas=1 -n '.escapeshellarg($namespace));
-
-        $this->applyEnvPatches($config, $appName, $namespace, $saved['urls']);
-        $this->printShareUrls($saved['urls'], 'named', waiting: false);
-
-        return true;
+        $this->laraKubeNewLine();
     }
 }

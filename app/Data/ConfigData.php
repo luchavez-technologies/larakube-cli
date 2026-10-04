@@ -1491,6 +1491,11 @@ class ConfigData extends Data
     {
         $webHost = $this->getEnvironment($environment)?->hosts['web'] ?? null;
 
+        // A project made public by `share` uses its public name, local or not.
+        if ($publicWeb = $this->getEnvironment($environment)?->publicHosts['web'] ?? null) {
+            return "https://{$publicWeb}";
+        }
+
         // Any non-local env with a configured web host wins. This is the
         // path that lets users rename "production" to "main" or add a
         // "staging" env without code changes — the env name no longer
@@ -1899,6 +1904,12 @@ class ConfigData extends Data
             if (isset($envLocal['cloud'])) {
                 $data['environments'][$env]['cloud'] = $envLocal['cloud'];
             }
+
+            // The public names `share` made: they are this machine's hosts for the environment.
+            if (! empty($envLocal['publicHosts']) && is_array($envLocal['publicHosts'])) {
+                $data['environments'][$env]['publicHosts'] = $envLocal['publicHosts'];
+                $data['environments'][$env]['hosts'] = array_merge($data['environments'][$env]['hosts'] ?? [], $envLocal['publicHosts']);
+            }
         }
 
         // Project-scoped Cloudflare token lives only in the gitignored local file.
@@ -1938,6 +1949,15 @@ class ConfigData extends Data
             $cloud = $envData['cloud'] ?? null;
             unset($data['environments'][$env]['cloud']);   // strip from the committed blueprint
 
+            // Public names name the machine: they go to the local file, and leave the committed hosts.
+            $public = is_array($envData['publicHosts'] ?? null) ? $envData['publicHosts'] : [];
+            unset($data['environments'][$env]['publicHosts']);
+
+            if ($public !== []) {
+                $data['environments'][$env]['hosts'] = array_diff_key($data['environments'][$env]['hosts'] ?? [], $public);
+                $local['environments'][$env]['publicHosts'] = $public;
+            }
+
             if (! is_array($cloud) || $cloud === []) {
                 continue;
             }
@@ -1950,7 +1970,7 @@ class ConfigData extends Data
                 unset($cloud['context'], $cloud['provider']);
             }
 
-            $local['environments'][$env] = ['cloud' => $cloud];
+            $local['environments'][$env]['cloud'] = $cloud;
         }
 
         if (! empty($cloudflareToken)) {
@@ -1961,7 +1981,8 @@ class ConfigData extends Data
 
         // Write/refresh the local file only when there's something to persist
         // (a cloud connection or a project-scoped token), and keep it gitignored.
-        if ($local['environments'] !== [] || ! empty($local['cloudflareToken'])) {
+        // An existing local file is refreshed too, so names that were removed do not linger in it.
+        if ($local['environments'] !== [] || ! empty($local['cloudflareToken']) || file_exists("$directory/".self::LOCAL_CONFIG_FILE)) {
             self::atomicWriteJson("$directory/".self::LOCAL_CONFIG_FILE, $local);
             self::ensureGitignored($directory, self::LOCAL_CONFIG_FILE);
         }

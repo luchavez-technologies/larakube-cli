@@ -9,7 +9,6 @@ use App\Enums\DatabaseDriver;
 use App\Enums\SearchDriver;
 use App\Enums\StorageDriver;
 use App\Services\Kubectl;
-use App\Traits\AppliesShareEnvironment;
 use App\Traits\CollectsReminders;
 use App\Traits\DeploysMonitoringExporters;
 use App\Traits\DetectsWsl;
@@ -43,7 +42,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class UpCommand extends Command
 {
-    use AppliesShareEnvironment, CollectsReminders, DeploysMonitoringExporters, DetectsWsl, EnsuresHostDependencies, GeneratesProjectInfrastructure, HasConsoleInteraction, InstallsPodman, InteractsWithArchitecturalEngine, InteractsWithClusterContext, InteractsWithDocker, InteractsWithEnvironments, InteractsWithGlobalConfig, InteractsWithHosts, InteractsWithKustomize, InteractsWithPlex, InteractsWithProjectConfig, InteractsWithSslTrust, InteractsWithTraefik, LaraKubeOutput, ManagesCompanions, ManagesLocalCa, StreamsProcessOutput;
+    use CollectsReminders, DeploysMonitoringExporters, DetectsWsl, EnsuresHostDependencies, GeneratesProjectInfrastructure, HasConsoleInteraction, InstallsPodman, InteractsWithArchitecturalEngine, InteractsWithClusterContext, InteractsWithDocker, InteractsWithEnvironments, InteractsWithGlobalConfig, InteractsWithHosts, InteractsWithKustomize, InteractsWithPlex, InteractsWithProjectConfig, InteractsWithSslTrust, InteractsWithTraefik, LaraKubeOutput, ManagesCompanions, ManagesLocalCa, StreamsProcessOutput;
 
     /**
      * The name and signature of the console command.
@@ -612,8 +611,10 @@ class UpCommand extends Command
         $this->newLine();
         $this->showServiceLinks($config, $environment);
 
-        if ($environment === 'local') {
-            $this->reapplyDomainShare($config, $appName, $this->getNamespace('local', $appName));
+        // A project made public by `share` keeps its tunnel: the scale-down above spares the connector, and a
+        // stop that left it at zero is undone here. The names are already the project's hosts.
+        if ($environment === 'local' && ($config->getEnvironment('local')?->publicHosts ?? []) !== []) {
+            Process::run(Kubectl::current()->prefix().' scale deployment/larakube-share --replicas=1 -n '.escapeshellarg($namespace));
         }
 
         $this->showCompanionAccess($config, $appName, $environment);

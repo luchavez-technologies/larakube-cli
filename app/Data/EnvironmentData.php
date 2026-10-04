@@ -66,6 +66,14 @@ class EnvironmentData extends Data
          */
         public array $hosts = [],
         /**
+         * The part of `hosts` that `share` made: the public names of this machine's copy of the project.
+         * They are merged into `hosts` when the config is loaded, so everything built from hosts follows
+         * them, and kept only in the gitignored .larakube.local.json (they name the machine).
+         *
+         * @var array<string, string>
+         */
+        public array $publicHosts = [],
+        /**
          * Extra hostnames that route to the SAME web pod as `hosts['web']` —
          * for a Laravel app using subdomain route groups
          * (https://laravel.com/docs/routing#route-group-subdomain-routing),

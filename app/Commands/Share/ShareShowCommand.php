@@ -63,7 +63,7 @@ class ShareShowCommand extends Command
             return 0;
         }
 
-        $this->printShareUrls($urls, 'named', waiting: false);
+        $this->printShareUrls($urls);
         $this->line($running ? '  <fg=green>The tunnel is running.</>' : '  <fg=yellow>The tunnel is not running. larakube share:domain brings it back.</>');
 
         return 0;
