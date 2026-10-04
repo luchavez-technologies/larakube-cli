@@ -211,6 +211,19 @@ test('workspace:options lists runtimes and frameworks with their dev commands', 
         ->and(collect($options['runtimes'])->firstWhere('value', 'python')['versions'])->toContain('3.13');
 });
 
+test('workspace:images also lists the builder images that new pulls', function (): void {
+    Illuminate\Support\Facades\Artisan::call('workspace:images', ['--json' => true]);
+
+    $result = json_decode(trim(Illuminate\Support\Facades\Artisan::output()), true);
+
+    expect(array_column($result['builders'], 'image'))->toBe([
+        'ghcr.io/luchavez-technologies/larakube-builder/php:8.5',
+        'ghcr.io/luchavez-technologies/larakube-builder/php:8.4',
+        'ghcr.io/luchavez-technologies/larakube-builder/php:8.3',
+        'ghcr.io/luchavez-technologies/larakube-builder/python:3.12',
+    ]);
+});
+
 test('workspace:images lists the published images the CLI pulls, one per version', function (): void {
     Illuminate\Support\Facades\Artisan::call('workspace:images', ['--json' => true]);
 

@@ -120,7 +120,7 @@ test('statamic:new command has --fast option', function (): void {
  *
  * @return array{0: App\Commands\Statamic\StatamicNewCommand, 1: string, 2: TemporaryDirectory}
  */
-function statamicInstaller(array $options = [], ?string $kit = null, ?array $superUser = null, array $composer = ['require' => ['php' => '^8.2']]): array
+function statamicInstaller(array $options = [], ?string $kit = null, ?array $superUser = null, array $composer = ['require' => ['php' => '^8.2']], bool $builderPulls = false): array
 {
     $command = app(App\Commands\Statamic\StatamicNewCommand::class);
     $input = new Symfony\Component\Console\Input\ArrayInput($options, $command->getDefinition());
@@ -134,7 +134,12 @@ function statamicInstaller(array $options = [], ?string $kit = null, ?array $sup
     $directory = TemporaryDirectory::make();
     $base = $directory->path();
 
-    Illuminate\Support\Facades\Process::fake(function ($process) use ($base, $composer) {
+    Illuminate\Support\Facades\Process::fake(function ($process) use ($base, $composer, $builderPulls) {
+        // The prebuilt builder is only used when it can be pulled; most tests cover the plain image.
+        if (str_contains((string) $process->command, 'pull') && str_contains((string) $process->command, 'larakube-builder')) {
+            return Illuminate\Support\Facades\Process::result(exitCode: $builderPulls ? 0 : 1);
+        }
+
         if (str_contains((string) $process->command, 'statamic new site')) {
             @mkdir("{$base}/site", 0777, true);
             file_put_contents("{$base}/site/composer.json", json_encode($composer));
@@ -173,6 +178,22 @@ test('statamic:new installs the official CLI and passes the kit and its flags, a
         return $extensions !== false && $cli !== false && $new !== false
             && $extensions < $cli && $cli < $new
             && str_contains($cmd, 'npm install -g bun');
+    });
+    $directory->delete();
+});
+
+test('statamic:new in a prebuilt builder skips installing Node, Bun and the Statamic CLI', function (): void {
+    [$command, $base, $directory] = statamicInstaller(['--pro' => true], 'jasonbaciulis/bedrock', builderPulls: true);
+
+    (new ReflectionMethod($command, 'runStatamicNew'))->invoke($command, 'site', statamicConfig(), $base);
+
+    Illuminate\Support\Facades\Process::assertRan(function ($process): bool {
+        $cmd = (string) $process->command;
+
+        return str_contains($cmd, 'ghcr.io/luchavez-technologies/larakube-builder/php:8.4')
+            && str_contains($cmd, 'statamic new site jasonbaciulis/bedrock')
+            && ! str_contains($cmd, 'npm install -g bun')
+            && ! str_contains($cmd, 'composer global require');
     });
     $directory->delete();
 });

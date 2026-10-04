@@ -17,6 +17,7 @@ use App\Enums\PhpVersion;
 use App\Enums\SearchDriver;
 use App\Enums\ServerVariation;
 use App\Enums\StorageDriver;
+use App\Services\Scaffolding\BuilderImage;
 use App\Traits\CheckPrerequisites;
 use App\Traits\GathersInfrastructureConfig;
 use App\Traits\GeneratesProjectInfrastructure;
@@ -325,8 +326,26 @@ class NewCommand extends Command
         $gid = $this->hostGid();
         $image = $config->getPhpImage(true);
 
-        $this->laraKubeInfo("Pulling builder image: $image...");
-        Process::forever()->run($this->pullImageCommand($image));
+        // A published builder image already has Node and the installer. Without one (an older PHP, or
+        // the registry not reachable) the plain base image is used and set up on each run, as before.
+        $builder = BuilderImage::php($config->getPhpVersion()->value);
+        $prebuilt = false;
+
+        if ($builder !== null) {
+            $this->laraKubeInfo("Pulling builder image: $builder...");
+            $prebuilt = Process::forever()->run($this->pullImageCommand($builder))->successful();
+
+            if (! $prebuilt) {
+                $this->laraKubeWarn('Could not pull the prebuilt builder image; setting one up from the base image instead.');
+            }
+        }
+
+        if ($prebuilt) {
+            $image = $builder;
+        } else {
+            $this->laraKubeInfo("Pulling builder image: $image...");
+            Process::forever()->run($this->pullImageCommand($image));
+        }
 
         $runtime = $this->containerRuntime();
 
@@ -390,9 +409,10 @@ class NewCommand extends Command
 
         $pkgCommand = $this->getNodeInstallationCommand($image);
         $baseDir = dirname($projectPath);
+        $script = BuilderImage::laravelNewScript($prebuilt, $pkgCommand, $appName, $extraFlags);
 
         $cmd = "$runtime run --rm {$ttyFlag}-v $baseDir:/var/www/html -e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 -e SHOW_WELCOME_MESSAGE=false --user root $image ".
-               "sh -c '$pkgCommand && composer config -g bin-dir /usr/local/bin && composer global require laravel/installer && laravel new $appName $extraFlags'";
+               "sh -c '$script'";
 
         $this->runInteractive($cmd);
 

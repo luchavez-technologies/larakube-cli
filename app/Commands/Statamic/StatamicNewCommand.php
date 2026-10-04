@@ -13,6 +13,7 @@ use App\Enums\PhpVersion;
 use App\Enums\SearchDriver;
 use App\Enums\ServerVariation;
 use App\Enums\StorageDriver;
+use App\Services\Scaffolding\BuilderImage;
 use App\Traits\AnswersFromFlags;
 use App\Traits\CheckPrerequisites;
 use App\Traits\GathersInfrastructureConfig;
@@ -374,18 +375,38 @@ class StatamicNewCommand extends Command
         $image = $config->getPhpImage(true); // CLI image
         $runtime = $this->containerRuntime();
 
-        $this->laraKubeInfo("Pulling builder image: $image...");
-        Process::forever()->run($this->pullImageCommand($image));
+        // A published builder has Node, Bun and the Statamic CLI already; without one the plain image is
+        // set up on each run, as before.
+        $builder = BuilderImage::php($config->getPhpVersion()->value);
+        $prebuilt = false;
+
+        if ($builder !== null) {
+            $this->laraKubeInfo("Pulling builder image: $builder...");
+            $prebuilt = Process::forever()->run($this->pullImageCommand($builder))->successful();
+
+            if (! $prebuilt) {
+                $this->laraKubeWarn('Could not pull the prebuilt builder image; setting one up from the base image instead.');
+            }
+        }
+
+        if ($prebuilt) {
+            $image = $builder;
+        } else {
+            $this->laraKubeInfo("Pulling builder image: $image...");
+            Process::forever()->run($this->pullImageCommand($image));
+        }
 
         // `statamic new` ends by booting the app, and Intervention's GD driver
         // throws when gd is absent; the generated Dockerfile doesn't exist yet.
         $extensions = $config->getAllPhpExtensions();
         $setup = implode(' && ', array_filter([
             $extensions === [] ? null : 'install-php-extensions '.implode(' ', $extensions),
-            $this->getNodeInstallationCommand($image),
-            'npm install -g bun',
-            'composer config -g bin-dir /usr/local/bin',
-            'composer global require '.self::STATAMIC_CLI,
+            ...($prebuilt ? [] : [
+                $this->getNodeInstallationCommand($image),
+                'npm install -g bun',
+                'composer config -g bin-dir /usr/local/bin',
+                'composer global require '.self::STATAMIC_CLI,
+            ]),
             $this->statamicNewCommand($appName),
         ]));
 
