@@ -333,7 +333,9 @@ class GlobalConfigData extends Data
             @mkdir($dir, 0700, true);
         }
 
-        $data = $this->toArray();
+        // The file is shared with LaraKube Desktop, which keeps its own settings in it (the switch for
+        // experimental features, for one). Keys this class does not own are carried over untouched.
+        $data = array_merge(array_diff_key(self::readJsonFile($path) ?? [], $this->toArray()), $this->toArray());
         // Empty associative maps must serialize as {} not [] in JSON.
         foreach (['shareUrls', 'stacks', 'tofuPassphrases'] as $mapKey) {
             if (empty($data[$mapKey])) {
