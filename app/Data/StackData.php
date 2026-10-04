@@ -45,6 +45,8 @@ class StackData extends Data
         public ?string $sshKey = null,
         /** What the server is for: "deploy" (apps and tools run here) or "dev" (a development machine, no deploy cluster). */
         public string $role = 'deploy',
+        /** For a dev box: the port on this computer that its cluster API is tunnelled to over SSH. */
+        public ?int $tunnelPort = null,
     ) {}
 
     /** Add an "appName/env" binding (idempotent). */

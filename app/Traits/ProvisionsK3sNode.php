@@ -251,7 +251,7 @@ BASH;
      * new context, which is exactly what "syncing consistently fails" turned
      * out to mean in practice.
      */
-    protected function syncKubeconfig($user, $ip, $port, $keyPath, $contextName): bool
+    protected function syncKubeconfig($user, $ip, $port, $keyPath, $contextName, ?string $apiServer = null): bool
     {
         $this->laraKubeInfo('Syncing Kubeconfig...');
 
@@ -279,11 +279,14 @@ BASH;
 
         $configContent = file_get_contents($tmpRemoteConfig);
 
-        // Update 127.0.0.1 to server IP
-        $configContent = str_replace('127.0.0.1', $ip, $configContent);
+        // Point the context at the server's address, or at a given one (a tunnel's local end).
+        $configContent = $apiServer !== null
+            ? str_replace('https://127.0.0.1:6443', $apiServer, $configContent)
+            : str_replace('127.0.0.1', $ip, $configContent);
 
-        // Change context name to larakube-{ip}
-        $configContent = str_replace('default', $contextName, $configContent);
+        // Change context name to larakube-{ip}. A box that ran `cluster:setup` already renamed it
+        // to k3s-larakube, which would also clash with this computer's own local cluster.
+        $configContent = str_replace($apiServer !== null ? ['default', 'k3s-larakube'] : 'default', $contextName, $configContent);
 
         file_put_contents($tmpRemoteConfig, $configContent);
 

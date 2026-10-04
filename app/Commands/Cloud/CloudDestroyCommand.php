@@ -7,6 +7,7 @@ use App\Traits\DiscoversUnfinishedStacks;
 use App\Traits\InteractsWithOpenTofu;
 use App\Traits\InteractsWithRemoteSsh;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ManagesDevBoxTunnel;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
@@ -21,7 +22,7 @@ use LaravelZero\Framework\Commands\Command;
  */
 class CloudDestroyCommand extends Command
 {
-    use DiscoversUnfinishedStacks, InteractsWithOpenTofu, InteractsWithRemoteSsh, LaraKubeOutput;
+    use DiscoversUnfinishedStacks, InteractsWithOpenTofu, InteractsWithRemoteSsh, LaraKubeOutput, ManagesDevBoxTunnel;
 
     protected $signature = 'cloud:destroy
         {stack? : The stack name to destroy. Omit to pick from the registry.}
@@ -135,13 +136,17 @@ class CloudDestroyCommand extends Command
             return 1;
         }
 
+        if ($stack->role === 'dev') {
+            $this->stopTunnel($stack);
+        }
+
         $this->forgetStack($stack->name);
         $this->forgetHostKey($stack->ip);
         $this->laraKubeInfo("✅ Destroyed and unregistered '{$stack->name}'.");
 
         // The cluster is gone, so its context is only a dead entry in ~/.kube/config.
-        // A dev box never had a kube-context on this computer.
-        $context = $stack->role === 'dev' ? null : ($stack->context ?: ($stack->ip ? 'larakube-'.$stack->ip : null));
+        // A dev box has one only once it was connected.
+        $context = $stack->context ?: ($stack->role === 'dev' || ! $stack->ip ? null : 'larakube-'.$stack->ip);
         if ($context) {
             $this->call('context:remove', ['name' => $context, '--force' => true]);
         }
