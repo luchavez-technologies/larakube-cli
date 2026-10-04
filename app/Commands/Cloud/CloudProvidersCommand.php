@@ -62,7 +62,7 @@ class CloudProvidersCommand extends Command
     }
 
     /**
-     * @return array{slug: string, label: string, regions: list<array{value: string, label: string}>, defaultRegion: string, vpsSizes: list<array{value: string, label: string}>, defaultVpsSize: string, managedSizes: list<array{value: string, label: string}>, defaultManagedSize: string, credentials: array{ready: bool, hint: ?string}}
+     * @return array{slug: string, label: string, regions: list<array{value: string, label: string}>, defaultRegion: string, vpsSizes: list<array{value: string, label: string}>, defaultVpsSize: string, defaultDevBoxSize: string, managedSizes: list<array{value: string, label: string}>, defaultManagedSize: string, credentials: array{ready: bool, hint: ?string}}
      */
     protected function describe(CloudProvider $provider): array
     {
@@ -75,6 +75,7 @@ class CloudProvidersCommand extends Command
         $pricing = ['source' => 'builtin', 'asOf' => null, 'currency' => null];
 
         $live = $credentials['ready'] ? (new LiveProviderCatalog)->get($provider, $this->tokenFor($provider), $this->flag('refresh')) : null;
+        $priced = null;
 
         if ($live !== null) {
             $regions = $live['regions'];
@@ -82,6 +83,7 @@ class CloudProvidersCommand extends Command
             $defaultRegion = in_array($defaultRegion, array_column($regions, 'value'), true) ? $defaultRegion : $regions[0]['value'];
             $defaultSize = $this->defaultSize($provider, $live['sizes']);
             $pricing = ['source' => $live['source'], 'asOf' => $live['asOf'], 'currency' => $live['currency']];
+            $priced = $live['sizes'];
         }
 
         return [
@@ -91,6 +93,7 @@ class CloudProvidersCommand extends Command
             'defaultRegion' => $defaultRegion,
             'vpsSizes' => $sizes,
             'defaultVpsSize' => $defaultSize,
+            'defaultDevBoxSize' => $this->devBoxSize($priced ?? $sizes, $defaultSize),
             'managedSizes' => $this->pickerOptions($provider->managedSizes()),
             'defaultManagedSize' => $provider->defaultManagedSize(),
             'pricing' => $pricing,
@@ -141,6 +144,26 @@ class CloudProvidersCommand extends Command
         }
 
         return $sizes[0]['value'];
+    }
+
+    /**
+     * The size a dev box starts with: the cheapest with at least 8 GB of RAM, since Podman, a local
+     * cluster, the Commons and an app together use close to 2 GB and a second app or a build needs room.
+     * Falls back to the provider's default when no size says its memory.
+     *
+     * @param  list<array{value: string, label: string, monthly?: float}>  $sizes
+     */
+    private function devBoxSize(array $sizes, string $fallback): string
+    {
+        $fits = array_filter($sizes, fn (array $size): bool => preg_match('/(\d+(?:\.\d+)?) GB RAM/', $size['label'], $match) === 1 && (float) $match[1] >= 8);
+
+        if ($fits === []) {
+            return $fallback;
+        }
+
+        usort($fits, fn (array $a, array $b): int => ($a['monthly'] ?? 0) <=> ($b['monthly'] ?? 0));
+
+        return $fits[0]['value'];
     }
 
     private function tokenFor(CloudProvider $provider): ?string

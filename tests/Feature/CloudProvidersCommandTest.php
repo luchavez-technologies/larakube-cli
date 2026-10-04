@@ -86,3 +86,16 @@ test('missing GCP project and missing AWS CLI each report a hint', function (): 
     expect($providers['gcp']['credentials'])->toBe(['ready' => false, 'hint' => 'No Google Cloud project selected.'])
         ->and($providers['aws']['credentials'])->toBe(['ready' => false, 'hint' => 'AWS CLI is not installed.']);
 });
+
+test('every provider names a dev box size that is one of its sizes and has at least 8 GB of RAM', function (): void {
+    cloudProvidersClearCredentialEnv();
+    Process::fake();
+
+    foreach (cloudProvidersRunJson() as $slug => $provider) {
+        $size = collect($provider['vpsSizes'])->firstWhere('value', $provider['defaultDevBoxSize']);
+
+        expect($size)->not->toBeNull("{$slug} lists no size {$provider['defaultDevBoxSize']}");
+        preg_match('/(\d+(?:\.\d+)?) GB RAM/', $size['label'], $match);
+        expect((float) ($match[1] ?? 0))->toBeGreaterThanOrEqual(8.0);
+    }
+});
