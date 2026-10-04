@@ -324,6 +324,35 @@ test('share:show does not call a connector running when its deployment exists at
 test('up keeps a share connector running through its scale-down and restart, and brings a stopped one back', function (): void {
     $source = (string) file_get_contents(base_path('app/Commands/UpCommand.php'));
 
-    expect(substr_count($source, "-l 'larakube-preview!=true,larakube.dev/role!=share'"))->toBe(2)
+    expect(substr_count($source, "-l 'larakube-preview!=true,larakube.dev/role!=share'"))->toBe(3)
         ->and($source)->toContain('scale deployment/larakube-share --replicas=1');
+});
+
+test('sharing under another domain removes the DNS records of the names it replaces', function (): void {
+    putenv('CLOUDFLARE_API_TOKEN='.DOMAIN_SHARE_SECRET);
+    Saloon::fake(cloudflareFor(tunnelExists: true, recordsExist: true));
+    domainShareCluster($commands);
+
+    inDomainShareProject(function (): void {
+        Artisan::call('share', ['--domain' => 'example.com', '--box' => 'box1', '--json' => true, '--no-interaction' => true]);
+        Saloon::assertNotSent(DeleteDnsRecordRequest::class);
+
+        Artisan::call('share', ['--domain' => 'other.dev', '--box' => 'box1', '--json' => true, '--no-interaction' => true]);
+
+        Saloon::assertSent(DeleteDnsRecordRequest::class);
+        expect(ConfigData::loadFromFile(getcwd())->getAppUrl('local'))->toBe('https://shop-box1.other.dev');
+    });
+});
+
+test('sharing again under the same domain keeps its DNS records', function (): void {
+    putenv('CLOUDFLARE_API_TOKEN='.DOMAIN_SHARE_SECRET);
+    Saloon::fake(cloudflareFor(tunnelExists: true, recordsExist: true));
+    domainShareCluster($commands);
+
+    inDomainShareProject(function (): void {
+        Artisan::call('share', ['--domain' => 'example.com', '--box' => 'box1', '--json' => true, '--no-interaction' => true]);
+        Artisan::call('share', ['--domain' => 'example.com', '--box' => 'box1', '--json' => true, '--no-interaction' => true]);
+
+        Saloon::assertNotSent(DeleteDnsRecordRequest::class);
+    });
 });

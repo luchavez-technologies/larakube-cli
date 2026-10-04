@@ -162,6 +162,23 @@ final class DomainShare
     }
 
     /**
+     * Remove the DNS records of names that are no longer used, leaving the tunnel and the other records alone.
+     *
+     * @param  list<string>  $hosts
+     */
+    public function forget(string $zoneId, array $hosts): void
+    {
+        foreach ($hosts as $host) {
+            $existing = $this->result($this->api->send(ListDnsRecordsRequest::make($zoneId, 'CNAME', $host)), 'look up DNS records');
+            $recordId = Arr::get($existing, 'result.0.id');
+
+            if ($recordId !== null) {
+                $this->result($this->api->send(DeleteDnsRecordRequest::make($zoneId, (string) $recordId)), "delete the DNS record for {$host}");
+            }
+        }
+    }
+
+    /**
      * Remove the DNS records, then the tunnel itself. Records or a tunnel already gone are fine.
      *
      * @param  list<string>  $hosts

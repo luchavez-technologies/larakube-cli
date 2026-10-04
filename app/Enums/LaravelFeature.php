@@ -642,7 +642,7 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
 
     private function getReverbJsCommands(?ConfigData $context): array
     {
-        $projectPath = $context?->getName() ? getcwd().'/'.$context->getName() : null;
+        $projectPath = $context?->getName() ? $context->getPath() : null;
         if (! $projectPath || ! file_exists($projectPath.'/package.json')) {
             return [];
         }

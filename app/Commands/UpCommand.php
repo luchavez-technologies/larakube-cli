@@ -586,6 +586,12 @@ class UpCommand extends Command
         $this->laraKubeInfo('Restarting deployments to apply potential configuration changes...');
         $this->runStreaming(Kubectl::current()->prefix()." rollout restart deployment -l 'larakube-preview!=true,larakube.dev/role!=share' -n $namespace");
 
+        // The links and the route check below describe a running app, so wait for it. A project that is shared
+        // also answers 502 through its tunnel until its pods are ready.
+        $this->withSpin('Waiting for the app to be ready...', function () use ($namespace): bool {
+            return Process::timeout(150)->run(Kubectl::current()->prefix()." rollout status deployment -l 'larakube-preview!=true,larakube.dev/role!=share' -n $namespace --timeout=120s")->successful();
+        });
+
         // 6. Proactive HTTPS Trust Check
         if ($environment === 'local' && str_starts_with($config->getAppUrl(), 'https://') && ! $this->isSslTrusted()) {
             $this->newLine();

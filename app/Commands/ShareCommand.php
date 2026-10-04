@@ -79,10 +79,14 @@ class ShareCommand extends Command
             $hosts = $share->hosts($appName, $box, $zone['name'], array_keys($targets));
             $tunnel = null;
 
-            $this->withSpin('Setting up the Cloudflare tunnel, routes and DNS...', function () use ($share, $zone, $appName, $box, $hosts, $targets, &$tunnel): bool {
+            $this->withSpin('Setting up the Cloudflare tunnel, routes and DNS...', function () use ($share, $zone, $appName, $box, $hosts, $targets, $saved, &$tunnel): bool {
                 $tunnel = $share->ensureTunnel($zone['accountId'], 'larakube-'.$appName.'-'.$box);
                 $share->route($zone['accountId'], $tunnel['id'], $hosts, $targets);
                 $share->point($zone['id'], $tunnel['id'], $hosts);
+
+                // Names from an earlier share that this one no longer uses (another domain, a service dropped).
+                $previous = array_map(fn (string $url): string => preg_replace('#^https://#', '', $url), array_values($saved['urls'] ?? []));
+                $share->forget((string) ($saved['zoneId'] ?? $zone['id']), array_values(array_diff($previous, $hosts)));
 
                 return true;
             });
