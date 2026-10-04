@@ -632,6 +632,9 @@ class CloudCreateCommand extends Command
         // failure still leaves a destroyable record.
         $this->registerStack($stackName, 'vps', $region, $ip, null, $config, $environment, $provider);
 
+        // A new VM can get an IP an earlier one had; its old host key would make ssh refuse the new one.
+        $this->forgetHostKey($ip);
+
         // Wait for sshd, then run the shared single-node pipeline as root.
         if (! $this->waitForSsh('root', $ip, '22', $keyPath)) {
             $this->laraKubeError("SSH never came up at root@{$ip}. The {$serverLabel} exists — re-run provisioning once it's reachable.");

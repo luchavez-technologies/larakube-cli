@@ -13,6 +13,21 @@ use Illuminate\Support\Sleep;
  */
 trait InteractsWithRemoteSsh
 {
+    /**
+     * Drop any remembered host key for an address. Clouds hand a freed public
+     * IP to the next VM, which has a new host key; ssh then refuses it as a
+     * possible man-in-the-middle and every later step fails. Only called for an
+     * address LaraKube just created, or one it just destroyed.
+     */
+    protected function forgetHostKey(?string $ip): void
+    {
+        if ($ip === null || $ip === '') {
+            return;
+        }
+
+        Process::run(['ssh-keygen', '-R', $ip]);
+    }
+
     /** Probe the SSH connection with a key, non-interactively. */
     protected function testSsh($user, $ip, $port, $keyPath): bool
     {

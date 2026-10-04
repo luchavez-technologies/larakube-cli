@@ -86,3 +86,24 @@ test('runRemoteCommand keeps stdout clean under --json so the result line stays 
 
     expect($printed)->toBe('');
 });
+
+test('forgetHostKey drops the remembered key for an address, and does nothing without one', function (): void {
+    Process::fake(['*' => Process::result()]);
+
+    $ssh = new class
+    {
+        use InteractsWithRemoteSsh;
+
+        public function forget(?string $ip): void
+        {
+            $this->forgetHostKey($ip);
+        }
+    };
+
+    $ssh->forget(null);
+    $ssh->forget('');
+    Process::assertNothingRan();
+
+    $ssh->forget('203.0.113.9');
+    Process::assertRan(fn ($process): bool => $process->command === ['ssh-keygen', '-R', '203.0.113.9']);
+});

@@ -5,6 +5,7 @@ namespace App\Commands\Cloud;
 use App\Facades\State;
 use App\Traits\DiscoversUnfinishedStacks;
 use App\Traits\InteractsWithOpenTofu;
+use App\Traits\InteractsWithRemoteSsh;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Process;
 
@@ -20,7 +21,7 @@ use LaravelZero\Framework\Commands\Command;
  */
 class CloudDestroyCommand extends Command
 {
-    use DiscoversUnfinishedStacks, InteractsWithOpenTofu, LaraKubeOutput;
+    use DiscoversUnfinishedStacks, InteractsWithOpenTofu, InteractsWithRemoteSsh, LaraKubeOutput;
 
     protected $signature = 'cloud:destroy
         {stack? : The stack name to destroy. Omit to pick from the registry.}
@@ -135,6 +136,7 @@ class CloudDestroyCommand extends Command
         }
 
         $this->forgetStack($stack->name);
+        $this->forgetHostKey($stack->ip);
         $this->laraKubeInfo("✅ Destroyed and unregistered '{$stack->name}'.");
 
         // Offer to drop the local kube-context too (the cluster is gone now).
