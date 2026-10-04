@@ -2,6 +2,7 @@
 
 namespace App\Commands\Workspace;
 
+use App\Enums\AppFramework;
 use App\Services\Workspace\WorkspaceSpec;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithGlobalConfig;
@@ -56,12 +57,19 @@ class WorkspaceListCommand extends Command
             $wanted = (int) ($deployment['spec']['replicas'] ?? 0);
             $ready = (int) ($deployment['status']['readyReplicas'] ?? 0);
 
+            $framework = AppFramework::tryFrom((string) ($notes['larakube.dev/workspace-framework'] ?? '')) ?? AppFramework::LARAVEL;
+
             $workspaces[] = [
                 'name' => $name,
                 'namespace' => $ns,
                 'repo' => (string) ($notes['larakube.dev/workspace-repo'] ?? ''),
                 'branch' => (string) ($notes['larakube.dev/workspace-branch'] ?? ''),
                 'size' => (string) ($notes['larakube.dev/workspace-size'] ?? ''),
+                'framework' => $framework->value,
+                'runtime' => (string) ($notes['larakube.dev/workspace-runtime'] ?? $framework->workspaceRuntime()->value),
+                'runtimeVersion' => (string) ($notes['larakube.dev/workspace-runtime-version'] ?? ''),
+                'devCommand' => $framework->devCommand(),
+                'devPorts' => $framework->devPorts(),
                 'status' => match (true) {
                     $wanted === 0 => 'suspended',
                     $ready > 0 => 'running',

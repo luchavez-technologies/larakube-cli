@@ -2,6 +2,8 @@
 
 namespace App\Services\Workspace;
 
+use App\Enums\AppFramework;
+use App\Enums\WorkspaceRuntime;
 use InvalidArgumentException;
 
 /**
@@ -10,8 +12,6 @@ use InvalidArgumentException;
  */
 class WorkspaceSpec
 {
-    public const PHP_VERSION = '8.4';
-
     /** code-server release the image installs. */
     public const CODE_SERVER_VERSION = '4.139.1';
 
@@ -42,9 +42,15 @@ class WorkspaceSpec
         return 'ws-'.$name;
     }
 
-    public static function image(): string
+    public static function image(WorkspaceRuntime $runtime, string $version): string
     {
-        return 'larakube/workspace:php'.self::PHP_VERSION.'-cs'.self::CODE_SERVER_VERSION;
+        return "larakube/workspace:{$runtime->value}{$version}-cs".self::CODE_SERVER_VERSION;
+    }
+
+    /** The image and its build base both come from the runtime; an unknown version is refused. */
+    public static function validVersion(WorkspaceRuntime $runtime, string $version): bool
+    {
+        return in_array($version, $runtime->versions(), true);
     }
 
     /** Lowercase letters, digits and dashes; short enough for a namespace and a host label. */
@@ -73,13 +79,18 @@ class WorkspaceSpec
         return preg_match('#^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$#', $branch) === 1 && ! str_contains($branch, '..');
     }
 
-    public function dockerfile(): string
+    public function dockerfile(WorkspaceRuntime $runtime, string $version): string
     {
-        return view('workspace.dockerfile', ['php' => self::PHP_VERSION, 'codeServerVersion' => self::CODE_SERVER_VERSION])->render();
+        return view('workspace.dockerfile', [
+            'base' => $runtime->baseImage($version),
+            'codeServerVersion' => self::CODE_SERVER_VERSION,
+            'installNode' => $runtime->needsNode(),
+            'phpExtensions' => $runtime->phpExtensions(),
+        ])->render();
     }
 
     /**
-     * @param  array{name: string, repo: string, branch: string, size: string, gitName: string, gitEmail: string, replicas?: int}  $workspace
+     * @param  array{name: string, repo: string, branch: string, size: string, gitName: string, gitEmail: string, framework: AppFramework, runtime: WorkspaceRuntime, runtimeVersion: string, replicas?: int}  $workspace
      */
     public function manifest(array $workspace): string
     {
@@ -99,7 +110,11 @@ class WorkspaceSpec
             'gitEmail' => $workspace['gitEmail'],
             'replicas' => $workspace['replicas'] ?? 1,
             'gitPort' => self::gitPort($workspace['repo']),
-            'image' => self::image(),
+            'framework' => $workspace['framework']->value,
+            'runtime' => $workspace['runtime']->value,
+            'runtimeVersion' => $workspace['runtimeVersion'],
+            'devPorts' => array_column($workspace['framework']->devPorts(), 'port'),
+            'image' => self::image($workspace['runtime'], $workspace['runtimeVersion']),
             ...$sizes[$workspace['size']],
         ])->render();
     }

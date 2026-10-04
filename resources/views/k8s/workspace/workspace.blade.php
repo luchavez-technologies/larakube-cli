@@ -8,6 +8,9 @@ metadata:
     larakube.dev/workspace-repo: {!! json_encode($repo, JSON_UNESCAPED_SLASHES) !!}
     larakube.dev/workspace-branch: {!! json_encode($branch, JSON_UNESCAPED_SLASHES) !!}
     larakube.dev/workspace-size: {!! json_encode($size, JSON_UNESCAPED_SLASHES) !!}
+    larakube.dev/workspace-framework: {!! json_encode($framework) !!}
+    larakube.dev/workspace-runtime: {!! json_encode($runtime) !!}
+    larakube.dev/workspace-runtime-version: {!! json_encode($runtimeVersion) !!}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -153,6 +156,9 @@ spec:
               value: {!! json_encode($gitEmail, JSON_UNESCAPED_SLASHES) !!}
           ports:
             - containerPort: 8080
+@foreach ($devPorts as $devPort)
+            - containerPort: {{ $devPort }}
+@endforeach
           readinessProbe:
             httpGet: { path: /healthz, port: 8080 }
             periodSeconds: 3
@@ -187,5 +193,11 @@ spec:
   selector:
     app: workspace
   ports:
-    - port: 8080
+    - name: editor
+      port: 8080
       targetPort: 8080
+@foreach ($devPorts as $devPort)
+    - name: dev-{{ $devPort }}
+      port: {{ $devPort }}
+      targetPort: {{ $devPort }}
+@endforeach

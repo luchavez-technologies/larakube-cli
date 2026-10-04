@@ -265,6 +265,59 @@ enum AppFramework: string implements HasLabel, RequiresPhpExtensions
         };
     }
 
+    /** The toolchain a workspace for this framework runs on. */
+    public function workspaceRuntime(): WorkspaceRuntime
+    {
+        return match ($this) {
+            self::LARAVEL, self::STATAMIC, self::WORDPRESS => WorkspaceRuntime::PHP,
+            self::NEXTJS, self::NESTJS, self::ADONISJS, self::ASTRO, self::VITE, self::DOCUSAURUS => WorkspaceRuntime::NODE,
+            self::DJANGO, self::FASTAPI => WorkspaceRuntime::PYTHON,
+            self::SPRINGBOOT => WorkspaceRuntime::JAVA,
+            self::DOTNET => WorkspaceRuntime::DOTNET,
+            self::GIN => WorkspaceRuntime::GO,
+            self::AXUM => WorkspaceRuntime::RUST,
+        };
+    }
+
+    /**
+     * What the dev server listens on inside a workspace, so the tunnel can forward it.
+     * 8080 belongs to the editor, so frameworks that default to it move to 8081.
+     *
+     * @return list<array{name: string, port: int}>
+     */
+    public function devPorts(): array
+    {
+        return match ($this) {
+            self::LARAVEL, self::STATAMIC => [['name' => 'App', 'port' => 8000], ['name' => 'Vite', 'port' => 5173]],
+            self::WORDPRESS, self::DJANGO, self::FASTAPI => [['name' => 'App', 'port' => 8000]],
+            self::NEXTJS, self::NESTJS, self::DOCUSAURUS => [['name' => 'App', 'port' => 3000]],
+            self::ADONISJS => [['name' => 'App', 'port' => 3333]],
+            self::ASTRO => [['name' => 'App', 'port' => 4321]],
+            self::VITE => [['name' => 'App', 'port' => 5173]],
+            self::SPRINGBOOT, self::GIN, self::AXUM => [['name' => 'App', 'port' => 8081]],
+            self::DOTNET => [['name' => 'App', 'port' => 5000]],
+        };
+    }
+
+    /** The command that starts the app for development, run in the workspace's terminal. */
+    public function devCommand(): string
+    {
+        return match ($this) {
+            self::LARAVEL, self::STATAMIC => 'composer run dev',
+            self::WORDPRESS => 'php -S 0.0.0.0:8000 -t web',
+            self::NEXTJS, self::ASTRO, self::VITE => 'npm run dev',
+            self::NESTJS => 'npm run start:dev',
+            self::ADONISJS => 'node ace serve --hmr',
+            self::DOCUSAURUS => 'npm start',
+            self::DJANGO => 'python manage.py runserver 0.0.0.0:8000',
+            self::FASTAPI => 'fastapi dev --host 0.0.0.0',
+            self::SPRINGBOOT => "./gradlew bootRun --args='--server.port=8081'",
+            self::DOTNET => 'dotnet watch run --urls http://0.0.0.0:5000',
+            self::GIN => 'PORT=8081 go run .',
+            self::AXUM => 'PORT=8081 cargo run',
+        };
+    }
+
     /**
      * The command a migration init container runs before the server starts,
      * or null when there is nothing to migrate. $hasPrisma: the project ships

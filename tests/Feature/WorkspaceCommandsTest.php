@@ -1,5 +1,7 @@
 <?php
 
+use App\Enums\AppFramework;
+use App\Enums\WorkspaceRuntime;
 use App\Services\Workspace\WorkspaceSpec;
 use Illuminate\Support\Facades\Process;
 
@@ -72,7 +74,7 @@ function fakeWorkspaceCluster(?array &$seen, array $existing = [], array $secret
         }
 
         if (str_contains($cmd, 'k3s ctr images ls')) {
-            return Process::result(output: $imagePresent ? WorkspaceSpec::image() : '');
+            return Process::result(output: $imagePresent ? WorkspaceSpec::image(WorkspaceRuntime::PHP, '8.4') : '');
         }
 
         return Process::result(output: 'ok');
@@ -90,7 +92,7 @@ function workspaceCreate(array $extra = []): Illuminate\Testing\PendingCommand
 }
 
 test('the manifest keeps the workspace away from the cluster API and bounded in size', function (): void {
-    $manifest = (new WorkspaceSpec)->manifest(['name' => 'api', 'repo' => 'https://github.com/acme/app', 'branch' => 'feature/x', 'size' => 'small', 'gitName' => 'Dev', 'gitEmail' => 'dev@example.com']);
+    $manifest = (new WorkspaceSpec)->manifest(['name' => 'api', 'repo' => 'https://github.com/acme/app', 'branch' => 'feature/x', 'size' => 'small', 'gitName' => 'Dev', 'gitEmail' => 'dev@example.com', 'framework' => AppFramework::LARAVEL, 'runtime' => WorkspaceRuntime::PHP, 'runtimeVersion' => '8.4']);
 
     expect($manifest)->toContain('name: ws-api')
         ->toContain('automountServiceAccountToken: false')
@@ -98,14 +100,14 @@ test('the manifest keeps the workspace away from the cluster API and bounded in 
         ->toContain('kind: ResourceQuota')
         ->toContain('limits.memory: 2Gi')
         ->toContain('value: "feature/x"')
-        ->toContain('image: '.WorkspaceSpec::image())
+        ->toContain('image: '.WorkspaceSpec::image(WorkspaceRuntime::PHP, '8.4'))
         // Egress is limited to name lookups and git/package traffic on 22, 80 and 443.
         ->not->toContain('port: 6443');
 });
 
 test('a repository on a self-hosted git server opens only the SSH port its URL names', function (): void {
     $spec = new WorkspaceSpec;
-    $base = ['name' => 'api', 'branch' => 'main', 'size' => 'small', 'gitName' => 'Dev', 'gitEmail' => 'dev@example.com'];
+    $base = ['name' => 'api', 'branch' => 'main', 'size' => 'small', 'gitName' => 'Dev', 'gitEmail' => 'dev@example.com', 'framework' => AppFramework::LARAVEL, 'runtime' => WorkspaceRuntime::PHP, 'runtimeVersion' => '8.4'];
 
     expect(WorkspaceSpec::validRepo('ssh://git@git.example.com:2222/acme/app.git'))->toBeTrue()
         ->and(WorkspaceSpec::gitPort('ssh://git@git.example.com:2222/acme/app.git'))->toBe(2222)
@@ -198,4 +200,85 @@ test('workspace:options lists the sizes for a GUI to draw', function (): void {
     $this->artisan('workspace:options', ['--json' => true])
         ->expectsOutputToContain('"defaultSize":"standard"')
         ->assertExitCode(0);
+});
+
+test('every framework has a runtime, a dev command and dev ports that never use the editor\'s port', function (AppFramework $framework): void {
+    expect($framework->workspaceRuntime())->toBeInstanceOf(WorkspaceRuntime::class)
+        ->and($framework->devCommand())->not->toBeEmpty()
+        ->and($framework->devPorts())->not->toBeEmpty()
+        ->and(array_column($framework->devPorts(), 'port'))->not->toContain(8080);
+})->with(AppFramework::cases());
+
+test('every runtime offers versions, a default among them, and a base image', function (WorkspaceRuntime $runtime): void {
+    expect($runtime->versions())->not->toBeEmpty()
+        ->and($runtime->versions())->toContain($runtime->defaultVersion())
+        ->and($runtime->baseImage($runtime->defaultVersion()))->toContain($runtime->defaultVersion());
+})->with(WorkspaceRuntime::cases());
+
+test('the PHP workspace builds on the Server Side Up image the deployed app uses', function (): void {
+    $dockerfile = (new WorkspaceSpec)->dockerfile(WorkspaceRuntime::PHP, '8.3');
+
+    expect($dockerfile)->toContain('FROM docker.io/serversideup/php:8.3-cli')
+        ->toContain('install-php-extensions')
+        ->toContain('nodesource')
+        ->toContain('code-server');
+});
+
+test('a runtime that ships its own Node or has no PHP gets neither', function (): void {
+    $dockerfile = (new WorkspaceSpec)->dockerfile(WorkspaceRuntime::PYTHON, '3.13');
+
+    expect($dockerfile)->toContain('FROM docker.io/library/python:3.13-bookworm')
+        ->not->toContain('nodesource')
+        ->not->toContain('install-php-extensions');
+});
+
+test('the manifest exposes the framework\'s dev ports on the pod and the Service', function (): void {
+    $manifest = (new WorkspaceSpec)->manifest(['name' => 'api', 'repo' => 'https://github.com/acme/app', 'branch' => 'main', 'size' => 'small', 'gitName' => 'Dev', 'gitEmail' => 'dev@example.com', 'framework' => AppFramework::NEXTJS, 'runtime' => WorkspaceRuntime::NODE, 'runtimeVersion' => '24']);
+
+    expect($manifest)->toContain('containerPort: 3000')
+        ->toContain('name: dev-3000')
+        ->toContain('image: '.WorkspaceSpec::image(WorkspaceRuntime::NODE, '24'));
+});
+
+test('workspace:create builds the image for the framework\'s runtime and refuses what is not offered', function (): void {
+    fakeWorkspaceCluster($seen, imagePresent: false);
+
+    workspaceCreate(['--framework' => 'django'])->assertExitCode(0);
+
+    expect($seen['dockerfile'])->toContain('FROM docker.io/library/python:3.13-bookworm')
+        ->and($seen['manifest'])->toContain('larakube.dev/workspace-runtime: "python"');
+
+    workspaceCreate(['--framework' => 'nope'])->expectsOutputToContain("Unknown framework 'nope'")->assertExitCode(1);
+    workspaceCreate(['--runtime-version' => '5.6'])->expectsOutputToContain('is not offered')->assertExitCode(1);
+});
+
+test('workspace:options lists runtimes and frameworks with their dev commands', function (): void {
+    Illuminate\Support\Facades\Artisan::call('workspace:options', ['--json' => true]);
+
+    $options = json_decode(trim(Illuminate\Support\Facades\Artisan::output()), true);
+    $laravel = collect($options['frameworks'])->firstWhere('value', 'laravel');
+
+    expect($laravel['runtime'])->toBe('php')
+        ->and($laravel['devCommand'])->toBe('composer run dev')
+        ->and(collect($options['runtimes'])->firstWhere('value', 'python')['versions'])->toContain('3.13');
+});
+
+test('workspace:images lists every runtime and version with its base, and the pinned code-server', function (): void {
+    Illuminate\Support\Facades\Artisan::call('workspace:images', ['--json' => true]);
+
+    $result = json_decode(trim(Illuminate\Support\Facades\Artisan::output()), true);
+    $php84 = collect($result['images'])->first(fn (array $i): bool => $i['runtime'] === 'php' && $i['version'] === '8.4');
+
+    expect($result['codeServer'])->toBe(WorkspaceSpec::CODE_SERVER_VERSION)
+        ->and($php84['base'])->toBe('docker.io/serversideup/php:8.4-cli')
+        ->and(count($result['images']))->toBe(array_sum(array_map(fn (WorkspaceRuntime $r): int => count($r->versions()), WorkspaceRuntime::cases())));
+});
+
+test('workspace:dockerfile prints the recipe the images are built from, and refuses what is not offered', function (): void {
+    Illuminate\Support\Facades\Artisan::call('workspace:dockerfile', ['--runtime' => 'node', '--runtime-version' => '24']);
+
+    expect(Illuminate\Support\Facades\Artisan::output())->toContain('FROM docker.io/library/node:24-bookworm');
+
+    $this->artisan('workspace:dockerfile', ['--runtime' => 'node', '--runtime-version' => '3'])->expectsOutputToContain('is not offered')->assertExitCode(1);
+    $this->artisan('workspace:dockerfile', ['--runtime' => 'cobol'])->expectsOutputToContain('Choose a --runtime')->assertExitCode(1);
 });

@@ -1,22 +1,27 @@
-# A LaraKube workspace: PHP, Composer, Node, git and a browser editor (code-server, MIT).
-FROM php:{{ $php }}-cli-bookworm
+# A LaraKube workspace: the language toolchain, git and a browser editor (code-server, MIT).
+FROM {{ $base }}
 
 ARG CODE_SERVER_VERSION={{ $codeServerVersion }}
 
+USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git openssh-client curl ca-certificates unzip sudo procps \
+@if ($installNode)
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
+@endif
     && arch="$(dpkg --print-architecture)" \
     && curl -fsSL -o /tmp/code-server.deb "https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server_${CODE_SERVER_VERSION}_${arch}.deb" \
     && apt-get install -y /tmp/code-server.deb \
     && rm -rf /tmp/code-server.deb /var/lib/apt/lists/*
+@if ($phpExtensions !== [])
 
-COPY --from=ghcr.io/mlocati/php-extension-installer /usr/bin/install-php-extensions /usr/local/bin/
-COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
-RUN install-php-extensions pdo_mysql pdo_pgsql intl zip gd bcmath pcntl redis
+RUN install-php-extensions {{ implode(' ', $phpExtensions) }}
+@endif
 
-RUN useradd -m -u 1000 -s /bin/bash coder
+# One home and one user id for every runtime, whatever the base already has at 1000.
+RUN if id -u 1000 >/dev/null 2>&1; then userdel -r "$(id -un 1000)" 2>/dev/null || true; fi \
+    && useradd -m -u 1000 -s /bin/bash coder
 USER coder
 WORKDIR /home/coder
 ENV SHELL=/bin/bash

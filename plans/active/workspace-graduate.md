@@ -17,7 +17,8 @@ New environment and Deploy need the project folder on the computer running Deskt
 ## What `cloud:configure` needs before Desktop can drive it
 - It is guided and prompt-heavy; non-interactive use needs `--platform`, `--registry`, `--image`, `--branch` and the gate flags. Desktop must not own that list: add a machine-readable spec (the pattern of `tool:init` fields and `new:frameworks`) so the form is drawn from the CLI.
 - `--json` output with the result, as the other commands Desktop drives have.
-- The secret upload shells out to `gh` (or `tea`/GitLab variables) on the user's machine, so Desktop must check that `gh` is installed and logged in, and say so before running (the Setup page already tracks CLI tools and logins).
+- The secret upload uses the forge's own CLI on the user's machine, chosen by `detectCiPlatform()` (the `--platform` flag, else the git remote): **GitHub: `gh`; Forgejo and Gitea: `tea`** (`CliTool::TEA`, with `setTeaSecret()` and `teaHasLogin()` already in `ConfiguresCloudEnvironment`); **GitLab: `glab`** (if it is missing, the command prints the variables to set by hand, which Desktop should surface rather than hide). Desktop must check the right tool for the project's platform is installed and logged in to that host, and say so before running. Self-hosted Forgejo is the common case here (a workspace's repository is often on the same server's Forgejo), so `tea` support is not optional: Setup should list `tea` next to `gh`, and a missing login to the Forgejo host is a blocking step with instructions.
+- `cloud:configure` must not guess the platform from a repository URL for a self-hosted host (`git.` in the host currently means Forgejo); Desktop passes `--platform` from the form, which shows the detected value and lets the person change it.
 - It reads the project's `.env` and regenerates manifests, so it must run in the cloned project folder.
 
 ## Desktop

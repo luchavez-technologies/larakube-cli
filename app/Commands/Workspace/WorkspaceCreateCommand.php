@@ -3,6 +3,8 @@
 namespace App\Commands\Workspace;
 
 use App\Data\StackData;
+use App\Enums\AppFramework;
+use App\Enums\WorkspaceRuntime;
 use App\Services\Kubectl;
 use App\Services\Workspace\WorkspaceSpec;
 use App\Traits\EmitsJsonOutput;
@@ -37,6 +39,9 @@ class WorkspaceCreateCommand extends Command
         {--name= : Workspace name: lowercase letters, digits and dashes}
         {--repo= : The Git repository to clone (https or ssh URL)}
         {--branch= : The branch to work on. It is created when the repository does not have it}
+        {--framework= : The framework of the app (laravel, nextjs, django...); decides the runtime and the dev command. Default laravel}
+        {--runtime= : The toolchain, when it differs from the framework\'s own: php, node, python, java, dotnet, go, rust}
+        {--runtime-version= : The runtime version. Default is the runtime\'s own}
         {--size= : small or standard}
         {--git-name= : Name for commits made in the workspace}
         {--git-email= : Email for commits made in the workspace}
@@ -58,6 +63,9 @@ class WorkspaceCreateCommand extends Command
             $repo = $this->flagOrPrompt('repo', fn (): string => text('Repository URL', hint: 'https://github.com/you/app'), 'the repository to clone', 'https://github.com/acme/app');
             $branch = (string) ($this->flag('branch') ?: 'main');
             $size = (string) ($this->flag('size') ?: WorkspaceSpec::defaultSize());
+            $framework = AppFramework::tryFrom((string) ($this->flag('framework') ?: 'laravel'));
+            $runtime = WorkspaceRuntime::tryFrom((string) ($this->flag('runtime') ?: $framework?->workspaceRuntime()->value));
+            $runtimeVersion = (string) ($this->flag('runtime-version') ?: $runtime?->defaultVersion());
             $server = $this->workspaceServer();
         } catch (InvalidArgumentException $e) {
             return $this->failWith($e->getMessage());
@@ -75,6 +83,18 @@ class WorkspaceCreateCommand extends Command
             return $this->failWith("'{$branch}' is not a usable branch name.");
         }
 
+        if ($framework === null) {
+            return $this->failWith("Unknown framework '{$this->flag('framework')}'.");
+        }
+
+        if ($runtime === null) {
+            return $this->failWith("Unknown runtime '{$this->flag('runtime')}'. Choose one of: ".implode(', ', array_column(WorkspaceRuntime::cases(), 'value')).'.');
+        }
+
+        if (! WorkspaceSpec::validVersion($runtime, $runtimeVersion)) {
+            return $this->failWith("{$runtime->label()} {$runtimeVersion} is not offered. Choose one of: ".implode(', ', $runtime->versions()).'.');
+        }
+
         if (! isset(WorkspaceSpec::sizes()[$size])) {
             return $this->failWith("Unknown size '{$size}'. Choose one of: ".implode(', ', array_keys(WorkspaceSpec::sizes())).'.');
         }
@@ -85,7 +105,7 @@ class WorkspaceCreateCommand extends Command
             return $this->failWith("The server's Kubernetes is not answering ({$server['context']}).");
         }
 
-        if (! $this->ensureWorkspaceImage($server['stack'], $server['context'], (bool) $this->flag('rebuild'))) {
+        if (! $this->ensureWorkspaceImage($server['stack'], $runtime, $runtimeVersion, (bool) $this->flag('rebuild'))) {
             return $this->failWith('The workspace image could not be built or shipped to the server.');
         }
 
@@ -99,6 +119,9 @@ class WorkspaceCreateCommand extends Command
             'repo' => $repo,
             'branch' => $branch,
             'size' => $size,
+            'framework' => $framework,
+            'runtime' => $runtime,
+            'runtimeVersion' => $runtimeVersion,
             'gitName' => (string) ($this->flag('git-name') ?: $this->gitConfig('user.name') ?: 'LaraKube Workspace'),
             'gitEmail' => (string) ($this->flag('git-email') ?: $this->gitConfig('user.email') ?: 'workspace@localhost'),
         ]));
@@ -186,9 +209,9 @@ class WorkspaceCreateCommand extends Command
      * server over SSH, stream it into the node's k3s. A local cluster shares the
      * host's images, so building is enough.
      */
-    private function ensureWorkspaceImage(?StackData $stack, string $context, bool $rebuild): bool
+    private function ensureWorkspaceImage(?StackData $stack, WorkspaceRuntime $runtime, string $runtimeVersion, bool $rebuild): bool
     {
-        $image = WorkspaceSpec::image();
+        $image = WorkspaceSpec::image($runtime, $runtimeVersion);
         $ssh = $stack !== null && $stack->ip !== null && $stack->sshKey !== null && is_file($stack->sshKey)
             ? $this->sshBaseCommand('larakube', $stack->ip, 22, $stack->sshKey)
             : null;
@@ -204,7 +227,7 @@ class WorkspaceCreateCommand extends Command
         $platform = $ssh !== null ? ($this->detectNodePlatformOverSsh($ssh) ?? 'linux/amd64') : '';
         $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
         $dockerfile = $dir->path().'/Dockerfile';
-        file_put_contents($dockerfile, (new WorkspaceSpec)->dockerfile());
+        file_put_contents($dockerfile, (new WorkspaceSpec)->dockerfile($runtime, $runtimeVersion));
 
         $this->laraKubeInfo('Building the workspace image (a few minutes the first time)...');
 
