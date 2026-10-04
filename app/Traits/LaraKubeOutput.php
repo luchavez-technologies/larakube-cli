@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Contracts\HasLifecycleHooks;
 use App\Data\ConfigData;
 use App\Facades\State;
+use App\Services\Devbox\DevBoxMarker;
 use App\Services\Kubectl;
 use Exception;
 use Illuminate\Console\Command;
@@ -186,6 +187,13 @@ trait LaraKubeOutput
         }
 
         table($routedHosts !== null ? ['Service', 'URL', 'Traefik'] : ['Service', 'URL'], $rows);
+
+        // On a dev box these names resolve only there; say how to see the app from another computer.
+        if ($environment === 'local' && DevBoxMarker::isHere()) {
+            foreach (DevBoxMarker::viewingHint() as $line) {
+                $this->line('  <fg=yellow>'.$line.'</>');
+            }
+        }
 
         return true;
     }

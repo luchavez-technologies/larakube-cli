@@ -2,6 +2,8 @@
 
 namespace App\Traits;
 
+use App\Services\Devbox\DevBoxMarker;
+
 /**
  * Turns a fresh Ubuntu server into a development machine: hardened, with a normal login, the
  * LaraKube CLI, and the same local stack `larakube setup` builds on a developer's own computer
@@ -21,7 +23,7 @@ trait ProvisionsDevBox
      * The whole pipeline, as root on a reachable host. Every step is safe to run again.
      * Returns the login the box ends up with ("larakube" once root login is closed).
      */
-    protected function provisionDevBox(string $ip, string $keyPath, string $channel = 'canary', ?string $adminCidr = null): ?string
+    protected function provisionDevBox(string $name, string $ip, string $keyPath, string $channel = 'canary', ?string $adminCidr = null): ?string
     {
         $user = 'root';
         $port = '22';
@@ -42,6 +44,9 @@ trait ProvisionsDevBox
         if (! $this->setUpLocalStackOnBox($ip, $port, $keyPath)) {
             return null;
         }
+
+        // Lets the CLI on the box know where it is. Not worth failing the box over if it cannot be written.
+        $this->runRemoteUserCommand('larakube', $ip, $port, $keyPath, DevBoxMarker::writeScript($name));
 
         if ($this->lockDownRootLogin($user, $ip, (int) $port, $keyPath)) {
             $user = 'larakube';

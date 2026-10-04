@@ -448,7 +448,7 @@ class CloudCreateCommand extends Command
      * Turn the new, reachable host into what this command makes. Returns the kube-context the
      * server ends up with ('' when it has none, as a dev box), or null on failure.
      */
-    protected function provisionHost(string $ip, string $keyPath, ?ConfigData $config, ?string $adminCidr): ?string
+    protected function provisionHost(string $stackName, string $ip, string $keyPath, ?ConfigData $config, ?string $adminCidr): ?string
     {
         return $this->provisionK3sNode('root', $ip, '22', $keyPath, $config ?? $this->getProjectConfigObject(getcwd()), adminCidr: $adminCidr);
     }
@@ -578,7 +578,7 @@ class CloudCreateCommand extends Command
             return 1;
         }
 
-        $context = $this->provisionHost($ip, $keyPath, $config, $adminCidr);
+        $context = $this->provisionHost($stackName, $ip, $keyPath, $config, $adminCidr);
 
         if ($context === null) {
             return 1;

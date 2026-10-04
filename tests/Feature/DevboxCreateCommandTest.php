@@ -36,7 +36,7 @@ function devboxPipeline(array $fails = []): object
 
         public function run(string $channel = 'canary'): ?string
         {
-            return $this->provisionDevBox('203.0.113.7', '/tmp/key', $channel);
+            return $this->provisionDevBox('my-dev', '203.0.113.7', '/tmp/key', $channel);
         }
 
         public function laraKubeInfo(string $m): void {}
@@ -68,9 +68,14 @@ function devboxPipeline(array $fails = []): object
         protected function runRemoteUserCommand(string $user, string $ip, string|int $port, string $keyPath, string $script): bool
         {
             $this->remoteUserScripts[] = $user.': '.$script;
-            $this->steps[] = str_contains($script, 'install.sh') ? 'install-cli' : 'setup';
+            $step = match (true) {
+                str_contains($script, 'install.sh') => 'install-cli',
+                str_contains($script, '.larakube/devbox') => 'marker',
+                default => 'setup',
+            };
+            $this->steps[] = $step;
 
-            return ! ($this->fails[str_contains($script, 'install.sh') ? 'install-cli' : 'setup'] ?? false);
+            return ! ($this->fails[$step] ?? false);
         }
     };
 }
@@ -79,10 +84,17 @@ test('a dev box is hardened with only SSH open, given a login, the CLI and the l
     $pipeline = devboxPipeline();
 
     expect($pipeline->run())->toBe('larakube')
-        ->and($pipeline->steps)->toBe(['harden', 'user', 'install-cli', 'setup', 'lock-root'])
+        ->and($pipeline->steps)->toBe(['harden', 'user', 'install-cli', 'setup', 'marker', 'lock-root'])
         ->and($pipeline->allowPorts)->toBe([])
         ->and($pipeline->remoteUserScripts[0])->toContain('larakube: curl -fsSL https://cli.larakube.app/install.sh | bash -s -- --canary')
         ->and($pipeline->remoteUserScripts[1])->toContain('larakube setup --profile=local --runtime=podman --no-interaction');
+});
+
+test('the box is told it is a dev box, by name, and a marker that cannot be written does not fail it', function (): void {
+    $pipeline = devboxPipeline(['marker' => true]);
+
+    expect($pipeline->run())->toBe('larakube')
+        ->and(implode("\n", $pipeline->remoteUserScripts))->toContain("printf '%s\\n' 'my-dev' > \"\$HOME/.larakube/devbox\"");
 });
 
 test('the stable channel installs without the canary flag', function (): void {

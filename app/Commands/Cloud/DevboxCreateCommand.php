@@ -59,11 +59,11 @@ class DevboxCreateCommand extends CloudCreateCommand
         return 'vps';
     }
 
-    protected function provisionHost(string $ip, string $keyPath, ?ConfigData $config, ?string $adminCidr): ?string
+    protected function provisionHost(string $stackName, string $ip, string $keyPath, ?ConfigData $config, ?string $adminCidr): ?string
     {
         $channel = in_array($this->flag('channel'), ['canary', 'stable'], true) ? (string) $this->flag('channel') : 'canary';
 
-        return $this->provisionDevBox($ip, $keyPath, $channel, $adminCidr) === null ? null : '';
+        return $this->provisionDevBox($stackName, $ip, $keyPath, $channel, $adminCidr) === null ? null : '';
     }
 
     protected function finishVps(string $stackName, string $ip, string $keyPath, string $context, ?ConfigData $config, ?string $projectPath, ?string $environment): int
