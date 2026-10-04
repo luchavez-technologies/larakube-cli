@@ -139,10 +139,10 @@ class CloudDestroyCommand extends Command
         $this->forgetHostKey($stack->ip);
         $this->laraKubeInfo("✅ Destroyed and unregistered '{$stack->name}'.");
 
-        // Offer to drop the local kube-context too (the cluster is gone now).
-        if ($stack->context && ! $this->option('force')
-            && confirm("Also remove the local kube-context '{$stack->context}'?", true)) {
-            $this->call('context:remove', ['name' => $stack->context, '--force' => true]);
+        // The cluster is gone, so its context is only a dead entry in ~/.kube/config.
+        $context = $stack->context ?: ($stack->ip ? 'larakube-'.$stack->ip : null);
+        if ($context) {
+            $this->call('context:remove', ['name' => $context, '--force' => true]);
         }
 
         return 0;

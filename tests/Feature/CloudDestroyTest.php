@@ -79,6 +79,8 @@ HCL
         ])
             ->expectsOutputToContain("Cloud Destroy: 'unfinished-gcp-vps'")
             ->expectsOutputToContain("✅ Destroyed and unregistered 'unfinished-gcp-vps'")
+            // --force (what Desktop passes) must still drop the dead kube context.
+            ->expectsOutputToContain("Removed context 'larakube-34.100.200.50'")
             ->assertExitCode(0);
 
         // The unfinished tofu workdir should be cleaned up
