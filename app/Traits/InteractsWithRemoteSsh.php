@@ -142,4 +142,19 @@ trait InteractsWithRemoteSsh
 
         return $result->successful();
     }
+
+    /**
+     * Run a script on the host as $user itself, without sudo. For work that must belong to that
+     * user, such as installing a CLI that sets up rootless Podman in their home.
+     */
+    protected function runRemoteUserCommand(string $user, string $ip, string|int $port, string $keyPath, string $script): bool
+    {
+        $sshCommand = "ssh -i {$keyPath} -p {$port} {$user}@{$ip} ".escapeshellarg('bash -lc '.escapeshellarg($script));
+
+        $result = Process::forever()->run($sshCommand, function (string $type, string $output): void {
+            State::isJsonMode() ? fwrite(STDERR, $output) : print $output;
+        });
+
+        return $result->successful();
+    }
 }

@@ -43,6 +43,8 @@ class StackData extends Data
         public ?string $createdAt = null,
         /** Path to the SSH private key used to provision this stack (if VPS). */
         public ?string $sshKey = null,
+        /** What the server is for: "deploy" (apps and tools run here) or "dev" (a development machine, no deploy cluster). */
+        public string $role = 'deploy',
     ) {}
 
     /** Add an "appName/env" binding (idempotent). */

@@ -95,7 +95,7 @@ class CloudCreateCommand extends Command
      *
      * @var array<string, mixed>
      */
-    private array $result = [];
+    protected array $result = [];
 
     public function handle(): int
     {
@@ -166,7 +166,7 @@ class CloudCreateCommand extends Command
         return $this->getGlobalConfig()->findStack($this->slug($nameBase.'-'.$targetKind));
     }
 
-    protected function registerStack(string $name, string $kind, ?string $region, ?string $ip, ?string $context, ?ConfigData $config, ?string $environment, string $provider = 'do'): void
+    protected function registerStack(string $name, string $kind, ?string $region, ?string $ip, ?string $context, ?ConfigData $config, ?string $environment, string $provider = 'do', string $role = 'deploy'): void
     {
         $account = match ($provider) {
             'aws' => $this->getAwsProfile(),
@@ -188,6 +188,7 @@ class CloudCreateCommand extends Command
             account: $account,
             projectId: $projectId,
             createdAt: gmdate('c'),
+            role: $role,
         );
         if ($config && $environment) {
             $stack->bind($config->getName(), $environment);
@@ -357,24 +358,7 @@ class CloudCreateCommand extends Command
         }
     }
 
-    /**
-     * The provider's current regions, sizes and prices, when this machine is
-     * connected to it; null means the built-in lists apply.
-     *
-     * @return array{regions: list<array{value: string, label: string}>, sizes: list<array{value: string, label: string, monthly: float, currency: string}>}|null
-     */
-    private function liveCatalog(CloudProvider $provider): ?array
-    {
-        $token = match ($provider) {
-            CloudProvider::DO => $this->getDoToken(),
-            CloudProvider::HETZNER => $this->getHetznerToken(),
-            default => null,
-        };
-
-        return (new LiveProviderCatalog)->get($provider, $token);
-    }
-
-    private function create(): int
+    protected function create(): int
     {
         $this->renderHeader();
         $this->laraKubeInfo('LaraKube Cloud Pilot: OpenTofu Provisioner');
@@ -403,13 +387,13 @@ class CloudCreateCommand extends Command
         // Checked BEFORE anything is provisioned. kubectl is what merges the new
         // kubeconfig and applies Traefik at the end of this flow, so discovering
         // it is missing afterwards leaves a paid-for cluster nobody can reach.
-        if (! $this->ensureKubectl()) {
+        if ($this->needsKubectl() && ! $this->ensureKubectl()) {
             return 1;
         }
         $this->line('  <fg=gray>Using:</> <fg=cyan>'.$bin['path'].'</> '.($bin['isOpenTofu'] ? '(OpenTofu — encrypted state)' : '(Terraform — plaintext state)'));
         $this->newLine();
 
-        [$config, $projectPath, $environment, $standaloneName] = $this->resolveEnvironment($this->argument('environment'));
+        [$config, $projectPath, $environment, $standaloneName] = $this->resolveEnvironment($this->environmentArgument());
         $nameBase = $config?->getName() ?? $standaloneName;
 
         // Attach to an existing compatible stack, or create a new one? Defaults
@@ -418,7 +402,7 @@ class CloudCreateCommand extends Command
         // project (see StackData's docblock), so that's virtually always what's
         // wanted once one already exists. Still a real confirm either way, never
         // auto-skipped.
-        $existing = $this->stacksOfKind($targetKind);
+        $existing = $this->mayAttachToExisting() ? $this->stacksOfKind($targetKind) : [];
         if (! empty($existing)) {
             $expectedStack = $this->findExpectedStack($nameBase, $targetKind);
 
@@ -436,37 +420,41 @@ class CloudCreateCommand extends Command
             : $this->createManaged($bin, $provider, $config, $projectPath, $environment, $nameBase);
     }
 
-    /** Resolve which provider to provision for. */
-    private function resolveProvider(): ?string
+    /** The environment named on the command line, if the command takes one. */
+    protected function environmentArgument(): ?string
     {
-        $flag = $this->option('provider');
-        if ($flag && ! isset(self::PROVIDERS[$flag])) {
-            $this->laraKubeError("Unknown provider: '{$flag}'. Supported: ".implode(', ', array_keys(self::PROVIDERS)));
+        return $this->getDefinition()->hasArgument('environment') ? $this->input->getArgument('environment') : null;
+    }
 
-            return null;
-        }
-        if ($flag) {
-            return $flag;
-        }
+    /** What the new stack is for. A dev box overrides this. */
+    protected function stackRole(): string
+    {
+        return 'deploy';
+    }
 
-        // Kind-defining input: never silently default headlessly — fail clearly.
-        if ($this->flag('no-interaction')) {
-            $this->laraKubeError('No provider selected — pass --provider= (e.g. --provider=do) when running non-interactively.');
+    /** Whether an existing stack of the same kind can be reused instead of creating one. */
+    protected function mayAttachToExisting(): bool
+    {
+        return true;
+    }
 
-            return null;
-        }
+    /** Whether this flow needs kubectl on this computer (it merges a kubeconfig and applies Traefik). */
+    protected function needsKubectl(): bool
+    {
+        return true;
+    }
 
-        $default = $this->getDefaultCloudProvider();
-
-        return select(
-            label: 'Which cloud provider?',
-            options: self::PROVIDERS,
-            default: isset(self::PROVIDERS[$default]) ? $default : 'do',
-        );
+    /**
+     * Turn the new, reachable host into what this command makes. Returns the kube-context the
+     * server ends up with ('' when it has none, as a dev box), or null on failure.
+     */
+    protected function provisionHost(string $ip, string $keyPath, ?ConfigData $config, ?string $adminCidr): ?string
+    {
+        return $this->provisionK3sNode('root', $ip, '22', $keyPath, $config ?? $this->getProjectConfigObject(getcwd()), adminCidr: $adminCidr);
     }
 
     /** Resolve vps vs managed kind. */
-    private function resolveTargetKind(?string $provider = null): ?string
+    protected function resolveTargetKind(?string $provider = null): ?string
     {
         if ($this->option('vps') && $this->option('managed')) {
             $this->laraKubeError('Use --vps or --managed, not both.');
@@ -506,60 +494,8 @@ class CloudCreateCommand extends Command
         );
     }
 
-    /** Map a provider slug to its ManagedProvider enum (DOKS, EKS, …). */
-    private function resolveManagedProvider(string $provider): ManagedProvider
-    {
-        return match ($provider) {
-            'do' => ManagedProvider::DOKS,
-            'aws' => ManagedProvider::EKS,
-            'gcp' => ManagedProvider::GKE,
-            default => ManagedProvider::CUSTOM,
-        };
-    }
-
-    /**
-     * Attach an environment to an already-provisioned stack — no apply. The env's
-     * deploy target becomes that stack's context (managed) or IP (VPS). $preferred
-     * (this project's exact-name match, if any) is pre-selected but not forced —
-     * the picker still shows every compatible stack.
-     *
-     * @param  array<string, StackData>  $existing
-     */
-    private function attachToExisting(array $existing, string $target, string $provider, ?ConfigData $config, ?string $projectPath, ?string $environment, ?StackData $preferred = null): int
-    {
-        $options = [];
-        foreach ($existing as $s) {
-            $options[$s->name] = $s->name.'  ('.($s->region ?? '?').($s->ip ? ', '.$s->ip : '').', ctx: '.($s->context ?? '?').')';
-        }
-        $name = select(label: 'Attach to which stack?', options: $options, default: $preferred?->name);
-        $stack = $existing[$name];
-        $this->result = ['stackName' => $stack->name, 'kind' => $stack->kind, 'ip' => $stack->ip, 'context' => $stack->context];
-
-        if (! $config || ! $environment) {
-            $this->laraKubeWarn('No project/environment to bind — nothing to do. (Run inside a project to attach an env.)');
-
-            return 0;
-        }
-
-        if ($target === 'vps') {
-            $this->bindVpsEnv($config, $projectPath, $environment, $stack->ip, 'larakube', '22', $this->defaultKeyPath());
-        } else {
-            $managedProvider = $this->resolveManagedProvider($provider);
-            $this->recordManagedTarget($config, $environment, $projectPath, $stack->context, $managedProvider);
-        }
-
-        $stack->bind($config->getName(), $environment);
-        $this->putStack($stack);
-
-        $this->newLine();
-        $this->laraKubeInfo("✅ '{$environment}' now deploys to stack '{$stack->name}' (namespace: ".$config->getNamespace($environment).').');
-        $this->line('  <fg=gray>Co-tenancy is namespace-isolated; Traefik is shared and not re-installed.</>');
-
-        return 0;
-    }
-
     /** Provision a new droplet/VM, then run the k3s + hardening pipeline. */
-    private function createVps(array $bin, string $provider, ?ConfigData $config, ?string $projectPath, ?string $environment, ?string $nameBase): int
+    protected function createVps(array $bin, string $provider, ?ConfigData $config, ?string $projectPath, ?string $environment, ?string $nameBase): int
     {
         $this->laraKubeWarn('Recommended: 1GB RAM minimum for stable K3s deployments.');
         $this->newLine();
@@ -630,7 +566,7 @@ class CloudCreateCommand extends Command
 
         // Register the stack now (before the long provisioning run) so a later
         // failure still leaves a destroyable record.
-        $this->registerStack($stackName, 'vps', $region, $ip, null, $config, $environment, $provider);
+        $this->registerStack($stackName, 'vps', $region, $ip, null, $config, $environment, $provider, $this->stackRole());
 
         // A new VM can get an IP an earlier one had; its old host key would make ssh refuse the new one.
         $this->forgetHostKey($ip);
@@ -642,18 +578,28 @@ class CloudCreateCommand extends Command
             return 1;
         }
 
-        $pipelineConfig = $config ?? $this->getProjectConfigObject(getcwd());
-        $context = $this->provisionK3sNode('root', $ip, '22', $keyPath, $pipelineConfig, adminCidr: $adminCidr);
+        $context = $this->provisionHost($ip, $keyPath, $config, $adminCidr);
 
-        // Record the resolved context on the stack + bind the env.
-        $this->updateStackContext($stackName, $context, $keyPath);
+        if ($context === null) {
+            return 1;
+        }
+
+        // Record the resolved context (none for a dev box) and the key on the stack.
+        $this->updateStackContext($stackName, $context === '' ? null : $context, $keyPath);
+
+        // `ssh <stack-name>` just works from here on.
+        $this->upsertSshConfigHost($stackName, $ip, 'larakube', '22', $keyPath);
+
+        return $this->finishVps($stackName, $ip, $keyPath, $context, $config, $projectPath, $environment);
+    }
+
+    /** What happens once the host is provisioned: bind the environment, report, connect Cloudflare. */
+    protected function finishVps(string $stackName, string $ip, string $keyPath, string $context, ?ConfigData $config, ?string $projectPath, ?string $environment): int
+    {
         if ($config && $environment) {
             $this->bindVpsEnv($config, $projectPath, $environment, $ip, 'larakube', '22', $keyPath);
             $this->tagBinding($stackName, $config->getName(), $environment);
         }
-
-        // `ssh <stack-name>` just works from here on.
-        $this->upsertSshConfigHost($stackName, $ip, 'larakube', '22', $keyPath);
 
         $this->result += ['ip' => $ip, 'context' => $context];
 
@@ -662,6 +608,115 @@ class CloudCreateCommand extends Command
         $this->printVpsNextSteps($context, $environment);
 
         $this->connectCloudflare($environment ?: 'production', $context);
+
+        return 0;
+    }
+
+    protected function updateStackContext(string $name, ?string $context, ?string $sshKey = null): void
+    {
+        if ($stack = $this->getGlobalConfig()->findStack($name)) {
+            $stack->context = $context;
+            if ($sshKey !== null) {
+                $stack->sshKey = $sshKey;
+            }
+            $this->putStack($stack);
+        }
+    }
+
+    /**
+     * The provider's current regions, sizes and prices, when this machine is
+     * connected to it; null means the built-in lists apply.
+     *
+     * @return array{regions: list<array{value: string, label: string}>, sizes: list<array{value: string, label: string, monthly: float, currency: string}>}|null
+     */
+    private function liveCatalog(CloudProvider $provider): ?array
+    {
+        $token = match ($provider) {
+            CloudProvider::DO => $this->getDoToken(),
+            CloudProvider::HETZNER => $this->getHetznerToken(),
+            default => null,
+        };
+
+        return (new LiveProviderCatalog)->get($provider, $token);
+    }
+
+    /** Resolve which provider to provision for. */
+    private function resolveProvider(): ?string
+    {
+        $flag = $this->option('provider');
+        if ($flag && ! isset(self::PROVIDERS[$flag])) {
+            $this->laraKubeError("Unknown provider: '{$flag}'. Supported: ".implode(', ', array_keys(self::PROVIDERS)));
+
+            return null;
+        }
+        if ($flag) {
+            return $flag;
+        }
+
+        // Kind-defining input: never silently default headlessly — fail clearly.
+        if ($this->flag('no-interaction')) {
+            $this->laraKubeError('No provider selected — pass --provider= (e.g. --provider=do) when running non-interactively.');
+
+            return null;
+        }
+
+        $default = $this->getDefaultCloudProvider();
+
+        return select(
+            label: 'Which cloud provider?',
+            options: self::PROVIDERS,
+            default: isset(self::PROVIDERS[$default]) ? $default : 'do',
+        );
+    }
+
+    /** Map a provider slug to its ManagedProvider enum (DOKS, EKS, …). */
+    private function resolveManagedProvider(string $provider): ManagedProvider
+    {
+        return match ($provider) {
+            'do' => ManagedProvider::DOKS,
+            'aws' => ManagedProvider::EKS,
+            'gcp' => ManagedProvider::GKE,
+            default => ManagedProvider::CUSTOM,
+        };
+    }
+
+    /**
+     * Attach an environment to an already-provisioned stack — no apply. The env's
+     * deploy target becomes that stack's context (managed) or IP (VPS). $preferred
+     * (this project's exact-name match, if any) is pre-selected but not forced —
+     * the picker still shows every compatible stack.
+     *
+     * @param  array<string, StackData>  $existing
+     */
+    private function attachToExisting(array $existing, string $target, string $provider, ?ConfigData $config, ?string $projectPath, ?string $environment, ?StackData $preferred = null): int
+    {
+        $options = [];
+        foreach ($existing as $s) {
+            $options[$s->name] = $s->name.'  ('.($s->region ?? '?').($s->ip ? ', '.$s->ip : '').', ctx: '.($s->context ?? '?').')';
+        }
+        $name = select(label: 'Attach to which stack?', options: $options, default: $preferred?->name);
+        $stack = $existing[$name];
+        $this->result = ['stackName' => $stack->name, 'kind' => $stack->kind, 'ip' => $stack->ip, 'context' => $stack->context];
+
+        if (! $config || ! $environment) {
+            $this->laraKubeWarn('No project/environment to bind — nothing to do. (Run inside a project to attach an env.)');
+
+            return 0;
+        }
+
+        if ($target === 'vps') {
+            $this->bindVpsEnv($config, $projectPath, $environment, $stack->ip, 'larakube', '22', $this->defaultKeyPath());
+        } else {
+            $managedProvider = $this->resolveManagedProvider($provider);
+            $this->recordManagedTarget($config, $environment, $projectPath, $stack->context, $managedProvider);
+        }
+
+        $stack->bind($config->getName(), $environment);
+        $this->putStack($stack);
+
+        $this->newLine();
+        $this->laraKubeInfo("✅ '{$environment}' now deploys to stack '{$stack->name}' (namespace: ".$config->getNamespace($environment).').');
+        $this->line('  <fg=gray>Co-tenancy is namespace-isolated; Traefik is shared and not re-installed.</>');
 
         return 0;
     }
@@ -783,17 +838,6 @@ class CloudCreateCommand extends Command
         }
 
         return true;
-    }
-
-    private function updateStackContext(string $name, string $context, ?string $sshKey = null): void
-    {
-        if ($stack = $this->getGlobalConfig()->findStack($name)) {
-            $stack->context = $context;
-            if ($sshKey !== null) {
-                $stack->sshKey = $sshKey;
-            }
-            $this->putStack($stack);
-        }
     }
 
     private function tagBinding(string $name, string $appName, string $environment): void

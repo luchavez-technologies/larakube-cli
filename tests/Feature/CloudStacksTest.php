@@ -63,3 +63,18 @@ test('cloud:stacks --json with nothing registered is an empty list, not a messag
 
     expect(json_decode(trim(Artisan::output()), true))->toBe(['success' => true, 'stacks' => []]);
 });
+
+test('cloud:stacks --json tells a dev box from a deploy server, and a dev box with a key is ready without a context', function (): void {
+    $config = GlobalConfigData::load();
+    $config->putStack(new StackData(name: 'workshop-demo', provider: 'gcp', kind: 'vps', region: 'asia-east1', ip: '203.0.113.21', context: 'larakube-203.0.113.21'));
+    $config->putStack(new StackData(name: 'my-dev-box', provider: 'gcp', kind: 'vps', region: 'us-central1', ip: '203.0.113.50', sshKey: '/home/me/.ssh/id_ed25519', role: 'dev'));
+    $config->putStack(new StackData(name: 'dev-no-key', provider: 'gcp', kind: 'vps', region: 'us-central1', ip: '203.0.113.51', role: 'dev'));
+    $config->save();
+
+    Artisan::call('cloud:stacks', ['--json' => true]);
+    $byName = collect(json_decode(trim(Artisan::output()), true)['stacks'])->keyBy('name');
+
+    expect($byName['workshop-demo'])->toMatchArray(['role' => 'deploy', 'status' => 'ready'])
+        ->and($byName['my-dev-box'])->toMatchArray(['role' => 'dev', 'status' => 'ready', 'context' => null])
+        ->and($byName['dev-no-key']['status'])->toBe('incomplete');
+});

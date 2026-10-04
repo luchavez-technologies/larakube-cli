@@ -184,12 +184,12 @@ BASH;
      * InteractsWithServerHardening) allows the SSH port before enabling UFW, so
      * this never strands the in-flight connection.
      */
-    protected function hardenServer($user, $ip, int $port, $keyPath, ?string $adminCidr = null): bool
+    protected function hardenServer($user, $ip, int $port, $keyPath, ?string $adminCidr = null, ?array $allowPorts = null): bool
     {
         $this->laraKubeInfo('Updating packages and hardening server (firewall, fail2ban, SSH)...');
         $this->line('  <fg=gray>This includes a full system upgrade before k3s is installed — can take a few minutes on a fresh droplet.</>');
 
-        if (! $this->runRemoteCommand($user, $ip, $port, $keyPath, $this->hardenServerScript($port, adminCidr: $adminCidr))) {
+        if (! $this->runRemoteCommand($user, $ip, $port, $keyPath, $this->hardenServerScript($port, ...($allowPorts !== null ? ['allowPorts' => $allowPorts] : []), adminCidr: $adminCidr))) {
             $this->laraKubeError('Hardening failed partway through — see the remote output above. The firewall may NOT be enabled.');
             $this->line('  👉 Re-run once the box is stable: larakube cloud:harden'.($adminCidr ? " --admin-cidr={$adminCidr}" : ''));
 

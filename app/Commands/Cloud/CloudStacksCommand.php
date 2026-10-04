@@ -96,13 +96,14 @@ class CloudStacksCommand extends Command
             'account' => $stack->account,
             'projectId' => $stack->projectId,
             'bindings' => $stack->bindings,
+            'role' => $stack->role,
             'createdAt' => $stack->createdAt,
             'status' => $status,
         ];
 
         $rows = [];
         foreach ($registered as $stack) {
-            $rows[] = $describe($stack, $stack->context ? 'ready' : 'incomplete');
+            $rows[] = $describe($stack, $stack->context || ($stack->role === 'dev' && $stack->sshKey) ? 'ready' : 'incomplete');
         }
         foreach ($unfinished as $stack) {
             $rows[] = $describe($stack, 'unfinished');

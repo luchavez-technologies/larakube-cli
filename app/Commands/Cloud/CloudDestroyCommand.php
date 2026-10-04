@@ -140,7 +140,8 @@ class CloudDestroyCommand extends Command
         $this->laraKubeInfo("✅ Destroyed and unregistered '{$stack->name}'.");
 
         // The cluster is gone, so its context is only a dead entry in ~/.kube/config.
-        $context = $stack->context ?: ($stack->ip ? 'larakube-'.$stack->ip : null);
+        // A dev box never had a kube-context on this computer.
+        $context = $stack->role === 'dev' ? null : ($stack->context ?: ($stack->ip ? 'larakube-'.$stack->ip : null));
         if ($context) {
             $this->call('context:remove', ['name' => $context, '--force' => true]);
         }
