@@ -59,9 +59,9 @@ class WorkspaceListCommand extends Command
             $workspaces[] = [
                 'name' => $name,
                 'namespace' => $ns,
-                'repo' => json_decode((string) ($notes['larakube.dev/workspace-repo'] ?? '""'), true),
-                'branch' => json_decode((string) ($notes['larakube.dev/workspace-branch'] ?? '""'), true),
-                'size' => json_decode((string) ($notes['larakube.dev/workspace-size'] ?? '""'), true),
+                'repo' => (string) ($notes['larakube.dev/workspace-repo'] ?? ''),
+                'branch' => (string) ($notes['larakube.dev/workspace-branch'] ?? ''),
+                'size' => (string) ($notes['larakube.dev/workspace-size'] ?? ''),
                 'status' => match (true) {
                     $wanted === 0 => 'suspended',
                     $ready > 0 => 'running',

@@ -103,6 +103,17 @@ test('the manifest keeps the workspace away from the cluster API and bounded in 
         ->not->toContain('port: 6443');
 });
 
+test('a repository on a self-hosted git server opens only the SSH port its URL names', function (): void {
+    $spec = new WorkspaceSpec;
+    $base = ['name' => 'api', 'branch' => 'main', 'size' => 'small', 'gitName' => 'Dev', 'gitEmail' => 'dev@example.com'];
+
+    expect(WorkspaceSpec::validRepo('ssh://git@git.example.com:2222/acme/app.git'))->toBeTrue()
+        ->and(WorkspaceSpec::gitPort('ssh://git@git.example.com:2222/acme/app.git'))->toBe(2222)
+        ->and(WorkspaceSpec::gitPort('https://github.com/acme/app'))->toBeNull()
+        ->and($spec->manifest($base + ['repo' => 'ssh://git@git.example.com:2222/acme/app.git']))->toContain('port: 2222')
+        ->and($spec->manifest($base + ['repo' => 'https://github.com/acme/app']))->not->toContain('2222');
+});
+
 test('workspace:create applies the manifest and keeps a secret with a password and a deploy key', function (): void {
     fakeWorkspaceCluster($seen);
 

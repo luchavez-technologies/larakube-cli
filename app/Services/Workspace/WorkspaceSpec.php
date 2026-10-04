@@ -55,7 +55,17 @@ class WorkspaceSpec
 
     public static function validRepo(string $repo): bool
     {
-        return preg_match('#^(https://[A-Za-z0-9.-]+/[\w.\-/]+|git@[A-Za-z0-9.-]+:[\w.\-/]+)$#', $repo) === 1;
+        return preg_match('#^(https://[A-Za-z0-9.-]+/[\w.\-/]+|git@[A-Za-z0-9.-]+:[\w.\-/]+|ssh://[\w.-]+@[A-Za-z0-9.-]+(:\d{1,5})?/[\w.\-/]+)$#', $repo) === 1;
+    }
+
+    /** The SSH port a repository URL asks for when it is not one the policy already allows, such as a self-hosted Forgejo on 2222. */
+    public static function gitPort(string $repo): ?int
+    {
+        if (preg_match('#^ssh://[^@/]+@[^:/]+:(\d{1,5})/#', $repo, $match) !== 1) {
+            return null;
+        }
+
+        return in_array((int) $match[1], [22, 80, 443], true) ? null : (int) $match[1];
     }
 
     public static function validBranch(string $branch): bool
@@ -88,6 +98,7 @@ class WorkspaceSpec
             'gitName' => $workspace['gitName'],
             'gitEmail' => $workspace['gitEmail'],
             'replicas' => $workspace['replicas'] ?? 1,
+            'gitPort' => self::gitPort($workspace['repo']),
             'image' => self::image(),
             ...$sizes[$workspace['size']],
         ])->render();

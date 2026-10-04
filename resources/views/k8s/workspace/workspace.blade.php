@@ -75,6 +75,12 @@ spec:
         - { port: 22, protocol: TCP }
         - { port: 80, protocol: TCP }
         - { port: 443, protocol: TCP }
+@if ($gitPort)
+    # A self-hosted git server's SSH port. No destination: when it runs in this cluster
+    # the traffic is already addressed to its pod, which an address range cannot match.
+    - ports:
+        - { port: {{ $gitPort }}, protocol: TCP }
+@endif
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -114,7 +120,7 @@ spec:
               set -u
               mkdir -p ~/.ssh && chmod 700 ~/.ssh
               cp /etc/workspace/deploy-key ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
-              ssh-keyscan -t ed25519,rsa github.com gitlab.com bitbucket.org >> ~/.ssh/known_hosts 2>/dev/null
+              printf 'Host *\n  StrictHostKeyChecking accept-new\n  IdentityFile ~/.ssh/id_ed25519\n' > ~/.ssh/config
               git config --global user.name "$GIT_AUTHOR_NAME"
               git config --global user.email "$GIT_AUTHOR_EMAIL"
               if [ -n "$WORKSPACE_REPO" ] && [ ! -d ~/project/.git ]; then
