@@ -80,7 +80,7 @@ trait InteractsWithDocker
     /**
      * Get the base Docker run command for a specific type (php or node).
      */
-    protected function getDockerCommand(string $path, string $type = 'php', string $envs = ''): string
+    protected function getDockerCommand(string $path, string $type = 'php', string $envs = '', ?string $image = null): string
     {
 
         $appName = basename($path);
@@ -88,7 +88,7 @@ trait InteractsWithDocker
 
         // Check if we have a local image, otherwise fallback to base
         $imageExists = Process::run($this->imageQuietLookupCommand($localImage))->output();
-        $image = $imageExists !== '' ? $localImage : ($this->getProjectConfig($path)?->getPhpImage(true) ?? 'docker.io/serversideup/php:8.4-fpm-nginx-alpine');
+        $image ??= $imageExists !== '' ? $localImage : ($this->getProjectConfig($path)?->getPhpImage(true) ?? 'docker.io/serversideup/php:8.4-fpm-nginx-alpine');
 
         $baseEnvs = '-e COMPOSER_CACHE_DIR=/dev/null -e COMPOSER_ALLOW_SUPERUSER=1 -e COMPOSER_IGNORE_PLATFORM_REQS=1 -e SHOW_WELCOME_MESSAGE=false';
 
@@ -318,9 +318,9 @@ trait InteractsWithDocker
     /**
      * Run a command inside a Docker container.
      */
-    protected function runInContainer(string $command, string $path, string $type = 'php', string $envs = ''): void
+    protected function runInContainer(string $command, string $path, string $type = 'php', string $envs = '', ?string $image = null): void
     {
-        $base = $this->getDockerCommand($path, $type, $envs);
+        $base = $this->getDockerCommand($path, $type, $envs, $image);
         $this->runStreaming($base."sh -c '$command'");
     }
 

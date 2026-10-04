@@ -8,6 +8,7 @@ use App\Contracts\HasJsDependencies;
 use App\Contracts\HasLifecycleHooks;
 use App\Data\ConfigData;
 use App\Enums\AppFramework;
+use App\Services\Scaffolding\BuilderImage;
 
 /**
  * Trait InteractsWithArchitecturalEngine
@@ -79,7 +80,7 @@ trait InteractsWithArchitecturalEngine
             // gatherConfig() asks) leaves it null, and this fataled the moment a
             // component contributed any JS. The accessor defaults to npm.
             $js = array_merge($jsCommands, [$config->getPackageManager()->buildCommand()]);
-            $this->runInContainer(implode(' && ', $js), $projectPath, 'php');
+            $this->runJsInContainer($config, $projectPath, implode(' && ', $js));
         }
     }
 
@@ -149,7 +150,32 @@ trait InteractsWithArchitecturalEngine
             // component contributed any JS. The accessor defaults to npm.
             $js = array_merge($jsCommands, [$config->getPackageManager()->buildCommand()]);
 
-            $this->runInContainer(implode(' && ', $js), $projectPath, 'php');
+            $this->runJsInContainer($config, $projectPath, implode(' && ', $js));
         }
+    }
+
+    /**
+     * Runs JS tooling for a project. Once the project image is built it has Node; before the first build
+     * (a new app being scaffolded) there is none, so the builder image `new` already pulled is used, or
+     * the plain base image with Node added first.
+     */
+    protected function runJsInContainer(ConfigData $config, string $projectPath, string $command): void
+    {
+        if ($this->imageExists(basename($projectPath).':local')) {
+            $this->runInContainer($command, $projectPath, 'php');
+
+            return;
+        }
+
+        $builder = BuilderImage::php($config->getPhpVersion()->value);
+
+        if ($builder !== null && $this->imageExists($builder)) {
+            $this->runInContainer($command, $projectPath, 'php', image: $builder);
+
+            return;
+        }
+
+        $base = $config->getPhpImage(true);
+        $this->runInContainer($this->getNodeInstallationCommand($base).' && '.$command, $projectPath, 'php', image: $base);
     }
 }
