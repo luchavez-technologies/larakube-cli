@@ -53,3 +53,13 @@ All share one Dockerfile with `ARG BASE_IMAGE` and a common layer: non-root user
 - Image upkeep is a standing cost (weekly rebuilds, version matrix). Mitigation: one Dockerfile, CI matrix, floating tags only for the base.
 - Licence of a Server Side Up based image (see above). Fallback: official `php` image plus our own extension layer, losing prod parity.
 - code-server's extension marketplace is Open VSX, not Microsoft's; some extensions are missing.
+
+## Decisions (after review)
+- **PHP base: Server Side Up `cli`**, floating tag per PHP version. Licence (reported GPL-3.0) and arm64 for `cli` still to be checked before the first publish.
+- **Keeping up with their releases**
+  - Their floating tags (`8.4-cli`) get weekly security rebuilds; ours follows. A scheduled workflow compares the base image's digest with the one recorded in our image's `org.opencontainers.image.base.digest` label and rebuilds, smoke-tests (starts, `/healthz`, `php -v`, `composer -V`, git) and publishes only on a change.
+  - Tags: floating `php8.4` plus immutable `php8.4-r<date>`. Workspaces run the floating tag with `imagePullPolicy: Always`, so Resume picks up the new base; the volume (repo, vendor, extensions) is untouched.
+  - The PHP matrix comes from the CLI's `PhpVersion` enum (`workspace:options --json`), so a new PHP version in the CLI is built automatically. code-server and Node pins are `ARG`s that Renovate bumps by pull request.
+- **No `larakube up` inside a workspace.** `up` needs a container engine and a cluster; a workspace has neither by design (no Docker, no cluster API). The app runs inside the workspace with the runtime's dev command, which the CLI owns per framework (Laravel `composer run dev`, Next.js `npm run dev`, and so on). Shipping stays git push then CI/CD (ADR 0014).
+- **Seeing the work: `workspace:open` forwards the app's dev ports as well as the editor.** The Service and pod expose the dev port per runtime (Laravel 8000 and Vite 5173, Next.js 3000, Django 8000, ...), so the app is at `http://127.0.0.1:<port>` on the developer's computer. Vite HMR works because it is not behind a path proxy. Dev servers must bind `0.0.0.0`; the CLI-owned dev command does that. A shareable preview URL waits for the ingress and SSO work.
+- **`TunnelCommand` is not needed for this.** It forwards a project's database services to localhost; `workspace:open` already forwards the workspace's ports. It would matter later for reaching a workspace's Commons database from a local GUI.
