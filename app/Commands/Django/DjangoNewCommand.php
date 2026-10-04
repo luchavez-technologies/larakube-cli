@@ -132,14 +132,14 @@ class DjangoNewCommand extends Command
     protected function runDjangoStartProject(string $appName, string $baseDir): void
     {
         $this->laraKubeInfo('Pulling Python 3.12 slim builder image...');
-        Process::forever()->run($this->pullImageCommand('python:3.12-slim'));
+        Process::forever()->run($this->pullImageCommand('docker.io/library/python:3.12-slim'));
 
         $runtime = $this->containerRuntime();
 
         $uid = $this->hostUid();
         $gid = $this->hostGid();
 
-        $cmd = "$runtime run --rm -it -v $baseDir:/app -w /app --user root python:3.12-slim"
+        $cmd = "$runtime run --rm -it -v $baseDir:/app -w /app --user root docker.io/library/python:3.12-slim"
             ." sh -c 'pip install --no-cache-dir django && django-admin startproject $appName .'";
 
         // If directory doesn't exist, create it and run inside
@@ -147,7 +147,7 @@ class DjangoNewCommand extends Command
             mkdir("$baseDir/$appName", 0o755, true);
         }
 
-        $cmd = "$runtime run --rm -it -v $baseDir/$appName:/app -w /app --user root python:3.12-slim"
+        $cmd = "$runtime run --rm -it -v $baseDir/$appName:/app -w /app --user root docker.io/library/python:3.12-slim"
             ." sh -c 'pip install --no-cache-dir django && django-admin startproject config .'";
 
         $this->runInteractive($cmd);
@@ -155,7 +155,7 @@ class DjangoNewCommand extends Command
         // Chown back to host user
         if (is_dir("$baseDir/$appName")) {
             $this->runStreaming(
-                "$runtime run --rm -v $baseDir:/app --user root python:3.12-slim chown -R {$this->containerChownSpec($uid, $gid)} /app/$appName",
+                "$runtime run --rm -v $baseDir:/app --user root docker.io/library/python:3.12-slim chown -R {$this->containerChownSpec($uid, $gid)} /app/$appName",
             );
         }
     }

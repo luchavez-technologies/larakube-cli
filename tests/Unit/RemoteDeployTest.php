@@ -65,7 +65,7 @@ test('under Podman the production build drops buildx/--load and the sideload use
             ->not->toContain('buildx')
             ->not->toContain('--load')
             ->and($sideload)
-            ->toContain("podman save 'app-one:abc123' | ssh")
+            ->toContain("podman save 'docker.io/library/app-one:abc123' | ssh")
             ->toContain("'sudo k3s ctr images import -'");
     } finally {
         putenv('LARAKUBE_CONTAINER_RUNTIME=docker');

@@ -24,7 +24,7 @@ class DocsNewCommand extends Command
     use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, ScaffoldsInNode, StreamsProcessOutput;
 
     /** Same Node the dev pod and the image build use. */
-    protected const NODE_IMAGE = 'node:24-alpine';
+    protected const NODE_IMAGE = 'docker.io/library/node:24-alpine';
 
     /** What a scripted run gets when nobody can answer create-docusaurus's wizard. */
     protected const SCRIPTED_TEMPLATE = 'classic';

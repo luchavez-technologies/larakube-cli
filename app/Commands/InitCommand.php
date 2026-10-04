@@ -36,7 +36,7 @@ class InitCommand extends Command
     use CheckPrerequisites, DiffsProjectConfig, GathersInfrastructureConfig, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithDynamicOptions, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, PreparesNextjsProject, ScaffoldsInNode, StreamsProcessOutput;
 
     /** Same Node the Next.js scaffolder, dev pod and image build use. */
-    protected const NODE_IMAGE = 'node:24-alpine';
+    protected const NODE_IMAGE = 'docker.io/library/node:24-alpine';
 
     /**
      * The name and signature of the console command.

@@ -1578,7 +1578,7 @@ class ConfigData extends Data
         $osSuffix = $this->getOs()?->getSuffix() ?? '';
         $variation = $isCli ? 'cli' : $this->serverVariation?->value ?? 'fpm-nginx';
 
-        return "serversideup/php:{$this->getPhpVersion()->value}-$variation$osSuffix";
+        return "docker.io/serversideup/php:{$this->getPhpVersion()->value}-$variation$osSuffix";
     }
 
     // --- 🔐 ENVIRONMENT AGGREGATION ---

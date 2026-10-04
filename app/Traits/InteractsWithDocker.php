@@ -302,7 +302,7 @@ trait InteractsWithDocker
             $osSuffix = $os === 'alpine' ? '-alpine' : '';
         }
 
-        return "serversideup/php:{$phpVersion}-cli{$osSuffix}";
+        return "docker.io/serversideup/php:{$phpVersion}-cli{$osSuffix}";
     }
 
     /**

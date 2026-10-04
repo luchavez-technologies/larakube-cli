@@ -163,6 +163,8 @@ class SetupCommand extends Command
         // Already functional? Prefer Podman, accept an existing Docker.
         if ($this->podmanIsFunctional()) {
             $this->laraKubeInfo('Rootless Podman already installed and functional.');
+            // A Podman someone installed earlier has no Docker Hub short names either.
+            $this->configurePodmanShortNames();
 
             return true;
         }

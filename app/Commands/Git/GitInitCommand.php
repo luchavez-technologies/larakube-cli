@@ -58,7 +58,7 @@ abstract class GitInitCommand extends AbstractToolInitCommand
      * (actions/checkout); no maintained image also ships podman, so workflows
      * install Debian's podman-remote client when it is missing.
      */
-    protected const JOB_IMAGE = 'node:24-trixie';
+    protected const JOB_IMAGE = 'docker.io/library/node:24-trixie';
 
     protected function runInit(): int
     {

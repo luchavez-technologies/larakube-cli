@@ -74,6 +74,27 @@ trait ResolvesContainerRuntime
     }
 
     /**
+     * The name an image is built, saved and looked up under. Podman stores a name with no registry
+     * as `localhost/<name>`, which the cluster's containerd never asks for (it resolves `app:local`
+     * to `docker.io/library/app:local`), so a sideloaded image would not be found. Naming it the way
+     * containerd will resolve it keeps both sides the same. Docker keeps the name as given. Pure.
+     */
+    public function localImageRef(string $image): string
+    {
+        if (! $this->runtimeIsPodman()) {
+            return $image;
+        }
+
+        $first = explode('/', $image, 2)[0];
+
+        if (str_contains($image, '/') && (str_contains($first, '.') || str_contains($first, ':') || $first === 'localhost')) {
+            return $image;
+        }
+
+        return str_contains($image, '/') ? "docker.io/{$image}" : "docker.io/library/{$image}";
+    }
+
+    /**
      * Build an image, in the shape the resolved runtime understands.
      *
      * Docker: `docker buildx build … --load` (BuildKit; `--load` writes the
@@ -98,7 +119,7 @@ trait ResolvesContainerRuntime
         $buildArgs = $buildArgs !== '' ? rtrim($buildArgs).' ' : '';
         $target = $target !== '' ? rtrim($target).' ' : '';
 
-        $tail = '-t '.escapeshellarg($image).' -f '.escapeshellarg($dockerfile).' '
+        $tail = '-t '.escapeshellarg($this->localImageRef($image)).' -f '.escapeshellarg($dockerfile).' '
             .$secret.escapeshellarg($path);
 
         if ($this->runtimeIsPodman()) {
@@ -115,25 +136,25 @@ trait ResolvesContainerRuntime
      */
     public function saveImageCommand(string $image): string
     {
-        return $this->containerRuntime().' save '.escapeshellarg($image);
+        return $this->containerRuntime().' save '.escapeshellarg($this->localImageRef($image));
     }
 
     /** `<runtime> images -q <image>` — quiet id lookup used for existence checks. Pure. */
     public function imageQuietLookupCommand(string $image): string
     {
-        return $this->containerRuntime().' images -q '.escapeshellarg($image);
+        return $this->containerRuntime().' images -q '.escapeshellarg($this->localImageRef($image));
     }
 
     /** `<runtime> pull <image>`. Pure. */
     public function pullImageCommand(string $image): string
     {
-        return $this->containerRuntime().' pull '.escapeshellarg($image);
+        return $this->containerRuntime().' pull '.escapeshellarg($this->localImageRef($image));
     }
 
     /** `<runtime> rmi [-f] <image>`. Pure. */
     public function removeImageCommand(string $image, bool $force = false): string
     {
-        return $this->containerRuntime().' rmi '.($force ? '-f ' : '').escapeshellarg($image);
+        return $this->containerRuntime().' rmi '.($force ? '-f ' : '').escapeshellarg($this->localImageRef($image));
     }
 
     /**

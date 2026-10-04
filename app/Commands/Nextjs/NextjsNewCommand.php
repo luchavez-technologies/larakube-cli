@@ -30,7 +30,7 @@ class NextjsNewCommand extends Command
     use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, PreparesNextjsProject, ScaffoldsInNode, StreamsProcessOutput, SyncsClusterSecrets;
 
     /** The Node builder image the scaffolder runs in (matches the sibling frontends). */
-    protected const NODE_IMAGE = 'node:24-alpine';
+    protected const NODE_IMAGE = 'docker.io/library/node:24-alpine';
 
     /**
      * The name and signature of the console command.

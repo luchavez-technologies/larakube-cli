@@ -26,7 +26,7 @@ class NestjsNewCommand extends Command
     use AsksServerStack, CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, PreparesNestjsProject, ScaffoldsInNode, SyncsClusterSecrets;
 
     /** Same Node the dev pod and the image build use. */
-    protected const NODE_IMAGE = 'node:24-alpine';
+    protected const NODE_IMAGE = 'docker.io/library/node:24-alpine';
 
     /**
      * The name and signature of the console command.

@@ -24,7 +24,7 @@ class ViteNewCommand extends Command
     use CheckPrerequisites, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithProjectConfig, LaraKubeOutput, ScaffoldsInNode, StreamsProcessOutput;
 
     /** Node LTS at time of writing; 26 goes LTS in October 2026. */
-    protected const NODE_IMAGE = 'node:24-alpine';
+    protected const NODE_IMAGE = 'docker.io/library/node:24-alpine';
 
     /**
      * What a scripted run gets when nobody can answer create-vite's wizard.

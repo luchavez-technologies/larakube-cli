@@ -72,6 +72,10 @@ trait InstallsPodman
      */
     protected function configurePodmanShortNames(): void
     {
+        if (is_file('/etc/containers/registries.conf.d/larakube.conf')) {
+            return;
+        }
+
         $this->runStreaming(
             'echo '.escapeshellarg('unqualified-search-registries = ["docker.io"]')
             .' | '.$this->privilegePrefix().'tee /etc/containers/registries.conf.d/larakube.conf >/dev/null',

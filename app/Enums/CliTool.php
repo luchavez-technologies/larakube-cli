@@ -320,7 +320,10 @@ enum CliTool: string
         // The official standalone installer is uname-generic: it resolves its
         // own current version and pulls the darwin or linux archive for the
         // running architecture, so a Mac without Homebrew is not a dead end.
-        $cmd = 'set -e; T=$(mktemp -d); curl -fsSL https://get.opentofu.org/install-opentofu.sh -o "$T/install.sh"; '
+        // The standalone method unpacks a zip, which a minimal Ubuntu server does not have.
+        $needsUnzip = PHP_OS_FAMILY === 'Linux' && trim(Process::run('command -v unzip')->output()) === '' && trim(Process::run('command -v apt-get')->output()) !== '';
+        $cmd = 'set -e; '.($needsUnzip ? 'sudo apt-get install -y unzip; ' : '')
+            .'T=$(mktemp -d); curl -fsSL https://get.opentofu.org/install-opentofu.sh -o "$T/install.sh"; '
             .'chmod +x "$T/install.sh"; sudo "$T/install.sh" --install-method standalone; rm -rf "$T"';
 
         return $this->runInteractive($cmd) === 0 && $this->isInstalled();

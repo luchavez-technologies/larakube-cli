@@ -130,7 +130,7 @@ test('podman builds with plain `build` — no buildx sub-command and no --load',
         ->toContain('--target deploy')
         // the BuildKit dotenv secret survives on Podman (Buildah ≥3.1)
         ->toContain("--secret id=dotenv,src='/tmp/dotenv'")
-        ->toContain("-t 'app:prod'")
+        ->toContain("-t 'docker.io/library/app:prod'")
         ->not->toContain('buildx')
         ->not->toContain('--load');
 });
@@ -160,7 +160,7 @@ test('containerChownSpec keeps host ownership under each runtime', function (): 
         ->and(containerRuntimeHarness()->containerChownSpec(501, 20))->toBe('0:0');
 });
 
-test('save / pull / images builders swap only the binary — the shape is identical', function (): void {
+test('save / pull / images builders swap only the binary, and Podman names local images the way containerd resolves them', function (): void {
     putenv('LARAKUBE_CONTAINER_RUNTIME=docker');
     $d = containerRuntimeHarness();
     expect($d->saveImageCommand('app:abc'))->toBe("docker save 'app:abc'")
@@ -169,9 +169,25 @@ test('save / pull / images builders swap only the binary — the shape is identi
 
     putenv('LARAKUBE_CONTAINER_RUNTIME=podman');
     $p = containerRuntimeHarness();
-    expect($p->saveImageCommand('app:abc'))->toBe("podman save 'app:abc'")
-        ->and($p->pullImageCommand('node:24-alpine'))->toBe("podman pull 'node:24-alpine'")
-        ->and($p->imageQuietLookupCommand('app:local'))->toBe("podman images -q 'app:local'");
+    expect($p->saveImageCommand('app:abc'))->toBe("podman save 'docker.io/library/app:abc'")
+        ->and($p->pullImageCommand('node:24-alpine'))->toBe("podman pull 'docker.io/library/node:24-alpine'")
+        ->and($p->imageQuietLookupCommand('app:local'))->toBe("podman images -q 'docker.io/library/app:local'")
+        ->and($p->removeImageCommand('app:local', force: true))->toBe("podman rmi -f 'docker.io/library/app:local'");
+});
+
+test('a Podman image name gets docker.io only when it has no registry of its own', function (): void {
+    putenv('LARAKUBE_CONTAINER_RUNTIME=podman');
+    $p = containerRuntimeHarness();
+
+    expect($p->localImageRef('spike-app:local'))->toBe('docker.io/library/spike-app:local')
+        ->and($p->localImageRef('serversideup/php:8.4-cli'))->toBe('docker.io/serversideup/php:8.4-cli')
+        ->and($p->localImageRef('ghcr.io/acme/app:1'))->toBe('ghcr.io/acme/app:1')
+        ->and($p->localImageRef('registry.example.com:5000/app:1'))->toBe('registry.example.com:5000/app:1')
+        ->and($p->localImageRef('localhost/app:1'))->toBe('localhost/app:1')
+        ->and($p->buildImageCommand('app:local', 'Dockerfile', '.'))->toContain("-t 'docker.io/library/app:local'");
+
+    putenv('LARAKUBE_CONTAINER_RUNTIME=docker');
+    expect(containerRuntimeHarness()->localImageRef('spike-app:local'))->toBe('spike-app:local');
 });
 
 test('resolution is un-cached (property-free so the trait can compose onto enums)', function (): void {
