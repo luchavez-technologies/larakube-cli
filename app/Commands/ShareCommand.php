@@ -6,10 +6,12 @@ use App\Data\GlobalConfigData;
 use App\Enums\LaravelFeature;
 use App\Enums\StorageDriver;
 use App\Services\Kubectl;
+use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithGlobalConfig;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ReadsCommandOptions;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 
@@ -20,27 +22,33 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class ShareCommand extends Command
 {
-    use InteractsWithEnvironments, InteractsWithGlobalConfig, InteractsWithProjectConfig, LaraKubeOutput;
+    use EmitsJsonOutput, InteractsWithEnvironments, InteractsWithGlobalConfig, InteractsWithProjectConfig, LaraKubeOutput, ReadsCommandOptions;
 
     protected $signature = 'share
         {--stop : Stop all share tunnels and restore env overrides}
         {--token= : Cloudflare named-tunnel token (saves to global config for reuse)}
-        {--reset : Forget saved share URLs and re-configure}';
+        {--reset : Forget saved share URLs and re-configure}
+        {--detach : Print the links and leave the tunnels running, instead of waiting for Ctrl+C. Stop them with --stop}
+        {--json : Emit one machine-readable JSON result on stdout (implies --detach)}';
 
     protected $description = 'Expose your local LaraKube project to the internet via Cloudflare Tunnel';
 
     public function handle(): int
     {
+        if ($this->flag('json')) {
+            $this->enableJsonMode();
+        }
+
         $this->renderHeader();
 
         if (! $this->isLaraKubeProject()) {
-            return 1;
+            return $this->failed('This folder is not a LaraKube project.');
         }
 
         $projectPath = getcwd();
         $config = $this->getProjectConfig($projectPath);
         if (! $config) {
-            return 1;
+            return $this->failed('The project blueprint could not be read.');
         }
 
         $appName = $config->getName() ?? basename($projectPath);
@@ -48,6 +56,10 @@ class ShareCommand extends Command
 
         if ($this->option('stop')) {
             $this->stopShare($namespace);
+
+            if ($this->flag('json')) {
+                $this->jsonOutput(['success' => true, 'stopped' => true]);
+            }
 
             return 0;
         }
@@ -74,6 +86,11 @@ class ShareCommand extends Command
             $globalConfig->save();
         }
 
+        // Asking for the public URLs needs a person; headlessly they must have been saved by an earlier run.
+        if ($this->flag('json') && ! isset($globalConfig->getShareUrls($appName)['web'])) {
+            return $this->failed('A named tunnel needs its public web URL saved first: run `larakube share` once in the project, in a terminal.');
+        }
+
         $urls = $this->resolveNamedTunnelUrls($config, $appName, $globalConfig);
 
         // Deploy single connector pod
@@ -96,7 +113,8 @@ class ShareCommand extends Command
 
         $this->applyEnvPatches($config, $appName, $namespace, $urls);
         $this->printShareUrls($urls, 'named');
-        $this->keepAlive($namespace);
+
+        return $this->finish('named', $urls, $namespace);
 
         return 0;
     }
@@ -195,16 +213,13 @@ class ShareCommand extends Command
         $urls = $this->extractQuickTunnelUrls($services, $namespace);
 
         if (empty($urls)) {
-            $this->laraKubeError('Could not retrieve tunnel URLs. Check pod logs: larakube logs larakube-share-web');
-
-            return 1;
+            return $this->failed('Could not retrieve tunnel URLs. Check pod logs: larakube logs larakube-share-web');
         }
 
         $this->applyEnvPatches($config, $appName, $namespace, $urls);
         $this->printShareUrls($urls, 'quick');
-        $this->keepAlive($namespace);
 
-        return 0;
+        return $this->finish('quick', $urls, $namespace);
     }
 
     /**
@@ -343,6 +358,40 @@ class ShareCommand extends Command
     }
 
     // ─── Keep-alive and stop ───────────────────────────────────────────────────
+
+    /**
+     * What happens once the links are printed: report them and leave (--detach, --json), or wait here
+     * until Ctrl+C so the tunnels can be taken down again.
+     *
+     * @param  array<string, string>  $urls
+     */
+    private function finish(string $mode, array $urls, string $namespace): int
+    {
+        if ($this->flag('json')) {
+            $this->jsonOutput(['success' => true, 'mode' => $mode, 'urls' => $urls]);
+
+            return 0;
+        }
+
+        if ($this->flag('detach')) {
+            return 0;
+        }
+
+        $this->keepAlive($namespace);
+
+        return 0;
+    }
+
+    private function failed(string $message): int
+    {
+        $this->laraKubeError($message);
+
+        if ($this->flag('json')) {
+            $this->jsonOutput(['success' => false, 'error' => $message]);
+        }
+
+        return 1;
+    }
 
     private function keepAlive(string $namespace): void
     {
