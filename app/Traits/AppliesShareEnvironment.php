@@ -159,6 +159,9 @@ trait AppliesShareEnvironment
             return false;
         }
 
+        // A stop leaves the connector at zero; the names are meant to be up, so bring it back.
+        Process::run(Kubectl::current()->prefix().' scale deployment/larakube-share --replicas=1 -n '.escapeshellarg($namespace));
+
         $this->applyEnvPatches($config, $appName, $namespace, $saved['urls']);
         $this->printShareUrls($saved['urls'], 'named', waiting: false);
 

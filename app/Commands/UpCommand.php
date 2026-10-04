@@ -569,8 +569,9 @@ class UpCommand extends Command
         // namespace but not in this overlay, so `--all` would park it at zero
         // replicas with nothing here to restore it. `!=` also matches objects
         // lacking the label, so every other workload scales as it did before.
+        // The same goes for a share's tunnel connector, which this overlay does not contain either.
         $this->withSpin('Preparing cluster for architectural update...', function () use ($namespace): void {
-            Process::run(Kubectl::current()->prefix()." scale deployment --replicas=0 -l 'larakube-preview!=true' -n $namespace");
+            Process::run(Kubectl::current()->prefix()." scale deployment --replicas=0 -l 'larakube-preview!=true,larakube.dev/role!=share' -n $namespace");
         });
 
         $this->runStreaming($this->kustomizeApplyCommand($path));
@@ -584,7 +585,7 @@ class UpCommand extends Command
 
         // 5. Restart deployments to pick up new ConfigMap/Secret changes
         $this->laraKubeInfo('Restarting deployments to apply potential configuration changes...');
-        $this->runStreaming(Kubectl::current()->prefix()." rollout restart deployment -l 'larakube-preview!=true' -n $namespace");
+        $this->runStreaming(Kubectl::current()->prefix()." rollout restart deployment -l 'larakube-preview!=true,larakube.dev/role!=share' -n $namespace");
 
         // 6. Proactive HTTPS Trust Check
         if ($environment === 'local' && str_starts_with($config->getAppUrl(), 'https://') && ! $this->isSslTrusted()) {

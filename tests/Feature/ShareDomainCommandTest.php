@@ -91,6 +91,11 @@ function domainShareCluster(?array &$commands, bool $connectorRunning = true): v
         $commands[] = $cmd;
 
         if (str_contains($cmd, 'get deployment larakube-share')) {
+            // `-o name` says it exists; the readiness query says a pod is up.
+            if (str_contains($cmd, 'readyReplicas')) {
+                return Process::result(output: $connectorRunning ? '1' : '');
+            }
+
             return Process::result(output: $connectorRunning ? 'deployment.apps/larakube-share' : '');
         }
 
@@ -302,5 +307,51 @@ test('share:show reports the stable names a project has and whether the tunnel i
             ->and($shown['urls']['web'])->toBe('https://shop-box1.example.com')
             ->and(Artisan::call('share:show', ['environment' => 'production', '--json' => true, '--no-interaction' => true]))->toBe(1)
             ->and(domainShareJson()['error'])->toContain('only for the local environment');
+    });
+});
+
+test('share:show does not call a connector running when its deployment exists at zero replicas', function (): void {
+    putenv('CLOUDFLARE_API_TOKEN='.DOMAIN_SHARE_SECRET);
+    Saloon::fake(cloudflareFor());
+    domainShareCluster($commands);
+
+    inDomainShareProject(function () use (&$commands): void {
+        Artisan::call('share:domain', ['--domain' => 'example.com', '--box' => 'box1', '--json' => true, '--no-interaction' => true]);
+
+        domainShareCluster($commands, connectorRunning: false);
+        Artisan::call('share:show', ['environment' => 'local', '--json' => true, '--no-interaction' => true]);
+
+        expect(domainShareJson()['running'])->toBeFalse();
+    });
+});
+
+test('up keeps a share connector running through its scale-down, and brings a stopped one back', function (): void {
+    $source = (string) file_get_contents(base_path('app/Commands/UpCommand.php'));
+
+    expect($source)->toContain("-l 'larakube-preview!=true,larakube.dev/role!=share'")->and(substr_count($source, 'larakube.dev/role!=share'))->toBe(2);
+
+    putenv('CLOUDFLARE_API_TOKEN='.DOMAIN_SHARE_SECRET);
+    Saloon::fake(cloudflareFor());
+    domainShareCluster($commands);
+
+    inDomainShareProject(function () use (&$commands): void {
+        Artisan::call('share:domain', ['--domain' => 'example.com', '--box' => 'box1', '--json' => true, '--no-interaction' => true]);
+        $commands = [];
+
+        $probe = new class
+        {
+            use App\Traits\AppliesShareEnvironment, App\Traits\InteractsWithGlobalConfig, App\Traits\LaraKubeOutput;
+
+            public function reapply(ConfigData $config): bool
+            {
+                return $this->reapplyDomainShare($config, 'shop', 'shop-local');
+            }
+
+            public function line(string $text): void {}
+        };
+
+        $probe->reapply(new ConfigData(name: 'shop', frontend: FrontendStack::REACT, objectStorage: StorageDriver::SEAWEEDFS));
+
+        expect(implode("\n", $commands))->toContain('scale deployment/larakube-share --replicas=1');
     });
 });

@@ -46,8 +46,9 @@ class ShareShowCommand extends Command
         $running = false;
 
         if ($urls !== []) {
-            $result = Process::run($kubectl->prefix().' get deployment larakube-share -n '.escapeshellarg($namespace).' -o name');
-            $running = $result->successful() && trim($result->output()) !== '';
+            // Running means a connector pod is up, not just that its deployment exists (a stop leaves it at zero).
+            $result = Process::run($kubectl->prefix().' get deployment larakube-share -n '.escapeshellarg($namespace).' -o jsonpath={.status.readyReplicas}');
+            $running = $result->successful() && (int) trim($result->output()) > 0;
         }
 
         if ($this->flag('json')) {
