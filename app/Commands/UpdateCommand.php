@@ -156,11 +156,12 @@ class UpdateCommand extends Command
         $tempPath = $temporaryDirectory->path().'/larakube-update';
 
         try {
-            $binaryContent = file_get_contents($downloadUrl);
-            if ($binaryContent === false) {
+            // Streamed straight to disk: the binary is tens of megabytes, more than the CLI's own memory limit holds twice.
+            $download = Http::withHeaders(['User-Agent' => 'LaraKube-CLI'])->timeout(600)->sink($tempPath)->get($downloadUrl);
+
+            if ($download->failed() || ! is_file($tempPath) || filesize($tempPath) < 1024) {
                 throw new Exception('Download failed.');
             }
-            file_put_contents($tempPath, $binaryContent);
         } catch (Exception $e) {
             $this->laraKubeError("Failed to download binary from $downloadUrl");
 

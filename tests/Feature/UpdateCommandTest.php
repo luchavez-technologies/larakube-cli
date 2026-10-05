@@ -1,6 +1,21 @@
 <?php
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
+
+test('update --canary --yes streams the binary to disk and moves it into place', function (): void {
+    Http::fake([
+        'api.github.com/repos/luchavez-technologies/larakube-cli/releases/tags/canary' => Http::response(['tag_name' => 'canary']),
+        'github.com/luchavez-technologies/larakube-cli/releases/download/canary/*' => Http::response(str_repeat('x', 4096)),
+    ]);
+    Process::fake(['*' => Process::result()]);
+
+    $this->artisan('update --canary --yes')
+        ->expectsOutputToContain('LaraKube updated successfully to canary')
+        ->assertExitCode(0);
+
+    Process::assertRan(fn ($process): bool => str_contains($process->command, 'sudo mv ') && str_contains($process->command, '/usr/local/bin/larakube'));
+});
 
 test('update command detects if version is up to date', function (): void {
     config(['app.version' => 'v0.2.0']);
