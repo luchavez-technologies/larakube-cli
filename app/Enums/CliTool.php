@@ -15,6 +15,9 @@ enum CliTool: string
     /** The floor the Google Cloud SDK's own installer states, and below which its vendored urllib3 will not import. */
     private const GCLOUD_MIN_PYTHON = '3.10';
 
+    /** Used only when Gitea's API cannot be reached, so a flaky lookup does not stop an install. */
+    private const string TEA_FALLBACK_VERSION = '0.16.0';
+
     public function label(): string
     {
         return match ($this) {
@@ -225,6 +228,26 @@ enum CliTool: string
         }
 
         return true;
+    }
+
+    /**
+     * Shell that puts the current GitHub CLI into $binDir. The version is read from GitHub's own
+     * `/releases/latest` redirect (no API call to rate-limit), so there is no tag here to go stale.
+     */
+    public static function ghInstallCommand(string $arch, string $binDir): string
+    {
+        return 'set -e; U=$(curl -fsSLI -o /dev/null -w "%{url_effective}" https://github.com/cli/cli/releases/latest); V="${U##*/v}"; '
+            .'[ "$V" != "$U" ] || { echo "Could not find the latest GitHub CLI release." >&2; exit 1; }; '
+            .'D="gh_${V}_linux_'.$arch.'"; '
+            .'curl -fsSL "https://github.com/cli/cli/releases/download/v${V}/${D}.tar.gz" | tar -xz -C '.escapeshellarg($binDir).' --strip-components=2 "${D}/bin/gh"';
+    }
+
+    /** Shell that downloads the current tea to $target; the version is the latest release Gitea reports. */
+    public static function teaInstallCommand(string $arch, string $target): string
+    {
+        return 'set -e; V=$(curl -fsSL https://gitea.com/api/v1/repos/gitea/tea/releases/latest | grep -o \'"tag_name":"[^"]*"\' | head -1 | cut -d\'"\' -f4); V="${V#v}"; '
+            .'[ -n "$V" ] || V='.self::TEA_FALLBACK_VERSION.'; '
+            .'curl -fsSL -o '.escapeshellarg($target).' "https://dl.gitea.com/tea/${V}/tea-${V}-linux-'.$arch.'"';
     }
 
     /**
@@ -478,12 +501,7 @@ enum CliTool: string
             $binDir = home_path('.larakube/bin');
             @mkdir($binDir, 0755, true);
 
-            $version = '2.67.0';
-            $tarName = "gh_{$version}_linux_{$arch}";
-            $url = "https://github.com/cli/cli/releases/download/v{$version}/{$tarName}.tar.gz";
-
-            $cmd = 'curl -fsSL '.escapeshellarg($url).' | tar -xz -C '.escapeshellarg($binDir).' --strip-components=2 '.escapeshellarg("{$tarName}/bin/gh");
-            $code = Process::forever()->run($cmd)->exitCode();
+            $code = Process::forever()->run(self::ghInstallCommand($arch, $binDir))->exitCode();
 
             if ($code === 0 && file_exists($binDir.'/gh')) {
                 @chmod($binDir.'/gh', 0755);
@@ -511,11 +529,9 @@ enum CliTool: string
             $binDir = home_path('.larakube/bin');
             @mkdir($binDir, 0755, true);
 
-            $version = '0.16.0';
-            $url = "https://dl.gitea.com/tea/{$version}/tea-{$version}-linux-{$arch}";
             $target = "{$binDir}/tea";
 
-            $code = Process::forever()->run('curl -fsSL -o '.escapeshellarg($target).' '.escapeshellarg($url))->exitCode();
+            $code = Process::forever()->run(self::teaInstallCommand($arch, $target))->exitCode();
             if ($code === 0 && file_exists($target)) {
                 @chmod($target, 0755);
 

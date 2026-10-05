@@ -152,3 +152,78 @@ test('every case can actually reach an installer', function (): void {
 
     expect($missing)->toBeEmpty(implode(', ', $missing));
 });
+
+/**
+ * Runs a generated install command for real against a `curl` stand-in, so the version lookup and the download
+ * address are what is tested, with no network. The stand-in answers GitHub's redirect and Gitea's API, serves a
+ * gh tarball, and writes the address it was asked for into any file it is told to save.
+ */
+function installWithFakeCurl(string $command, array $answers): array
+{
+    static $keep = [];
+    $keep[] = $temporary = Spatie\TemporaryDirectory\TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporary->path();
+    mkdir($dir.'/bin', 0755, true);
+    mkdir($dir.'/out', 0755, true);
+    mkdir($dir.'/fixture/gh_9.9.9_linux_amd64/bin', 0755, true);
+    file_put_contents($dir.'/fixture/gh_9.9.9_linux_amd64/bin/gh', "#!/bin/sh\necho gh 9.9.9\n");
+    chmod($dir.'/fixture/gh_9.9.9_linux_amd64/bin/gh', 0755);
+
+    file_put_contents($dir.'/bin/curl', <<<'SH'
+#!/bin/sh
+case "$*" in
+  *url_effective*) printf '%s' "$FAKE_REDIRECT" ;;
+  *api/v1/repos/gitea/tea/releases/latest*) printf '%s' "$FAKE_TEA_API" ;;
+  *releases/download/v9.9.9/gh_9.9.9_linux_amd64.tar.gz*) tar -cz -C "$FAKE_FIXTURE" gh_9.9.9_linux_amd64 ;;
+  *) out=''; prev=''; for arg in "$@"; do [ "$prev" = "-o" ] && out="$arg"; prev="$arg"; done
+     [ -n "$out" ] && printf '%s' "$*" > "$out" ;;
+esac
+SH);
+    chmod($dir.'/bin/curl', 0755);
+
+    $env = 'PATH='.escapeshellarg($dir.'/bin:'.getenv('PATH')).' FAKE_FIXTURE='.escapeshellarg($dir.'/fixture')
+        .' FAKE_REDIRECT='.escapeshellarg($answers['redirect'] ?? '').' FAKE_TEA_API='.escapeshellarg($answers['tea'] ?? '');
+
+    exec($env.' sh -c '.escapeshellarg(str_replace('{out}', $dir.'/out', $command)).' 2>&1', $output, $code);
+
+    $result = ['code' => $code, 'output' => implode("\n", $output), 'dir' => $dir.'/out'];
+
+    return $result;
+}
+
+test('the GitHub CLI is installed at whatever version GitHub says is current', function (): void {
+    $result = installWithFakeCurl(CliTool::ghInstallCommand('amd64', '{out}'), ['redirect' => 'https://github.com/cli/cli/releases/tag/v9.9.9']);
+
+    expect($result['code'])->toBe(0)
+        ->and(trim((string) shell_exec(escapeshellarg($result['dir'].'/gh'))))->toBe('gh 9.9.9');
+});
+
+test('the GitHub CLI install stops, saying why, when the current release cannot be found', function (): void {
+    // GitHub did not redirect to a tag: the answer is the address that was asked.
+    $result = installWithFakeCurl(CliTool::ghInstallCommand('amd64', '{out}'), ['redirect' => 'https://github.com/cli/cli/releases/latest']);
+
+    expect($result['code'])->not->toBe(0)
+        ->and($result['output'])->toContain('Could not find the latest GitHub CLI release')
+        ->and(file_exists($result['dir'].'/gh'))->toBeFalse();
+});
+
+test('tea is downloaded at the version Gitea reports as the latest', function (): void {
+    $result = installWithFakeCurl(CliTool::teaInstallCommand('arm64', '{out}/tea'), ['tea' => '{"id":1,"tag_name":"v7.7.7","name":"v7.7.7"}']);
+
+    expect($result['code'])->toBe(0)
+        ->and((string) file_get_contents($result['dir'].'/tea'))->toContain('https://dl.gitea.com/tea/7.7.7/tea-7.7.7-linux-arm64');
+});
+
+test('tea falls back to a known version only when Gitea cannot be asked', function (): void {
+    $result = installWithFakeCurl(CliTool::teaInstallCommand('amd64', '{out}/tea'), ['tea' => '']);
+
+    expect($result['code'])->toBe(0)
+        ->and((string) file_get_contents($result['dir'].'/tea'))->toContain('https://dl.gitea.com/tea/0.16.0/tea-0.16.0-linux-amd64');
+});
+
+test('neither install carries a version of its own, apart from tea\'s fallback', function (): void {
+    $source = (string) file_get_contents(base_path('app/Enums/CliTool.php'));
+
+    expect($source)->not->toContain("'2.67.0'")
+        ->and(substr_count($source, "'0.16.0'"))->toBe(1);
+});
