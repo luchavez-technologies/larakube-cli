@@ -64,8 +64,8 @@ Deploy **Penpot** — the leading open-source design, prototyping, and whiteboar
 ### CLI Commands
 
 - `larakube penpot:init` — Deploys Penpot into `larakube-shared`
-- `larakube design:show` — Displays Penpot deployment status, host, and database details
-- `larakube design:remove` — Teardowns Penpot workload and drops `penpot` database from Plex Commons
+- `larakube penpot:show` — Displays Penpot deployment status, host, and database details
+- `larakube penpot:remove` — Teardowns Penpot workload and drops `penpot` database from Plex Commons
 
 ---
 
@@ -238,8 +238,8 @@ Per the **OpenBao Secrets Prioritization Standard**:
 - [ ] Add `commonsDatabases()` entries: `penpot` for `DESIGN`, `hoppscotch` for `API`
 - [ ] Implement `app/Traits/InteractsWithDesign.php`
 - [ ] Implement `app/Commands/Design/DesignInitCommand.php` (`larakube penpot:init`)
-- [ ] Implement `app/Commands/Design/DesignShowCommand.php` (`larakube design:show`)
-- [ ] Implement `app/Commands/Design/DesignRemoveCommand.php` (`larakube design:remove`)
+- [ ] Implement `app/Commands/Design/DesignShowCommand.php` (`larakube penpot:show`)
+- [ ] Implement `app/Commands/Design/DesignRemoveCommand.php` (`larakube penpot:remove`)
 - [ ] Implement `app/Commands/Api/ApiInitCommand.php` (`larakube api:init`)
 - [ ] Create Blade templates for `k8s.design.*` (`backend`, `frontend`, `ingress`, `exporter`)
 - [ ] Create Pest feature tests: `tests/Feature/DesignInitCommandTest.php` and `tests/Feature/ApiInitCommandTest.php`

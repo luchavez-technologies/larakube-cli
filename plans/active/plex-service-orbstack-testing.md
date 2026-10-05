@@ -103,7 +103,7 @@ larakube outline:init local --context=orbstack --domain=notes-check.test
 Remove it with its Commons data — `--purge` only touches this throwaway instance:
 
 ```bash
-larakube notes:remove local --context=orbstack --domain=notes-check.test --purge --force
+larakube outline:remove local --context=orbstack --domain=notes-check.test --purge --force
 ```
 
 - [ ] Its Redis slot is free again in `plex:show`

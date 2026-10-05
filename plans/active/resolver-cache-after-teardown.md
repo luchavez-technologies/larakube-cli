@@ -36,7 +36,7 @@ and the gateway then has no setup key to mount. Hours were lost to it.
 | has the record | fails | **stale cache** — flush needed |
 
 Any check must make that comparison. A bare "curl should not return 000" is wrong immediately
-after a teardown, where `000` is the right answer — the first version of the `vpn:remove`
+after a teardown, where `000` is the right answer — the first version of the `netbird:remove`
 warning did exactly that and reported a healthy teardown as a fault.
 
 ## What NetBird does now (the pattern to copy)
@@ -45,7 +45,7 @@ warning did exactly that and reported a healthy teardown as a fault.
    machine cannot resolve the host, the caller prints the remedy and returns 1 without rolling
    anything back. It previously printed the right remedy and carried on anyway, which is what
    turned a clear diagnosis into a misleading error three steps later.
-2. **`vpn:remove` warns on the way out**, naming the host whose record it just removed and the
+2. **`netbird:remove` warns on the way out**, naming the host whose record it just removed and the
    flush command — the poisoning happens at teardown, so that is where it is cheapest to catch.
    It states plainly that the host no longer resolving is CORRECT, and frames the flush as
    conditional on a later `netbird:init` failing to reach it. It hands over no check to run there,

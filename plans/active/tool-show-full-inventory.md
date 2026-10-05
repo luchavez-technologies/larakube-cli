@@ -13,12 +13,12 @@ That gap is not theoretical. During the canonical-naming migration two tools
 passed every check and were broken:
 
 - `dashboard`'s teardown targeted `dashboard-headlamp-oidc-…` and
-  `ingress/dashboard-…` after the ledger flip renamed them. `dashboard:show`
+  `ingress/dashboard-…` after the ledger flip renamed them. `headlamp:show`
   reported the tool healthy.
 - `monitor`'s `--vpn-only` Middleware was created as
   `grafana-vpn-only-{instance}` while the Ingress annotation asked for
   `grafana-vpn-only`. Traefik fails the whole router on a missing middleware
-  reference. `monitor:show` reported the tool healthy.
+  reference. `grafana:show` reported the tool healthy.
 
 In both cases every name involved was derivable from `ToolInstance`. A `:show`
 that derives names and prints them would have printed both wrong answers with
@@ -81,7 +81,7 @@ usable as a health gate in a script.
 
 ### Masking
 
-`webmail:show` prints an admin password in cleartext today, and this change
+`bulwark:show` prints an admin password in cleartext today, and this change
 adds more secret surface to a command whose output people paste into issues.
 
 - Default: `••••••••` plus the hint `values hidden — pass --reveal to show`.

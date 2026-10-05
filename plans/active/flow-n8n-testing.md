@@ -1,7 +1,7 @@
 # Walkthrough: n8n on a cloud cluster, per instance
 
 Verifies `n8n:init --engine=n8n` after the move to per-instance names
-(`app/Tools/N8n.php`, `ToolInstance`), and that `flow:remove` keeps the
+(`app/Tools/N8n.php`, `ToolInstance`), and that `n8n:remove` keeps the
 encryption key. Do steps 1–4 **before** handing the instance to anyone: step 4
 removes and reinstalls it.
 
@@ -36,7 +36,7 @@ Invite** someone; the invite email arrives.
 1. In n8n, create any credential (e.g. a dummy HTTP Header Auth) and save it.
 2. Remove without `--purge`:
    ```bash
-   larakube flow:remove production --domain=flow.example.com --force
+   larakube n8n:remove production --domain=flow.example.com --force
    ```
    Expect the warning to say the data volumes and encryption key are **preserved**.
 3. Reinstall with the same command as step 1.
@@ -49,7 +49,7 @@ larakube n8n:init production --engine=n8n --domain=automation.example.com
 ```
 Both hosts work, each with its own owner and database
 (`n8n_flow_example_com`, `n8n_automation_example_com`). Then
-`flow:remove production --domain=automation.example.com --force --purge`
+`n8n:remove production --domain=automation.example.com --force --purge`
 removes only the second one; `flow.example.com` keeps working.
 
 ## 6. One engine per host

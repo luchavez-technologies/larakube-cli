@@ -153,8 +153,8 @@ Executing `larakube vpn:wire production --tool=design` restricts `design.{domain
   updates a DIFFERENT instance, keyed by that host:
   ```
   penpot:init  --domain=team2.example.com     # deploys/updates the instance AT that host
-  design:remove --domain=team2.example.com    # targets the same instance, by the same host
-  design:show   --domain=team2.example.com    # ditto; --domain=all lists every instance
+  penpot:remove --domain=team2.example.com    # targets the same instance, by the same host
+  penpot:show   --domain=team2.example.com    # ditto; --domain=all lists every instance
   ```
   The Kubernetes-resource-naming slug is derived automatically via
   `ClusterTool::DESIGN->instanceSlugFromHost($host)` — `'main'` for the

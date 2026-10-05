@@ -40,7 +40,7 @@ graph TD
     end
 
     subgraph "Backward Compatibility Layer"
-        LEG_DATA["directus:init / data:show"] -.->|"Forwards with deprecation notice"| PB
+        LEG_DATA["directus:init / directus:show"] -.->|"Forwards with deprecation notice"| PB
         LEG_CHAT["matrix:init"] -.->|"Forwards with deprecation notice"| MX
         LEG_CRM["twenty:init"] -.->|"Forwards with deprecation notice"| TW
     end

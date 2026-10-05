@@ -208,7 +208,7 @@ already moved to S3 (though on LaraKube those objects are still covered, since
 So `directus:init --storage=commons` for PocketBase is a post-deploy API call, the
 same shape as `stalwartSetPermissiveCors()`. Consequences:
 
-- An admin can turn it off again in the UI. `directus:init` sets it; `data:show`
+- An admin can turn it off again in the UI. `directus:init` sets it; `directus:show`
   reports the drift. It does not re-enforce on every run and fight the admin.
 - Flipping it on for an **existing** install does not move files already on the
   PVC. Init-only, with a warning on re-init, and `data:storage` for the real

@@ -17,7 +17,7 @@ Verified 2026-08-28 against the live cluster and NetBird 0.77.1:
   `DELETE FROM accounts WHERE id NOT IN (...)` leaves orphaned peers, groups, policies,
   setup keys and tokens behind — silently.
 
-That last point rules out row surgery. But none of it is needed: **`larakube vpn:remove`
+That last point rules out row surgery. But none of it is needed: **`larakube netbird:remove`
 deletes the whole `larakube-vpn` namespace**, and both PVs are `Delete` reclaim policy, so
 the store is genuinely destroyed rather than merely unbound. `vpn-secrets` goes with it, so
 `bootstrapVpnAuth()` re-runs by itself on the next `netbird:init`.
@@ -70,7 +70,7 @@ with the mode back on, lands in the correct account automatically.
 ## Steps
 
 ```
-larakube vpn:remove <env> --context=<ctx>
+larakube netbird:remove <env> --context=<ctx>
 larakube netbird:init   <env> --context=<ctx>
 larakube sso:wire   vpn <env> --context=<ctx>
 ```
@@ -85,7 +85,7 @@ Build the CLI first: `netbird:init` now reports the single-account state, create
 Verify afterwards:
 
 - management log reads `single account mode enabled, accounts number 0` (then `1`)
-- `larakube vpn:show` prints no single-account warning
+- `larakube netbird:show` prints no single-account warning
 - the PAT in `vpn-secrets` belongs to `larakube-cli`, not a human
 - the gateway peer is in `larakube-routers`
 - the phone gets an address in the **same** `/16` as the gateway
@@ -134,7 +134,7 @@ So the CLI makes that call. `vpn:sso-login`:
 The sequence for a clean cluster is therefore:
 
 ```
-larakube vpn:remove <env> --purge
+larakube netbird:remove <env> --purge
 larakube netbird:init <env>
 larakube sso:wire <env>        # retires the domain-less bootstrap account
 larakube vpn:sso-login <env>   # creates the shared, domained account

@@ -19,7 +19,7 @@ room lifecycle and server-side events matter more than raw media.
 ## ⚠️ Known gap: webhooks are not actually registered
 
 The registry schema carries `webhookUrl`, `livekit.blade.php` renders a `webhook:` block from
-it, and `meet:show` displays it — but **nothing ever sets it**. Both callers of
+it, and `livekit:show` displays it — but **nothing ever sets it**. Both callers of
 `allocateMeetKey()` pass three arguments, leaving `webhookUrl` null:
 
 - `app/Enums/LaravelFeature.php:585`
@@ -74,7 +74,7 @@ Verify:
 - `.env` has `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_ROOM_PREFIX`
 - `LIVEKIT_ROOM_PREFIX` is `meet-probe-`
 - `LIVEKIT_URL` is the **shared** host — `wss://meet.<tld>`, never `meet.meet-probe.<tld>`
-- `larakube meet:show` lists a new consumer `app-meet-probe`
+- `larakube livekit:show` lists a new consumer `app-meet-probe`
 - The key in `.env` matches the one in `meet-keys`, and `_system` + `chat` are untouched
 
 ### 2. Confirm re-running does not rotate
@@ -84,7 +84,7 @@ larakube add meet     # again
 ```
 
 `allocateMeetKey()` keeps an existing pair on purpose — an app already holding the key in `.env`
-must not be invalidated. Confirm the key is unchanged and `meet:show` still lists one consumer.
+must not be invalidated. Confirm the key is unchanged and `livekit:show` still lists one consumer.
 
 ### 3. Mint a token and join
 
@@ -127,14 +127,14 @@ above.
 ## Things most likely to break
 
 - **`onPostInstall()` silently returning `[]`** when Meet isn't installed, leaving empty
-  credentials in `.env`. Correct behaviour, confusing symptom. Check `meet:show` first.
+  credentials in `.env`. Correct behaviour, confusing symptom. Check `livekit:show` first.
 - **`LIVEKIT_URL` wrong for cloud.** The local default is `wss://meet.<global tld>`;
   `onPostInstall()` overrides it from the tool registry. If a project is added while pointed at
   a cluster where `meet` is unregistered, the local default sticks.
 - **A stale build.** `larakube add meet` runs from the compiled phar, so an un-rebuilt binary
   will not have this feature at all.
 - **`livekit:init` wiping the app's key** — fixed by `5372177` (jsonpath escaping), but if an app's
-  credentials ever stop working, check `meet:show` before anything else.
+  credentials ever stop working, check `livekit:show` before anything else.
 
 ## Definition of done
 

@@ -237,7 +237,7 @@ inverse instead of orphaning DNS.
 ### Two traps to build in, not discover
 
 **Discover the client IP at runtime.** It persists only via the
-`netbird-client-data` PVC; lose that (or `vpn:remove --purge`) and the peer
+`netbird-client-data` PVC; lose that (or `netbird:remove --purge`) and the peer
 rejoins on a different IP, silently breaking the nameserver group. Confirmed
 live — the gateway moved from `100.70.57.180` to `100.113.100.204` across one
 rebuild. `netbird:init` should re-read and reconcile every run.

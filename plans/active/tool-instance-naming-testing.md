@@ -20,7 +20,7 @@ one-level host (e.g. `notes-check.luchtech.dev`), and `--dry-run` where offered.
 - [ ] Scratch pair: `yopass:init production --domain=paste-a.luchtech.dev` and
   `--domain=paste-b.luchtech.dev`. `plex:show` lists two Redis tenants with
   different indexes and two buckets.
-- [ ] `paste:remove production --domain=paste-a.luchtech.dev --purge`: only A's
+- [ ] `yopass:remove production --domain=paste-a.luchtech.dev --purge`: only A's
   tenants disappear from `plex:show`; A's Redis index holds 0 keys; B still
   works.
 
@@ -28,7 +28,7 @@ one-level host (e.g. `notes-check.luchtech.dev`), and `--dry-run` where offered.
 - [ ] Scratch pair of a tool with shared resources (e.g. Meet or Link on two
   one-level hosts). Removing A leaves B serving 200 and its shared Secret in
   place; removing B last also removes the shared resources.
-- [ ] `paste:remove --domain=…` and `link:remove --domain=…` both run (no
+- [ ] `yopass:remove --domain=…` and `kutt:remove --domain=…` both run (no
   "does not support multiple instances" refusal).
 
 ## Stage 3: readers

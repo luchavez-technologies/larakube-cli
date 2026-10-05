@@ -52,7 +52,7 @@ gap, not specific to Webmail — it's just the one blocking this specific ask.
 ### Small, optional hardening worth doing alongside this
 `ToolAliasCommand::handle()` never checks whether any `external-dns:init`-managed zone actually
 covers the new alias before applying it — reuse `installedDnsZones()`
-(`InteractsWithDnsZones.php`, already used by `dns:list`) to at least print a warning
+(`InteractsWithDnsZones.php`, already used by `external-dns:list`) to at least print a warning
 ("no ExternalDNS zone covers '{$aliasDomain}' — the record won't be created automatically,
 run `external-dns:init` first or add it manually") rather than applying silently. Not a hard
 refusal — an operator using an alias under a zone managed *outside* this cluster entirely

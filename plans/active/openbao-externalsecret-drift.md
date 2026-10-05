@@ -55,7 +55,7 @@ Nothing surfaces this. Four of 21 ExternalSecrets have been broken for ten days 
 1. **Guard `secrets:rotate`** — refuse when the target's ExternalSecret is not
    `Ready:True`/`SecretSynced`. Pure code; closes the crash-loop path.
 2. **Surface the drift** — report "ExternalSecret reads a static role that does not exist"
-   somewhere visible. `secrets:show` is the natural home.
+   somewhere visible. `openbao:show` is the natural home.
 3. **Re-wire the three** — `secrets:wire --tool=record|resume|sheet` creates the missing
    roles through the correct rotate → sync → wait → restart path. Restarts prod pods, so
    this is an operator decision, not something to automate into a fix-up command.

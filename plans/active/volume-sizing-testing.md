@@ -205,13 +205,13 @@ exactly the state a `storage:resize` leaves behind.
 ## Phase F — Cleanup (fixtures only)
 
 - [ ] **Only if Phase E printed the success line** (that line prints after registration):
-  `./larakube data:remove local --context=orbstack --domain=resize-fixture.test --force`
+  `./larakube directus:remove local --context=orbstack --domain=resize-fixture.test --force`
   An explicit `--domain` skips the instance picker. No `--purge` — PocketBase has no Commons data.
-- [ ] **If Phase E did not print it**, skip `data:remove` and delete by exact name instead:
+- [ ] **If Phase E did not print it**, skip `directus:remove` and delete by exact name instead:
   ```bash
   kubectl --context orbstack delete deployment/data-pocketbase-resize-fixture-test service/data-pocketbase-resize-fixture-test ingress/data-pocketbase-resize-fixture-test-ingress configmap/data-pocketbase-resize-fixture-test-hooks secret/data-secrets-resize-fixture-test secret/data-smtp-resize-fixture-test secret/data-oidc-resize-fixture-test -n larakube-shared --ignore-not-found
   ```
-- [ ] Delete the fixture claim either way — `data:remove` leaves PocketBase claims behind:
+- [ ] Delete the fixture claim either way — `directus:remove` leaves PocketBase claims behind:
   `kubectl --context orbstack delete pvc data-pocketbase-pvc-resize-fixture-test -n larakube-shared --ignore-not-found`
 - [ ] `kubectl --context orbstack delete namespace resize-fixture`
 - [ ] `kubectl --context orbstack delete storageclass larakube-resize-fixture`
@@ -225,7 +225,7 @@ exactly the state a `storage:resize` leaves behind.
 
 - **Bytes actually growing.** No StorageClass with a real resizer exists on OrbStack or the VPS.
   Verifying that needs `do-block-storage` on DOKS.
-- **`data:remove` leaks PocketBase claims.** It deletes the Deployment, Service, Ingress,
+- **`directus:remove` leaks PocketBase claims.** It deletes the Deployment, Service, Ingress,
   ConfigMap and Secrets but never the PVC, even with `--purge`. Phase F works around it; it is a
   separate fix.
 - **Project-app volumes** (`base/volumes`, `mysql/`, `nextjs/`, …) don't use `$volumeSize` — their
