@@ -29,5 +29,5 @@ test('Reverb installs its Echo packages into the project folder, not a folder na
 });
 
 test('Reverb leaves a project that already has Echo alone', function (): void {
-    expect(LaravelFeature::REVERB->getJsDependencies(reverbProject(['laravel-echo' => '^2'])))->toBe([]);
+    expect(LaravelFeature::REVERB->getJsDependencies(reverbProject(['laravel-echo' => '^2'])))->toBeEmpty();
 });
