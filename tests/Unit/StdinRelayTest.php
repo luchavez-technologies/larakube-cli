@@ -13,5 +13,5 @@ test('only the first line that arrives is handed to the waiting child, and then 
 test('a stream that ends without a line hands the child nothing', function (): void {
     $stream = fopen('php://memory', 'w+');
 
-    expect(iterator_to_array(StdinRelay::firstLine($stream), false))->toBe([]);
+    expect(iterator_to_array(StdinRelay::firstLine($stream), false))->toBeEmpty();
 });

@@ -69,6 +69,18 @@ test('update --canary fails gracefully on release API failure', function (): voi
         ->assertExitCode(1);
 });
 
+test('update --canary --yes does not ask, so a caller with no terminal can update', function (): void {
+    Http::fake([
+        'api.github.com/repos/luchavez-technologies/larakube-cli/releases/tags/canary' => Http::response([], 500),
+    ]);
+
+    $this->artisan('update --canary --yes')
+        ->expectsOutputToContain('Failed to fetch the canary release from the GitHub release server.')
+        ->assertExitCode(1);
+
+    Http::assertSentCount(1);
+});
+
 test('update defers to Homebrew instead of self-replacing when the running binary lives under a Cellar', function (): void {
     $originalArgv0 = $_SERVER['argv'][0] ?? null;
     $_SERVER['argv'][0] = '/opt/homebrew/Cellar/larakube/0.31.0/bin/larakube';

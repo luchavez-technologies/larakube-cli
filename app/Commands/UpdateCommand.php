@@ -13,7 +13,9 @@ class UpdateCommand extends Command
 {
     use LaraKubeOutput, StreamsProcessOutput;
 
-    protected $signature = 'update {--canary : Update to the latest canary (bleeding-edge, unstable) build from develop}';
+    protected $signature = 'update
+        {--canary : Update to the latest canary (bleeding-edge, unstable) build from develop}
+        {--yes : Update without asking, for a caller with no terminal (LaraKube Desktop)}';
 
     protected $description = 'Update the LaraKube CLI to the latest version';
 
@@ -80,7 +82,7 @@ class UpdateCommand extends Command
 
         $this->laraKubeInfo("A new version is available: <fg=green>$latestVersion</>");
 
-        if (! $this->confirm('Do you want to update now?', true)) {
+        if (! $this->option('yes') && ! $this->confirm('Do you want to update now?', true)) {
             return 0;
         }
 
@@ -97,7 +99,7 @@ class UpdateCommand extends Command
     {
         $this->laraKubeWarn('⚠ Canary builds are unstable, bleeding-edge builds from the tip of develop — they may be broken.');
 
-        if (! $this->confirm('Update to the latest canary build now?', false)) {
+        if (! $this->option('yes') && ! $this->confirm('Update to the latest canary build now?', false)) {
             return 0;
         }
 
