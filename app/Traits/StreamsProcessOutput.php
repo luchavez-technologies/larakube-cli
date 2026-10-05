@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use App\Facades\State;
+use App\Services\Cloud\StdinRelay;
 use Illuminate\Support\Facades\Process;
 use Symfony\Component\Process\Process as SymfonyProcess;
 
@@ -69,6 +70,20 @@ trait StreamsProcessOutput
         }
 
         return Process::forever()->tty()->run($command)->exitCode();
+    }
+
+    /**
+     * Run a command whose output streams to us and that waits for ONE line on our standard input: the verification
+     * code of `gcloud auth login --no-launch-browser`. Output goes where runStreaming() sends it (stderr under
+     * --json), so the caller sees the sign-in address; the line the caller then writes to our stdin reaches the child.
+     */
+    protected function runWithStdinLine(string $command, int $timeoutSeconds = 900): int
+    {
+        return Process::timeout($timeoutSeconds)
+            ->input(StdinRelay::firstLine(STDIN))
+            ->run($command, function (string $type, string $output): void {
+                State::isJsonMode() ? fwrite(STDERR, $output) : print $output;
+            })->exitCode();
     }
 
     /**
