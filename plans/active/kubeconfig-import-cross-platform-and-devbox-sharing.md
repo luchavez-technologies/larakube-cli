@@ -1,5 +1,10 @@
 # Implementation Plan: Kubeconfig Cross-Platform Import & DevBox Sharing Architecture
 
+> [!NOTE]
+> **Status: COMPLETED & VERIFIED (Ready for `./build`)**
+> - **CLI Implementation**: `DevBoxBundle` (AES-256-GCM + PBKDF2), `devbox:export`, `devbox:import`, `devbox:grant`, and `devbox:revoke` commands. Committed in `cli/` (`678a1ebb`, 3,102 tests passed).
+> - **Desktop Implementation**: `DevBoxImportModal`, `DevBoxExportModal`, `DevBoxGrantModal`, Collaborators & Access card in `show.tsx`, Import button in `index.tsx`, controller endpoints with Windows/WSL path translation. Committed in `desktop/` (`e8f155e`, 351 tests passed, lint & type checks 0 errors).
+
 ## Goal Description
 1. **Verify & Fix Cross-Platform "Import Kubeconfig" (macOS ↔ Windows/WSL)**:
    Ensure clusters and kubeconfigs exported on macOS (or any machine) can be cleanly imported into LaraKube Desktop on Windows, eliminating path conversion failures between Windows and WSL.
