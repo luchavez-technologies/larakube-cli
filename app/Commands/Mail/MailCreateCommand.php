@@ -188,7 +188,7 @@ class MailCreateCommand extends Command
 
         $accountId = $created[0][1]['created']['new1']['id'] ?? null;
 
-        $host = $this->resolveMailHostReadOnly($env, $config);
+        $host = $this->resolveMailHostReadOnly($env, $config, $kubectl);
         $fullEmail = "{$localPart}@{$domainName}";
 
         $this->laraKubeNewLine();

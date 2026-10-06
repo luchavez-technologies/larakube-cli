@@ -167,7 +167,7 @@ class MailRelayCommand extends Command
             $this->laraKubeInfo("Removed {$pruned} Ed25519 DKIM key(s) — signing with RSA only.");
         }
 
-        $host = $this->resolveMailHostReadOnly($env, $config);
+        $host = $this->resolveMailHostReadOnly($env, $config, $kubectl);
         $domain = $host ? $this->relayDomain($host) : null;
 
         $this->laraKubeNewLine();
@@ -208,7 +208,7 @@ class MailRelayCommand extends Command
         // LaraKube can't delete the DNS records the provider added via its own
         // Cloudflare integration — point the user straight at them so they
         // aren't left orphaned in the zone.
-        $host = $this->resolveMailHostReadOnly($env, $config);
+        $host = $this->resolveMailHostReadOnly($env, $config, $kubectl);
         $domain = $host ? $this->relayDomain($host) : null;
         if ($domain) {
             $this->newLine();

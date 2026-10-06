@@ -178,3 +178,30 @@ test('stalwart:show resolves Bulwark webmail host from registry and emits webmai
     expect($exitCode)->toBe(0)
         ->and($output)->toContain('"webmailUrl": "https://mail.luchtech.dev"');
 });
+
+test('stalwart:show resolves active outbound relay and emits relay in json', function (): void {
+    ssoRegistered();
+    Process::fake([
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('s3cret-p@ss')),
+        '*get secret stalwart-relay*' => Process::result(output: base64_encode('ses')),
+        '*port-forward*' => Process::result(output: ''),
+    ]);
+
+    Saloon::fake([
+        App\Http\Integrations\Stalwart\Requests\JmapRequest::class => MockResponse::make([
+            'methodResponses' => [
+                ['x:MtaRoute/query', ['ids' => ['r1']], 'c0'],
+                ['x:MtaRoute/get', ['list' => [['id' => 'r1', 'name' => 'ses', 'address' => 'email-smtp.us-east-1.amazonaws.com', 'port' => 2587]]], 'c1'],
+            ],
+            'sessionState' => 'x',
+        ]),
+    ]);
+
+    $exitCode = Illuminate\Support\Facades\Artisan::call('stalwart:show', ['--json' => true]);
+    $output = Illuminate\Support\Facades\Artisan::output();
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('"relay"')
+        ->toContain('"provider": "ses"');
+});

@@ -181,7 +181,7 @@ trait InteractsWithMail
         }
 
         return [
-            'host' => $this->resolveMailHostReadOnly($env, $config),
+            'host' => $this->resolveMailHostReadOnly($env, $config, $kubectl),
             'label' => 'Stalwart',
         ];
     }

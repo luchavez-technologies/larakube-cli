@@ -71,7 +71,7 @@ abstract class MailShowCommand extends Command
             return $this->showAccount($kubectl, $ns, $env, $config, $email);
         }
 
-        $host = $this->resolveMailHostReadOnly($env, $config);
+        $host = $this->resolveMailHostReadOnly($env, $config, $kubectl);
         $adminPassword = $this->readMailSecret($kubectl, $ns, 'admin-password');
 
         if ($adminPassword === null) {
@@ -88,6 +88,7 @@ abstract class MailShowCommand extends Command
 
         $webmail = $this->webmailUrl($kubectl, $ns, $env, $config);
         $queued = $this->stalwartQueueCount($kubectl, $ns);
+        $relay = $this->resolveActiveMailRelay($kubectl, $ns);
 
         if ($this->option('json')) {
             $this->line((string) json_encode([
@@ -100,6 +101,7 @@ abstract class MailShowCommand extends Command
                 'imap' => $host ? ['host' => $host, 'port' => 993, 'tls' => true] : null,
                 'smtp' => $host ? ['host' => $host, 'port' => 465, 'tls' => true] : null,
                 'queue' => (int) ($queued ?? 0),
+                'relay' => $relay,
             ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
             return 0;
@@ -121,6 +123,12 @@ abstract class MailShowCommand extends Command
             $this->line('  <fg=gray>IMAP:</>          <fg=blue>'.$host.'</>  port <fg=blue>993</> (SSL/TLS)');
             $this->line('  <fg=gray>SMTP:</>          <fg=blue>'.$host.'</>  port <fg=blue>465</> (SSL/TLS)');
             $this->line('  <fg=gray>SMTP (alt):</>    <fg=blue>'.$host.'</>  port <fg=blue>587</> (STARTTLS — only if you added a 587 listener)');
+            $this->newLine();
+        }
+
+        if ($relay !== null) {
+            $providerLabel = strtoupper((string) ($relay['provider'] ?? ''));
+            $this->line("  <fg=gray>Outbound relay:</> <fg=green>{$providerLabel}</> ({$relay['username']} @ {$relay['host']}:{$relay['port']})");
             $this->newLine();
         }
 
@@ -233,7 +241,7 @@ abstract class MailShowCommand extends Command
             return 1;
         }
 
-        $host = $this->resolveMailHostReadOnly($env, $config);
+        $host = $this->resolveMailHostReadOnly($env, $config, $kubectl);
 
         if ($this->option('json')) {
             $this->line((string) json_encode([
@@ -324,5 +332,47 @@ abstract class MailShowCommand extends Command
         $host = $this->resolveBulwarkHostReadOnly($env, $config, $kubectl);
 
         return $host !== null ? "https://{$host}" : null;
+    }
+
+    /**
+     * Resolve active outbound relay configuration if present.
+     *
+     * @return array{configured: bool, provider: string, username?: ?string, region?: ?string, port?: int, host?: string}|null
+     */
+    protected function resolveActiveMailRelay(string $kubectl, string $ns): ?array
+    {
+        $provider = $this->readMailRelay($kubectl, $ns, 'provider');
+        $username = $this->readMailRelay($kubectl, $ns, 'username');
+        $region = $this->readMailRelay($kubectl, $ns, 'region');
+
+        if ($provider !== null && $provider !== '') {
+            $route = $this->stalwartFindRoute($kubectl, $ns, $provider);
+
+            return [
+                'configured' => true,
+                'provider' => $provider,
+                'username' => $username,
+                'region' => $region ?: null,
+                'port' => (int) ($route['port'] ?? ($provider === 'ses' ? 2587 : 2525)),
+                'host' => (string) ($route['address'] ?? ($provider === 'ses' && $region ? "email-smtp.{$region}.amazonaws.com" : '')),
+            ];
+        }
+
+        $strategy = $this->stalwartOutboundStrategy($kubectl, $ns);
+        $else = trim((string) ($strategy['route']['else'] ?? ''), "'\"");
+        if ($else !== '' && $else !== 'mx' && $else !== 'local' && $else !== 'default') {
+            $route = $this->stalwartFindRoute($kubectl, $ns, $else);
+
+            return [
+                'configured' => true,
+                'provider' => $else,
+                'username' => (string) ($route['authUsername'] ?? ''),
+                'region' => null,
+                'port' => (int) ($route['port'] ?? 2525),
+                'host' => (string) ($route['address'] ?? ''),
+            ];
+        }
+
+        return null;
     }
 }

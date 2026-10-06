@@ -62,7 +62,7 @@ class MailDnsCommand extends Command
             return 1;
         }
 
-        $zone = $this->resolveZone($env, $config);
+        $zone = $this->resolveZone($env, $config, $kubectl);
         $token = $this->resolveToken($kubectl, $ns, $zone);
 
         $zoneId = $this->cloudflareZoneId($zone, $token);
@@ -267,7 +267,7 @@ class MailDnsCommand extends Command
         return 1;
     }
 
-    protected function resolveZone(string $env, ?ConfigData $config): string
+    protected function resolveZone(string $env, ?ConfigData $config, ?string $kubectl = null): string
     {
         $zone = (string) ($this->option('zone') ?? '');
         if ($zone !== '') {
@@ -282,7 +282,7 @@ class MailDnsCommand extends Command
             );
         }
 
-        $host = $this->resolveMailHostReadOnly($env, $config);
+        $host = $this->resolveMailHostReadOnly($env, $config, $kubectl);
         $defaultZone = $host ? (count(explode('.', $host)) > 2 ? implode('.', array_slice(explode('.', $host), 1)) : $host) : null;
 
         return (string) text(

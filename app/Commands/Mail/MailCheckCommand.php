@@ -63,7 +63,7 @@ class MailCheckCommand extends Command
 
         $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->mailNamespace();
-        $host = (string) $this->resolveMailHostReadOnly($env, $config);
+        $host = (string) $this->resolveMailHostReadOnly($env, $config, $kubectl);
 
         if ($host === '') {
             if ($this->option('json')) {

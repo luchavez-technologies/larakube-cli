@@ -61,7 +61,7 @@ class MailTestCommand extends Command
             return 1;
         }
 
-        $host = (string) $this->resolveMailHostReadOnly($env, $config);
+        $host = (string) $this->resolveMailHostReadOnly($env, $config, $kubectl);
         $domain = $this->testDomain($host);
 
         $to = (string) ($this->option('to') ?: text(
