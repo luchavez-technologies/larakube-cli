@@ -1,0 +1,1 @@
+{"fetchedAt":1791206366,"data":{"regions":[{"value":"nyc1","label":"nyc1 \u2014 New York 1"}],"sizes":[{"value":"s-1vcpu-1gb","label":"s-1vcpu-1gb   \u2014  1 vCPU,  1 GB RAM  (~$6\/mo)","monthly":6,"currency":"USD"},{"value":"s-2vcpu-4gb","label":"s-2vcpu-4gb   \u2014  2 vCPU,  4 GB RAM  (~$24\/mo)","monthly":24,"currency":"USD"}],"currency":"USD"}}

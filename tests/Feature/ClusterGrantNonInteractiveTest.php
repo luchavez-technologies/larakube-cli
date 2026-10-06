@@ -81,3 +81,16 @@ test('standalone scoped grant with --namespaces resolves context without requiri
 
     expect(State::lastError())->not->toContain('Provide a namespace, or run inside a project to pick an environment.');
 });
+
+test('cluster:grant accepts --output and --export-rbac options without validation error', function (): void {
+    $this->artisan('cluster:grant', [
+        '--name' => 'alice',
+        '--context' => 'do-nyc1-blue',
+        '--cluster' => true,
+        '--output' => '/tmp/alice.kubeconfig',
+        '--export-rbac' => '/tmp/alice-rbac.yaml',
+        '--no-interaction' => true,
+    ]);
+
+    expect(State::lastError())->not->toContain('does not exist');
+});

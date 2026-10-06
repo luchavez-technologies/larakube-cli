@@ -34,6 +34,8 @@ class ClusterGrantCommand extends Command
         {--namespaces= : Comma-separated namespaces to bind (omit to pick them interactively)}
         {--cluster : Grant across EVERY namespace (ClusterRoleBinding) — last resort; prefer --namespaces}
         {--context= : Standalone: target a kube-context directly (when not in a project)}
+        {--output= : Path or directory where the kubeconfig file should be written}
+        {--export-rbac= : Optional path to save the applied Kubernetes RBAC YAML manifest}
         {--json : Emit one machine-readable JSON result (incl. the minted kubeconfig) on stdout}';
 
     protected $description = 'Grant a teammate scoped access to an environment (re-run to upgrade/downgrade their role or add another app)';
@@ -76,7 +78,9 @@ class ClusterGrantCommand extends Command
         $pattern = '*.kubeconfig';
         $gitignore = $dir.'/.gitignore';
 
-        if (! is_dir($dir.'/.git') && ! is_file($gitignore)) {
+        // Only touch .gitignore if inside an actual git repository (.git exists)
+        // and when running within a local project context (not in standalone cluster mode).
+        if (! is_dir($dir.'/.git') || $this->option('context') !== null) {
             return;
         }
 
@@ -300,21 +304,26 @@ class ClusterGrantCommand extends Command
         $this->laraKubeInfo("Granting '{$name}' [{$role}] on {$scopeLabel}...");
         $this->line("  <fg=gray>Cluster:</> <fg=cyan>{$adminContext}</>");
 
+        $identityManifest = $this->teammateIdentityManifest($accessNs, $sa, $name);
+        $appliedManifests = [$identityManifest];
+
         // 1. Identity — namespace + SA + bound-token Secret (idempotent; an
         //    existing teammate keeps the same token).
-        if (! $this->applyManifest($adminContext, $this->teammateIdentityManifest($accessNs, $sa, $name))) {
+        if (! $this->applyManifest($adminContext, $identityManifest)) {
             $this->laraKubeError('Failed to create the teammate identity.');
 
             return 1;
         }
 
         // The RoleBinding lives IN the app namespace, so it must exist first
-        // (admin creates it — same as cloud:deploy). A missing namespace is the
-        // usual cause of a bind failure on a fresh cluster.
-        $nsExists = Process::run("{$ctx} get namespace ".escapeshellarg($appNs))->successful();
-        if (! $nsExists) {
-            $this->laraKubeInfo("Namespace '{$appNs}' doesn't exist yet — creating it.");
-            Process::run("{$ctx} create namespace ".escapeshellarg($appNs));
+        // (admin creates it — same as cloud:deploy). Only ensure it exists when
+        // targeting a specific app namespace in a scoped grant.
+        if (! $clusterWide && $appNs !== '') {
+            $nsExists = Process::run("{$ctx} get namespace ".escapeshellarg($appNs))->successful();
+            if (! $nsExists) {
+                $this->laraKubeInfo("Namespace '{$appNs}' doesn't exist yet — creating it.");
+                Process::run("{$ctx} create namespace ".escapeshellarg($appNs));
+            }
         }
 
         // 2. The binding. roleRef is immutable, so to support upgrade/downgrade we
@@ -327,7 +336,10 @@ class ClusterGrantCommand extends Command
         if ($clusterWide) {
             Process::run("{$ctx} delete clusterrolebinding ".escapeshellarg($this->teammateClusterBindingName($sa)).' --ignore-not-found');
 
-            if (! $this->applyManifest($adminContext, $this->teammateClusterBindingManifest($accessNs, $sa, $role), $bindOut)) {
+            $bindingManifest = $this->teammateClusterBindingManifest($accessNs, $sa, $role);
+            $appliedManifests[] = $bindingManifest;
+
+            if (! $this->applyManifest($adminContext, $bindingManifest, $bindOut)) {
                 $this->laraKubeError("Failed to bind access on {$scopeLabel}:\n  ".implode("\n  ", array_slice($bindOut, -3)));
 
                 return 1;
@@ -344,7 +356,10 @@ class ClusterGrantCommand extends Command
 
                 Process::run("{$ctx} -n ".escapeshellarg($ns).' delete rolebinding '.escapeshellarg($this->teammateBindingName($sa)).' --ignore-not-found');
 
-                if (! $this->applyManifest($adminContext, $this->teammateBindingManifest($ns, $accessNs, $sa, $role), $bindOut)) {
+                $bindingManifest = $this->teammateBindingManifest($ns, $accessNs, $sa, $role);
+                $appliedManifests[] = $bindingManifest;
+
+                if (! $this->applyManifest($adminContext, $bindingManifest, $bindOut)) {
                     $this->laraKubeError("Failed to bind access in '{$ns}':\n  ".implode("\n  ", array_slice($bindOut, -3)));
 
                     return 1;
@@ -372,10 +387,36 @@ class ClusterGrantCommand extends Command
         $defaultNs = $clusterWide ? 'default' : $grantNamespaces[0];
         $kubeconfig = $this->assembleTeammateKubeconfig($contextName, $server, $ca, $defaultNs, $token, $sa);
 
-        $file = getcwd().'/'.$sa.'.kubeconfig';
+        $outputOption = (string) ($this->option('output') ?? '');
+        if ($outputOption !== '') {
+            $file = (is_dir($outputOption) || str_ends_with($outputOption, '/') || str_ends_with($outputOption, '\\'))
+                ? rtrim($outputOption, '/\\').DIRECTORY_SEPARATOR.$sa.'.kubeconfig'
+                : $outputOption;
+        } else {
+            $file = getcwd().DIRECTORY_SEPARATOR.$sa.'.kubeconfig';
+        }
+
+        $fileDir = dirname($file);
+        if (! is_dir($fileDir)) {
+            @mkdir($fileDir, 0755, true);
+        }
         file_put_contents($file, $kubeconfig);
         @chmod($file, 0600);
-        $this->ensureKubeconfigIgnored(getcwd());
+        $this->ensureKubeconfigIgnored($fileDir);
+
+        $combinedRbacYaml = implode("\n---\n", $appliedManifests);
+        $exportRbacOption = (string) ($this->option('export-rbac') ?? '');
+        $rbacFile = null;
+        if ($exportRbacOption !== '') {
+            $rbacFile = (is_dir($exportRbacOption) || str_ends_with($exportRbacOption, '/') || str_ends_with($exportRbacOption, '\\'))
+                ? rtrim($exportRbacOption, '/\\').DIRECTORY_SEPARATOR.$sa.'-rbac.yaml'
+                : $exportRbacOption;
+            $rbacDir = dirname($rbacFile);
+            if (! is_dir($rbacDir)) {
+                @mkdir($rbacDir, 0755, true);
+            }
+            file_put_contents($rbacFile, $combinedRbacYaml);
+        }
 
         // A headless caller (LaraKube Cloud) can't read the file from a
         // disposable job container's cwd — hand back the kubeconfig content
@@ -391,12 +432,17 @@ class ClusterGrantCommand extends Command
             'identity' => $accessNs.'/'.$sa,
             'kubeconfigPath' => $file,
             'kubeconfig' => $kubeconfig,
+            'rbacPath' => $rbacFile,
+            'rbacManifest' => $combinedRbacYaml,
         ];
 
         $this->laraKubeInfo("✅ Granted '{$name}' [{$role}] on {$scopeLabel}.");
         $this->line("  <fg=gray>Identity:</> {$accessNs}/{$sa}  <fg=gray>· context they'll see:</> <fg=cyan>{$contextName}</>");
-        $this->line('  <fg=gray>Kubeconfig:</> <fg=cyan>'.$file.'</> <fg=gray>(0600)</>');
-        $this->laraKubeWarn('Deliver this file SECURELY — not committed, not pasted in chat.');
+        $this->line('  <fg=gray>Kubeconfig credential:</> <fg=cyan>'.$file.'</> <fg=gray>(0600)</>');
+        if ($rbacFile !== null) {
+            $this->line('  <fg=gray>RBAC manifest YAML:</> <fg=cyan>'.$rbacFile.'</>');
+        }
+        $this->laraKubeWarn('Deliver the kubeconfig SECURELY — not committed, not pasted in chat.');
         $this->line('  They run: <fg=yellow>larakube context:import '.basename($file).'</>');
         $this->laraKubeNewLine();
         $this->line("  <fg=gray>To add another app later:</> <fg=yellow>larakube cluster:grant <other-ns> --name {$name}</> <fg=gray>(same identity — no new file).</>");
