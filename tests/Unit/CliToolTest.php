@@ -227,3 +227,82 @@ test('neither install carries a version of its own, apart from tea\'s fallback',
     expect($source)->not->toContain("'2.67.0'")
         ->and(substr_count($source, "'0.16.0'"))->toBe(1);
 });
+
+test('binDir defaults to larakube bin and respects LARAKUBE_BIN_DIR', function (): void {
+    putenv('LARAKUBE_BIN_DIR');
+    expect(CliTool::binDir())->toBe(home_path('.larakube/bin'));
+
+    putenv('LARAKUBE_BIN_DIR=/custom/bin/path');
+    expect(CliTool::binDir())->toBe('/custom/bin/path');
+
+    putenv('LARAKUBE_BIN_DIR=/custom/bin/path/');
+    expect(CliTool::binDir())->toBe('/custom/bin/path');
+
+    putenv('LARAKUBE_BIN_DIR');
+});
+
+test('kubectl install command downloads stable release to binDir without sudo', function (): void {
+    $cmd = CliTool::kubectlInstallCommand('darwin', 'arm64', '/tmp/test-bin');
+
+    expect($cmd)->toContain('dl.k8s.io/release/stable.txt')
+        ->toContain('darwin/arm64/kubectl')
+        ->toContain("install -m 0755 \"\$T/kubectl\" '/tmp/test-bin/kubectl'")
+        ->not->toContain('sudo');
+});
+
+test('k9s install command downloads latest archive for darwin and linux', function (): void {
+    $darwinCmd = CliTool::k9sInstallCommand('darwin', 'arm64', '/tmp/test-bin');
+    expect($darwinCmd)->toContain('k9s_Darwin_arm64.tar.gz')
+        ->toContain("tar -xz -C '/tmp/test-bin' k9s")
+        ->not->toContain('sudo');
+
+    $linuxCmd = CliTool::k9sInstallCommand('linux', 'amd64', '/tmp/test-bin');
+    expect($linuxCmd)->toContain('k9s_Linux_amd64.tar.gz')
+        ->not->toContain('sudo');
+});
+
+test('tofu install command resolves latest release and extracts into binDir without sudo', function (): void {
+    $cmd = CliTool::tofuInstallCommand('darwin', 'arm64', '/tmp/test-bin');
+
+    expect($cmd)->toContain('https://github.com/opentofu/opentofu/releases/latest')
+        ->toContain('tofu_${V}_darwin_arm64.tar.gz')
+        ->toContain("tar -xz -C '/tmp/test-bin' tofu")
+        ->not->toContain('sudo')
+        ->not->toContain('unzip');
+});
+
+test('aws install command runs official v2 user-local installer with XDG_BIN_HOME', function (): void {
+    $cmd = CliTool::awsInstallCommand('/tmp/test-bin');
+
+    expect($cmd)->toContain('https://awscli.amazonaws.com/v2/install.sh')
+        ->toContain("XDG_BIN_HOME='/tmp/test-bin'")
+        ->not->toContain('sudo');
+});
+
+test('hcloud install command downloads archive for darwin and linux', function (): void {
+    $darwinCmd = CliTool::hcloudInstallCommand('darwin', 'arm64', '/tmp/test-bin');
+    expect($darwinCmd)->toContain('hcloud-darwin-arm64.tar.gz')
+        ->toContain("tar -xz -C '/tmp/test-bin' hcloud")
+        ->not->toContain('sudo');
+
+    $linuxCmd = CliTool::hcloudInstallCommand('linux', 'amd64', '/tmp/test-bin');
+    expect($linuxCmd)->toContain('hcloud-linux-amd64.tar.gz')
+        ->not->toContain('sudo');
+});
+
+test('gh install command supports macOS using zip and junk-paths unzip', function (): void {
+    $cmd = CliTool::ghInstallCommand('arm64', '/tmp/test-bin', 'darwin');
+
+    expect($cmd)->toContain('https://github.com/cli/cli/releases/latest')
+        ->toContain('D="gh_${V}_macOS_arm64"')
+        ->toContain('${D}.zip')
+        ->toContain('unzip -q -j "$T/gh.zip" "${D}/bin/gh" -d \'/tmp/test-bin\'')
+        ->not->toContain('sudo');
+});
+
+test('tea install command supports macOS darwin binary', function (): void {
+    $cmd = CliTool::teaInstallCommand('arm64', '/tmp/test-bin/tea', 'darwin');
+
+    expect($cmd)->toContain('tea-${V}-darwin-arm64')
+        ->not->toContain('sudo');
+});

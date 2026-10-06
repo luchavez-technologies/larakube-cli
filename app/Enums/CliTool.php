@@ -72,6 +72,16 @@ enum CliTool: string
     }
 
     /**
+     * Directory where user-local binaries are installed.
+     */
+    public static function binDir(): string
+    {
+        $dir = (string) (getenv('LARAKUBE_BIN_DIR') ?: '');
+
+        return $dir !== '' ? rtrim($dir, '/') : home_path('.larakube/bin');
+    }
+
+    /**
      * List of host filesystem paths to check for the binary.
      *
      * @return list<string>
@@ -79,13 +89,14 @@ enum CliTool: string
     public function candidatePaths(): array
     {
         $bin = $this->binary();
-        $binDir = home_path('.larakube/bin');
+        $binDir = self::binDir();
 
         $base = [
             "/opt/homebrew/bin/{$bin}",
             "/usr/local/bin/{$bin}",
             "/home/linuxbrew/.linuxbrew/bin/{$bin}",
             "{$binDir}/{$bin}",
+            home_path(".local/bin/{$bin}"),
         ];
 
         return match ($this) {
@@ -102,7 +113,6 @@ enum CliTool: string
                 '/usr/bin/gcloud',
             ]),
             self::AWS => array_merge($base, [
-                home_path('.local/bin/aws'),
                 '/snap/bin/aws',
                 '/usr/bin/aws',
             ]),
@@ -234,8 +244,16 @@ enum CliTool: string
      * Shell that puts the current GitHub CLI into $binDir. The version is read from GitHub's own
      * `/releases/latest` redirect (no API call to rate-limit), so there is no tag here to go stale.
      */
-    public static function ghInstallCommand(string $arch, string $binDir): string
+    public static function ghInstallCommand(string $arch, string $binDir, string $os = 'linux'): string
     {
+        if ($os === 'darwin' || $os === 'mac') {
+            return 'set -e; U=$(curl -fsSLI -o /dev/null -w "%{url_effective}" https://github.com/cli/cli/releases/latest); V="${U##*/v}"; '
+                .'[ "$V" != "$U" ] || { echo "Could not find the latest GitHub CLI release." >&2; exit 1; }; '
+                .'D="gh_${V}_macOS_'.$arch.'"; T=$(mktemp -d); '
+                .'curl -fsSL "https://github.com/cli/cli/releases/download/v${V}/${D}.zip" -o "$T/gh.zip"; '
+                .'unzip -q -j "$T/gh.zip" "${D}/bin/gh" -d '.escapeshellarg($binDir).'; rm -rf "$T"';
+        }
+
         return 'set -e; U=$(curl -fsSLI -o /dev/null -w "%{url_effective}" https://github.com/cli/cli/releases/latest); V="${U##*/v}"; '
             .'[ "$V" != "$U" ] || { echo "Could not find the latest GitHub CLI release." >&2; exit 1; }; '
             .'D="gh_${V}_linux_'.$arch.'"; '
@@ -243,11 +261,50 @@ enum CliTool: string
     }
 
     /** Shell that downloads the current tea to $target; the version is the latest release Gitea reports. */
-    public static function teaInstallCommand(string $arch, string $target): string
+    public static function teaInstallCommand(string $arch, string $target, string $os = 'linux'): string
     {
+        $osName = ($os === 'darwin' || $os === 'mac') ? 'darwin' : 'linux';
+
         return 'set -e; V=$(curl -fsSL https://gitea.com/api/v1/repos/gitea/tea/releases/latest | grep -o \'"tag_name":"[^"]*"\' | head -1 | cut -d\'"\' -f4); V="${V#v}"; '
             .'[ -n "$V" ] || V='.self::TEA_FALLBACK_VERSION.'; '
-            .'curl -fsSL -o '.escapeshellarg($target).' "https://dl.gitea.com/tea/${V}/tea-${V}-linux-'.$arch.'"';
+            .'curl -fsSL -o '.escapeshellarg($target).' "https://dl.gitea.com/tea/${V}/tea-${V}-'.$osName.'-'.$arch.'"';
+    }
+
+    public static function kubectlInstallCommand(string $os, string $arch, string $binDir): string
+    {
+        $target = "{$binDir}/kubectl";
+
+        return 'set -e; V=$(curl -fsSL https://dl.k8s.io/release/stable.txt); T=$(mktemp -d); '
+            ."curl -fsSL -o \"\$T/kubectl\" \"https://dl.k8s.io/release/\$V/bin/{$os}/{$arch}/kubectl\"; "
+            .'install -m 0755 "$T/kubectl" '.escapeshellarg($target).'; rm -rf "$T"';
+    }
+
+    public static function k9sInstallCommand(string $os, string $arch, string $binDir): string
+    {
+        $targetOs = ($os === 'darwin' || $os === 'mac') ? 'Darwin' : 'Linux';
+
+        return 'set -e; U="https://github.com/derailed/k9s/releases/latest/download/k9s_'.$targetOs.'_'.$arch.'.tar.gz"; '
+            .'curl -fsSL "$U" | tar -xz -C '.escapeshellarg($binDir).' k9s';
+    }
+
+    public static function tofuInstallCommand(string $os, string $arch, string $binDir): string
+    {
+        return 'set -e; U=$(curl -fsSLI -o /dev/null -w "%{url_effective}" https://github.com/opentofu/opentofu/releases/latest); V="${U##*/v}"; '
+            .'[ "$V" != "$U" ] || { echo "Could not find the latest OpenTofu release." >&2; exit 1; }; '
+            .'curl -fsSL "https://github.com/opentofu/opentofu/releases/download/v${V}/tofu_${V}_'.$os.'_'.$arch.'.tar.gz" | tar -xz -C '.escapeshellarg($binDir).' tofu';
+    }
+
+    public static function awsInstallCommand(string $binDir): string
+    {
+        return 'curl -fsSL https://awscli.amazonaws.com/v2/install.sh | XDG_BIN_HOME='.escapeshellarg($binDir).' bash';
+    }
+
+    public static function hcloudInstallCommand(string $os, string $arch, string $binDir): string
+    {
+        $targetOs = ($os === 'darwin' || $os === 'mac') ? 'darwin' : 'linux';
+        $url = "https://github.com/hetznercloud/cli/releases/latest/download/hcloud-{$targetOs}-{$arch}.tar.gz";
+
+        return 'curl -fsSL '.escapeshellarg($url).' | tar -xz -C '.escapeshellarg($binDir).' hcloud';
     }
 
     /**
@@ -264,92 +321,84 @@ enum CliTool: string
 
     /**
      * kubectl is the one tool here that is NOT optional: every cluster command
-     * shells out to a bare `kubectl` on PATH (see Kubectl::prefix()), so it has
-     * to land somewhere the user's own shell resolves — not ~/.larakube/bin
-     * like gh/tea/aws/hcloud, which are only ever reached through
-     * resolveBinary().
+     * shells out to a bare `kubectl` on PATH (see Kubectl::prefix()).
      *
-     * The brew-free path reads the current version from dl.k8s.io's own
-     * `stable.txt` rather than carrying a tag, so there is nothing here to go
-     * stale. /usr/local/bin is created first — on a Mac with no Homebrew it
-     * may not exist, and `install` reports that as ENOENT on the temp name it
-     * writes rather than on the directory.
+     * It installs to ~/.larakube/bin (or LARAKUBE_BIN_DIR) without requiring sudo,
+     * so non-devs never see password prompts and automated setup succeeds out of the box.
      */
     protected function installKubectl(): bool
     {
         if (PHP_OS_FAMILY === 'Darwin' && trim(Process::run('command -v brew')->output()) !== '') {
-            return Process::forever()->run('brew install kubernetes-cli')->exitCode() === 0 && $this->isInstalled();
+            if (Process::forever()->run('brew install kubernetes-cli')->exitCode() === 0 && $this->isInstalled()) {
+                return true;
+            }
         }
 
         $os = PHP_OS_FAMILY === 'Darwin' ? 'darwin' : 'linux';
         $arch = in_array(php_uname('m'), ['arm64', 'aarch64'], true) ? 'arm64' : 'amd64';
+        $binDir = self::binDir();
+        @mkdir($binDir, 0755, true);
 
-        $cmd = 'set -e; V=$(curl -fsSL https://dl.k8s.io/release/stable.txt); T=$(mktemp -d); '
-            ."curl -fsSL -o \"\$T/kubectl\" \"https://dl.k8s.io/release/\$V/bin/{$os}/{$arch}/kubectl\"; "
-            .'sudo mkdir -p /usr/local/bin; sudo install -m 0755 "$T/kubectl" /usr/local/bin/kubectl; rm -rf "$T"';
-
-        return $this->runInteractive($cmd) === 0 && $this->isInstalled();
+        return $this->runStreaming(self::kubectlInstallCommand($os, $arch, $binDir)) === 0 && $this->isInstalled();
     }
 
     /**
-     * Self-contained twin of InstallsK9s::installK9s(), which needs a command's
-     * output helpers and so cannot be reached from an enum. `latest/download`
-     * is GitHub's own redirect to the current release — no tag to pin, matching
-     * installHcloud().
+     * Self-contained twin of InstallsK9s::installK9s().
      */
     protected function installK9s(): bool
     {
-        if (PHP_OS_FAMILY === 'Darwin') {
-            if (trim(Process::run('command -v brew')->output()) === '') {
-                return false;
-            }
-
-            return Process::forever()->run('brew install k9s')->exitCode() === 0;
-        }
-
-        if (PHP_OS_FAMILY === 'Linux') {
-            $arch = in_array(php_uname('m'), ['arm64', 'aarch64'], true) ? 'arm64' : 'amd64';
-            $binDir = home_path('.larakube/bin');
-            @mkdir($binDir, 0755, true);
-
-            $url = "https://github.com/derailed/k9s/releases/latest/download/k9s_Linux_{$arch}.tar.gz";
-            $code = Process::forever()->run('curl -fsSL '.escapeshellarg($url).' | tar -xz -C '.escapeshellarg($binDir).' k9s')->exitCode();
-
-            if ($code === 0 && file_exists($binDir.'/k9s')) {
-                @chmod($binDir.'/k9s', 0755);
-
+        if (PHP_OS_FAMILY === 'Darwin' && trim(Process::run('command -v brew')->output()) !== '') {
+            if (Process::forever()->run('brew install k9s')->exitCode() === 0 && $this->isInstalled()) {
                 return true;
             }
+        }
+
+        $arch = in_array(php_uname('m'), ['arm64', 'aarch64'], true) ? 'arm64' : 'amd64';
+        $os = PHP_OS_FAMILY === 'Darwin' ? 'darwin' : 'linux';
+        $binDir = self::binDir();
+        @mkdir($binDir, 0755, true);
+
+        $code = Process::forever()->run(self::k9sInstallCommand($os, $arch, $binDir))->exitCode();
+
+        if ($code === 0 && file_exists($binDir.'/k9s')) {
+            @chmod($binDir.'/k9s', 0755);
+
+            return true;
         }
 
         return false;
     }
 
     /**
-     * Self-contained twin of InteractsWithOpenTofu::installTofu(), for the same
-     * reason as installK9s(). The Linux path is OpenTofu's official standalone
-     * installer, which resolves its own current version and needs sudo.
+     * OpenTofu standalone installer: unpacks the official release archive
+     * directly into ~/.larakube/bin without requiring sudo or unzip.
      */
     protected function installTofu(): bool
     {
         if (PHP_OS_FAMILY === 'Darwin' && trim(Process::run('command -v brew')->output()) !== '') {
-            return Process::forever()->run('brew install opentofu')->exitCode() === 0;
+            if (Process::forever()->run('brew install opentofu')->exitCode() === 0 && $this->isInstalled()) {
+                return true;
+            }
         }
 
         if (PHP_OS_FAMILY !== 'Darwin' && PHP_OS_FAMILY !== 'Linux') {
             return false;
         }
 
-        // The official standalone installer is uname-generic: it resolves its
-        // own current version and pulls the darwin or linux archive for the
-        // running architecture, so a Mac without Homebrew is not a dead end.
-        // The standalone method unpacks a zip, which a minimal Ubuntu server does not have.
-        $needsUnzip = PHP_OS_FAMILY === 'Linux' && trim(Process::run('command -v unzip')->output()) === '' && trim(Process::run('command -v apt-get')->output()) !== '';
-        $cmd = 'set -e; '.($needsUnzip ? 'sudo apt-get install -y unzip; ' : '')
-            .'T=$(mktemp -d); curl -fsSL https://get.opentofu.org/install-opentofu.sh -o "$T/install.sh"; '
-            .'chmod +x "$T/install.sh"; sudo "$T/install.sh" --install-method standalone; rm -rf "$T"';
+        $os = PHP_OS_FAMILY === 'Darwin' ? 'darwin' : 'linux';
+        $arch = in_array(php_uname('m'), ['arm64', 'aarch64'], true) ? 'arm64' : 'amd64';
+        $binDir = self::binDir();
+        @mkdir($binDir, 0755, true);
 
-        return $this->runInteractive($cmd) === 0 && $this->isInstalled();
+        $code = Process::forever()->run(self::tofuInstallCommand($os, $arch, $binDir))->exitCode();
+
+        if ($code === 0 && file_exists($binDir.'/tofu')) {
+            @chmod($binDir.'/tofu', 0755);
+
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -487,27 +536,28 @@ enum CliTool: string
 
     protected function installGh(): bool
     {
-        if (PHP_OS_FAMILY === 'Darwin') {
-            if (trim(Process::run('command -v brew')->output()) === '') {
-                return false;
-            }
-
-            return Process::forever()->run('brew install gh')->exitCode() === 0;
-        }
-
-        if (PHP_OS_FAMILY === 'Linux') {
-            $machine = php_uname('m');
-            $arch = in_array($machine, ['arm64', 'aarch64'], true) ? 'arm64' : 'amd64';
-            $binDir = home_path('.larakube/bin');
-            @mkdir($binDir, 0755, true);
-
-            $code = Process::forever()->run(self::ghInstallCommand($arch, $binDir))->exitCode();
-
-            if ($code === 0 && file_exists($binDir.'/gh')) {
-                @chmod($binDir.'/gh', 0755);
-
+        if (PHP_OS_FAMILY === 'Darwin' && trim(Process::run('command -v brew')->output()) !== '') {
+            if (Process::forever()->run('brew install gh')->exitCode() === 0 && $this->isInstalled()) {
                 return true;
             }
+        }
+
+        if (PHP_OS_FAMILY !== 'Darwin' && PHP_OS_FAMILY !== 'Linux') {
+            return false;
+        }
+
+        $machine = php_uname('m');
+        $arch = in_array($machine, ['arm64', 'aarch64'], true) ? 'arm64' : 'amd64';
+        $os = PHP_OS_FAMILY === 'Darwin' ? 'darwin' : 'linux';
+        $binDir = self::binDir();
+        @mkdir($binDir, 0755, true);
+
+        $code = Process::forever()->run(self::ghInstallCommand($arch, $binDir, $os))->exitCode();
+
+        if ($code === 0 && file_exists($binDir.'/gh')) {
+            @chmod($binDir.'/gh', 0755);
+
+            return true;
         }
 
         return false;
@@ -515,28 +565,29 @@ enum CliTool: string
 
     protected function installTea(): bool
     {
-        if (PHP_OS_FAMILY === 'Darwin') {
-            if (trim(Process::run('command -v brew')->output()) === '') {
-                return false;
-            }
-
-            return Process::forever()->run('brew install tea')->exitCode() === 0;
-        }
-
-        if (PHP_OS_FAMILY === 'Linux') {
-            $machine = php_uname('m');
-            $arch = in_array($machine, ['arm64', 'aarch64'], true) ? 'arm64' : 'amd64';
-            $binDir = home_path('.larakube/bin');
-            @mkdir($binDir, 0755, true);
-
-            $target = "{$binDir}/tea";
-
-            $code = Process::forever()->run(self::teaInstallCommand($arch, $target))->exitCode();
-            if ($code === 0 && file_exists($target)) {
-                @chmod($target, 0755);
-
+        if (PHP_OS_FAMILY === 'Darwin' && trim(Process::run('command -v brew')->output()) !== '') {
+            if (Process::forever()->run('brew install tea')->exitCode() === 0 && $this->isInstalled()) {
                 return true;
             }
+        }
+
+        if (PHP_OS_FAMILY !== 'Darwin' && PHP_OS_FAMILY !== 'Linux') {
+            return false;
+        }
+
+        $machine = php_uname('m');
+        $arch = in_array($machine, ['arm64', 'aarch64'], true) ? 'arm64' : 'amd64';
+        $os = PHP_OS_FAMILY === 'Darwin' ? 'darwin' : 'linux';
+        $binDir = self::binDir();
+        @mkdir($binDir, 0755, true);
+
+        $target = "{$binDir}/tea";
+
+        $code = Process::forever()->run(self::teaInstallCommand($arch, $target, $os))->exitCode();
+        if ($code === 0 && file_exists($target)) {
+            @chmod($target, 0755);
+
+            return true;
         }
 
         return false;
@@ -544,50 +595,45 @@ enum CliTool: string
 
     protected function installAws(): bool
     {
-        if (PHP_OS_FAMILY === 'Darwin') {
-            if (trim(Process::run('command -v brew')->output()) === '') {
-                return false;
+        if (PHP_OS_FAMILY === 'Darwin' && trim(Process::run('command -v brew')->output()) !== '') {
+            if (Process::forever()->run('brew install awscli')->exitCode() === 0 && $this->isInstalled()) {
+                return true;
             }
-
-            return Process::forever()->run('brew install awscli')->exitCode() === 0;
         }
 
-        if (PHP_OS_FAMILY === 'Linux') {
-            $machine = php_uname('m');
-            $arch = in_array($machine, ['arm64', 'aarch64'], true) ? 'aarch64' : 'x86_64';
-            $url = "https://awscli.amazonaws.com/awscli-exe-linux-{$arch}.zip";
-
-            $cmd = 'TMP_DIR=$(mktemp -d) && curl -fsSL '.escapeshellarg($url).' -o "$TMP_DIR/awscliv2.zip" && unzip -q "$TMP_DIR/awscliv2.zip" -d "$TMP_DIR" && (sudo "$TMP_DIR/aws/install" --update 2>/dev/null || "$TMP_DIR/aws/install" -i ~/.local/aws-cli -b ~/.local/bin --update) && rm -rf "$TMP_DIR"';
-
-            return Process::forever()->run($cmd)->exitCode() === 0;
+        if (PHP_OS_FAMILY !== 'Darwin' && PHP_OS_FAMILY !== 'Linux') {
+            return false;
         }
 
-        return false;
+        $binDir = self::binDir();
+        @mkdir($binDir, 0755, true);
+
+        return Process::forever()->run(self::awsInstallCommand($binDir))->exitCode() === 0 && $this->isInstalled();
     }
 
     protected function installHcloud(): bool
     {
-        if (PHP_OS_FAMILY === 'Darwin') {
-            if (trim(Process::run('command -v brew')->output()) === '') {
-                return false;
-            }
-
-            return Process::forever()->run('brew install hcloud')->exitCode() === 0;
-        }
-
-        if (PHP_OS_FAMILY === 'Linux') {
-            $machine = php_uname('m');
-            $arch = in_array($machine, ['arm64', 'aarch64'], true) ? 'arm64' : 'amd64';
-            $binDir = home_path('.larakube/bin');
-            @mkdir($binDir, 0755, true);
-            $url = "https://github.com/hetznercloud/cli/releases/latest/download/hcloud-linux-{$arch}.tar.gz";
-
-            $code = Process::forever()->run('curl -fsSL '.escapeshellarg($url).' | tar -xz -C '.escapeshellarg($binDir).' hcloud')->exitCode();
-            if ($code === 0 && file_exists($binDir.'/hcloud')) {
-                @chmod($binDir.'/hcloud', 0755);
-
+        if (PHP_OS_FAMILY === 'Darwin' && trim(Process::run('command -v brew')->output()) !== '') {
+            if (Process::forever()->run('brew install hcloud')->exitCode() === 0 && $this->isInstalled()) {
                 return true;
             }
+        }
+
+        if (PHP_OS_FAMILY !== 'Darwin' && PHP_OS_FAMILY !== 'Linux') {
+            return false;
+        }
+
+        $machine = php_uname('m');
+        $arch = in_array($machine, ['arm64', 'aarch64'], true) ? 'arm64' : 'amd64';
+        $os = PHP_OS_FAMILY === 'Darwin' ? 'darwin' : 'linux';
+        $binDir = self::binDir();
+        @mkdir($binDir, 0755, true);
+
+        $code = Process::forever()->run(self::hcloudInstallCommand($os, $arch, $binDir))->exitCode();
+        if ($code === 0 && file_exists($binDir.'/hcloud')) {
+            @chmod($binDir.'/hcloud', 0755);
+
+            return true;
         }
 
         return false;
