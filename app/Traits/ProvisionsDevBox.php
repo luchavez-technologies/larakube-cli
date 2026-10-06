@@ -37,6 +37,10 @@ trait ProvisionsDevBox
             return null;
         }
 
+        if (! $this->ensureGitInstalledOnBox($ip, $port, $keyPath)) {
+            return null;
+        }
+
         if (! $this->installCliOnBox($ip, $port, $keyPath, $channel)) {
             return null;
         }
@@ -53,6 +57,19 @@ trait ProvisionsDevBox
         }
 
         return $user;
+    }
+
+    protected function ensureGitInstalledOnBox(string $ip, string|int $port, string $keyPath): bool
+    {
+        $this->laraKubeInfo('Ensuring Git is installed on the box...');
+
+        if (! $this->runRemoteUserCommand('larakube', $ip, $port, $keyPath, 'command -v git >/dev/null 2>&1 || (sudo apt-get update -y && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git)')) {
+            $this->laraKubeError('Installing Git on the box failed. See the output above; re-run to retry.');
+
+            return false;
+        }
+
+        return true;
     }
 
     protected function installCliOnBox(string $ip, string|int $port, string $keyPath, string $channel): bool

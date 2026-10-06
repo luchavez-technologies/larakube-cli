@@ -55,6 +55,15 @@ trait ClonesRepositories
      */
     protected function runGitClone(string $url, string $directory, ?string $branch = null): int
     {
+        if (trim(Process::run('command -v git')->output()) === '') {
+            if (method_exists($this, 'laraKubeError')) {
+                $this->laraKubeError('git is not installed on this system.');
+                $this->line('  <fg=gray>Please install Git and try again.</>');
+            }
+
+            return 1;
+        }
+
         $cmd = 'git clone '.escapeshellarg($url);
 
         if ($branch !== null && $branch !== '') {

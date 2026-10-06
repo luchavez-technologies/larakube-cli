@@ -69,6 +69,7 @@ function devboxPipeline(array $fails = []): object
         {
             $this->remoteUserScripts[] = $user.': '.$script;
             $step = match (true) {
+                str_contains($script, 'apt-get install -y git') || str_contains($script, 'command -v git') => 'git',
                 str_contains($script, 'install.sh') => 'install-cli',
                 str_contains($script, '.larakube/devbox') => 'marker',
                 default => 'setup',
@@ -84,10 +85,11 @@ test('a dev box is hardened with only SSH open, given a login, the CLI and the l
     $pipeline = devboxPipeline();
 
     expect($pipeline->run())->toBe('larakube')
-        ->and($pipeline->steps)->toBe(['harden', 'user', 'install-cli', 'setup', 'marker', 'lock-root'])
+        ->and($pipeline->steps)->toBe(['harden', 'user', 'git', 'install-cli', 'setup', 'marker', 'lock-root'])
         ->and($pipeline->allowPorts)->toBe([])
-        ->and($pipeline->remoteUserScripts[0])->toContain('larakube: curl -fsSL https://cli.larakube.app/install.sh | bash -s -- --canary')
-        ->and($pipeline->remoteUserScripts[1])->toContain('larakube setup --profile=local --runtime=podman --no-interaction');
+        ->and($pipeline->remoteUserScripts[0])->toContain('command -v git')
+        ->and($pipeline->remoteUserScripts[1])->toContain('larakube: curl -fsSL https://cli.larakube.app/install.sh | bash -s -- --canary')
+        ->and($pipeline->remoteUserScripts[2])->toContain('larakube setup --profile=local --runtime=podman --no-interaction');
 });
 
 test('the box is told it is a dev box, by name, and a marker that cannot be written does not fail it', function (): void {
@@ -101,7 +103,7 @@ test('the stable channel installs without the canary flag', function (): void {
     $pipeline = devboxPipeline();
     $pipeline->run('stable');
 
-    expect($pipeline->remoteUserScripts[0])->toBe('larakube: curl -fsSL https://cli.larakube.app/install.sh | bash');
+    expect($pipeline->remoteUserScripts[1])->toBe('larakube: curl -fsSL https://cli.larakube.app/install.sh | bash');
 });
 
 test('a failing step stops the pipeline and never closes root login', function (string $failing, array $expected): void {
@@ -112,8 +114,9 @@ test('a failing step stops the pipeline and never closes root login', function (
 })->with([
     'hardening' => ['harden', ['harden']],
     'the login' => ['user', ['harden', 'user']],
-    'the CLI install' => ['install-cli', ['harden', 'user', 'install-cli']],
-    'the local stack' => ['setup', ['harden', 'user', 'install-cli', 'setup']],
+    'the git install' => ['git', ['harden', 'user', 'git']],
+    'the CLI install' => ['install-cli', ['harden', 'user', 'git', 'install-cli']],
+    'the local stack' => ['setup', ['harden', 'user', 'git', 'install-cli', 'setup']],
 ]);
 
 test('devbox:create does not install a deployment cluster and stands alone, with no environment or kind to choose', function (): void {

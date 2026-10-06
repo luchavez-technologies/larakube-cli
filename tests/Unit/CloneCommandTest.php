@@ -228,3 +228,21 @@ test('resolveRepoUrl ignores provider for full URLs', function (): void {
     $fullUrl = 'https://gitlab.com/myorg/myapp.git';
     expect($trait->resolve($fullUrl, 'github'))->toBe($fullUrl);
 });
+
+test('runGitClone returns 1 when git is not installed', function (): void {
+    Illuminate\Support\Facades\Process::fake([
+        'command -v git' => Illuminate\Support\Facades\Process::result('', exitCode: 1),
+    ]);
+
+    $trait = new class
+    {
+        use ClonesRepositories;
+
+        public function clone(string $u, string $d): int
+        {
+            return $this->runGitClone($u, $d);
+        }
+    };
+
+    expect($trait->clone('https://github.com/laravel/laravel.git', '/tmp/test'))->toBe(1);
+});
