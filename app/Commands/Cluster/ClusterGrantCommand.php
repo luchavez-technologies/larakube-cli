@@ -4,6 +4,7 @@ namespace App\Commands\Cluster;
 
 use App\Facades\State;
 use App\Services\Kubectl;
+use App\Traits\DetectsWsl;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithScopedRbac;
@@ -23,7 +24,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class ClusterGrantCommand extends Command
 {
-    use EmitsJsonOutput, InteractsWithProjectConfig, InteractsWithScopedRbac, InteractsWithTeammateRbac, LaraKubeOutput, ReadsCommandOptions, ResolvesEnvironmentContext;
+    use DetectsWsl, EmitsJsonOutput, InteractsWithProjectConfig, InteractsWithScopedRbac, InteractsWithTeammateRbac, LaraKubeOutput, ReadsCommandOptions, ResolvesEnvironmentContext;
 
     protected $signature = 'cluster:grant
         {environment? : An environment (in-project) or a literal namespace (standalone) to grant access on}
@@ -389,11 +390,19 @@ class ClusterGrantCommand extends Command
 
         $outputOption = (string) ($this->option('output') ?? '');
         if ($outputOption !== '') {
+            $outputOption = $this->isWsl() ? $this->toWslPath($outputOption) : $outputOption;
             $file = (is_dir($outputOption) || str_ends_with($outputOption, '/') || str_ends_with($outputOption, '\\'))
                 ? rtrim($outputOption, '/\\').DIRECTORY_SEPARATOR.$sa.'.kubeconfig'
                 : $outputOption;
         } else {
-            $file = getcwd().DIRECTORY_SEPARATOR.$sa.'.kubeconfig';
+            if ($this->isWsl()) {
+                $downloads = $this->wslDownloadsPath();
+                $file = ($downloads !== null && is_dir($downloads))
+                    ? $downloads.DIRECTORY_SEPARATOR.$sa.'.kubeconfig'
+                    : getcwd().DIRECTORY_SEPARATOR.$sa.'.kubeconfig';
+            } else {
+                $file = getcwd().DIRECTORY_SEPARATOR.$sa.'.kubeconfig';
+            }
         }
 
         $fileDir = dirname($file);
@@ -408,6 +417,7 @@ class ClusterGrantCommand extends Command
         $exportRbacOption = (string) ($this->option('export-rbac') ?? '');
         $rbacFile = null;
         if ($exportRbacOption !== '') {
+            $exportRbacOption = $this->isWsl() ? $this->toWslPath($exportRbacOption) : $exportRbacOption;
             $rbacFile = (is_dir($exportRbacOption) || str_ends_with($exportRbacOption, '/') || str_ends_with($exportRbacOption, '\\'))
                 ? rtrim($exportRbacOption, '/\\').DIRECTORY_SEPARATOR.$sa.'-rbac.yaml'
                 : $exportRbacOption;

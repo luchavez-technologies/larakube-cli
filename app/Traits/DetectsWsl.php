@@ -96,25 +96,77 @@ trait DetectsWsl
     }
 
     /**
+     * Path to the Windows user profile directory as seen from inside WSL (e.g.
+     * /mnt/c/Users/<you>), or null if the Windows profile can't be resolved.
+     */
+    protected function wslUserProfilePath(): ?string
+    {
+        // Run cmd.exe from a Windows cwd so it doesn't emit the "UNC paths are
+        // not supported" warning it prints when the cwd is a \\wsl$ path.
+        $winProfile = trim(Process::path('/mnt/c')->run('cmd.exe /c echo %USERPROFILE%')->output());
+        if ($winProfile !== '' && str_contains($winProfile, ':\\')) {
+            $wslProfile = trim(Process::run('wslpath -u '.escapeshellarg($winProfile))->output());
+            if ($wslProfile !== '' && is_dir($wslProfile)) {
+                return $wslProfile;
+            }
+        }
+
+        if (is_dir('/mnt/c/Users')) {
+            $entries = scandir('/mnt/c/Users') ?: [];
+            foreach ($entries as $entry) {
+                if (in_array(strtolower($entry), ['.', '..', 'default', 'default user', 'public', 'all users'], true)) {
+                    continue;
+                }
+                $candidate = '/mnt/c/Users/'.$entry;
+                if (is_dir($candidate) && is_dir($candidate.'/Downloads')) {
+                    return $candidate;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Path to the Windows user's Downloads directory as seen from inside WSL (e.g.
+     * /mnt/c/Users/<you>/Downloads), or null if not found.
+     */
+    protected function wslDownloadsPath(): ?string
+    {
+        $profile = $this->wslUserProfilePath();
+        if ($profile !== null) {
+            $downloads = $profile.'/Downloads';
+            if (is_dir($downloads)) {
+                return $downloads;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Converts a Windows path (e.g. C:\Users\... or C:/Users/...) to its WSL Linux
+     * mount path (e.g. /mnt/c/Users/...).
+     */
+    protected function toWslPath(string $path): string
+    {
+        if (preg_match('#^([a-zA-Z]):[\\\\/](.*)$#', $path, $matches)) {
+            return '/mnt/'.strtolower($matches[1]).'/'.str_replace('\\', '/', $matches[2]);
+        }
+
+        return $path;
+    }
+
+    /**
      * Path to the Windows-side ~/.wslconfig, as seen from inside WSL (e.g.
      * /mnt/c/Users/<you>/.wslconfig), or null if the Windows profile can't be
      * resolved. It lives at %USERPROFILE%, NOT inside the distro.
      */
     protected function wslConfigPath(): ?string
     {
-        // Run cmd.exe from a Windows cwd so it doesn't emit the "UNC paths are
-        // not supported" warning it prints when the cwd is a \\wsl$ path.
-        $winProfile = trim(Process::path('/mnt/c')->run('cmd.exe /c echo %USERPROFILE%')->output());
-        if ($winProfile === '' || ! str_contains($winProfile, ':\\')) {
-            return null;
-        }
+        $wslProfile = $this->wslUserProfilePath();
 
-        $wslProfile = trim(Process::run('wslpath -u '.escapeshellarg($winProfile))->output());
-        if ($wslProfile === '' || ! is_dir($wslProfile)) {
-            return null;
-        }
-
-        return $wslProfile.'/.wslconfig';
+        return $wslProfile !== null ? $wslProfile.'/.wslconfig' : null;
     }
 
     /**

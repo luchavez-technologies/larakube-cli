@@ -57,6 +57,21 @@ function wslDetector(): object
             return $this->mirroredRestartPending();
         }
 
+        public function userProfilePath(): ?string
+        {
+            return $this->wslUserProfilePath();
+        }
+
+        public function downloadsPath(): ?string
+        {
+            return $this->wslDownloadsPath();
+        }
+
+        public function convertToWslPath(string $path): string
+        {
+            return $this->toWslPath($path);
+        }
+
         // Tests only ever simulate "is WSL" via WSL_DISTRO_NAME (see forceWsl()
         // below); stub out the /proc/version fallback so "not WSL" cases don't
         // depend on whether the machine running this suite is itself WSL2.
@@ -217,4 +232,26 @@ test('hasDockerDesktopOnWsl requires both WSL and a reachable Docker Desktop dae
         ]);
         expect(wslDetector()->dockerDesktopOnWsl())->toBeFalse(); // no docker CLI
     });
+});
+
+test('toWslPath converts Windows drive paths to WSL /mnt mounts', function (): void {
+    expect(wslDetector()->convertToWslPath('C:\Users\jsluc\Downloads\alice.kubeconfig'))
+        ->toBe('/mnt/c/Users/jsluc/Downloads/alice.kubeconfig')
+        ->and(wslDetector()->convertToWslPath('D:/work/rbac.yaml'))
+        ->toBe('/mnt/d/work/rbac.yaml')
+        ->and(wslDetector()->convertToWslPath('/tmp/alice.kubeconfig'))
+        ->toBe('/tmp/alice.kubeconfig');
+});
+
+test('wslUserProfilePath and wslDownloadsPath resolve Windows paths via cmd and wslpath', function (): void {
+    $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
+    mkdir($dir->path().'/Downloads');
+
+    Process::fake([
+        'cmd.exe *' => "C:\\Users\\jsluc\r\n",
+        'wslpath -u *' => $dir->path()."\n",
+    ]);
+
+    expect(wslDetector()->userProfilePath())->toBe($dir->path())
+        ->and(wslDetector()->downloadsPath())->toBe($dir->path().'/Downloads');
 });
