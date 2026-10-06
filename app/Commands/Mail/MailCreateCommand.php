@@ -210,7 +210,7 @@ class MailCreateCommand extends Command
         }
 
         if ($this->isBulwarkInstalled($kubectl, $ns)) {
-            $webmailHost = $this->resolveBulwarkHostReadOnly($env, $config);
+            $webmailHost = $this->resolveBulwarkHostReadOnly($env, $config, $kubectl);
             if ($webmailHost !== null) {
                 $this->line("     <fg=gray>Or webmail:</> <fg=blue>https://{$webmailHost}</>  (same address + password)");
             }

@@ -160,3 +160,21 @@ test('stalwart:show with email emits json when --json is passed', function (): v
         ->and($output)->toContain('"email": "alice@example.com"')
         ->toContain('"name": "Alice Smith"');
 });
+
+test('stalwart:show resolves Bulwark webmail host from registry and emits webmailUrl in json', function (): void {
+    ssoRegistered();
+    Tests\Support\FakeToolRegistry::install([
+        ['tool' => 'bulwark', 'instance' => 'mail-luchtech-dev', 'host' => 'mail.luchtech.dev'],
+    ]);
+    Process::fake([
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('s3cret-p@ss')),
+        '*port-forward*' => Process::result(output: ''),
+    ]);
+
+    $exitCode = Illuminate\Support\Facades\Artisan::call('stalwart:show', ['--json' => true]);
+    $output = Illuminate\Support\Facades\Artisan::output();
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('"webmailUrl": "https://mail.luchtech.dev"');
+});

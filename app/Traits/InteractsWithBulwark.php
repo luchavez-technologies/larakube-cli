@@ -17,7 +17,7 @@ use App\Services\Kubectl;
  */
 trait InteractsWithBulwark
 {
-    use ReadsClusterSecrets, ResolvesEnvironmentContext;
+    use InteractsWithToolRegistry, ReadsClusterSecrets, ResolvesEnvironmentContext;
 
     /** The namespace the webmail client lives in (next to Stalwart). */
     protected function bulwarkNamespace(): string
@@ -33,7 +33,9 @@ trait InteractsWithBulwark
      */
     protected function isBulwarkInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=webmail');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=webmail')
+            || $this->isToolRegistered($kubectl, ClusterTool::BULWARK)
+            || $this->isToolRegistered($kubectl, ClusterTool::WEBMAIL);
     }
 
     /** Read a key from this instance's credentials Secret. */
@@ -48,15 +50,37 @@ trait InteractsWithBulwark
     }
 
     /** Read-only Bulwark host for the given environment. */
-    protected function resolveBulwarkHostReadOnly(string $env, ?ConfigData $config): ?string
+    protected function resolveBulwarkHostReadOnly(string $env, ?ConfigData $config, ?string $kubectl = null): ?string
     {
         $service = SharedClusterService::WEBMAIL;
+
+        if ($kubectl !== null) {
+            $registered = $this->resolveLiveToolHost($kubectl, ClusterTool::BULWARK)
+                ?? $this->resolveLiveToolHost($kubectl, ClusterTool::WEBMAIL);
+            if ($registered !== null && $registered !== '') {
+                return $registered;
+            }
+
+            $ingressHost = trim(Kubectl::fromPrefix($kubectl)->raw([
+                'get', 'ingress', '-n', $this->bulwarkNamespace(), '-l', 'larakube.io/tool=webmail',
+                '-o', 'jsonpath={.items[0].spec.rules[0].host}',
+            ])->output);
+
+            if ($ingressHost !== '') {
+                return $ingressHost;
+            }
+        }
 
         if ($env === 'local') {
             return $service->hostFor(GlobalConfigData::load()->getLocalTld());
         }
 
-        return $config?->getEnvironment($env)?->hosts[$service->value] ?? null;
+        $envData = $config?->getEnvironment($env);
+        if ($envData === null) {
+            return null;
+        }
+
+        return $envData->hosts[$service->value] ?? ($envData->domain ? $service->hostFor($envData->domain) : null);
     }
 
     /** Resolve Bulwark's access details for status output. */
@@ -70,7 +94,7 @@ trait InteractsWithBulwark
         }
 
         return [
-            'host' => $this->resolveBulwarkHostReadOnly($env, $config),
+            'host' => $this->resolveBulwarkHostReadOnly($env, $config, $kubectl),
             'label' => 'Bulwark',
         ];
     }

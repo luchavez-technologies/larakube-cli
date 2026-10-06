@@ -321,7 +321,7 @@ abstract class MailShowCommand extends Command
             return null;
         }
 
-        $host = $this->resolveBulwarkHostReadOnly($env, $config);
+        $host = $this->resolveBulwarkHostReadOnly($env, $config, $kubectl);
 
         return $host !== null ? "https://{$host}" : null;
     }

@@ -8,7 +8,7 @@ Implement a first-class **Mail** management suite in LaraKube Desktop powered by
   1. **Mailboxes**: List email accounts, create new mailboxes, reset passwords, set storage quotas, and delete accounts.
   2. **Domains & DNS Checklist**: Add email domains, display exact DNS records (MX, SPF, DKIM, DMARC) with one-click copy buttons, and run live DNS propagation checks.
   3. **Outbound Relay**: Configure external SMTP delivery providers (Amazon SES, Resend, Brevo, SendGrid, Mailgun) or direct port 25 delivery, plus test email dispatch.
-  4. **Webmail & App Wiring**: One-click launcher for SnappyMail webmail and visibility into which Laravel projects are wired to Stalwart.
+  4. **Webmail & App Wiring**: One-click launcher for Bulwark webmail and visibility into which Laravel projects are wired to Stalwart.
 - **Strictly CLI-Driven Engine**: All data reads utilize `mail:* --json` flags, and all mutations execute via `CliRunner` as native `Run` processes with streaming terminal output.
 
 ---
@@ -61,7 +61,7 @@ flowchart TD
 
     subgraph Cluster ["Target Kubernetes Cluster"]
         Stalwart["Stalwart Mail Server (Pod / JMAP API)"]
-        Snappy["SnappyMail Webmail (Pod)"]
+        Bulwark["Bulwark Webmail (Pod)"]
     end
 
     Nav --> MC
@@ -91,7 +91,7 @@ flowchart TD
     Read_Domains --> Stalwart
     Read_Accounts --> Stalwart
     Mut_Create --> Stalwart
-    T_Webmail --> Snappy
+    T_Webmail --> Bulwark
 ```
 
 ---
