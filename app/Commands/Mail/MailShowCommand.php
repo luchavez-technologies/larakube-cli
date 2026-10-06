@@ -23,13 +23,18 @@ abstract class MailShowCommand extends Command
     protected $signature = 'stalwart:show
         {environment=local : Environment whose mail server to show}
         {--email=   : Show client setup for this account instead of admin access (never shows its password — that\'s never recoverable; use mail:password to reset it)}
-        {--context= : Target a specific kube-context}';
+        {--context= : Target a specific kube-context}
+        {--json     : Output mail server access info as JSON}';
+
+    protected $aliases = ['mail:show'];
 
     protected $description = 'Show Stalwart admin credentials and access info, or a specific account\'s client setup';
 
     public function handle(): int
     {
-        $this->renderHeader();
+        if (! $this->option('json')) {
+            $this->renderHeader();
+        }
 
         $env = (string) $this->argument('environment');
         $projectPath = getcwd();
@@ -50,6 +55,12 @@ abstract class MailShowCommand extends Command
         $ns = $this->mailNamespace();
 
         if (! $this->isMailInstalled($kubectl, $ns)) {
+            if ($this->option('json')) {
+                $this->line((string) json_encode(['installed' => false], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+                return 1;
+            }
+
             $this->laraKubeError('Stalwart is not installed. Run `larakube tool:init --tool=stalwart` first.');
 
             return 1;
@@ -64,9 +75,34 @@ abstract class MailShowCommand extends Command
         $adminPassword = $this->readMailSecret($kubectl, $ns, 'admin-password');
 
         if ($adminPassword === null) {
+            if ($this->option('json')) {
+                $this->line((string) json_encode(['installed' => true, 'error' => 'Could not read admin password from secrets.'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+                return 1;
+            }
+
             $this->laraKubeError('Could not read admin password from secrets.');
 
             return 1;
+        }
+
+        $webmail = $this->webmailUrl($kubectl, $ns, $env, $config);
+        $queued = $this->stalwartQueueCount($kubectl, $ns);
+
+        if ($this->option('json')) {
+            $this->line((string) json_encode([
+                'installed' => true,
+                'host' => $host,
+                'adminUrl' => $host ? "https://{$host}/admin" : null,
+                'adminLogin' => 'admin',
+                'adminPassword' => $adminPassword,
+                'webmailUrl' => $webmail,
+                'imap' => $host ? ['host' => $host, 'port' => 993, 'tls' => true] : null,
+                'smtp' => $host ? ['host' => $host, 'port' => 465, 'tls' => true] : null,
+                'queue' => (int) ($queued ?? 0),
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+            return 0;
         }
 
         $this->newLine();
@@ -184,12 +220,34 @@ abstract class MailShowCommand extends Command
         }
 
         if ($account === null) {
+            if ($this->option('json')) {
+                $this->line((string) json_encode([
+                    'error' => "Account '{$email}' not found.",
+                ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+                return 1;
+            }
+
             $this->laraKubeError("Account '{$email}' not found.");
 
             return 1;
         }
 
         $host = $this->resolveMailHostReadOnly($env, $config);
+
+        if ($this->option('json')) {
+            $this->line((string) json_encode([
+                'email' => $email,
+                'name' => (string) ($account['description'] ?? $account['name']),
+                'role' => (string) ($account['roles']['@type'] ?? 'User'),
+                'host' => $host,
+                'imap' => $host ? ['host' => $host, 'port' => 993, 'tls' => true] : null,
+                'smtp' => $host ? ['host' => $host, 'port' => 465, 'tls' => true] : null,
+                'webmailUrl' => $this->webmailUrl($kubectl, $ns, $env, $config),
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+            return 0;
+        }
 
         $this->newLine();
         $this->line(" <fg=blue>{$email}</>");

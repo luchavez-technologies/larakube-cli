@@ -73,3 +73,36 @@ test('mail:accounts lists accounts', function (): void {
         ->and($output)->toContain('admin@example.com')
         ->toContain('alice@example.com');
 });
+
+test('mail:accounts emits json when --json is passed', function (): void {
+    Process::fake([
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*port-forward*' => Process::result(output: ''),
+        '*' => Process::result(),
+    ]);
+
+    Saloon::fake([
+        JmapRequest::class => function ($pendingRequest) {
+            $body = json_decode(json_encode($pendingRequest->getRequest()->body()->all()), true);
+            $method = $body['methodCalls'][0][0] ?? '';
+
+            if ($method === 'x:Account/query') {
+                return MockResponse::make(['methodResponses' => [['x:Account/query', ['ids' => ['b', 'c']], 'c0'], ['x:Account/get', ['list' => [], 'notFound' => []], 'c1']], 'sessionState' => 'x']);
+            }
+
+            return MockResponse::make(['methodResponses' => [['x:Account/get', ['list' => [
+                ['id' => 'b', 'name' => 'admin', 'description' => 'System administrator', 'emailAddress' => 'admin@example.com', 'roles' => ['@type' => 'Admin'], 'quotas' => [], 'usedDiskQuota' => 486],
+                ['id' => 'c', 'name' => 'alice', 'description' => 'Alice Smith', 'emailAddress' => 'alice@example.com', 'roles' => ['@type' => 'User'], 'quotas' => ['maxDiskQuota' => 1073741824], 'usedDiskQuota' => 1048576],
+            ], 'notFound' => []], 'c1']], 'sessionState' => 'x']);
+        },
+    ]);
+
+    $exitCode = Artisan::call('mail:accounts', ['--json' => true]);
+    $output = Artisan::output();
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('"installed": true')
+        ->toContain('admin@example.com')
+        ->toContain('alice@example.com');
+});

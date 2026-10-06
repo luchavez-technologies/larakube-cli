@@ -19,13 +19,16 @@ class MailAccountsCommand extends Command
 
     protected $signature = 'mail:accounts
         {environment=local : Environment whose mail server to target}
-        {--context= : Target a specific kube-context}';
+        {--context= : Target a specific kube-context}
+        {--json : Output accounts list as machine-readable JSON}';
 
     protected $description = 'List all Stalwart mail accounts';
 
     public function handle(): int
     {
-        $this->renderHeader();
+        if (! $this->option('json')) {
+            $this->renderHeader();
+        }
 
         $env = (string) $this->argument('environment');
         $projectPath = getcwd();
@@ -42,6 +45,12 @@ class MailAccountsCommand extends Command
         $ns = $this->mailNamespace();
 
         if (! $this->isMailInstalled($kubectl, $ns)) {
+            if ($this->option('json')) {
+                $this->line((string) json_encode(['installed' => false, 'accounts' => []], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+                return 1;
+            }
+
             $this->laraKubeError('Stalwart is not installed. Run `larakube tool:init --tool=stalwart` first.');
 
             return 1;
@@ -50,9 +59,40 @@ class MailAccountsCommand extends Command
         $accounts = $this->stalwartAccounts($kubectl, $ns);
 
         if ($accounts === null) {
+            if ($this->option('json')) {
+                $this->line((string) json_encode(['installed' => true, 'error' => 'Could not connect to the Stalwart API.', 'accounts' => []], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+                return 1;
+            }
+
             $this->laraKubeError('Could not connect to the Stalwart API.');
 
             return 1;
+        }
+
+        $accountList = array_values(array_map(function (array $a): array {
+            $quotaBytes = isset($a['quotas']['maxDiskQuota']) ? (int) $a['quotas']['maxDiskQuota'] : null;
+            $usedBytes = isset($a['usedDiskQuota']) ? (int) $a['usedDiskQuota'] : null;
+
+            return [
+                'email' => (string) ($a['emailAddress'] ?? ($a['name'].'@?')),
+                'name' => (string) ($a['description'] ?? $a['name'] ?? '-'),
+                'role' => (string) ($a['roles']['@type'] ?? 'User'),
+                'quota' => $quotaBytes !== null ? round($quotaBytes / 1073741824, 1).' GB' : 'Unlimited',
+                'quotaBytes' => $quotaBytes,
+                'used' => $usedBytes !== null ? round($usedBytes / 1048576, 1).' MB' : '-',
+                'usedBytes' => $usedBytes,
+            ];
+        }, $accounts));
+
+        if ($this->option('json')) {
+            $this->line((string) json_encode([
+                'installed' => true,
+                'accounts' => $accountList,
+                'queue' => (int) ($this->stalwartQueueCount($kubectl, $ns) ?? 0),
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+            return 0;
         }
 
         if ($accounts === []) {
@@ -65,16 +105,12 @@ class MailAccountsCommand extends Command
         table(
             ['Email', 'Name', 'Role', 'Quota', 'Used'],
             array_map(fn (array $a): array => [
-                $a['emailAddress'] ?? ($a['name'].'@?'),
-                $a['description'] ?? '-',
-                ($a['roles']['@type'] ?? 'User'),
-                isset($a['quotas']['maxDiskQuota'])
-                    ? round($a['quotas']['maxDiskQuota'] / 1073741824, 1).' GB'
-                    : 'Unlimited',
-                isset($a['usedDiskQuota'])
-                    ? round($a['usedDiskQuota'] / 1048576, 1).' MB'
-                    : '-',
-            ], $accounts),
+                $a['email'],
+                $a['name'],
+                $a['role'],
+                $a['quota'],
+                $a['used'],
+            ], $accountList),
         );
 
         $queued = $this->stalwartQueueCount($kubectl, $ns);

@@ -29,7 +29,8 @@ class MailCheckCommand extends Command
     protected $signature = 'mail:check
         {environment? : Environment to check — "local" (default) or cloud.}
         {--domain=    : Specific domain to check (defaults to mail host domain)}
-        {--context=   : Target a specific kube-context}';
+        {--context=   : Target a specific kube-context}
+        {--json       : Output health check results as machine-readable JSON}';
 
     protected $description = 'Health-check the mail server (pod, ports, DNS, deliverability) with fix hints';
 
@@ -39,9 +40,14 @@ class MailCheckCommand extends Command
 
     private int $fail = 0;
 
+    /** @var list<array{status: string, label: string, hint: string}> */
+    private array $checks = [];
+
     public function handle(): int
     {
-        $this->renderHeader();
+        if (! $this->option('json')) {
+            $this->renderHeader();
+        }
 
         $env = $this->resolveEnvironment();
 
@@ -60,14 +66,26 @@ class MailCheckCommand extends Command
         $host = (string) $this->resolveMailHostReadOnly($env, $config);
 
         if ($host === '') {
+            if ($this->option('json')) {
+                $this->line((string) json_encode([
+                    'installed' => false,
+                    'error' => "No mail host configured for '{$env}'.",
+                    'checks' => [],
+                ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+                return 1;
+            }
+
             $this->laraKubeError("No mail host configured for '{$env}'. Run `larakube tool:init --tool=stalwart {$env}` first.");
 
             return 1;
         }
         $domain = (string) ($this->option('domain') ?: $this->mailCheckDomain($host));
 
-        $this->laraKubeInfo("Checking Stalwart at {$host} for domain '{$domain}' ({$env})");
-        $this->newLine();
+        if (! $this->option('json')) {
+            $this->laraKubeInfo("Checking Stalwart at {$host} for domain '{$domain}' ({$env})");
+            $this->newLine();
+        }
 
         // --- Cluster -------------------------------------------------------
         $deployment = ClusterTool::MAIL->deploymentName($this->resolveMailInstance($kubectl));
@@ -119,8 +137,10 @@ class MailCheckCommand extends Command
 
         // --- Mail ports (from this machine, against the public IP) ---------
         $target = $ip ?: $host;
-        $this->newLine();
-        $this->laraKubeLine('  <fg=gray>Mail ports (reachability from here):</>');
+        if (! $this->option('json')) {
+            $this->newLine();
+            $this->laraKubeLine('  <fg=gray>Mail ports (reachability from here):</>');
+        }
         $ports = [
             25 => ['SMTP (inbound MX)', 'warn', 'Needed to receive external mail. A fail here can also be YOUR network blocking outbound 25.'],
             465 => ['Submissions / SSL', 'fail', 'Clients send through 465. tool:init --tool=stalwart opens it on both firewall layers — check the firewall.'],
@@ -140,7 +160,9 @@ class MailCheckCommand extends Command
         // When a relay IS configured we don't just check the secret exists — we
         // reach through the pod and actually SMTP-AUTH against the relay, because
         // a blocked submission port or a wrong login/key is silent otherwise.
-        $this->newLine();
+        if (! $this->option('json')) {
+            $this->newLine();
+        }
         $relayOn = trim(Process::run(
             "{$kubectl} get secret {$this->mailRelaySecretName($kubectl)} -n {$ns} --ignore-not-found -o name",
         )->output()) !== '';
@@ -159,7 +181,9 @@ class MailCheckCommand extends Command
         // 554 duplicate-header bounce. Judged on ACTIVE keys only: rotation
         // legitimately leaves a pending/retiring key alongside the active one,
         // and counting those would cry wolf every quarter.
-        $this->newLine();
+        if (! $this->option('json')) {
+            $this->newLine();
+        }
         $signatures = $this->stalwartDkimSignatures($kubectl, $ns);
 
         if ($signatures === null) {
@@ -175,17 +199,36 @@ class MailCheckCommand extends Command
                     ."Prune to RSA-only: larakube mail:dkim {$env} --fix");
         }
 
-        $this->laraKubeLine("  <fg=gray>DKIM · check admin → Domains → {$domain} → DKIM, and publish the selector TXT it shows.</>");
+        if (! $this->option('json')) {
+            $this->laraKubeLine("  <fg=gray>DKIM · check admin → Domains → {$domain} → DKIM, and publish the selector TXT it shows.</>");
 
-        // --- Summary -------------------------------------------------------
-        $this->newLine();
-        $total = $this->pass + $this->warn + $this->fail;
-        if ($this->fail === 0 && $this->warn === 0) {
-            $this->laraKubeInfo("✅ All {$total} checks passed — mail is fully configured.");
-        } elseif ($this->fail === 0) {
-            $this->laraKubeInfo("Good: {$this->pass} passed, {$this->warn} warning(s). Review the ⚠ hints above.");
-        } else {
-            $this->laraKubeError("{$this->fail} failed · {$this->warn} warning(s) · {$this->pass} passed. Fix the ✗ items above.");
+            // --- Summary -------------------------------------------------------
+            $this->newLine();
+            $total = $this->pass + $this->warn + $this->fail;
+            if ($this->fail === 0 && $this->warn === 0) {
+                $this->laraKubeInfo("✅ All {$total} checks passed — mail is fully configured.");
+            } elseif ($this->fail === 0) {
+                $this->laraKubeInfo("Good: {$this->pass} passed, {$this->warn} warning(s). Review the ⚠ hints above.");
+            } else {
+                $this->laraKubeError("{$this->fail} failed · {$this->warn} warning(s) · {$this->pass} passed. Fix the ✗ items above.");
+            }
+        }
+
+        if ($this->option('json')) {
+            $this->line((string) json_encode([
+                'installed' => true,
+                'domain' => $domain,
+                'host' => $host,
+                'environment' => $env,
+                'summary' => [
+                    'pass' => $this->pass,
+                    'warn' => $this->warn,
+                    'fail' => $this->fail,
+                ],
+                'checks' => $this->checks,
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+            return $this->fail === 0 ? 0 : 1;
         }
 
         return $this->fail === 0 ? 0 : 1;
@@ -276,14 +319,22 @@ class MailCheckCommand extends Command
 
     private function report(string $status, string $label, string $hint = ''): void
     {
-        $icon = match ($status) {
-            'ok' => '<fg=green>✓</>',
-            'warn' => '<fg=yellow>⚠</>',
-            default => '<fg=red>✗</>',
-        };
-        $this->line("  {$icon} {$label}");
-        if ($status !== 'ok' && $hint !== '') {
-            $this->line("      <fg=gray>{$hint}</>");
+        $this->checks[] = [
+            'status' => $status,
+            'label' => $label,
+            'hint' => $hint,
+        ];
+
+        if (! $this->option('json')) {
+            $icon = match ($status) {
+                'ok' => '<fg=green>✓</>',
+                'warn' => '<fg=yellow>⚠</>',
+                default => '<fg=red>✗</>',
+            };
+            $this->line("  {$icon} {$label}");
+            if ($status !== 'ok' && $hint !== '') {
+                $this->line("      <fg=gray>{$hint}</>");
+            }
         }
 
         match ($status) {

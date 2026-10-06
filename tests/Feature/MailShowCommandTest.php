@@ -121,3 +121,42 @@ test('stalwart:show <email> shows SSO status when Zitadel is installed', functio
         ->assertExitCode(0)
         ->expectsOutputToContain('SSO:');
 });
+
+test('stalwart:show emits json when --json is passed', function (): void {
+    ssoRegistered();
+    Process::fake([
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('s3cret-p@ss')),
+        '*port-forward*' => Process::result(output: ''),
+    ]);
+
+    $exitCode = Illuminate\Support\Facades\Artisan::call('stalwart:show', ['--json' => true]);
+    $output = Illuminate\Support\Facades\Artisan::output();
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('"installed": true')
+        ->toContain('"adminPassword": "s3cret-p@ss"');
+});
+
+test('stalwart:show with email emits json when --json is passed', function (): void {
+    ssoRegistered();
+    Process::fake([
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
+        '*port-forward*' => Process::result(output: ''),
+        '*get deployment zitadel-sso-example-com*' => Process::result(output: ''),
+        '*-l larakube.io/tool=webmail --no-headers*' => Process::result(output: ''),
+    ]);
+
+    Saloon::fake([
+        MockResponse::make(['methodResponses' => [['x:Account/query', ['ids' => ['c']], 'c0'], ['x:Account/get', ['list' => [], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [['x:Account/get', ['list' => [['id' => 'c', 'name' => 'alice', 'description' => 'Alice Smith', 'emailAddress' => 'alice@example.com', 'roles' => ['@type' => 'User']]], 'notFound' => []], 'c1']], 'sessionState' => 'x']),
+    ]);
+
+    $exitCode = Illuminate\Support\Facades\Artisan::call('stalwart:show', ['--email' => 'alice@example.com', '--json' => true]);
+    $output = Illuminate\Support\Facades\Artisan::output();
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('"email": "alice@example.com"')
+        ->toContain('"name": "Alice Smith"');
+});
