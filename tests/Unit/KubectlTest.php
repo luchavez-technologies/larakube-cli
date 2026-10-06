@@ -294,3 +294,23 @@ test('nothing in app/ shells out behind the Process facade', function (): void {
 
     expect($offenders)->toBeEmpty();
 });
+
+test('isLocalContextName distinguishes local distributions from remote and cloud contexts', function (): void {
+    expect(Kubectl::isLocalContextName('k3s-larakube'))->toBeTrue()
+        ->and(Kubectl::isLocalContextName('docker-desktop'))->toBeTrue()
+        ->and(Kubectl::isLocalContextName('docker-for-desktop'))->toBeTrue()
+        ->and(Kubectl::isLocalContextName('orbstack'))->toBeTrue()
+        ->and(Kubectl::isLocalContextName('minikube'))->toBeTrue()
+        ->and(Kubectl::isLocalContextName('kind-test'))->toBeTrue()
+        ->and(Kubectl::isLocalContextName('colima'))->toBeTrue()
+        ->and(Kubectl::isLocalContextName('k3d-mycluster'))->toBeTrue()
+        ->and(Kubectl::isLocalContextName('rancher-desktop'))->toBeTrue()
+        ->and(Kubectl::isLocalContextName('microk8s'))->toBeTrue()
+        ->and(Kubectl::isLocalContextName('larakube-34.142.199.251'))->toBeFalse()
+        ->and(Kubectl::isLocalContextName('larakube-devbox-mybox'))->toBeFalse()
+        ->and(Kubectl::isLocalContextName('larakube-workspace-code'))->toBeFalse()
+        ->and(Kubectl::isLocalContextName('do-nyc1-cluster'))->toBeFalse()
+        ->and(Kubectl::isLocalContextName('gke_project_us-central1_prod'))->toBeFalse()
+        ->and(Kubectl::isLocalContextName('arn:aws:eks:us-east-1:123456789012:cluster/prod'))->toBeFalse()
+        ->and(Kubectl::isLocalContextName(''))->toBeFalse();
+});

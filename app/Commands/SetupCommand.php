@@ -102,7 +102,12 @@ class SetupCommand extends Command
         if ($this->isTraefikRunning()) {
             $this->line('  <fg=green>✓</> Traefik ingress controller already installed.');
         } else {
-            $result = $this->call('traefik:setup');
+            $localContext = $this->resolveLocalClusterContext();
+            $params = ['environment' => 'local'];
+            if ($localContext !== null) {
+                $params['--context'] = $localContext;
+            }
+            $result = $this->call('traefik:setup', $params);
 
             if ($result !== 0) {
                 return $result;
@@ -607,19 +612,52 @@ class SetupCommand extends Command
         }
     }
 
+    protected function resolveLocalClusterContext(): ?string
+    {
+        $current = trim(Kubectl::forContext(null)->raw(['config', 'current-context'])->output);
+        if ($current !== '' && Kubectl::isLocalContextName($current)) {
+            return $current;
+        }
+
+        $contexts = array_values(array_filter(array_map('trim', explode("\n", Kubectl::forContext(null)->raw(['config', 'get-contexts', '-o', 'name'])->output))));
+
+        if (in_array('k3s-larakube', $contexts, true)) {
+            return 'k3s-larakube';
+        }
+
+        foreach ($contexts as $ctx) {
+            if (Kubectl::isLocalContextName($ctx)) {
+                return $ctx;
+            }
+        }
+
+        return null;
+    }
+
     protected function isClusterRunning(): bool
     {
-        return Kubectl::forContext(null)->raw(['cluster-info', '--request-timeout=2s'])->ok;
+        $localContext = $this->resolveLocalClusterContext();
+        if ($localContext === null) {
+            return false;
+        }
+
+        return Kubectl::forContext($localContext)->raw(['cluster-info', '--request-timeout=2s'])->ok;
     }
 
     protected function isTraefikRunning(): bool
     {
-        $res = Kubectl::forContext(null)->raw(['get', 'svc', '-n', 'traefik', 'traefik', '-o', 'name']);
+        $localContext = $this->resolveLocalClusterContext();
+        if ($localContext === null) {
+            return false;
+        }
+
+        $kubectl = Kubectl::forContext($localContext);
+        $res = $kubectl->raw(['get', 'svc', '-n', 'traefik', 'traefik', '-o', 'name']);
         if ($res->ok && trim($res->output) !== '') {
             return true;
         }
 
-        $res2 = Kubectl::forContext(null)->raw(['get', 'svc', '-A', '-l', 'app.kubernetes.io/name=traefik', '-o', 'name']);
+        $res2 = $kubectl->raw(['get', 'svc', '-A', '-l', 'app.kubernetes.io/name=traefik', '-o', 'name']);
 
         return $res2->ok && trim($res2->output) !== '';
     }

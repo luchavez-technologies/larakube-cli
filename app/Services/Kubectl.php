@@ -111,8 +111,16 @@ final readonly class Kubectl
     {
         $context = strtolower(trim($context));
 
-        foreach (['minikube', 'docker-desktop', 'orbstack', 'kind', 'colima', 'k3s-larakube'] as $keyword) {
-            if ($context !== '' && str_contains($context, $keyword)) {
+        if ($context === '') {
+            return false;
+        }
+
+        if (str_starts_with($context, 'larakube-') && $context !== 'k3s-larakube') {
+            return false;
+        }
+
+        foreach (['minikube', 'docker-desktop', 'docker-for-desktop', 'orbstack', 'kind', 'colima', 'k3s-larakube', 'k3d', 'rancher-desktop', 'microk8s'] as $keyword) {
+            if (str_contains($context, $keyword)) {
                 return true;
             }
         }
