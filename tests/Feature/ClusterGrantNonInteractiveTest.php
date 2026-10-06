@@ -59,3 +59,25 @@ test('--json on a failing grant emits one parseable failure object', function ()
         ->expectsOutputToContain('"success":false')
         ->assertExitCode(1);
 });
+
+test('standalone cluster-wide grant resolves context without requiring an environment argument', function (): void {
+    $this->artisan('cluster:grant', [
+        '--name' => 'alice',
+        '--context' => 'do-nyc1-blue',
+        '--cluster' => true,
+        '--no-interaction' => true,
+    ]);
+
+    expect(State::lastError())->not->toContain('Provide a namespace, or run inside a project to pick an environment.');
+});
+
+test('standalone scoped grant with --namespaces resolves context without requiring an environment argument', function (): void {
+    $this->artisan('cluster:grant', [
+        '--name' => 'alice',
+        '--context' => 'do-nyc1-blue',
+        '--namespaces' => 'production',
+        '--no-interaction' => true,
+    ]);
+
+    expect(State::lastError())->not->toContain('Provide a namespace, or run inside a project to pick an environment.');
+});

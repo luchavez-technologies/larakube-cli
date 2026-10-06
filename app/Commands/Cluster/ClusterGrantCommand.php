@@ -225,9 +225,32 @@ class ClusterGrantCommand extends Command
     {
         $this->renderHeader();
 
-        [$appNs, $adminContext] = $this->resolveClusterTarget((string) ($this->argument('environment') ?? ''), $this->option('context'));
-        if ($appNs === null || $adminContext === null) {
-            return 1;
+        $clusterWide = (bool) $this->option('cluster');
+        $rawNamespaces = (string) ($this->option('namespaces') ?? '');
+        $arg = (string) ($this->argument('environment') ?? '');
+        $explicitContext = $this->option('context');
+
+        if ($clusterWide || $rawNamespaces !== '') {
+            $adminContext = $this->resolveClusterContext($explicitContext);
+            if ($adminContext === null) {
+                $this->laraKubeError('No kube-contexts found — is kubectl configured?');
+
+                return 1;
+            }
+            $appNs = $arg;
+        } elseif ($explicitContext !== null && $explicitContext !== '' && $arg === '' && ! $this->getProjectConfig(getcwd())) {
+            $adminContext = $explicitContext;
+            if ($this->flag('no-interaction')) {
+                $this->laraKubeError('No target namespace — pass --cluster for cluster-wide access, or --namespaces=<ns> for scoped access.');
+
+                return 1;
+            }
+            $appNs = '';
+        } else {
+            [$appNs, $adminContext] = $this->resolveClusterTarget($arg, $explicitContext);
+            if ($appNs === null || $adminContext === null) {
+                return 1;
+            }
         }
 
         $name = (string) $this->option('name');
