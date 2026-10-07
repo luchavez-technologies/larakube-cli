@@ -110,7 +110,7 @@ class MailDeleteCommand extends Command
 
         $this->laraKubeInfo("✅ Account '{$target['email']}' deleted.");
 
-        $this->maybeRemoveSsoIdentity($env, $target['email']);
+        $this->maybeRemoveSsoIdentity($env, $target['email'], $context);
 
         return 0;
     }
@@ -120,9 +120,9 @@ class MailDeleteCommand extends Command
      * removal; otherwise, if SSO is installed, ask (skippable). Never fails
      * the command: the mailbox is already gone by this point.
      */
-    protected function maybeRemoveSsoIdentity(string $env, string $email): void
+    protected function maybeRemoveSsoIdentity(string $env, string $email, ?string $context = null): void
     {
-        $ssoKubectl = Kubectl::forContext($this->resolveToolContext($env))->prefix();
+        $ssoKubectl = Kubectl::forContext($this->resolveToolContext($env, $context))->prefix();
         $ssoNs = $this->ssoNamespace();
 
         if (! $this->isSsoInstalled($ssoKubectl, $ssoNs)) {

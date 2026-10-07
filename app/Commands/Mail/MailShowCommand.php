@@ -68,7 +68,7 @@ abstract class MailShowCommand extends Command
 
         $email = (string) ($this->option('email') ?? '');
         if ($email !== '') {
-            return $this->showAccount($kubectl, $ns, $env, $config, $email);
+            return $this->showAccount($kubectl, $ns, $env, $config, $email, $context);
         }
 
         $host = $this->resolveMailHostReadOnly($env, $config, $kubectl);
@@ -91,7 +91,7 @@ abstract class MailShowCommand extends Command
         $relay = $this->resolveActiveMailRelay($kubectl, $ns);
 
         if ($this->option('json')) {
-            $ssoKubectl = Kubectl::forContext($this->resolveToolContext($env))->prefix();
+            $ssoKubectl = Kubectl::forContext($this->resolveToolContext($env, $context))->prefix();
             $ssoNs = $this->ssoNamespace();
             $hasSso = $this->isSsoInstalled($ssoKubectl, $ssoNs);
 
@@ -215,7 +215,7 @@ abstract class MailShowCommand extends Command
      * the password: Stalwart only stores a hash, so a lost password can only
      * be replaced (`mail:password <email>`), never recovered.
      */
-    protected function showAccount(string $kubectl, string $ns, string $env, ?ConfigData $config, string $email): int
+    protected function showAccount(string $kubectl, string $ns, string $env, ?ConfigData $config, string $email, ?string $context = null): int
     {
         $accounts = $this->stalwartAccounts($kubectl, $ns);
         if ($accounts === null) {
@@ -281,7 +281,7 @@ abstract class MailShowCommand extends Command
             $this->line("  <fg=yellow>Webmail:</> <fg=blue>{$webmail}</>  — log in with this address + password");
         }
 
-        $ssoLine = $this->ssoStatusLine($env, $email);
+        $ssoLine = $this->ssoStatusLine($env, $email, $context);
         if ($ssoLine !== null) {
             $this->line($ssoLine);
         }
@@ -301,9 +301,9 @@ abstract class MailShowCommand extends Command
      * account up by email. A lookup failure (credentials unreachable) is
      * reported as "unknown", not silently treated as "no".
      */
-    protected function ssoStatusLine(string $env, string $email): ?string
+    protected function ssoStatusLine(string $env, string $email, ?string $context = null): ?string
     {
-        $ssoKubectl = Kubectl::forContext($this->resolveToolContext($env))->prefix();
+        $ssoKubectl = Kubectl::forContext($this->resolveToolContext($env, $context))->prefix();
         $ssoNs = $this->ssoNamespace();
 
         if (! $this->isSsoInstalled($ssoKubectl, $ssoNs)) {

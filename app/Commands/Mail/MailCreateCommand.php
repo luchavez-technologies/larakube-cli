@@ -217,7 +217,7 @@ class MailCreateCommand extends Command
         }
         $this->newLine();
 
-        $this->maybeCreateSsoIdentity($env, $fullEmail, $displayName, $rawPassword, $domainName);
+        $this->maybeCreateSsoIdentity($env, $fullEmail, $displayName, $rawPassword, $domainName, $context);
 
         return 0;
     }
@@ -242,9 +242,9 @@ class MailCreateCommand extends Command
      * org — today's behaviour, unchanged — when no org name matches, which
      * is the normal case for every domain that was never sso:org'd.
      */
-    protected function maybeCreateSsoIdentity(string $env, string $email, string $displayName, string $password, ?string $mailDomain = null): void
+    protected function maybeCreateSsoIdentity(string $env, string $email, string $displayName, string $password, ?string $mailDomain = null, ?string $context = null): void
     {
-        $ssoKubectl = Kubectl::forContext($this->resolveToolContext($env))->prefix();
+        $ssoKubectl = Kubectl::forContext($this->resolveToolContext($env, $context))->prefix();
         $ssoNs = $this->ssoNamespace();
 
         if (! $this->isSsoInstalled($ssoKubectl, $ssoNs)) {

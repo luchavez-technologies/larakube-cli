@@ -136,7 +136,7 @@ class MailPasswordCommand extends Command
         $this->line("  <fg=gray>New password:</> <fg=yellow>{$newPassword}</>");
         $this->newLine();
 
-        $this->maybeSyncSsoPassword($env, $target['email'], $newPassword);
+        $this->maybeSyncSsoPassword($env, $target['email'], $newPassword, $context);
 
         return 0;
     }
@@ -151,9 +151,9 @@ class MailPasswordCommand extends Command
      * a mailbox with no SSO identity is a no-op with a hint, not an error. Never
      * fails the command: the mailbox password is already changed by this point.
      */
-    protected function maybeSyncSsoPassword(string $env, string $email, string $password): void
+    protected function maybeSyncSsoPassword(string $env, string $email, string $password, ?string $context = null): void
     {
-        $ssoKubectl = Kubectl::forContext($this->resolveToolContext($env))->prefix();
+        $ssoKubectl = Kubectl::forContext($this->resolveToolContext($env, $context))->prefix();
         $ssoNs = $this->ssoNamespace();
 
         if (! $this->isSsoInstalled($ssoKubectl, $ssoNs)) {

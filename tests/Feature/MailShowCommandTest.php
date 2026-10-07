@@ -205,3 +205,22 @@ test('stalwart:show resolves active outbound relay and emits relay in json', fun
         ->and($output)->toContain('"relay"')
         ->toContain('"provider": "ses"');
 });
+
+test('stalwart:show with production environment and explicit context emits json successfully', function (): void {
+    ssoRegistered();
+    Process::fake([
+        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('s3cret-p@ss')),
+        '*port-forward*' => Process::result(output: ''),
+    ]);
+
+    $exitCode = Illuminate\Support\Facades\Artisan::call('stalwart:show', [
+        'environment' => 'production',
+        '--context' => 'remote-cluster-ctx',
+        '--json' => true,
+    ]);
+    $output = Illuminate\Support\Facades\Artisan::output();
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('"installed": true');
+});
