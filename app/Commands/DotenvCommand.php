@@ -3,6 +3,7 @@
 namespace App\Commands;
 
 use App\Services\Kubectl;
+use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ReadsEnvSources;
@@ -15,38 +16,55 @@ use LaravelZero\Framework\Commands\Command;
 
 class DotenvCommand extends Command
 {
-    use InteractsWithProjectConfig, LaraKubeOutput, ReadsEnvSources, ResolvesEnvironmentContext;
+    use EmitsJsonOutput, InteractsWithProjectConfig, LaraKubeOutput, ReadsEnvSources, ResolvesEnvironmentContext;
 
     protected $signature = 'dotenv
         {environment? : The environment to compare — omit to pick from the project\'s envs}
         {--reveal : Print plaintext secret values (requires secret-read access on your context)}
         {--strict : Exit 1 on any drift/missing key — for CI/preflight gates. Plex/OpenBao-rotated keys (expected to diverge from the file) never count}
-        {--context= : Override the kube-context to compare against}';
+        {--context= : Override the kube-context to compare against}
+        {--json : Emit machine-readable JSON output}';
 
     protected $description = 'Compare this project\'s .env.<environment> against the ConfigMap + Secret deployed to the cluster, and surface drift';
 
     public function handle(): int
     {
-        $this->renderHeader();
+        if ($this->option('json')) {
+            $this->enableJsonMode();
+        } else {
+            $this->renderHeader();
+        }
 
         // Unlike `dotenv:audit`, this command diffs a *local* .env.<env>, so it
         // only makes sense inside a project — there's no standalone namespace mode.
         $config = $this->getProjectConfig(getcwd());
         if ($config === null) {
-            $this->laraKubeError('Run `dotenv` inside a LaraKube project — it compares this project\'s .env.<environment> against the cluster.');
+            if ($this->option('json')) {
+                $this->jsonOutput(['success' => false, 'error' => 'Run `dotenv` inside a LaraKube project — it compares this project\'s .env.<environment> against the cluster.']);
+            } else {
+                $this->laraKubeError('Run `dotenv` inside a LaraKube project — it compares this project\'s .env.<environment> against the cluster.');
+            }
 
             return 1;
         }
 
         $arg = (string) ($this->argument('environment') ?? '');
-        $env = $arg !== '' ? $arg : $this->pickEnvironment($config);
+        $env = $arg !== '' ? $arg : ($this->option('json') || ! $this->input->isInteractive() ? ($config->getEnvironments()[0] ?? null) : $this->pickEnvironment($config));
         if ($env === null) {
-            $this->laraKubeWarn('This project has no cloud environments yet — add one with `larakube env <name>`.');
+            if ($this->option('json')) {
+                $this->jsonOutput(['success' => false, 'error' => 'This project has no environments yet.']);
+            } else {
+                $this->laraKubeWarn('This project has no cloud environments yet — add one with `larakube env <name>`.');
+            }
 
             return 0;
         }
         if ($config->getEnvironment($env) === null) {
-            $this->laraKubeError("No '{$env}' environment in this project — run `larakube env {$env}` first.");
+            if ($this->option('json')) {
+                $this->jsonOutput(['success' => false, 'error' => "No '{$env}' environment in this project — run `larakube env {$env}` first."]);
+            } else {
+                $this->laraKubeError("No '{$env}' environment in this project — run `larakube env {$env}` first.");
+            }
 
             return 1;
         }
@@ -57,7 +75,11 @@ class DotenvCommand extends Command
 
         $envFile = $config->getPath().($env === 'local' ? '/.env' : '/.env.'.$env);
         if (! is_file($envFile)) {
-            $this->laraKubeWarn("No '{$envFile}' on disk — nothing to compare against.");
+            if ($this->option('json')) {
+                $this->jsonOutput(['success' => false, 'error' => "No '{$envFile}' on disk — nothing to compare against."]);
+            } else {
+                $this->laraKubeWarn("No '{$envFile}' on disk — nothing to compare against.");
+            }
 
             return 0;
         }
@@ -86,18 +108,20 @@ class DotenvCommand extends Command
             }
         }
 
-        $this->line('  <fg=gray>Environment:</> <fg=cyan>'.$env.'</>  <fg=gray>·</> <fg=cyan>'.$namespace.'</>  <fg=gray>·</> <fg=cyan>'.($context ?? 'current context').'</>');
-        $this->laraKubeNewLine();
+        if (! $this->option('json')) {
+            $this->line('  <fg=gray>Environment:</> <fg=cyan>'.$env.'</>  <fg=gray>·</> <fg=cyan>'.$namespace.'</>  <fg=gray>·</> <fg=cyan>'.($context ?? 'current context').'</>');
+            $this->laraKubeNewLine();
+        }
 
         $reveal = (bool) $this->option('reveal') && $canReadSecrets;
-        if ($this->option('reveal') && ! $canReadSecrets) {
+        if (! $this->option('json') && $this->option('reveal') && ! $canReadSecrets) {
             $this->laraKubeWarn("Your context can't read Secrets in '{$namespace}' — showing masked values.");
             $this->laraKubeNewLine();
         }
 
         $excluded = $config->getPlexManagedKeys($env);
 
-        return $this->compare($local, $cluster, $clusterSecret, $known, $namespace, $canReadSecrets, $reveal, (bool) $this->option('strict'), $excluded);
+        return $this->compare($local, $cluster, $clusterSecret, $known, $namespace, $canReadSecrets, $reveal, (bool) $this->option('strict'), $excluded, $env, $context);
     }
 
     /**
@@ -126,18 +150,38 @@ class DotenvCommand extends Command
      * @param  array<int, string>  $known  blueprint-managed secret keys
      * @param  array<int, string>  $excluded  Plex/OpenBao-managed keys — expected to diverge, never fail --strict
      */
-    protected function compare(array $local, array $cluster, array $clusterSecret, array $known, string $namespace, bool $canReadSecrets, bool $reveal, bool $strict = false, array $excluded = []): int
+    protected function compare(array $local, array $cluster, array $clusterSecret, array $known, string $namespace, bool $canReadSecrets, bool $reveal, bool $strict = false, array $excluded = [], ?string $env = null, ?string $context = null): int
     {
         $keys = array_unique(array_merge(array_keys($local), array_keys($cluster)));
         sort($keys);
 
         if ($keys === []) {
-            $this->laraKubeInfo('Nothing to compare — the local file and the cluster are both empty.');
+            if ($this->option('json')) {
+                $this->jsonOutput([
+                    'success' => true,
+                    'environment' => $env,
+                    'namespace' => $namespace,
+                    'context' => $context,
+                    'items' => [],
+                    'summary' => [
+                        'drift' => 0,
+                        'onlyLocal' => 0,
+                        'onlyCluster' => 0,
+                        'hidden' => 0,
+                        'inSync' => 0,
+                        'rotated' => 0,
+                        'canReadSecrets' => $canReadSecrets,
+                    ],
+                ]);
+            } else {
+                $this->laraKubeInfo('Nothing to compare — the local file and the cluster are both empty.');
+            }
 
             return 0;
         }
 
         $rows = [];
+        $items = [];
         $drift = $onlyLocal = $onlyCluster = $hidden = $maskedVisible = $rotated = 0;
 
         foreach ($keys as $key) {
@@ -151,6 +195,14 @@ class DotenvCommand extends Command
             if ($isSecret && ! $canReadSecrets) {
                 $hidden++;
                 $rows[] = [$key, 'secret (hidden)', $inLocal ? '••••••' : '—', 'no access'];
+                $items[] = [
+                    'key' => $key,
+                    'status' => 'secret (hidden)',
+                    'isSecret' => true,
+                    'isExcluded' => $isExcluded,
+                    'local' => $inLocal ? '••••••' : null,
+                    'cluster' => 'no access',
+                ];
 
                 continue;
             }
@@ -187,6 +239,40 @@ class DotenvCommand extends Command
             };
 
             $rows[] = [$key, $status, $render($localVal), $render($clusterVal)];
+            $items[] = [
+                'key' => $key,
+                'status' => $status,
+                'isSecret' => $isSecret,
+                'isExcluded' => $isExcluded,
+                'local' => ($isSecret && ! $reveal && $localVal !== null) ? '••••••' : $localVal,
+                'cluster' => ($isSecret && ! $reveal && $clusterVal !== null) ? '••••••' : $clusterVal,
+            ];
+        }
+
+        if ($this->option('json')) {
+            $inSyncCount = count($keys) - ($drift + $onlyLocal + $onlyCluster + $hidden);
+            $this->jsonOutput([
+                'success' => true,
+                'environment' => $env,
+                'namespace' => $namespace,
+                'context' => $context,
+                'items' => $items,
+                'summary' => [
+                    'drift' => $drift,
+                    'onlyLocal' => $onlyLocal,
+                    'onlyCluster' => $onlyCluster,
+                    'hidden' => $hidden,
+                    'inSync' => $inSyncCount,
+                    'rotated' => $rotated,
+                    'canReadSecrets' => $canReadSecrets,
+                ],
+            ]);
+
+            if ($strict && ($drift > 0 || $onlyLocal > 0 || $onlyCluster > 0 || $hidden > 0)) {
+                return 1;
+            }
+
+            return 0;
         }
 
         table(['Key', 'Status', 'Local (.env)', 'Cluster'], $rows);

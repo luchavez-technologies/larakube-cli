@@ -4,6 +4,7 @@ namespace App\Commands;
 
 use App\Data\ConfigData;
 use App\Enums\LaravelFeature;
+use App\Traits\EmitsJsonOutput;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
@@ -16,14 +17,21 @@ use LaravelZero\Framework\Commands\Command;
 
 class AutoscaleCommand extends Command
 {
-    use GeneratesProjectInfrastructure, InteractsWithProjectConfig, LaraKubeOutput;
+    use EmitsJsonOutput, GeneratesProjectInfrastructure, InteractsWithProjectConfig, LaraKubeOutput;
 
     /**
      * The name and signature of the console command.
      *
      * @var string
      */
-    protected $signature = 'autoscale {environment? : The environment to configure}';
+    protected $signature = 'autoscale
+        {environment? : The environment to configure}
+        {--component= : Target component (web, queues, ssr)}
+        {--min= : Minimum replica count (integer >= 1)}
+        {--max= : Maximum replica count (integer >= min)}
+        {--cpu= : Target CPU utilization percentage (default: 70)}
+        {--disable : Disable HPA and fall back to static replicas}
+        {--json : Emit machine-readable JSON output}';
 
     /**
      * The console command description.
@@ -37,9 +45,17 @@ class AutoscaleCommand extends Command
      */
     public function handle()
     {
-        $this->renderHeader();
+        if ($this->option('json')) {
+            $this->enableJsonMode();
+        } else {
+            $this->renderHeader();
+        }
 
         if (! $this->isLaraKubeProject()) {
+            if ($this->option('json')) {
+                $this->jsonOutput(['success' => false, 'error' => 'Not a LaraKube project.']);
+            }
+
             return 1;
         }
 
@@ -53,8 +69,12 @@ class AutoscaleCommand extends Command
         $environments = $config->getCloudEnvironments();
 
         if (empty($environments)) {
-            $this->laraKubeError('No cloud environments configured yet.');
-            $this->line('  👉 Run <fg=yellow>larakube env <name></> or <fg=yellow>larakube cloud:configure</> first.');
+            if ($this->option('json')) {
+                $this->jsonOutput(['success' => false, 'error' => 'No cloud environments configured yet.']);
+            } else {
+                $this->laraKubeError('No cloud environments configured yet.');
+                $this->line('  👉 Run <fg=yellow>larakube env <name></> or <fg=yellow>larakube cloud:configure</> first.');
+            }
 
             return 1;
         }
@@ -62,17 +82,114 @@ class AutoscaleCommand extends Command
         $envName = $this->argument('environment');
 
         if (! $envName) {
-            $envName = select(
-                label: 'Which environment do you want to configure autoscaling for?',
-                options: $environments,
-                default: $environments[0],
-            );
+            if ($this->option('json') || ! $this->input->isInteractive()) {
+                $envName = $environments[0];
+            } else {
+                $envName = select(
+                    label: 'Which environment do you want to configure autoscaling for?',
+                    options: $environments,
+                    default: $environments[0],
+                );
+            }
         }
 
         if (! in_array($envName, $environments)) {
-            $this->laraKubeError("'{$envName}' isn't a cloud environment in your blueprint.");
+            if ($this->option('json')) {
+                $this->jsonOutput(['success' => false, 'error' => "'{$envName}' isn't a cloud environment in your blueprint."]);
+            } else {
+                $this->laraKubeError("'{$envName}' isn't a cloud environment in your blueprint.");
+            }
 
             return 1;
+        }
+
+        $isJson = (bool) $this->option('json');
+        $componentChoice = $this->option('component');
+
+        // Query mode: return all autoscaling configs as JSON
+        if ($isJson && ! $componentChoice && $this->option('min') === null && ! $this->option('disable')) {
+            $components = $this->getAutoscalableComponents($config, $envName);
+            $effective = [];
+            foreach (array_keys($components) as $c) {
+                $effective[$c] = $config->getAutoscale($envName, $c);
+            }
+            $this->jsonOutput([
+                'success' => true,
+                'environment' => $envName,
+                'autoscale' => $effective,
+            ]);
+
+            return 0;
+        }
+
+        if ($componentChoice !== null) {
+            $available = array_keys($this->getAutoscalableComponents($config, $envName));
+            if (! in_array($componentChoice, $available, true)) {
+                if ($isJson) {
+                    $this->jsonOutput(['success' => false, 'error' => "Component '{$componentChoice}' is not autoscalable in environment '{$envName}'."]);
+                } else {
+                    $this->laraKubeError("Component '{$componentChoice}' cannot be autoscaled. Available: ".implode(', ', $available));
+                }
+
+                return 1;
+            }
+
+            if ($this->option('disable')) {
+                $config->setAutoscale($envName, $componentChoice, null);
+                $this->saveProjectConfig($projectPath, $config);
+                if ($isJson) {
+                    $this->jsonOutput([
+                        'success' => true,
+                        'environment' => $envName,
+                        'component' => $componentChoice,
+                        'disabled' => true,
+                    ]);
+                } else {
+                    $this->laraKubeInfo("Disabled autoscaling for '{$componentChoice}' in '{$envName}'.");
+                    $this->line('  <fg=gray>It now uses a fixed replica count — see: larakube replicas '.$envName.'</>');
+                    $this->printNextSteps($envName);
+                }
+
+                return 0;
+            }
+
+            $minOpt = $this->option('min');
+            $maxOpt = $this->option('max');
+            $cpuOpt = $this->option('cpu') ?? 70;
+
+            if ($minOpt !== null && $maxOpt !== null) {
+                $min = (int) $minOpt;
+                $max = (int) $maxOpt;
+                $cpu = (int) $cpuOpt;
+
+                if ($min < 1 || $max < $min || $cpu < 1 || $cpu > 100) {
+                    if ($isJson) {
+                        $this->jsonOutput(['success' => false, 'error' => 'Invalid autoscale bounds: min must be >= 1, max >= min, cpu between 1 and 100.']);
+                    } else {
+                        $this->laraKubeError('Invalid autoscale bounds: min must be >= 1, max >= min, cpu between 1 and 100.');
+                    }
+
+                    return 1;
+                }
+
+                $config->setAutoscale($envName, $componentChoice, ['min' => $min, 'max' => $max, 'cpu' => $cpu]);
+                $this->saveProjectConfig($projectPath, $config);
+
+                if ($isJson) {
+                    $this->jsonOutput([
+                        'success' => true,
+                        'environment' => $envName,
+                        'component' => $componentChoice,
+                        'autoscale' => ['min' => $min, 'max' => $max, 'cpu' => $cpu],
+                    ]);
+                } else {
+                    $this->laraKubeInfo("'{$componentChoice}' in '{$envName}' now autoscales {$min}-{$max} replicas, targeting {$cpu}% CPU.");
+                    $this->line('  <fg=gray>Any fixed replica count from `larakube replicas` is ignored while this is active.</>');
+                    $this->printNextSteps($envName);
+                }
+
+                return 0;
+            }
         }
 
         $this->showEffectiveAutoscaleTable($config, $envName);

@@ -3,6 +3,7 @@
 namespace App\Commands;
 
 use App\Services\Kubectl;
+use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithSecrets;
 use App\Traits\LaraKubeOutput;
@@ -13,42 +14,63 @@ use LaravelZero\Framework\Commands\Command;
 
 class DotenvPullCommand extends Command
 {
-    use InteractsWithProjectConfig, InteractsWithSecrets, LaraKubeOutput, ReadsEnvSources, ResolvesEnvironmentContext, SyncsClusterSecrets;
+    use EmitsJsonOutput, InteractsWithProjectConfig, InteractsWithSecrets, LaraKubeOutput, ReadsEnvSources, ResolvesEnvironmentContext, SyncsClusterSecrets;
 
     protected $signature = 'dotenv:pull
         {environment? : The environment to pull — omit to pick from the project\'s envs}
         {--app= : App name OpenBao secrets are scoped under (defaults to this project\'s name)}
-        {--context= : Override the kube-context to pull from}';
+        {--context= : Override the kube-context to pull from}
+        {--json : Emit machine-readable JSON output}';
 
     protected $description = "Seed .env.<environment>'s secret keys from the cluster — for onboarding a new machine or recovering after a rotation. The read counterpart to dotenv:push.";
 
     public function handle(): int
     {
-        $this->renderHeader();
+        if ($this->option('json')) {
+            $this->enableJsonMode();
+        } else {
+            $this->renderHeader();
+        }
 
         $config = $this->getProjectConfig(getcwd());
         if ($config === null) {
-            $this->laraKubeError('Run `dotenv:pull` inside a LaraKube project.');
+            if ($this->option('json')) {
+                $this->jsonOutput(['success' => false, 'error' => 'Run `dotenv:pull` inside a LaraKube project.']);
+            } else {
+                $this->laraKubeError('Run `dotenv:pull` inside a LaraKube project.');
+            }
 
             return 1;
         }
 
         $arg = (string) ($this->argument('environment') ?? '');
-        $env = $arg !== '' ? $arg : $this->pickEnvironment($config);
+        $env = $arg !== '' ? $arg : ($this->option('json') || ! $this->input->isInteractive() ? ($config->getEnvironments()[0] ?? null) : $this->pickEnvironment($config));
         if ($env === null) {
-            $this->laraKubeWarn('This project has no cloud environments yet — add one with `larakube env <name>`.');
+            if ($this->option('json')) {
+                $this->jsonOutput(['success' => false, 'error' => 'This project has no cloud environments yet.']);
+            } else {
+                $this->laraKubeWarn('This project has no cloud environments yet — add one with `larakube env <name>`.');
+            }
 
             return 0;
         }
         if ($config->getEnvironment($env) === null) {
-            $this->laraKubeError("No '{$env}' environment in this project — run `larakube env {$env}` first.");
+            if ($this->option('json')) {
+                $this->jsonOutput(['success' => false, 'error' => "No '{$env}' environment in this project."]);
+            } else {
+                $this->laraKubeError("No '{$env}' environment in this project — run `larakube env {$env}` first.");
+            }
 
             return 1;
         }
 
         $envFile = $config->getPath().($env === 'local' ? '/.env' : '/.env.'.$env);
         if ($config->isLocked($envFile)) {
-            $this->laraKubeWarn("'{$envFile}' is locked — skipping (remove the lock in .larakube.json to allow pulls).");
+            if ($this->option('json')) {
+                $this->jsonOutput(['success' => false, 'error' => "'{$envFile}' is locked — skipping (remove the lock in .larakube.json to allow pulls)."]);
+            } else {
+                $this->laraKubeWarn("'{$envFile}' is locked — skipping (remove the lock in .larakube.json to allow pulls).");
+            }
 
             return 0;
         }
@@ -58,30 +80,52 @@ class DotenvPullCommand extends Command
         $kubectl = Kubectl::forContext($context)->prefix();
         $app = (string) ($this->option('app') ?: $config->getName());
 
-        $this->line('  <fg=gray>Environment:</> <fg=cyan>'.$env.'</>  <fg=gray>·</> <fg=cyan>'.$namespace.'</>  <fg=gray>·</> <fg=cyan>app='.$app.'</>');
-        $this->laraKubeNewLine();
+        if (! $this->option('json')) {
+            $this->line('  <fg=gray>Environment:</> <fg=cyan>'.$env.'</>  <fg=gray>·</> <fg=cyan>'.$namespace.'</>  <fg=gray>·</> <fg=cyan>app='.$app.'</>');
+            $this->laraKubeNewLine();
+        }
 
         if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
             $pulled = $this->readOpenBaoKeys($kubectl, $env, $app);
             if ($pulled === null) {
-                $this->laraKubeError('Could not reach OpenBao to pull secrets.');
+                if ($this->option('json')) {
+                    $this->jsonOutput(['success' => false, 'error' => 'Could not reach OpenBao to pull secrets.']);
+                } else {
+                    $this->laraKubeError('Could not reach OpenBao to pull secrets.');
+                }
 
                 return 1;
             }
         } else {
-            $this->laraKubeInfo('OpenBao not detected on this cluster — reading directly from the cluster Secret.');
+            if (! $this->option('json')) {
+                $this->laraKubeInfo('OpenBao not detected on this cluster — reading directly from the cluster Secret.');
+            }
             $pulled = $this->readClusterEnvVars('secret', 'laravel-secrets', $namespace, true, $kubectl);
         }
 
         if ($pulled === []) {
-            $this->laraKubeWarn("No secret keys found for '{$app}' in '{$env}' — nothing to pull.");
+            if ($this->option('json')) {
+                $this->jsonOutput(['success' => true, 'pulled' => 0, 'keys' => [], 'message' => "No secret keys found for '{$app}' in '{$env}' — nothing to pull."]);
+            } else {
+                $this->laraKubeWarn("No secret keys found for '{$app}' in '{$env}' — nothing to pull.");
+            }
 
             return 0;
         }
 
         $this->writePulledEnvFile($envFile, $pulled);
 
-        $this->laraKubeInfo('Pulled '.count($pulled)." key(s) into .env.{$env}.");
+        if ($this->option('json')) {
+            $this->jsonOutput([
+                'success' => true,
+                'environment' => $env,
+                'namespace' => $namespace,
+                'pulled' => count($pulled),
+                'keys' => array_keys($pulled),
+            ]);
+        } else {
+            $this->laraKubeInfo('Pulled '.count($pulled)." key(s) into .env.{$env}.");
+        }
 
         return 0;
     }

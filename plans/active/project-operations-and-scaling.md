@@ -10,10 +10,18 @@ LaraKube provides powerful operational commands for managing workload scaling, c
 - `dotenv:pull`: Secure retrieval of cluster secrets into local `.env.<env>` for developer onboarding.
 - `dotenv:audit`: Inventory of all environment variable keys deployed to a cluster namespace.
 
-Currently, these commands only offer interactive terminal prompts and lack Desktop UI integration. This plan defines the end-to-end implementation to:
-1. Equip CLI commands with non-interactive flags and machine-readable `--json` output.
-2. Build Desktop backend controllers, `RunKind` orchestration, and project inspection helpers.
-3. Design and integrate intuitive, visual UI cards in LaraKube Desktop (`projects/show.tsx` and `devboxes/project.tsx`).
+This plan details the full implementation of both features across the CLI and Desktop UI, aligned via the interactive `/grill-me` session.
+
+---
+
+## Key Design Decisions (Settled via `/grill-me`)
+
+| Decision Area | Alignment Outcome | Rationale |
+| :--- | :--- | :--- |
+| **1. UI Positioning** | **Stacked in Main Column**: "Workload Scaling & Pods" sits directly below Telemetry, and "Environment Secrets" sits directly below Backing Services. | Keeps operational controls co-located with their relevant environment telemetry and backing services. |
+| **2. Secret Sync & Safety** | **Interactive Masked Drift Modal**: Compares local `.env.<env>` with cluster secrets, shows drift status (Match, Drifted, Missing), masks values (`••••••••`) with an unmask toggle, and requires confirmation before push/pull. | Prevents accidental overwrites of production secrets while safeguarding sensitive credentials from casual screen viewing. |
+| **3. Autoscaling vs Replicas UX** | **Segmented Component-Level Switch**: Each component row (`Web`, `Workers`, `Reverb`) toggles between "Fixed Replicas" (stepper `[-] N [+]`) and "Autoscale HPA" (min/max range & target CPU %). | Gives granular control; developers can autoscale HTTP web pods while keeping queue workers or WebSockets on fixed replica counts. |
+| **4. Resource Sizing UX** | **Preset Tiers + Custom Override**: Quick tiers (Eco: 128MB / 0.1 CPU, Standard: 512MB / 0.25 CPU, Pro: 2GB / 1.0 CPU) with a Custom mode for fine-grained millicores and megabytes. | Eliminates Kubernetes YAML unit confusion for standard setups while preserving power-user flexibility. |
 
 ---
 
@@ -21,225 +29,223 @@ Currently, these commands only offer interactive terminal prompts and lack Deskt
 
 ```mermaid
 flowchart TD
-    subgraph Desktop UI ["Desktop UI (React / Inertia)"]
-        SC["Scaling & Resources Card"]
-        EC["Environment Secrets Card"]
-        DiffModal["Dotenv Drift Modal"]
-        AuditModal["Secret Audit Modal"]
+    subgraph DesktopUI ["Desktop UI (React / Inertia)"]
+        WSC["WorkloadScalingCard (projects/show.tsx)"]
+        ESC["EnvironmentSecretsCard (projects/show.tsx)"]
+        DiffModal["DotenvDriftModal"]
     end
 
-    subgraph Desktop Backend ["Desktop Backend (Laravel / NativePHP)"]
+    subgraph DesktopBackend ["Desktop Backend (Laravel / NativePHP)"]
         PSC["ProjectScalingController"]
         PDC["ProjectDotenvController"]
         PI["ProjectInspector"]
         CR["CliRunner (ChildProcess)"]
+        RK["RunKind Enums"]
     end
 
-    subgraph CLI Engine ["LaraKube CLI (PHP / Zero)"]
-        RepCmd["replicas --component= --count="]
-        AutoCmd["autoscale --component= --min= --max= --cpu="]
-        ResCmd["resources --component= --requests-* --limits-*"]
-        DotPush["dotenv:push --context= --force"]
-        DotPull["dotenv:pull --context= --force"]
-        DotDiff["dotenv --json"]
-        DotAudit["dotenv:audit --json"]
+    subgraph CLI ["LaraKube CLI"]
+        RepCmd["replicas {env} --component= --count= --json"]
+        AutoCmd["autoscale {env} --component= --min= --max= --cpu= --json"]
+        ResCmd["resources {env} --component= --tier= | --requests-* --json"]
+        DotCmd["dotenv {env} --json"]
+        DotPush["dotenv:push {env} --force --json"]
+        DotPull["dotenv:pull {env} --force --json"]
     end
 
-    subgraph Cluster ["Target Cluster / OpenBao"]
-        K8s["Deployments / HPAs"]
+    subgraph ClusterState ["Cluster & Storage"]
+        K8s["Kubernetes Deployment / HPA"]
         Vault["OpenBao / laravel-secrets"]
+        Blueprint[".larakube.json"]
     end
 
-    SC -->|POST /scaling/*| PSC
-    EC -->|POST /dotenv/*| PDC
-    DiffModal -->|GET /dotenv/diff| PDC
-    AuditModal -->|GET /dotenv/audit| PDC
+    WSC -->|POST /scaling/replicas| PSC
+    WSC -->|POST /scaling/autoscale| PSC
+    WSC -->|POST /scaling/resources| PSC
+    ESC -->|GET /dotenv/diff| PDC
+    ESC -->|POST /dotenv/push| PDC
+    ESC -->|POST /dotenv/pull| PDC
+    DiffModal -->|Confirm Push/Pull| PDC
 
     PSC --> CR
     PDC --> CR
-    PI -->|.larakube.json| SC
-
     CR --> RepCmd
     CR --> AutoCmd
     CR --> ResCmd
+    CR --> DotCmd
     CR --> DotPush
     CR --> DotPull
-    CR --> DotDiff
-    CR --> DotAudit
 
-    RepCmd -->|.larakube.json| K8s
-    AutoCmd -->|.larakube.json| K8s
-    ResCmd -->|.larakube.json| K8s
+    RepCmd --> Blueprint
+    AutoCmd --> Blueprint
+    ResCmd --> Blueprint
     DotPush --> Vault
-    DotPull --> Vault
+    DotPull --> Blueprint
+    DotCmd --> Vault
 ```
 
 ---
 
 ## Phase 1: CLI Non-Interactive Automation & JSON Mode (`cli/`)
 
-### 1.1 `ReplicasCommand` (`cli/app/Commands/ReplicasCommand.php`)
-- **Current Signature**: `replicas {environment?}`
-- **New Signature**:
+### 1. `ReplicasCommand` (`cli/app/Commands/ReplicasCommand.php`)
+- **Signature**:
   ```php
   protected $signature = 'replicas
       {environment? : The environment to configure}
       {--component= : Target component (default, web, worker, reverb)}
       {--count= : Replica count (integer >= 0)}
-      {--reset : Reset to strategy default or inherit from default}
-      {--json : Emit machine-readable JSON result}';
+      {--reset : Reset component replica count to default}
+      {--json : Emit machine-readable JSON output}';
   ```
-- **Behavior**:
-  - When `--component` and (`--count` or `--reset`) are provided, skip interactive prompts.
-  - Updates `.larakube.json` via `$config->setReplicas($env, $component, $count)` and saves.
-  - In `--json` mode, emits:
+- **Execution**:
+  - Updates `.larakube.json` via `$config->setReplicas($env, $component, $count)`.
+  - When `--json` is set, emits:
     ```json
-    {
-      "success": true,
-      "environment": "production",
-      "component": "web",
-      "replicas": 3,
-      "effective": { "default": 2, "web": 3, "worker": 2 }
-    }
+    { "success": true, "environment": "production", "component": "web", "count": 3 }
     ```
 
-### 1.2 `AutoscaleCommand` (`cli/app/Commands/AutoscaleCommand.php`)
-- **Current Signature**: `autoscale {environment?}`
-- **New Signature**:
+### 2. `AutoscaleCommand` (`cli/app/Commands/AutoscaleCommand.php`)
+- **Signature**:
   ```php
   protected $signature = 'autoscale
       {environment? : The environment to configure}
       {--component= : Target component (web, worker, reverb)}
-      {--min= : Minimum replica count (integer >= 1)}
-      {--max= : Maximum replica count (integer >= min)}
+      {--min= : Minimum replicas (integer >= 1)}
+      {--max= : Maximum replicas (integer >= min)}
       {--cpu= : Target CPU utilization percentage (default: 70)}
-      {--disable : Disable HPA and fall back to static replicas}
-      {--json : Emit machine-readable JSON result}';
+      {--disable : Disable HPA and revert to static replicas}
+      {--json : Emit machine-readable JSON output}';
   ```
-- **Behavior**:
-  - Validates that target environment is a cloud environment (`$config->getCloudEnvironments()`).
-  - Sets HPA parameters or removes them when `--disable` is passed.
-  - In `--json` mode, emits updated autoscale state.
+- **Execution**:
+  - Updates `.larakube.json` via `$config->setAutoscale($env, $component, $min, $max, $cpu)`.
+  - Emits JSON state when `--json` flag is provided.
 
-### 1.3 `ResourcesCommand` (`cli/app/Commands/ResourcesCommand.php`)
-- **Current Signature**: `resources {environment?}`
-- **New Signature**:
+### 3. `ResourcesCommand` (`cli/app/Commands/ResourcesCommand.php`)
+- **Signature**:
   ```php
   protected $signature = 'resources
       {environment? : The environment to configure}
       {--component= : Target component (default, web, worker, reverb)}
+      {--tier= : Quick preset tier (eco, standard, pro)}
       {--requests-cpu= : CPU request (e.g. 100m, 500m, 1)}
       {--requests-memory= : Memory request (e.g. 128Mi, 512Mi, 1Gi)}
       {--limits-cpu= : CPU limit (e.g. 500m, 1, 2)}
       {--limits-memory= : Memory limit (e.g. 512Mi, 1Gi, 2Gi)}
-      {--reset : Reset component resources to inherit from default}
-      {--json : Emit machine-readable JSON result}';
+      {--reset : Reset to default}
+      {--json : Emit machine-readable JSON output}';
   ```
-- **Behavior**:
-  - Non-interactive parsing of CPU/RAM values.
-  - Saves to `.larakube.json` via `$config->setResources(...)`.
+- **Tiers Definition**:
+  - `eco`: Requests 100m / 128Mi, Limits 250m / 256Mi.
+  - `standard`: Requests 250m / 512Mi, Limits 500m / 1Gi.
+  - `pro`: Requests 1000m / 2Gi, Limits 2000m / 4Gi.
 
-### 1.4 `Dotenv` Commands (`cli/app/Commands/Dotenv*`)
-- **`dotenv:push`**:
-  - Add `{--force : Overwrite without confirmation}`, `{--json : Emit status}`.
-  - Syncs secrets directly to OpenBao and/or creates `laravel-secrets`.
-- **`dotenv:pull`**:
-  - Add `{--force : Overwrite local file without prompt}`, `{--json : Emit status}`.
-  - Retrieves secrets from OpenBao / `laravel-secrets` and updates local `.env.<env>`.
+### 4. `Dotenv` Commands (`cli/app/Commands/Dotenv*`)
 - **`dotenv` (Drift Diff)**:
-  - Add `{--json : Emit structured drift output}`:
+  - Add `{--json}` emitting structured drift inspection:
     ```json
     {
       "environment": "production",
-      "namespace": "acme-production",
       "inSync": false,
       "drift": [
         { "key": "APP_KEY", "status": "match", "isSecret": true },
-        { "key": "STRIPE_SECRET", "status": "drifted", "isSecret": true },
-        { "key": "NEW_FEATURE_FLAG", "status": "missing_on_cluster", "isSecret": false }
+        { "key": "STRIPE_SECRET", "status": "drifted", "isSecret": true, "local": "whsec_...", "cluster": "whsec_old..." },
+        { "key": "NEW_FLAG", "status": "missing_cluster", "isSecret": false, "local": "true", "cluster": null },
+        { "key": "OLD_TOKEN", "status": "missing_local", "isSecret": true, "local": null, "cluster": "tok_..." }
       ]
     }
     ```
-- **`dotenv:audit`**:
-  - Add `{--json : Emit JSON list of deployed keys}`.
+- **`dotenv:push`**:
+  - Add `{--force : Skip prompt}` and `{--json}`.
+  - Pushes `.env.<env>` to OpenBao / `laravel-secrets`.
+- **`dotenv:pull`**:
+  - Add `{--force : Skip prompt}` and `{--json}`.
+  - Pulls cluster secrets into local `.env.<env>`.
 
 ---
 
 ## Phase 2: Desktop Backend & Inspection (`desktop/`)
 
-### 2.1 Augment `ProjectInspector` (`desktop/app/Services/LaraKube/ProjectInspector.php`)
-Add scaling and resource metadata to the inspected project object:
-```php
-'replicas' => $envConfig['replicas'] ?? [],
-'autoscale' => $envConfig['autoscale'] ?? [],
-'resources' => $envConfig['resources'] ?? [],
-'components' => $this->detectScalableComponents($blueprint),
-```
-
-### 2.2 Register New `RunKind` Cases (`desktop/app/Enums/RunKind.php`)
+### 1. `RunKind` Enum (`desktop/app/Enums/RunKind.php`)
+Register the new operational verbs:
 ```php
 case ConfigureReplicas = 'configure-replicas';
 case ConfigureAutoscale = 'configure-autoscale';
 case ConfigureResources = 'configure-resources';
 case DotenvPush = 'dotenv-push';
 case DotenvPull = 'dotenv-pull';
-case DotenvAudit = 'dotenv-audit';
 ```
 
-### 2.3 Implement Desktop Controllers & Routes
-Create two dedicated controllers:
-1. **`ProjectScalingController`**:
-   - `POST /projects/{project}/scaling/replicas`: triggers `replicas` command via `CliRunner`.
-   - `POST /projects/{project}/scaling/autoscale`: triggers `autoscale` command via `CliRunner`.
-   - `POST /projects/{project}/scaling/resources`: triggers `resources` command via `CliRunner`.
-2. **`ProjectDotenvController`**:
-   - `POST /projects/{project}/dotenv/push`: runs `dotenv:push --force`.
-   - `POST /projects/{project}/dotenv/pull`: runs `dotenv:pull --force`.
-   - `GET /projects/{project}/dotenv/diff`: runs `dotenv --json` and returns diff items.
-   - `GET /projects/{project}/dotenv/audit`: runs `dotenv:audit --json` and returns inventory.
+### 2. `ProjectInspector` (`desktop/app/Services/LaraKube/ProjectInspector.php`)
+Expose scaling configuration and detected scalable components:
+- Detect components from blueprint and framework (e.g., `web`, `worker`, `reverb`).
+- Read `$blueprint['environments'][$name]['replicas']`.
+- Read `$blueprint['environments'][$name]['autoscale']`.
+- Read `$blueprint['environments'][$name]['resources']`.
+
+### 3. Routes & Controllers
+Add routes in `desktop/routes/web.php`:
+```php
+Route::post('/projects/{project}/scaling/replicas', [ProjectScalingController::class, 'setReplicas'])->name('projects.scaling.replicas');
+Route::post('/projects/{project}/scaling/autoscale', [ProjectScalingController::class, 'setAutoscale'])->name('projects.scaling.autoscale');
+Route::post('/projects/{project}/scaling/resources', [ProjectScalingController::class, 'setResources'])->name('projects.scaling.resources');
+
+Route::get('/projects/{project}/dotenv/diff', [ProjectDotenvController::class, 'diff'])->name('projects.dotenv.diff');
+Route::post('/projects/{project}/dotenv/push', [ProjectDotenvController::class, 'push'])->name('projects.dotenv.push');
+Route::post('/projects/{project}/dotenv/pull', [ProjectDotenvController::class, 'pull'])->name('projects.dotenv.pull');
+```
 
 ---
 
 ## Phase 3: Desktop UI Components (`desktop/resources/js/pages/projects/`)
 
-### 3.1 Scaling & Workload Controls (`scaling-card.tsx`)
-- Placed on the main environment column in `projects/show.tsx` (under `CloudEnvironmentOverviewCard`).
-- Features:
-  - **Component Selector / Table**: Shows detected components (`Web (Octane/FrankenPHP)`, `Queue Workers`, `Reverb WebSockets`).
-  - **Scaling Mode Switch**:
-    - **Fixed Replicas**: Visual stepper `[-] [ 3 ] [+]` with direct input.
-    - **Autoscaling (HPA)**: Toggle switch enabling Min/Max sliders (e.g. `2 - 8 pods`) and Target CPU % slider (default 70%).
-  - **Compute Resources Accordion**:
-    - Expandable CPU & Memory configurator.
-    - Presets: "Eco (128MB / 100m)", "Standard (512MB / 250m)", "Performance (2GB / 1000m)", and "Custom".
-    - Buttons with Lucide icons: `Save`, `RotateCcw` (Reset to default).
+### 1. Workload Scaling Card (`WorkloadScalingCard`)
+Positioned on `projects/show.tsx` directly beneath `AppPerformanceMetricsCard`:
+- **Component Rows**:
+  - `Web (Octane/FrankenPHP)`
+  - `Queue Workers`
+  - `Reverb WebSockets` (if detected)
+- **Controls per Component**:
+  - Toggle: `[ Fixed Count | Autoscale (HPA) ]`.
+  - **Fixed Mode**: Stepper `[-]  2  [+]` with debounce submit to `projects.scaling.replicas`.
+  - **Autoscale Mode**:
+    - Min Replicas (`1..10`) & Max Replicas (`1..30`).
+    - Target CPU utilization percentage (default `70%`).
+- **Compute Sizing Button**:
+  - Displays active tier badge (e.g. `Standard · 512MB / 0.25 CPU`).
+  - Opens modal offering quick preset cards (`Eco`, `Standard`, `Pro`) or custom numeric inputs.
 
-### 3.2 Environment Secrets Sync Card (`dotenv-card.tsx`)
-- Placed alongside Backing Services in `projects/show.tsx`.
-- Visual Elements:
-  - **Sync Indicator**: Green badge ("Synced with Cluster"), Amber ("Local Drift Detected"), or Gray ("Not Pushed").
-  - **Action Toolbar** (Strict Lucide icon standard):
-    - `<Button><Upload className="size-3.5" /> Push to Cluster</Button>`: Uploads local secrets with a confirmation modal explaining encryption in OpenBao.
-    - `<Button variant="secondary"><Download className="size-3.5" /> Pull from Cluster</Button>`: Safely updates local `.env.<env>`.
-    - `<Button variant="secondary"><FileDiff className="size-3.5" /> Compare Drift</Button>`: Opens modal showing side-by-side key drift.
-    - `<Button variant="secondary"><ShieldCheck className="size-3.5" /> Audit Live Keys</Button>`: Lists all secret keys present on the cluster without values.
+### 2. Environment Secrets Card (`EnvironmentSecretsCard`)
+Positioned on `projects/show.tsx` directly beneath `EnvironmentBackingServicesCard`:
+- **Card Header**:
+  - Title: `Environment Secrets · <ENV>`.
+  - Status badge: `Synced (All keys match)` | `Drift Detected (3 keys differed)`.
+- **Action Buttons**:
+  - `<Button variant="primary"><Upload className="size-3.5" /> Push to Cluster</Button>`
+  - `<Button variant="secondary"><Download className="size-3.5" /> Pull from Cluster</Button>`
+  - `<Button variant="secondary"><FileDiff className="size-3.5" /> Compare Drift</Button>`
+- **Interactive Drift Modal (`DotenvDriftModal`)**:
+  - Lists variables categorized into:
+    - **Drifted**: Value differs between local and cluster.
+    - **Missing on Cluster**: Local `.env` has key not yet in cluster.
+    - **Missing Locally**: Cluster secret has key not in local `.env`.
+    - **Matching**: In sync.
+  - Secret values masked with `••••••••` by default, with an individual eye toggle (`Eye` / `EyeOff`) or global "Reveal All" toggle.
+  - Confirmation button: `<Button variant="primary"><Check className="size-3.5" /> Confirm & Push</Button>`.
 
 ---
 
-## Phase 4: DevBox Parity (`desktop/resources/js/pages/devboxes/project.tsx`)
-Ensure projects running inside remote Dev Boxes also support the same Scaling and Secrets actions through `DevBoxShell` execution.
+## Phase 4: Quality & Testing Verification
 
----
-
-## Testing & Quality Assurance
-1. **CLI Tests (`cli/tests/Feature/`)**:
-   - `ReplicasCommandTest`: Test `--component`, `--count`, `--reset`, and `--json`.
-   - `AutoscaleCommandTest`: Test `--min`, `--max`, `--cpu`, `--disable`, and cloud environment restriction.
-   - `ResourcesCommandTest`: Test CPU/Memory options and validation.
-   - `DotenvCommandTest`: Test `--json` drift reporting, `dotenv:push --force`, and `dotenv:pull --force`.
-2. **Desktop Tests (`desktop/tests/Feature/`)**:
-   - `ProjectScalingTest`: Test POST routes starting runs with exact CLI arguments.
-   - `ProjectDotenvTest`: Test push, pull, diff, and audit runs and JSON endpoints.
-3. **Formatters & Analysis**:
-   - Run `composer format`, `composer analyse`, and `composer test` in both `cli/` and `desktop/`.
-   - Run `npm run build` in `desktop/`.
+1. **CLI Unit & Feature Tests (`cli/tests/Feature/`)**:
+   - `ReplicasCommandTest`: Validates `--component`, `--count`, `--reset`, `--json`.
+   - `AutoscaleCommandTest`: Validates `--min`, `--max`, `--cpu`, `--disable`, `--json`.
+   - `ResourcesCommandTest`: Validates presets (`--tier=standard`), manual flags, `--json`.
+   - `DotenvCommandTest`: Validates structured drift JSON, `--force` push, `--force` pull.
+2. **Desktop Feature Tests (`desktop/tests/Feature/`)**:
+   - `ProjectScalingTest`: Tests endpoint validation, arguments constructed, and `ChildProcess` dispatch.
+   - `ProjectDotenvTest`: Tests drift fetch, push, pull commands.
+3. **Quality Gates**:
+   - Proactive `composer format` (Pint + Rector).
+   - Proactive `composer analyse` (PHPStan).
+   - Run `composer test` and `npm run check`.
+   - Remind user to execute `./build` to test in LaraKube Desktop.

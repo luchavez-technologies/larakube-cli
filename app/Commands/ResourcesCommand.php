@@ -4,6 +4,7 @@ namespace App\Commands;
 
 use App\Data\ConfigData;
 use App\Enums\LaravelFeature;
+use App\Traits\EmitsJsonOutput;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
@@ -16,14 +17,38 @@ use LaravelZero\Framework\Commands\Command;
 
 class ResourcesCommand extends Command
 {
-    use GeneratesProjectInfrastructure, InteractsWithProjectConfig, LaraKubeOutput;
+    use EmitsJsonOutput, GeneratesProjectInfrastructure, InteractsWithProjectConfig, LaraKubeOutput;
+
+    public const TIERS = [
+        'eco' => [
+            'requests' => ['cpu' => '100m', 'memory' => '128Mi'],
+            'limits' => ['cpu' => '250m', 'memory' => '256Mi'],
+        ],
+        'standard' => [
+            'requests' => ['cpu' => '250m', 'memory' => '512Mi'],
+            'limits' => ['cpu' => '500m', 'memory' => '1Gi'],
+        ],
+        'pro' => [
+            'requests' => ['cpu' => '1000m', 'memory' => '2Gi'],
+            'limits' => ['cpu' => '2000m', 'memory' => '4Gi'],
+        ],
+    ];
 
     /**
      * The name and signature of the console command.
      *
      * @var string
      */
-    protected $signature = 'resources {environment? : The environment to configure}';
+    protected $signature = 'resources
+        {environment? : The environment to configure}
+        {--component= : Target component (default, web, horizon, queues, reverb, scheduler, ssr)}
+        {--tier= : Resource preset tier (eco, standard, pro)}
+        {--requests-cpu= : CPU request (e.g. 100m, 1)}
+        {--requests-memory= : Memory request (e.g. 128Mi, 1Gi)}
+        {--limits-cpu= : CPU limit (e.g. 250m, 2)}
+        {--limits-memory= : Memory limit (e.g. 256Mi, 2Gi)}
+        {--reset : Reset component resources to inherit from default}
+        {--json : Emit machine-readable JSON output}';
 
     /**
      * The console command description.
@@ -37,9 +62,17 @@ class ResourcesCommand extends Command
      */
     public function handle()
     {
-        $this->renderHeader();
+        if ($this->option('json')) {
+            $this->enableJsonMode();
+        } else {
+            $this->renderHeader();
+        }
 
         if (! $this->isLaraKubeProject()) {
+            if ($this->option('json')) {
+                $this->jsonOutput(['success' => false, 'error' => 'Not a LaraKube project.']);
+            }
+
             return 1;
         }
 
@@ -50,25 +83,163 @@ class ResourcesCommand extends Command
         $envName = $this->argument('environment');
 
         if (! $envName) {
-            $envName = select(
-                label: 'Which environment do you want to configure resources for?',
-                options: $environments,
-                default: 'local',
-            );
+            if ($this->option('json') || ! $this->input->isInteractive()) {
+                $envName = $environments[0] ?? 'local';
+            } else {
+                $envName = select(
+                    label: 'Which environment do you want to configure resources for?',
+                    options: $environments,
+                    default: 'local',
+                );
+            }
         }
 
         if (! in_array($envName, $environments)) {
-            $this->laraKubeError("Environment '{$envName}' not found in your blueprint.");
+            if ($this->option('json')) {
+                $this->jsonOutput(['success' => false, 'error' => "Environment '{$envName}' not found in your blueprint."]);
+            } else {
+                $this->laraKubeError("Environment '{$envName}' not found in your blueprint.");
+            }
 
             return 1;
+        }
+
+        $isJson = (bool) $this->option('json');
+        $componentChoice = $this->option('component');
+        $deployableComponents = $this->getDeployableComponents($config, $envName);
+        $validComponents = array_merge(['default'], array_keys($deployableComponents));
+
+        // Query mode: return all resources config as JSON
+        if ($isJson && ! $componentChoice && ! $this->option('tier') && ! $this->option('requests-cpu') && ! $this->option('requests-memory') && ! $this->option('limits-cpu') && ! $this->option('limits-memory') && ! $this->option('reset')) {
+            $effective = [];
+            foreach ($validComponents as $c) {
+                $effective[$c] = [
+                    'explicit' => $config->getEnvironment($envName)?->resources[$c] ?? null,
+                    'effective' => $config->getResources($envName, $c),
+                ];
+            }
+            $this->jsonOutput([
+                'success' => true,
+                'environment' => $envName,
+                'components' => array_keys($deployableComponents),
+                'resources' => $effective,
+            ]);
+
+            return 0;
+        }
+
+        if ($componentChoice !== null) {
+            if (! in_array($componentChoice, $validComponents, true)) {
+                if ($isJson) {
+                    $this->jsonOutput(['success' => false, 'error' => "Component '{$componentChoice}' is not valid for environment '{$envName}'. Valid components: ".implode(', ', $validComponents)]);
+                } else {
+                    $this->laraKubeError("Component '{$componentChoice}' is not valid for environment '{$envName}'. Valid components: ".implode(', ', $validComponents));
+                }
+
+                return 1;
+            }
+
+            if ($this->option('reset')) {
+                $config->setResources($envName, $componentChoice, null);
+                $this->saveProjectConfig($projectPath, $config);
+                if ($isJson) {
+                    $this->jsonOutput([
+                        'success' => true,
+                        'environment' => $envName,
+                        'component' => $componentChoice,
+                        'action' => 'reset',
+                        'resources' => $config->getResources($envName, $componentChoice),
+                    ]);
+                } else {
+                    $this->laraKubeInfo("Reset resources for '{$componentChoice}' in '{$envName}'.");
+                    $this->printNextSteps($envName);
+                }
+
+                return 0;
+            }
+
+            $tier = $this->option('tier');
+            $cpuRequest = $this->option('requests-cpu');
+            $memRequest = $this->option('requests-memory');
+            $cpuLimit = $this->option('limits-cpu');
+            $memLimit = $this->option('limits-memory');
+
+            if ($tier !== null) {
+                if (! isset(self::TIERS[$tier])) {
+                    $validTiers = implode(', ', array_keys(self::TIERS));
+                    if ($isJson) {
+                        $this->jsonOutput(['success' => false, 'error' => "Invalid tier '{$tier}'. Valid tiers: {$validTiers}"]);
+                    } else {
+                        $this->laraKubeError("Invalid tier '{$tier}'. Valid tiers: {$validTiers}");
+                    }
+
+                    return 1;
+                }
+
+                $preset = self::TIERS[$tier];
+                $cpuRequest ??= $preset['requests']['cpu'];
+                $memRequest ??= $preset['requests']['memory'];
+                $cpuLimit ??= $preset['limits']['cpu'];
+                $memLimit ??= $preset['limits']['memory'];
+            }
+
+            $toValidate = [
+                'requests-cpu' => $cpuRequest,
+                'requests-memory' => $memRequest,
+                'limits-cpu' => $cpuLimit,
+                'limits-memory' => $memLimit,
+            ];
+
+            foreach ($toValidate as $key => $val) {
+                if ($val !== null && $val !== '' && ! ConfigData::isValidQuantity($val)) {
+                    if ($isJson) {
+                        $this->jsonOutput(['success' => false, 'error' => "Invalid Kubernetes quantity for {$key}: {$val}. Example: 100m, 1, 256Mi, 1Gi."]);
+                    } else {
+                        $this->laraKubeError("Invalid Kubernetes quantity for {$key}: {$val}. Example: 100m, 1, 256Mi, 1Gi.");
+                    }
+
+                    return 1;
+                }
+            }
+
+            $newResources = [];
+            if ($cpuRequest !== null && $cpuRequest !== '') {
+                $newResources['requests']['cpu'] = $cpuRequest;
+            }
+            if ($memRequest !== null && $memRequest !== '') {
+                $newResources['requests']['memory'] = $memRequest;
+            }
+            if ($cpuLimit !== null && $cpuLimit !== '') {
+                $newResources['limits']['cpu'] = $cpuLimit;
+            }
+            if ($memLimit !== null && $memLimit !== '') {
+                $newResources['limits']['memory'] = $memLimit;
+            }
+
+            $config->setResources($envName, $componentChoice, $newResources);
+            $this->saveProjectConfig($projectPath, $config);
+
+            if ($isJson) {
+                $this->jsonOutput([
+                    'success' => true,
+                    'environment' => $envName,
+                    'component' => $componentChoice,
+                    'tier' => $tier,
+                    'resources' => $config->getResources($envName, $componentChoice),
+                ]);
+            } else {
+                $this->laraKubeInfo("Updated resources for '{$componentChoice}' in '{$envName}'.");
+                $this->printNextSteps($envName);
+            }
+
+            return 0;
         }
 
         // Show current effective limits
         $this->showEffectiveResourcesTable($config, $envName);
 
         // Select component to configure
-        $components = $this->getDeployableComponents($config, $envName);
-        $options = array_merge(['default' => 'default (all pods)'], $components);
+        $options = array_merge(['default' => 'default (all pods)'], $deployableComponents);
 
         $componentChoice = select(
             label: 'Which component do you want to configure?',

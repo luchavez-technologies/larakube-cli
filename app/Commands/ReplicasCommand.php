@@ -5,6 +5,7 @@ namespace App\Commands;
 use App\Data\ConfigData;
 use App\Enums\DeploymentStrategy;
 use App\Enums\LaravelFeature;
+use App\Traits\EmitsJsonOutput;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
@@ -17,14 +18,19 @@ use LaravelZero\Framework\Commands\Command;
 
 class ReplicasCommand extends Command
 {
-    use GeneratesProjectInfrastructure, InteractsWithProjectConfig, LaraKubeOutput;
+    use EmitsJsonOutput, GeneratesProjectInfrastructure, InteractsWithProjectConfig, LaraKubeOutput;
 
     /**
      * The name and signature of the console command.
      *
      * @var string
      */
-    protected $signature = 'replicas {environment? : The environment to configure}';
+    protected $signature = 'replicas
+        {environment? : The environment to configure}
+        {--component= : Target component (default, web, horizon, queues, reverb, ssr)}
+        {--count= : Replica count (integer >= 0)}
+        {--reset : Reset component replica count to default}
+        {--json : Emit machine-readable JSON output}';
 
     /**
      * The console command description.
@@ -38,9 +44,17 @@ class ReplicasCommand extends Command
      */
     public function handle()
     {
-        $this->renderHeader();
+        if ($this->option('json')) {
+            $this->enableJsonMode();
+        } else {
+            $this->renderHeader();
+        }
 
         if (! $this->isLaraKubeProject()) {
+            if ($this->option('json')) {
+                $this->jsonOutput(['success' => false, 'error' => 'Not a LaraKube project.']);
+            }
+
             return 1;
         }
 
@@ -51,11 +65,106 @@ class ReplicasCommand extends Command
         $envName = $this->argument('environment');
 
         if (! $envName) {
-            $envName = select(
-                label: 'Which environment do you want to configure replicas for?',
-                options: $environments,
-                default: 'local',
-            );
+            if ($this->option('json') || ! $this->input->isInteractive()) {
+                $envName = $environments[0] ?? 'local';
+            } else {
+                $envName = select(
+                    label: 'Which environment do you want to configure replicas for?',
+                    options: $environments,
+                    default: 'local',
+                );
+            }
+        }
+
+        if (! in_array($envName, $environments)) {
+            if ($this->option('json')) {
+                $this->jsonOutput(['success' => false, 'error' => "Environment '{$envName}' not found in your blueprint."]);
+            } else {
+                $this->laraKubeError("Environment '{$envName}' not found in your blueprint.");
+            }
+
+            return 1;
+        }
+
+        $componentChoice = $this->option('component');
+        $isJson = (bool) $this->option('json');
+
+        if ($isJson && ! $componentChoice && $this->option('count') === null && ! $this->option('reset')) {
+            $effective = [];
+            $components = $this->getScalableComponents($config, $envName);
+            foreach (array_merge(['default'], array_keys($components)) as $c) {
+                $effective[$c] = $config->getReplicas($envName, $c);
+            }
+            $this->jsonOutput([
+                'success' => true,
+                'environment' => $envName,
+                'replicas' => $effective,
+            ]);
+
+            return 0;
+        }
+
+        if ($componentChoice !== null) {
+            $available = array_merge(['default'], array_keys($this->getScalableComponents($config, $envName)));
+            if (! in_array($componentChoice, $available, true)) {
+                if ($isJson) {
+                    $this->jsonOutput(['success' => false, 'error' => "Component '{$componentChoice}' is not scalable in environment '{$envName}'."]);
+                } else {
+                    $this->laraKubeError("Component '{$componentChoice}' is not scalable in '{$envName}'. Available: ".implode(', ', $available));
+                }
+
+                return 1;
+            }
+
+            if ($this->option('reset')) {
+                $config->setReplicas($envName, $componentChoice, null);
+                $this->saveProjectConfig($projectPath, $config);
+                if ($isJson) {
+                    $this->jsonOutput([
+                        'success' => true,
+                        'environment' => $envName,
+                        'component' => $componentChoice,
+                        'action' => 'reset',
+                        'effective' => $config->getReplicas($envName, $componentChoice),
+                    ]);
+                } else {
+                    $this->laraKubeInfo("Reset replicas for '{$componentChoice}' in '{$envName}'.");
+                    $this->printNextSteps($envName);
+                }
+
+                return 0;
+            }
+
+            $countOpt = $this->option('count');
+            if ($countOpt !== null) {
+                if (! ctype_digit((string) $countOpt) || (int) $countOpt < 0) {
+                    if ($isJson) {
+                        $this->jsonOutput(['success' => false, 'error' => "Invalid replica count: '{$countOpt}'. Must be an integer >= 0."]);
+                    } else {
+                        $this->laraKubeError("Invalid replica count: '{$countOpt}'. Must be an integer >= 0.");
+                    }
+
+                    return 1;
+                }
+
+                $replicas = (int) $countOpt;
+                $config->setReplicas($envName, $componentChoice, $replicas);
+                $this->saveProjectConfig($projectPath, $config);
+                if ($isJson) {
+                    $this->jsonOutput([
+                        'success' => true,
+                        'environment' => $envName,
+                        'component' => $componentChoice,
+                        'replicas' => $replicas,
+                        'effective' => $config->getReplicas($envName, $componentChoice),
+                    ]);
+                } else {
+                    $this->laraKubeInfo("Updated replicas for '{$componentChoice}' in '{$envName}': {$replicas}");
+                    $this->printNextSteps($envName);
+                }
+
+                return 0;
+            }
         }
 
         if (! in_array($envName, $environments)) {

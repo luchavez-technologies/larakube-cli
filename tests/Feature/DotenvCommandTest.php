@@ -207,3 +207,12 @@ test('dotenv --strict never fails on a Plex/OpenBao-rotated key even when it dif
         ->assertExitCode(0)
         ->expectsOutputToContain('excluded from drift');
 });
+
+test('dotenv --json outputs structured drift data', function (): void {
+    saveDotenvConfig($this->tempDir);
+    writeDotenv($this->tempDir, ['APP_URL' => 'https://local.example', 'APP_KEY' => 'base64:local']);
+    fakeKubectl('yes', ['APP_KEY' => 'base64:cluster'], ['APP_URL' => 'https://local.example']);
+
+    $this->artisan('dotenv', ['environment' => 'production', '--json' => true])
+        ->assertExitCode(0);
+});
