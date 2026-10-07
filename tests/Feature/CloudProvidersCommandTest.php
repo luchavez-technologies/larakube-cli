@@ -114,3 +114,21 @@ test('providers include accounts and activeAccount in json output', function ():
         ->and($providers['do']['accounts'])->toHaveCount(2)
         ->and($providers['do']['activeAccount'])->not->toBeNull();
 });
+
+test('AWS provider surfaces specific STS error code when authentication fails', function (): void {
+    cloudProvidersClearCredentialEnv();
+    Process::fake([
+        'command -v aws' => Process::result(output: '/usr/local/bin/aws'),
+        '*aws sts get-caller-identity*' => Process::result(
+            "An error occurred (InvalidClientTokenId) when calling the GetCallerIdentity operation: The security token included in the request is invalid.\n",
+            exitCode: 254,
+        ),
+        '*' => Process::result(exitCode: 1),
+    ]);
+
+    $providers = cloudProvidersRunJson();
+    expect($providers['aws']['credentials'])->toBe([
+        'ready' => false,
+        'hint' => 'AWS authentication failed (InvalidClientTokenId).',
+    ]);
+});

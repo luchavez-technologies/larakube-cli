@@ -269,10 +269,17 @@ class CloudProvidersCommand extends Command
         $profile = $this->getAwsProfile();
         $profileArg = $profile ? ' --profile '.escapeshellarg($profile) : '';
 
-        return $this->status(
-            Process::env($this->buildAwsEnv())->run("{$bin} sts get-caller-identity{$profileArg} 2>/dev/null")->successful(),
-            'Not logged in to AWS.',
-        );
+        $process = Process::env($this->buildAwsEnv())->run("{$bin} sts get-caller-identity{$profileArg}");
+        if (! $process->successful()) {
+            $err = trim($process->errorOutput() ?: $process->output());
+            if (preg_match('/An error occurred \(([^)]+)\)/', $err, $matches)) {
+                return $this->status(false, "AWS authentication failed ({$matches[1]}).");
+            }
+
+            return $this->status(false, 'Not logged in to AWS.');
+        }
+
+        return $this->status(true);
     }
 
     /** @return array{ready: bool, hint: ?string} */

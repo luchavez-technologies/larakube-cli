@@ -362,12 +362,15 @@ HCL;
             $env['AWS_PROFILE'] = $profile;
         }
 
-        if ($accessKeyId = $this->getAwsAccessKeyId()) {
-            $env['AWS_ACCESS_KEY_ID'] = $accessKeyId;
-        }
+        $hasExplicitFlagKeys = (bool) State::transientAwsAccessKeyId();
+        if ($hasExplicitFlagKeys || ! State::transientAwsProfile()) {
+            if ($accessKeyId = $this->getAwsAccessKeyId()) {
+                $env['AWS_ACCESS_KEY_ID'] = $accessKeyId;
+            }
 
-        if ($secretAccessKey = $this->getAwsSecretAccessKey()) {
-            $env['AWS_SECRET_ACCESS_KEY'] = $secretAccessKey;
+            if ($secretAccessKey = $this->getAwsSecretAccessKey()) {
+                $env['AWS_SECRET_ACCESS_KEY'] = $secretAccessKey;
+            }
         }
 
         if ($awsRegion = $this->getAwsRegion()) {

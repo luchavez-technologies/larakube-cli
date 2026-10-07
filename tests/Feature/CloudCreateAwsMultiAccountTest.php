@@ -301,3 +301,78 @@ test('cloud:destroy hydrates AWS profile from StackData', function (): void {
 
     expect(State::transientAwsProfile())->toBe('client-aws-profile');
 });
+
+test('cloud:create fails with informative error when AWS profile has deactivated/invalid credentials', function (): void {
+    Process::fake([
+        'command -v aws' => Process::result('/usr/bin/aws'),
+        '*aws configure list-profiles*' => Process::result("default\njames.chavez\n"),
+        '*aws sts get-caller-identity*' => Process::result(
+            "An error occurred (InvalidClientTokenId) when calling the GetCallerIdentity operation: The security token included in the request is invalid.\n",
+            exitCode: 254,
+        ),
+    ]);
+
+    $runner = awsMultiAccountRunner([
+        '--provider' => 'aws',
+        '--aws-profile' => 'james.chavez',
+        '--no-interaction' => true,
+    ]);
+
+    expect($runner->awsCredentials())->toBeFalse()
+        ->and(State::lastError())->toContain("AWS authentication failed for profile 'james.chavez'")
+        ->toContain('InvalidClientTokenId')
+        ->toContain('The security token included in the request is invalid');
+});
+
+test('cloud:create fails clearly when specified AWS profile is not found', function (): void {
+    Process::fake([
+        'command -v aws' => Process::result('/usr/bin/aws'),
+        '*aws configure list-profiles*' => Process::result("default\n"),
+        '*aws sts get-caller-identity*' => Process::result(
+            "The config profile (ghost-profile) could not be found\n",
+            exitCode: 255,
+        ),
+    ]);
+
+    $runner = awsMultiAccountRunner([
+        '--provider' => 'aws',
+        '--aws-profile' => 'ghost-profile',
+        '--no-interaction' => true,
+    ]);
+
+    expect($runner->awsCredentials())->toBeFalse()
+        ->and(State::lastError())->toContain("AWS profile 'ghost-profile' not found in ~/.aws/credentials or ~/.aws/config.");
+});
+
+test('buildAwsEnv prioritizes selected profile and does not leak global config keys', function (): void {
+    State::setTransientAwsProfile('custom-profile');
+
+    $command = new class extends CloudCreateCommand
+    {
+        public GlobalConfigData $fakeGlobalConfig;
+
+        public function __construct()
+        {
+            parent::__construct();
+            $this->fakeGlobalConfig = new GlobalConfigData;
+            $this->fakeGlobalConfig->setAwsAccessKeyId('OLD_KEY_ID');
+            $this->fakeGlobalConfig->setAwsSecretAccessKey('OLD_SECRET');
+        }
+
+        public function getEnv(): array
+        {
+            return $this->buildAwsEnv();
+        }
+
+        protected function getGlobalConfig(): GlobalConfigData
+        {
+            return $this->fakeGlobalConfig;
+        }
+    };
+
+    $env = $command->getEnv();
+
+    expect($env)->toHaveKey('AWS_PROFILE', 'custom-profile')
+        ->and($env)->not->toHaveKey('AWS_ACCESS_KEY_ID')
+        ->and($env)->not->toHaveKey('AWS_SECRET_ACCESS_KEY');
+});

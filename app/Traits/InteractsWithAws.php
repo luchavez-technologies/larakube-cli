@@ -61,7 +61,13 @@ trait InteractsWithAws
                 foreach ($profiles as $prof) {
                     $isActive = ($prof === $activeProfile);
                     $identity = $this->getAwsProfileIdentity($prof);
-                    $meta = $identity ? "(Account: {$identity['account']}, arn: {$identity['arn']})" : '(unverified)';
+                    if ($identity && ($identity['status'] ?? '') === 'invalid') {
+                        $meta = "(invalid / {$identity['error']})";
+                    } elseif ($identity) {
+                        $meta = "(Account: {$identity['account']}, arn: {$identity['arn']})";
+                    } else {
+                        $meta = '(unverified)';
+                    }
                     $options[$prof] = "{$prof}  {$meta}".($isActive ? ' [active]' : '');
                 }
                 $options['__add__'] = '+ Add new AWS profile';
@@ -104,14 +110,34 @@ trait InteractsWithAws
         $profileArg = $profile ? ' --profile '.escapeshellarg($profile) : '';
 
         // Check active caller identity
-        $identityProcess = Process::env($envVars)->run("{$awsBin} sts get-caller-identity{$profileArg} 2>/dev/null");
+        $identityProcess = Process::env($envVars)->run("{$awsBin} sts get-caller-identity{$profileArg}");
         $awsAuthed = $identityProcess->successful();
 
         // Non-interactive check
         if ($this->flag('no-interaction')) {
-            if (! $awsAuthed && ! ($this->getAwsAccessKeyId() && $this->getAwsSecretAccessKey())) {
-                $this->laraKubeError('No active AWS credentials detected. Pass --aws-access-key-id= and --aws-secret-access-key=, or configure via `aws configure`.');
-                $this->line('  <fg=gray>Hint: Target IAM user requires</> <fg=yellow>AmazonEC2FullAccess</> <fg=gray>or equivalent EC2 permissions.</>');
+            if (! $awsAuthed) {
+                if (! CliTool::AWS->isInstalled() && $this->getAwsAccessKeyId() && $this->getAwsSecretAccessKey()) {
+                    return true;
+                }
+
+                $rawError = trim($identityProcess->errorOutput() ?: $identityProcess->output());
+                if ($rawError !== '') {
+                    $profileNote = $profile ? " for profile '{$profile}'" : '';
+                    if (preg_match('/An error occurred \(([^)]+)\) when calling the [^:]+:\s*(.+)/', $rawError, $matches)) {
+                        $code = $matches[1];
+                        $message = trim($matches[2]);
+                        $this->laraKubeError("AWS authentication failed{$profileNote} ({$code}): {$message}");
+                        $this->line('  <fg=gray>Hint: Target IAM user credentials may be deactivated, expired, or invalid in AWS IAM.</>');
+                    } elseif (str_contains($rawError, 'could not be found')) {
+                        $this->laraKubeError("AWS profile '{$profile}' not found in ~/.aws/credentials or ~/.aws/config.");
+                    } else {
+                        $firstLine = explode("\n", $rawError)[0] ?? $rawError;
+                        $this->laraKubeError("AWS authentication failed{$profileNote}: {$firstLine}");
+                    }
+                } else {
+                    $this->laraKubeError('No active AWS credentials detected. Pass --aws-access-key-id= and --aws-secret-access-key=, or configure via `aws configure`.');
+                    $this->line('  <fg=gray>Hint: Target IAM user requires</> <fg=yellow>AmazonEC2FullAccess</> <fg=gray>or equivalent EC2 permissions.</>');
+                }
 
                 return false;
             }
@@ -135,21 +161,40 @@ trait InteractsWithAws
             return true;
         }
 
-        if ($this->getAwsAccessKeyId() && $this->getAwsSecretAccessKey()) {
+        $rawError = trim($identityProcess->errorOutput() ?: $identityProcess->output());
+        if ($rawError !== '') {
+            $this->newLine();
+            $profileNote = $profile ? " for profile '{$profile}'" : '';
+            if (preg_match('/An error occurred \(([^)]+)\) when calling the [^:]+:\s*(.+)/', $rawError, $matches)) {
+                $code = $matches[1];
+                $message = trim($matches[2]);
+                $this->laraKubeWarn("AWS authentication failed{$profileNote} ({$code}): {$message}");
+                $this->line('  <fg=gray>Hint: Target IAM user credentials may be deactivated, expired, or invalid in AWS IAM.</>');
+            } elseif (str_contains($rawError, 'could not be found')) {
+                $this->laraKubeWarn("AWS profile '{$profile}' was not found in your local AWS configuration.");
+            } else {
+                $firstLine = explode("\n", $rawError)[0] ?? $rawError;
+                $this->laraKubeWarn("AWS authentication failed{$profileNote}: {$firstLine}");
+            }
+        }
+
+        if (! CliTool::AWS->isInstalled() && $this->getAwsAccessKeyId() && $this->getAwsSecretAccessKey()) {
             return true;
         }
 
         // Offer running `aws configure` if AWS CLI is installed
         if (CliTool::AWS->isInstalled()) {
-            $this->newLine();
-            $this->laraKubeWarn('AWS CLI is not configured with active credentials.');
+            if ($rawError === '') {
+                $this->newLine();
+                $this->laraKubeWarn('AWS CLI is not configured with active credentials.');
+            }
 
             if (! app()->runningUnitTests() && ! Process::isRecording() && confirm('Run `aws configure` in your terminal now?', default: true)) {
                 $configureArg = $profile ? ' --profile '.escapeshellarg($profile) : '';
                 $code = $this->runInteractive("{$awsBin} configure{$configureArg}");
                 if ($code === 0) {
                     $this->line('  <fg=green>✓</> <fg=gray>AWS CLI configuration completed.</>');
-                    $retry = Process::env($envVars)->run("{$awsBin} sts get-caller-identity{$profileArg} 2>/dev/null");
+                    $retry = Process::env($envVars)->run("{$awsBin} sts get-caller-identity{$profileArg}");
                     if ($retry->successful()) {
                         return true;
                     }
@@ -233,13 +278,23 @@ trait InteractsWithAws
     /**
      * Query caller identity for a specific AWS profile.
      *
-     * @return array{account: string, arn: string}|null
+     * @return array{account: string, arn: string, status?: string, error?: string}|null
      */
     protected function getAwsProfileIdentity(string $profile): ?array
     {
         $awsBin = CliTool::AWS->resolveBinary() ?? 'aws';
-        $result = Process::run("{$awsBin} sts get-caller-identity --profile ".escapeshellarg($profile).' 2>/dev/null');
+        $result = Process::run("{$awsBin} sts get-caller-identity --profile ".escapeshellarg($profile));
         if (! $result->successful()) {
+            $err = trim($result->errorOutput() ?: $result->output());
+            if (preg_match('/An error occurred \(([^)]+)\)/', $err, $matches)) {
+                return [
+                    'account' => 'unauthorized',
+                    'arn' => 'unauthorized',
+                    'status' => 'invalid',
+                    'error' => $matches[1],
+                ];
+            }
+
             return null;
         }
 
@@ -251,6 +306,7 @@ trait InteractsWithAws
         return [
             'account' => $data['Account'] ?? 'unknown',
             'arn' => $data['Arn'] ?? 'unknown',
+            'status' => 'active',
         ];
     }
 
@@ -267,12 +323,15 @@ trait InteractsWithAws
             $env['AWS_PROFILE'] = $profile;
         }
 
-        if ($accessKeyId = $this->getAwsAccessKeyId()) {
-            $env['AWS_ACCESS_KEY_ID'] = $accessKeyId;
-        }
+        $hasExplicitFlagKeys = (bool) State::transientAwsAccessKeyId();
+        if ($hasExplicitFlagKeys || ! State::transientAwsProfile()) {
+            if ($accessKeyId = $this->getAwsAccessKeyId()) {
+                $env['AWS_ACCESS_KEY_ID'] = $accessKeyId;
+            }
 
-        if ($secretAccessKey = $this->getAwsSecretAccessKey()) {
-            $env['AWS_SECRET_ACCESS_KEY'] = $secretAccessKey;
+            if ($secretAccessKey = $this->getAwsSecretAccessKey()) {
+                $env['AWS_SECRET_ACCESS_KEY'] = $secretAccessKey;
+            }
         }
 
         if ($region = $this->getAwsRegion()) {
