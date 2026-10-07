@@ -235,6 +235,29 @@ class CloudAccountsCommand extends Command
     protected function handleRemove(?string $provider, string $id): int
     {
         $config = $this->getGlobalConfig();
+
+        if ($provider === 'aws') {
+            if (\App\Services\Cloud\AwsCredentialsFile::delete(home_path(), $id)) {
+                if ($config->awsProfile === $id) {
+                    $config->setAwsProfile(null);
+                    $this->setAwsProfile(null);
+                    $config->save();
+                }
+
+                if ($this->flag('json')) {
+                    $this->jsonOutput(['success' => true, 'provider' => 'aws', 'removed' => $id]);
+
+                    return 0;
+                }
+
+                $this->laraKubeInfo("Removed AWS profile '{$id}'.");
+
+                return 0;
+            }
+
+            return $this->failed("AWS profile '{$id}' not found.");
+        }
+
         $providers = $provider ? [$provider] : ['do', 'hetzner'];
 
         foreach ($providers as $p) {
@@ -251,6 +274,24 @@ class CloudAccountsCommand extends Command
 
                 return 0;
             }
+        }
+
+        if ($provider === null && \App\Services\Cloud\AwsCredentialsFile::delete(home_path(), $id)) {
+            if ($config->awsProfile === $id) {
+                $config->setAwsProfile(null);
+                $this->setAwsProfile(null);
+                $config->save();
+            }
+
+            if ($this->flag('json')) {
+                $this->jsonOutput(['success' => true, 'provider' => 'aws', 'removed' => $id]);
+
+                return 0;
+            }
+
+            $this->laraKubeInfo("Removed AWS profile '{$id}'.");
+
+            return 0;
         }
 
         return $this->failed("Could not remove account '{$id}'.");

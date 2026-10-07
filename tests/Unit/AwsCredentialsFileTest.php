@@ -39,3 +39,20 @@ test('save supports named profiles', function (): void {
     expect(file_get_contents($home->path('.aws/credentials')))->toContain('[client-a]')
         ->and(file_get_contents($home->path('.aws/config')))->toContain('[profile client-a]');
 });
+
+test('delete removes named profile from both credentials and config', function (): void {
+    $home = TemporaryDirectory::make();
+
+    AwsCredentialsFile::save($home->path(), 'KEY1', 'SEC1', 'us-east-1', 'profile-1');
+    AwsCredentialsFile::save($home->path(), 'KEY2', 'SEC2', 'us-west-2', 'profile-2');
+
+    expect(AwsCredentialsFile::delete($home->path(), 'profile-1'))->toBeTrue();
+
+    $creds = file_get_contents($home->path('.aws/credentials'));
+    $config = file_get_contents($home->path('.aws/config'));
+
+    expect($creds)->not->toContain('[profile-1]')
+        ->and($creds)->toContain('[profile-2]')
+        ->and($config)->not->toContain('profile-1')
+        ->and($config)->toContain('profile-2');
+});

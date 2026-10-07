@@ -76,4 +76,67 @@ final class AwsCredentialsFile
             file_put_contents($path, self::upsert($existing, $spec['section'], $spec['values']));
         }
     }
+
+    /** Removes a specific section and its keys from INI-style content. */
+    public static function removeSection(string $existing, string $section): string
+    {
+        $lines = $existing === '' ? [] : (preg_split('/\R/', rtrim($existing, "\r\n")) ?: []);
+        $out = [];
+        $inTarget = false;
+
+        foreach ($lines as $line) {
+            if (preg_match('/^\s*\[(.+)\]\s*$/', $line, $match) === 1) {
+                $current = trim($match[1]);
+                $inTarget = ($current === $section);
+                if ($inTarget) {
+                    continue;
+                }
+            } elseif ($inTarget) {
+                continue;
+            }
+
+            $out[] = $line;
+        }
+
+        $result = implode("\n", $out);
+        $result = preg_replace("/\n{3,}/", "\n\n", $result) ?? $result;
+
+        return rtrim($result, "\n")."\n";
+    }
+
+    /** Deletes a named profile from ~/.aws/credentials and ~/.aws/config. */
+    public static function delete(string $home, string $profile): bool
+    {
+        $directory = rtrim($home, '/').'/.aws';
+        if (! is_dir($directory)) {
+            return false;
+        }
+
+        $files = [
+            'credentials' => [$profile],
+            'config' => [$profile === 'default' ? 'default' : "profile {$profile}", $profile],
+        ];
+
+        $deletedAny = false;
+
+        foreach ($files as $name => $sections) {
+            $path = "{$directory}/{$name}";
+            if (! is_file($path)) {
+                continue;
+            }
+
+            $content = (string) file_get_contents($path);
+            $newContent = $content;
+            foreach ($sections as $section) {
+                $newContent = self::removeSection($newContent, $section);
+            }
+
+            if ($newContent !== $content) {
+                file_put_contents($path, $newContent);
+                $deletedAny = true;
+            }
+        }
+
+        return $deletedAny;
+    }
 }

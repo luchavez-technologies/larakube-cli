@@ -66,3 +66,17 @@ test('cloud:accounts can remove an account', function (): void {
     expect($output['success'])->toBeTrue()
         ->and(GlobalConfigData::load()->getCloudAccounts('do'))->toHaveCount(1);
 });
+
+test('cloud:accounts can remove an AWS profile', function (): void {
+    App\Services\Cloud\AwsCredentialsFile::save(home_path(), 'KEY', 'SEC', 'us-east-1', 'client-temp');
+
+    Artisan::call('cloud:accounts', [
+        '--provider' => 'aws',
+        '--remove' => 'client-temp',
+        '--json' => true,
+    ]);
+
+    $output = json_decode(Artisan::output(), true);
+    expect($output['success'])->toBeTrue()
+        ->and($output['removed'])->toBe('client-temp');
+});
