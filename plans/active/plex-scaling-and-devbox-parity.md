@@ -163,9 +163,12 @@
   - Integrated `mail:sync-sso` endpoint, `--sso`/`--no-sso` flags on `mail:create` and `mail:password`.
   - Added "Sync to SSO" action button in `mailboxes-tab.tsx`, SSO creation/password update checkboxes in modals, and SSO indicators on mailbox rows.
   - 14 tests in `MailTest.php` passing, Biome & types verified.
-- **Desktop DevBox Parity (`52de358`)**: `feat(desktop): add multi-environment tabs, scaling, dotenv sync, and remote ide to devbox projects`
+- **Desktop DevBox Parity (`52de358`, `01b085f`)**: `feat(desktop): add environment creation, ide gateways, and tunnel sharing card parity to devbox projects`
+  - Replaced `StatusPill` with `FrameworkBadge` in page header matching standard project view.
+  - Upgraded IDE actions to use official `EditorLogo` badges for VS Code, Cursor, and framework-appropriate JetBrains IDEs (PhpStorm for Laravel/Statamic/WP, PyCharm for Python/Django/FastAPI, GoLand for Go, WebStorm for JS/TS, RustRover for Rust) via JetBrains Gateway SSH launch links.
+  - Expanded IDE popover (`w-88`), showing complete, non-truncated SSH command (`ssh -i ~/.ssh/id_rsa larakube@<ip>`) with 1-click copy button and remote project directory.
+  - Added "New environment" action button in the multi-environment tab bar and `AddEnvironmentDialog` modal with optional target cluster server binding (`POST /dev-boxes/{box}/projects/{project}/environments`).
+  - Repositioned `SharingCard` (Cloudflare Tunnel accessible URL) directly underneath `DevelopmentCard` for immediate visibility.
+  - Allowed `vscode://`, `cursor://`, `jetbrains://`, and `jetbrains-gateway://` external URI schemes in `OpenExternalController`.
   - Added DevBox scaling endpoints (`scaleReplicas`, `scaleAutoscale`, `scaleResources`) and dotenv drift sync (`dotenvStatus`, `dotenvPush`, `dotenvPull`) executed over SSH in the remote project directory.
-  - Added multi-environment tabs (`DevBox Local`, `Production`, `Staging`, etc.) in `devboxes/project.tsx`.
-  - Embedded `WorkloadScalingCard` and `EnvironmentSecretsCard` with dynamic `customEndpoints`.
-  - Added "Open in Editor" integration supporting VS Code Remote-SSH, Cursor Remote-SSH, and direct SSH terminal commands.
-  - 385 tests passed in Pest, Pint passed, PHPStan passed, Biome passed.
+  - 386 tests passed in Pest, Pint passed, PHPStan passed, Biome passed.
