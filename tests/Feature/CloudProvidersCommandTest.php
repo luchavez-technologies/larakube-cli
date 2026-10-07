@@ -99,3 +99,18 @@ test('every provider names a dev box size that is one of its sizes and has at le
         expect((float) ($match[1] ?? 0))->toBeGreaterThanOrEqual(8.0);
     }
 });
+
+test('providers include accounts and activeAccount in json output', function (): void {
+    cloudProvidersClearCredentialEnv();
+    $config = GlobalConfigData::load();
+    $config->addCloudAccount('do', 'Work Token', 'token-do-work', asDefault: true);
+    $config->addCloudAccount('do', 'Personal Token', 'token-do-pers', asDefault: false);
+    $config->save();
+
+    Process::fake();
+
+    $providers = cloudProvidersRunJson();
+    expect($providers['do'])->toHaveKey('accounts')
+        ->and($providers['do']['accounts'])->toHaveCount(2)
+        ->and($providers['do']['activeAccount'])->not->toBeNull();
+});

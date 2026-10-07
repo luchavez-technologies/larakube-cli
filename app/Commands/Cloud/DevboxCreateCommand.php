@@ -25,7 +25,9 @@ class DevboxCreateCommand extends CloudCreateCommand
         {--admin-cidr= : Restrict SSH to this CIDR; omit = open}
         {--channel= : LaraKube CLI channel installed on the box: canary (default) or stable}
         {--do-token= : DigitalOcean API token for this run only (never persisted)}
+        {--do-account= : DigitalOcean account ID or name to use from global config}
         {--hetzner-token= : Hetzner Cloud API token for this run only}
+        {--hetzner-account= : Hetzner account ID or name to use from global config}
         {--gcp-project= : Google Cloud Project ID for this run only}
         {--gcp-account= : Google Cloud account email for this run only}
         {--gcp-credentials= : Path to Google Cloud Service Account JSON key for this run only}

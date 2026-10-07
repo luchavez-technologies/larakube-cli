@@ -30,3 +30,12 @@ test('the files are private to the owner', function (): void {
         ->and(substr(sprintf('%o', fileperms($home->path('.aws'))), -4))->toBe('0700')
         ->and(file_get_contents($home->path('.aws/config')))->toContain('region = us-east-1');
 });
+
+test('save supports named profiles', function (): void {
+    $home = TemporaryDirectory::make();
+
+    AwsCredentialsFile::save($home->path(), 'AKIAIOSFODNN7EXAMPLE', 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', 'us-west-2', 'client-a');
+
+    expect(file_get_contents($home->path('.aws/credentials')))->toContain('[client-a]')
+        ->and(file_get_contents($home->path('.aws/config')))->toContain('[profile client-a]');
+});

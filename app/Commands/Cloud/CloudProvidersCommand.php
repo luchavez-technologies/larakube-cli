@@ -86,6 +86,8 @@ class CloudProvidersCommand extends Command
             $priced = $live['sizes'];
         }
 
+        $accountData = $this->accountsFor($provider);
+
         return [
             'slug' => $provider->value,
             'label' => $provider->label(),
@@ -98,7 +100,65 @@ class CloudProvidersCommand extends Command
             'defaultManagedSize' => $provider->defaultManagedSize(),
             'pricing' => $pricing,
             'credentials' => $credentials,
+            'accounts' => $accountData['accounts'],
+            'activeAccount' => $accountData['activeAccount'],
         ];
+    }
+
+    /**
+     * @return array{accounts: list<array{id: string, label: string, isDefault: bool, meta?: string}>, activeAccount: ?string}
+     */
+    protected function accountsFor(CloudProvider $provider): array
+    {
+        $config = $this->getGlobalConfig();
+
+        return match ($provider) {
+            CloudProvider::DO => (function () use ($config) {
+                $accounts = array_map(fn ($acc) => [
+                    'id' => $acc['id'],
+                    'label' => $acc['name'],
+                    'isDefault' => (bool) $acc['default'],
+                    'meta' => substr($acc['token'] ?? '', 0, 10).'...',
+                ], $config->getCloudAccounts('do'));
+                $def = $config->getDefaultCloudAccount('do');
+
+                return ['accounts' => array_values($accounts), 'activeAccount' => $def['id'] ?? null];
+            })(),
+            CloudProvider::HETZNER => (function () use ($config) {
+                $accounts = array_map(fn ($acc) => [
+                    'id' => $acc['id'],
+                    'label' => $acc['name'],
+                    'isDefault' => (bool) $acc['default'],
+                    'meta' => substr($acc['token'] ?? '', 0, 10).'...',
+                ], $config->getCloudAccounts('hetzner'));
+                $def = $config->getDefaultCloudAccount('hetzner');
+
+                return ['accounts' => array_values($accounts), 'activeAccount' => $def['id'] ?? null];
+            })(),
+            CloudProvider::AWS => (function () use ($config) {
+                $profiles = $this->listAwsProfiles();
+                $active = getenv('AWS_PROFILE') ?: ($config->getAwsProfile() ?: (in_array('default', $profiles, true) ? 'default' : ($profiles[0] ?? null)));
+                $accounts = array_map(fn ($prof) => [
+                    'id' => $prof,
+                    'label' => $prof,
+                    'isDefault' => $prof === $active,
+                ], $profiles);
+
+                return ['accounts' => array_values($accounts), 'activeAccount' => $active];
+            })(),
+            CloudProvider::GCP => (function () use ($config) {
+                $gcloudBin = CliTool::GCLOUD->resolveBinary() ?? 'gcloud';
+                $accountsMap = $this->listGcpAccounts($gcloudBin);
+                $active = $config->getGcpAccount();
+                $accounts = array_map(fn ($email, $isActive) => [
+                    'id' => $email,
+                    'label' => $email,
+                    'isDefault' => $active ? $email === $active : $isActive,
+                ], array_keys($accountsMap), array_values($accountsMap));
+
+                return ['accounts' => array_values($accounts), 'activeAccount' => $active];
+            })(),
+        };
     }
 
     /**

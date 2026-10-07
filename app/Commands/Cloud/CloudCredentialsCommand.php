@@ -29,6 +29,7 @@ class CloudCredentialsCommand extends Command
     protected $signature = 'cloud:credentials
         {--provider= : The provider the keys are for (aws)}
         {--region= : The default AWS region, such as us-east-1}
+        {--profile= : AWS CLI profile name (default: default)}
         {--json : Emit one machine-readable JSON result on stdout}';
 
     protected $description = 'Save AWS access keys (read from AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY) as the default AWS profile';
@@ -74,19 +75,24 @@ class CloudCredentialsCommand extends Command
 
         $this->registerSecret($secret);
 
-        AwsCredentialsFile::save(home_path(), $keyId, $secret, $region);
+        $profile = $this->option('profile') ?: 'default';
+        AwsCredentialsFile::save(home_path(), $keyId, $secret, $region, $profile);
 
         $verified = null;
 
         if (CliTool::AWS->isInstalled()) {
             $bin = CliTool::AWS->resolveBinary() ?? 'aws';
-            $verified = Process::timeout(20)->env(['AWS_ACCESS_KEY_ID' => $keyId, 'AWS_SECRET_ACCESS_KEY' => $secret])->run("{$bin} sts get-caller-identity")->successful();
+            $verified = Process::timeout(20)->env(['AWS_ACCESS_KEY_ID' => $keyId, 'AWS_SECRET_ACCESS_KEY' => $secret])->run("{$bin} sts get-caller-identity --profile ".escapeshellarg($profile))->successful();
         }
 
         if ($this->flag('json')) {
-            $this->jsonOutput(['success' => true, 'provider' => 'aws', 'region' => $region, 'verified' => $verified]);
+            $data = ['success' => true, 'provider' => 'aws', 'region' => $region, 'verified' => $verified];
+            if ($profile !== 'default') {
+                $data['profile'] = $profile;
+            }
+            $this->jsonOutput($data);
         } else {
-            $this->laraKubeInfo('AWS keys saved as the default profile'.($verified === false ? ', but AWS did not accept them.' : '.'));
+            $this->laraKubeInfo("AWS keys saved as profile '{$profile}'".($verified === false ? ', but AWS did not accept them.' : '.'));
         }
 
         return 0;

@@ -152,6 +152,20 @@ class CloudScaleCommand extends Command
 
         $provider = $stack->provider ?? 'do';
 
+        if ($provider === 'do' && ! $this->flag('do-token') && $stack->account) {
+            $acc = collect($this->getGlobalConfig()->getCloudAccounts('do'))->firstWhere('id', $stack->account);
+            if ($acc) {
+                State::setTransientDoToken($acc['token']);
+            }
+        }
+
+        if ($provider === 'hetzner' && ! $this->flag('hetzner-token') && $stack->account) {
+            $acc = collect($this->getGlobalConfig()->getCloudAccounts('hetzner'))->firstWhere('id', $stack->account);
+            if ($acc) {
+                State::setTransientHetznerToken($acc['token']);
+            }
+        }
+
         if ($provider === 'aws' && ! $this->flag('aws-profile') && $stack->account) {
             State::setTransientAwsProfile($stack->account);
         }

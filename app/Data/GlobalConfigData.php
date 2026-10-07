@@ -68,12 +68,12 @@ class GlobalConfigData extends Data
         /** AWS Secret Access Key (optional). */
         public ?string $awsSecretAccessKey = null,
         /**
-         * Per-app domain shares made by `larakube share`: the zone, the tunnel and the public
-         * address of each service. No token is kept here.
-         * Shape: ['appname' => ['zone' => 'example.com', 'accountId' => '…', 'tunnelId' => '…', 'urls' => ['web' => 'https://…']]]
+         * Named accounts registry for token-based cloud providers (do, hetzner).
+         * Shape: ['do' => [['id' => 'do-1', 'name' => 'Agency Main', 'token' => '...', 'default' => true, 'createdAt' => '...']], ...]
          *
-         * @var array<string, array<string, mixed>>
+         * @var array<string, list<array{id: string, name: string, token: string, default: bool, createdAt: string}>>
          */
+        public array $cloudAccounts = [],
         public array $shareDomains = [],
     ) {}
 
@@ -164,24 +164,168 @@ class GlobalConfigData extends Data
         $this->defaultCloudProvider = $provider;
     }
 
+    /**
+     * @return list<array{id: string, name: string, token: string, default: bool, createdAt: string}>
+     */
+    public function getCloudAccounts(string $provider): array
+    {
+        $accounts = $this->cloudAccounts[$provider] ?? [];
+
+        // Backwards compatibility migration for legacy doToken / hetznerToken
+        if ($accounts === []) {
+            $legacyToken = match ($provider) {
+                'do' => $this->doToken,
+                'hetzner' => $this->hetznerToken,
+                default => null,
+            };
+
+            if ($legacyToken) {
+                $accounts = [[
+                    'id' => 'default',
+                    'name' => 'Default Account',
+                    'token' => $legacyToken,
+                    'default' => true,
+                    'createdAt' => Carbon::now()->toIso8601String(),
+                ]];
+            }
+        }
+
+        return $accounts;
+    }
+
+    public function addCloudAccount(string $provider, string $name, string $token, bool $asDefault = false): string
+    {
+        $accounts = $this->getCloudAccounts($provider);
+        $id = 'acc_'.substr(md5(uniqid($name, true)), 0, 8);
+        $token = trim($token);
+        $name = trim($name);
+
+        if ($asDefault || $accounts === []) {
+            foreach ($accounts as &$account) {
+                $account['default'] = false;
+            }
+            unset($account);
+        }
+
+        $accounts[] = [
+            'id' => $id,
+            'name' => $name,
+            'token' => $token,
+            'default' => $asDefault || count($accounts) === 0,
+            'createdAt' => Carbon::now()->toIso8601String(),
+        ];
+
+        $this->cloudAccounts[$provider] = $accounts;
+
+        if ($asDefault || count($accounts) === 1) {
+            if ($provider === 'do') {
+                $this->doToken = $token;
+            } elseif ($provider === 'hetzner') {
+                $this->hetznerToken = $token;
+            }
+        }
+
+        return $id;
+    }
+
+    public function removeCloudAccount(string $provider, string $id): bool
+    {
+        $accounts = $this->getCloudAccounts($provider);
+        $filtered = array_values(array_filter($accounts, fn (array $acc): bool => $acc['id'] !== $id));
+
+        if (count($filtered) === count($accounts)) {
+            return false;
+        }
+
+        if ($filtered !== [] && ! array_filter($filtered, fn (array $acc): bool => $acc['default'])) {
+            $filtered[0]['default'] = true;
+        }
+
+        $this->cloudAccounts[$provider] = $filtered;
+
+        $default = $this->getDefaultCloudAccount($provider);
+        if ($provider === 'do') {
+            $this->doToken = $default['token'] ?? null;
+        } elseif ($provider === 'hetzner') {
+            $this->hetznerToken = $default['token'] ?? null;
+        }
+
+        return true;
+    }
+
+    public function setDefaultCloudAccount(string $provider, string $id): bool
+    {
+        $accounts = $this->getCloudAccounts($provider);
+        $found = false;
+
+        foreach ($accounts as &$account) {
+            if ($account['id'] === $id) {
+                $account['default'] = true;
+                $found = true;
+                if ($provider === 'do') {
+                    $this->doToken = $account['token'];
+                } elseif ($provider === 'hetzner') {
+                    $this->hetznerToken = $account['token'];
+                }
+            } else {
+                $account['default'] = false;
+            }
+        }
+        unset($account);
+
+        if ($found) {
+            $this->cloudAccounts[$provider] = $accounts;
+        }
+
+        return $found;
+    }
+
+    /**
+     * @return array{id: string, name: string, token: string, default: bool, createdAt: string}|null
+     */
+    public function getDefaultCloudAccount(string $provider): ?array
+    {
+        $accounts = $this->getCloudAccounts($provider);
+
+        foreach ($accounts as $account) {
+            if ($account['default']) {
+                return $account;
+            }
+        }
+
+        return $accounts[0] ?? null;
+    }
+
     public function getDoToken(): ?string
     {
-        return $this->doToken;
+        return $this->getDefaultCloudAccount('do')['token'] ?? $this->doToken;
     }
 
     public function setDoToken(?string $token): void
     {
         $this->doToken = $token ? trim($token) : null;
+        if ($this->doToken) {
+            $accounts = $this->getCloudAccounts('do');
+            if ($accounts === []) {
+                $this->addCloudAccount('do', 'Default Account', $this->doToken, asDefault: true);
+            }
+        }
     }
 
     public function getHetznerToken(): ?string
     {
-        return $this->hetznerToken;
+        return $this->getDefaultCloudAccount('hetzner')['token'] ?? $this->hetznerToken;
     }
 
     public function setHetznerToken(?string $token): void
     {
         $this->hetznerToken = $token ? trim($token) : null;
+        if ($this->hetznerToken) {
+            $accounts = $this->getCloudAccounts('hetzner');
+            if ($accounts === []) {
+                $this->addCloudAccount('hetzner', 'Default Account', $this->hetznerToken, asDefault: true);
+            }
+        }
     }
 
     public function getCloudflareToken(): ?string

@@ -81,10 +81,20 @@ class CloudDestroyCommand extends Command
 
         if ($flagDo = $this->option('do-token')) {
             State::setTransientDoToken($flagDo);
+        } elseif ($stack->provider === 'do' && $stack->account) {
+            $acc = collect($this->getGlobalConfig()->getCloudAccounts('do'))->firstWhere('id', $stack->account);
+            if ($acc) {
+                State::setTransientDoToken($acc['token']);
+            }
         }
 
         if ($flagHetzner = $this->option('hetzner-token')) {
             State::setTransientHetznerToken($flagHetzner);
+        } elseif ($stack->provider === 'hetzner' && $stack->account) {
+            $acc = collect($this->getGlobalConfig()->getCloudAccounts('hetzner'))->firstWhere('id', $stack->account);
+            if ($acc) {
+                State::setTransientHetznerToken($acc['token']);
+            }
         }
 
         if ($flagProfile = $this->option('aws-profile')) {

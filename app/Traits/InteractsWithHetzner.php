@@ -17,6 +17,18 @@ trait InteractsWithHetzner
      */
     protected function ensureHetznerToken(): bool
     {
+        if ($accountNameOrId = $this->flag('hetzner-account')) {
+            $accounts = $this->getGlobalConfig()->getCloudAccounts('hetzner');
+            foreach ($accounts as $acc) {
+                if ($acc['id'] === $accountNameOrId || $acc['name'] === $accountNameOrId) {
+                    State::setTransientHetznerToken($acc['token']);
+                    $this->registerSecret(State::transientHetznerToken());
+
+                    return true;
+                }
+            }
+        }
+
         if ($flagToken = $this->flag('hetzner-token')) {
             State::setTransientHetznerToken($flagToken);
             $this->registerSecret(State::transientHetznerToken());

@@ -65,7 +65,9 @@ class CloudCreateCommand extends Command
         {--ha : Enable HA (High-Availability) control plane (+$40/mo on DOKS, irreversible)}
         {--k8s-version-prefix= : Managed Kubernetes minor version prefix (e.g. "1.31.")}
         {--do-token= : DigitalOcean API token for this run only (never persisted)}
+        {--do-account= : DigitalOcean account ID or name to use from global config}
         {--hetzner-token= : Hetzner Cloud API token for this run only}
+        {--hetzner-account= : Hetzner account ID or name to use from global config}
         {--gcp-project= : Google Cloud Project ID for this run only}
         {--gcp-account= : Google Cloud account email for this run only}
         {--gcp-credentials= : Path to Google Cloud Service Account JSON key for this run only}
@@ -168,9 +170,14 @@ class CloudCreateCommand extends Command
 
     protected function registerStack(string $name, string $kind, ?string $region, ?string $ip, ?string $context, ?ConfigData $config, ?string $environment, string $provider = 'do', string $role = 'deploy'): void
     {
+        $defaultDo = $this->getGlobalConfig()->getDefaultCloudAccount('do');
+        $defaultHetzner = $this->getGlobalConfig()->getDefaultCloudAccount('hetzner');
+
         $account = match ($provider) {
-            'aws' => $this->getAwsProfile(),
-            'gcp' => $this->getGcpAccount(),
+            'aws' => $this->flag('aws-profile') ?: $this->getAwsProfile(),
+            'gcp' => $this->flag('gcp-account') ?: $this->getGcpAccount(),
+            'do' => $this->flag('do-account') ?: ($defaultDo['name'] ?? $defaultDo['id'] ?? null),
+            'hetzner' => $this->flag('hetzner-account') ?: ($defaultHetzner['name'] ?? $defaultHetzner['id'] ?? null),
             default => null,
         };
         $projectId = match ($provider) {
@@ -228,6 +235,18 @@ class CloudCreateCommand extends Command
     /** Prompt for + persist the DO API token if we don't have one yet. */
     protected function ensureDoToken(): bool
     {
+        if ($accountNameOrId = $this->flag('do-account')) {
+            $accounts = $this->getGlobalConfig()->getCloudAccounts('do');
+            foreach ($accounts as $acc) {
+                if ($acc['id'] === $accountNameOrId || $acc['name'] === $accountNameOrId) {
+                    State::setTransientDoToken($acc['token']);
+                    $this->registerSecret(State::transientDoToken());
+
+                    return true;
+                }
+            }
+        }
+
         // A token supplied for this run (headless job container) stays
         // in-memory only — getDoToken() consults it ahead of the global
         // config, so it reaches TF_VAR_do_token without touching disk.

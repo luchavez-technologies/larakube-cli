@@ -48,7 +48,7 @@ final class AwsCredentialsFile
     }
 
     /** Writes both files, 0600 inside a 0700 folder, keeping every other profile. */
-    public static function save(string $home, string $accessKeyId, string $secretAccessKey, string $region): void
+    public static function save(string $home, string $accessKeyId, string $secretAccessKey, string $region, string $profile = 'default'): void
     {
         $directory = rtrim($home, '/').'/.aws';
 
@@ -56,16 +56,24 @@ final class AwsCredentialsFile
             mkdir($directory, 0700, true);
         }
 
-        foreach ([
-            'credentials' => ['aws_access_key_id' => $accessKeyId, 'aws_secret_access_key' => $secretAccessKey],
-            'config' => ['region' => $region, 'output' => 'json'],
-        ] as $name => $values) {
+        $files = [
+            'credentials' => [
+                'section' => $profile,
+                'values' => ['aws_access_key_id' => $accessKeyId, 'aws_secret_access_key' => $secretAccessKey],
+            ],
+            'config' => [
+                'section' => $profile === 'default' ? 'default' : "profile {$profile}",
+                'values' => ['region' => $region, 'output' => 'json'],
+            ],
+        ];
+
+        foreach ($files as $name => $spec) {
             $path = "{$directory}/{$name}";
             $existing = is_file($path) ? (string) file_get_contents($path) : '';
 
             touch($path);
             chmod($path, 0600);
-            file_put_contents($path, self::upsert($existing, 'default', $values));
+            file_put_contents($path, self::upsert($existing, $spec['section'], $spec['values']));
         }
     }
 }
