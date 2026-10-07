@@ -27,10 +27,15 @@ class CloudDestroyCommand extends Command
     protected $signature = 'cloud:destroy
         {stack? : The stack name to destroy. Omit to pick from the registry.}
         {--force : Skip the confirmation prompt}
+        {--do-token= : DigitalOcean API token for this run only}
         {--hetzner-token= : Hetzner Cloud API token}
         {--aws-profile= : AWS CLI profile name}
+        {--aws-region= : AWS region for this run only}
+        {--aws-access-key-id= : AWS Access Key ID for this run only}
+        {--aws-secret-access-key= : AWS Secret Access Key for this run only}
         {--gcp-account= : Google Cloud account email}
-        {--gcp-project= : Google Cloud project ID}';
+        {--gcp-project= : Google Cloud project ID}
+        {--gcp-credentials= : Path to Google Cloud Service Account JSON key for this run only}';
 
     protected $description = 'Destroy an OpenTofu-provisioned stack (droplet or DOKS cluster) and remove it from the registry';
 
@@ -74,6 +79,10 @@ class CloudDestroyCommand extends Command
             return 1;
         }
 
+        if ($flagDo = $this->option('do-token')) {
+            State::setTransientDoToken($flagDo);
+        }
+
         if ($flagHetzner = $this->option('hetzner-token')) {
             State::setTransientHetznerToken($flagHetzner);
         }
@@ -82,6 +91,22 @@ class CloudDestroyCommand extends Command
             State::setTransientAwsProfile($flagProfile);
         } elseif ($stack->provider === 'aws' && $stack->account) {
             State::setTransientAwsProfile($stack->account);
+        }
+
+        if ($flagRegion = $this->option('aws-region')) {
+            State::setTransientAwsRegion($flagRegion);
+        }
+
+        if ($flagAccessKey = $this->option('aws-access-key-id')) {
+            State::setTransientAwsAccessKeyId($flagAccessKey);
+        }
+
+        if ($flagSecretKey = $this->option('aws-secret-access-key')) {
+            State::setTransientAwsSecretAccessKey($flagSecretKey);
+        }
+
+        if ($flagCreds = $this->option('gcp-credentials')) {
+            State::setTransientGcpCredentials($flagCreds);
         }
 
         if ($flagAccount = $this->option('gcp-account')) {
