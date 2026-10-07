@@ -16,19 +16,52 @@ final readonly class InitOption
 
     public const LIST = 'list';
 
+    public const SELECT = 'select';
+
     /** Options that are the command's own mechanics, not a question for a person. */
     private const MECHANICS = ['context', 'force'];
 
+    /**
+     * @param  array<string, string>  $choices
+     * @param  array<string, string>|null  $visibleWhen
+     */
     private function __construct(
         public string $name,
         public string $kind,
         public string $description,
         public string|bool|null $default = null,
+        public array $choices = [],
+        public ?array $visibleWhen = null,
+        public ?string $customLabel = null,
     ) {}
 
     public static function flag(string $name, string $description): self
     {
         return new self($name, self::FLAG, $description, false);
+    }
+
+    /**
+     * @param  array<string, string>  $choices
+     */
+    public static function select(string $name, string $description, array $choices, ?string $default = null, ?string $label = null): self
+    {
+        return new self($name, self::SELECT, $description, $default, $choices, customLabel: $label);
+    }
+
+    /**
+     * @param  array<string, string>  $conditions
+     */
+    public function visibleWhen(array $conditions): self
+    {
+        return new self(
+            name: $this->name,
+            kind: $this->kind,
+            description: $this->description,
+            default: $this->default,
+            choices: $this->choices,
+            visibleWhen: $conditions,
+            customLabel: $this->customLabel,
+        );
     }
 
     public static function value(string $name, string $description, ?string $default = null): self
@@ -74,7 +107,7 @@ final readonly class InitOption
     {
         $suffix = match ($this->kind) {
             self::LIST => '=*',
-            self::VALUE => '='.($this->default ?? ''),
+            self::VALUE, self::SELECT => '='.($this->default ?? ''),
             default => '',
         };
 
@@ -96,7 +129,7 @@ final readonly class InitOption
     {
         $field = [
             'key' => lcfirst(str_replace(' ', '', ucwords(str_replace('-', ' ', $this->name)))),
-            'type' => $this->kind === self::FLAG ? 'confirm' : 'text',
+            'type' => $this->kind === self::FLAG ? 'confirm' : ($this->kind === self::SELECT ? 'select' : 'text'),
             'role' => $this->role(),
             'label' => $this->label(),
             'description' => $this->description,
@@ -106,6 +139,18 @@ final readonly class InitOption
 
         if ($this->kind === self::LIST) {
             $field['multiple'] = true;
+        }
+
+        if ($this->kind === self::SELECT && ! empty($this->choices)) {
+            $field['options'] = array_map(
+                fn (string|int $val, string $lbl): array => ['value' => (string) $val, 'label' => $lbl],
+                array_keys($this->choices),
+                array_values($this->choices),
+            );
+        }
+
+        if ($this->visibleWhen !== null) {
+            $field['visibleWhen'] = $this->visibleWhen;
         }
 
         if ($this->default !== null && $this->default !== '') {
@@ -131,8 +176,12 @@ final readonly class InitOption
 
     private function label(): string
     {
+        if ($this->customLabel !== null) {
+            return $this->customLabel;
+        }
+
         $label = ucfirst(str_replace('-', ' ', $this->name));
 
-        return str_replace(['Sso', 'Vpn', 'Url', 'Plex', 'Cloudflare', 'Dns'], ['SSO', 'VPN', 'URL', 'Plex', 'Cloudflare', 'DNS'], $label);
+        return str_replace(['Sso', 'Vpn', 'Url', 'Plex', 'Cloudflare', 'Dns', 'Db'], ['SSO', 'VPN', 'URL', 'Plex', 'Cloudflare', 'DNS', 'Database Engine'], $label);
     }
 }

@@ -228,8 +228,18 @@ final class ToolInitSpec
                 InitOption::domain('Base domain OR full host for WordPress (example.com → prefix.example.com). Omit to target/update the default instance'),
                 InitOption::list('alias', 'Additional domain alias(es) to register on this instance\'s Ingress'),
                 InitOption::value('admin-email', 'Email for the primary admin account'),
-                InitOption::value('db', 'Database engine: "sqlite" (default, 0 extra RAM) or "mysql"'),
-                InitOption::flag('no-plex', 'Bypass Plex Commons and deploy dedicated database instead'),
+                InitOption::select(
+                    'db',
+                    'Choose storage backend for WordPress content and data',
+                    [
+                        'sqlite' => 'SQLite (Embedded, 0 RAM, Instant)',
+                        'mysql' => 'MySQL / MariaDB (Plex Commons)',
+                    ],
+                    default: 'sqlite',
+                    label: 'Database Engine',
+                ),
+                InitOption::flag('no-plex', 'Bypass Plex Commons and deploy dedicated database instead')
+                    ->visibleWhen(['db' => 'mysql']),
                 InitOption::vpnOnly(),
                 InitOption::force(),
                 InitOption::proxied(defaultOn: true),

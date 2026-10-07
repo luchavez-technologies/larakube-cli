@@ -92,5 +92,22 @@ test('an option builds the signature fragment the init commands use', function (
     expect(InitOption::flag('force', 'Skip it')->signature())->toBe('{--force : Skip it}')
         ->and(InitOption::value('domain', 'A host')->signature())->toBe('{--domain= : A host}')
         ->and(InitOption::value('media-retention', 'Keep', '30d')->signature())->toBe('{--media-retention=30d : Keep}')
+        ->and(InitOption::select('db', 'Storage', ['sqlite' => 'SQLite', 'mysql' => 'MySQL'], 'sqlite')->signature())->toBe('{--db=sqlite : Storage}')
         ->and(InitOption::list('alias', 'More')->signature())->toBe('{--alias=* : More}');
+});
+
+test('wordpress init spec provides select choices for db and visibleWhen condition for no-plex', function (): void {
+    $fields = collect(ToolInitSpec::fields(ClusterTool::WORDPRESS))->keyBy('key');
+
+    expect($fields->has('db'))->toBeTrue()
+        ->and($fields['db']['type'])->toBe('select')
+        ->and($fields['db']['label'])->toBe('Database Engine')
+        ->and($fields['db']['default'])->toBe('sqlite')
+        ->and($fields['db']['options'])->toBe([
+            ['value' => 'sqlite', 'label' => 'SQLite (Embedded, 0 RAM, Instant)'],
+            ['value' => 'mysql', 'label' => 'MySQL / MariaDB (Plex Commons)'],
+        ])
+        ->and($fields->has('noPlex'))->toBeTrue()
+        ->and($fields['noPlex']['type'])->toBe('confirm')
+        ->and($fields['noPlex']['visibleWhen'])->toBe(['db' => 'mysql']);
 });
