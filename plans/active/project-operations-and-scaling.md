@@ -237,15 +237,16 @@ Positioned on `projects/show.tsx` directly beneath `EnvironmentBackingServicesCa
 ## Phase 4: Quality & Testing Verification
 
 1. **CLI Unit & Feature Tests (`cli/tests/Feature/`)**:
-   - `ReplicasCommandTest`: Validates `--component`, `--count`, `--reset`, `--json`.
-   - `AutoscaleCommandTest`: Validates `--min`, `--max`, `--cpu`, `--disable`, `--json`.
-   - `ResourcesCommandTest`: Validates presets (`--tier=standard`), manual flags, `--json`.
-   - `DotenvCommandTest`: Validates structured drift JSON, `--force` push, `--force` pull.
+   - `WorkloadScalingCommandsTest`: Validates `--component`, `--count`, `--reset`, `--min`, `--max`, `--cpu`, `--disable`, `--tier`, and `--json`.
+   - `DotenvCommandTest`: Validates structured drift JSON output and `--json` mode.
+   - Result: 3,115 tests passed with 16,189 assertions in CLI test suite.
 2. **Desktop Feature Tests (`desktop/tests/Feature/`)**:
-   - `ProjectScalingTest`: Tests endpoint validation, arguments constructed, and `ChildProcess` dispatch.
-   - `ProjectDotenvTest`: Tests drift fetch, push, pull commands.
-3. **Quality Gates**:
-   - Proactive `composer format` (Pint + Rector).
-   - Proactive `composer analyse` (PHPStan).
-   - Run `composer test` and `npm run check`.
-   - Remind user to execute `./build` to test in LaraKube Desktop.
+   - `ProjectsTest`: Tests scaling endpoints (`replicas`, `autoscale`, `resources`), dotenv endpoints (`status`, `push`, `pull`), and `ChildProcess` dispatch.
+   - Result: 378 tests passed with 2,177 assertions in Desktop test suite.
+3. **Quality Gates & Commits**:
+   - CLI Lint & Types: `composer format` and `composer analyse` (PHPStan) passed with 0 errors.
+   - Desktop Lint & Types: `vp check`, `tsc --noEmit`, Pint, and PHPStan passed with 0 errors.
+   - CLI Commit: `df047695` (`feat(cli): add non-interactive flags and machine-readable json output for scaling and dotenv commands`)
+   - Desktop Commit: `07f512b` (`feat(desktop): add workload scaling controls and environment secrets drift sync`)
+   - Mandatory Rule: Instruct user to run `./build` (AI agents strictly forbidden from running `./build`).
+
