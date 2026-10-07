@@ -28,7 +28,7 @@ trait InteractsWithData
             return $this->readClusterSecretKey($kubectl, $ns, $secretName, $key);
         }
 
-        foreach (['pocketbase', 'directus'] as $eng) {
+        foreach (['pocketbase', 'directus', 'wordpress'] as $eng) {
             $secretName = \App\Data\ToolInstance::forInstance(ClusterTool::DATA, $instance, $eng)->secret();
             $val = $this->readClusterSecretKey($kubectl, $ns, $secretName, $key);
             if ($val !== null) {

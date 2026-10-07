@@ -67,6 +67,7 @@ enum ClusterTool: string implements HasWorkloadComponents
         return match ($this) {
             self::POCKETBASE => DataTool::POCKETBASE,
             self::DIRECTUS => DataTool::DIRECTUS,
+            self::WORDPRESS => DataTool::WORDPRESS,
             self::N8N => (FlowTool::tryFrom((string) $engine) ?? FlowTool::N8N)->tool(),
             self::WINDMILL => FlowTool::WINDMILL->tool(),
             self::FORGEJO => GitForgeTool::FORGEJO,
@@ -106,6 +107,7 @@ enum ClusterTool: string implements HasWorkloadComponents
         return match ($this) {
             self::POCKETBASE => 'PocketBase (Embedded SQLite)',
             self::DIRECTUS => 'Directus (Headless CMS)',
+            self::WORDPRESS => 'WordPress (CMS & Website Platform)',
             self::N8N => 'n8n (Workflow Automation)',
             self::WINDMILL => 'Windmill (Developer Workflow Platform)',
             self::MATRIX => 'Matrix (Synapse + Element)',
@@ -185,6 +187,7 @@ enum ClusterTool: string implements HasWorkloadComponents
         return match ($this) {
             self::POCKETBASE => '🗄️',
             self::DIRECTUS => '🐰',
+            self::WORDPRESS => '🌐',
             self::N8N => '⚡',
             self::WINDMILL => '💨',
             self::MATRIX => '💬',
@@ -262,6 +265,7 @@ enum ClusterTool: string implements HasWorkloadComponents
         return match ($this) {
             self::POCKETBASE => 'PocketBase',
             self::DIRECTUS => 'Directus',
+            self::WORDPRESS => 'WordPress',
             self::N8N => 'n8n',
             self::WINDMILL => 'Windmill',
             self::MATRIX => 'Matrix',
@@ -355,7 +359,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function service(): ?SharedClusterService
     {
         return match ($this) {
-            self::POCKETBASE, self::DIRECTUS, self::DATA => SharedClusterService::DATA,
+            self::POCKETBASE, self::DIRECTUS, self::WORDPRESS, self::DATA => SharedClusterService::DATA,
             self::N8N, self::WINDMILL, self::FLOW => SharedClusterService::FLOW,
             self::FORGEJO, self::GIT => SharedClusterService::FORGEJO,
             self::MATRIX, self::CHAT => SharedClusterService::CHAT,
@@ -654,7 +658,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         return match ($this) {
             self::CHAT => ['matrix' => 'Matrix (Synapse + Element)'],
-            self::DATA => ['pocketbase' => 'PocketBase', 'directus' => 'Directus'],
+            self::DATA => ['pocketbase' => 'PocketBase', 'directus' => 'Directus', 'wordpress' => 'WordPress'],
             self::DRIVE => ['ocis' => 'oCIS'],
             self::FLOW => ['n8n' => 'n8n', 'windmill' => 'Windmill'],
             self::TASKS => ['planka' => 'Planka'],
@@ -780,7 +784,11 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function canonicalTool(?string $engine = null): self
     {
         return match ($this) {
-            self::DATA => ($engine === 'pocketbase') ? self::POCKETBASE : self::DIRECTUS,
+            self::DATA => match ($engine) {
+                'pocketbase' => self::POCKETBASE,
+                'wordpress' => self::WORDPRESS,
+                default => self::DIRECTUS,
+            },
             self::FLOW => ($engine === 'windmill') ? self::WINDMILL : self::N8N,
             self::GIT => self::FORGEJO,
             self::SHEETS => self::TEABLE,
@@ -830,7 +838,7 @@ enum ClusterTool: string implements HasWorkloadComponents
                 continue;
             }
 
-            foreach ([null, 'pocketbase', 'windmill', 'plausible'] as $engine) {
+            foreach ([null, 'pocketbase', 'wordpress', 'windmill', 'plausible'] as $engine) {
                 if ($case->canonicalTool($engine) === $this) {
                     return $case;
                 }
@@ -846,7 +854,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function legacyCategoryPrefix(): ?string
     {
         return match ($this) {
-            self::POCKETBASE, self::DIRECTUS, self::DATA => 'data',
+            self::POCKETBASE, self::DIRECTUS, self::WORDPRESS, self::DATA => 'data',
             self::N8N, self::WINDMILL, self::FLOW => 'flow',
             self::FORGEJO, self::GIT => 'git',
             self::MATRIX, self::CHAT => 'chat',
@@ -900,6 +908,7 @@ enum ClusterTool: string implements HasWorkloadComponents
         return match ($this->canonicalTool()) {
             self::POCKETBASE => 'Embedded SQLite & Backend API',
             self::DIRECTUS => 'Headless CMS & Data Platform',
+            self::WORDPRESS => 'Publishing & Content Management System',
             self::N8N => 'Workflow Automation',
             self::WINDMILL => 'Developer Workflow Engine',
             self::MATRIX => 'Decentralized Team Chat',
@@ -966,6 +975,7 @@ enum ClusterTool: string implements HasWorkloadComponents
         return match ($this->canonicalTool()) {
             self::POCKETBASE => [ToolCategory::DATABASE, ToolCategory::BACKEND, ToolCategory::AUTH, ToolCategory::STORAGE],
             self::DIRECTUS => [ToolCategory::DATABASE, ToolCategory::BACKEND, ToolCategory::AUTH],
+            self::WORDPRESS => [ToolCategory::BACKEND, ToolCategory::DATABASE, ToolCategory::STORAGE],
             self::N8N => [ToolCategory::DEVOPS, ToolCategory::PRODUCTIVITY, ToolCategory::COMMUNICATION],
             self::WINDMILL => [ToolCategory::DEVOPS, ToolCategory::PRODUCTIVITY, ToolCategory::BACKEND],
             self::MATRIX => [ToolCategory::COMMUNICATION],
@@ -997,6 +1007,265 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::SENDREC => [ToolCategory::COMMUNICATION, ToolCategory::PRODUCTIVITY],
             self::EXTERNAL_DNS => [ToolCategory::DEVOPS],
             default => [ToolCategory::PRODUCTIVITY],
+        };
+    }
+
+    /**
+     * Standardized Plex Commons compatibility capabilities for this tool.
+     *
+     * @return array{
+     *     databases: list<string>,
+     *     cache: list<string>,
+     *     storage: list<string>,
+     *     auth: list<string>,
+     *     mail: list<string>,
+     * }
+     */
+    public function commonsCapabilities(?string $engine = null): array
+    {
+        if ($this->isLegacy()) {
+            return $this->canonicalTool($engine)->commonsCapabilities($engine);
+        }
+
+        return match ($this) {
+            self::POCKETBASE => [
+                'databases' => ['sqlite'],
+                'cache' => [],
+                'storage' => ['s3'],
+                'auth' => ['oidc'],
+                'mail' => ['smtp'],
+            ],
+            self::DIRECTUS => [
+                'databases' => ['postgresql', 'mysql', 'mariadb', 'sqlite'],
+                'cache' => ['redis'],
+                'storage' => ['s3'],
+                'auth' => ['oidc'],
+                'mail' => ['smtp'],
+            ],
+            self::WORDPRESS => [
+                'databases' => ['sqlite', 'mysql', 'mariadb'],
+                'cache' => ['redis'],
+                'storage' => ['s3'],
+                'auth' => [],
+                'mail' => ['smtp'],
+            ],
+            self::N8N => [
+                'databases' => ['postgresql', 'sqlite'],
+                'cache' => ['redis'],
+                'storage' => ['s3'],
+                'auth' => ['oidc'],
+                'mail' => ['smtp'],
+            ],
+            self::WINDMILL => [
+                'databases' => ['postgresql'],
+                'cache' => [],
+                'storage' => ['s3'],
+                'auth' => ['oidc'],
+                'mail' => ['smtp'],
+            ],
+            self::FORGEJO => [
+                'databases' => ['postgresql', 'mysql', 'mariadb', 'sqlite'],
+                'cache' => ['redis'],
+                'storage' => ['s3'],
+                'auth' => ['oidc'],
+                'mail' => ['smtp'],
+            ],
+            self::TWENTY => [
+                'databases' => ['postgresql'],
+                'cache' => ['redis'],
+                'storage' => ['s3'],
+                'auth' => ['oidc'],
+                'mail' => ['smtp'],
+            ],
+            self::GLITCHTIP => [
+                'databases' => ['postgresql'],
+                'cache' => ['redis'],
+                'storage' => [],
+                'auth' => ['oidc'],
+                'mail' => ['smtp'],
+            ],
+            self::METABASE => [
+                'databases' => ['postgresql', 'mysql', 'mariadb'],
+                'cache' => [],
+                'storage' => [],
+                'auth' => ['oidc'],
+                'mail' => ['smtp'],
+            ],
+            self::OUTLINE => [
+                'databases' => ['postgresql'],
+                'cache' => ['redis'],
+                'storage' => ['s3'],
+                'auth' => ['oidc'],
+                'mail' => ['smtp'],
+            ],
+            self::CHATWOOT => [
+                'databases' => ['postgresql'],
+                'cache' => ['redis'],
+                'storage' => ['s3'],
+                'auth' => [],
+                'mail' => ['smtp'],
+            ],
+            self::STALWART => [
+                'databases' => ['sqlite', 'postgresql', 'mysql', 'mariadb'],
+                'cache' => [],
+                'storage' => ['s3'],
+                'auth' => ['oidc'],
+                'mail' => [],
+            ],
+            self::DOCUMENSO => [
+                'databases' => ['postgresql'],
+                'cache' => [],
+                'storage' => ['s3'],
+                'auth' => ['oidc'],
+                'mail' => ['smtp'],
+            ],
+            self::PENPOT => [
+                'databases' => ['postgresql'],
+                'cache' => ['redis'],
+                'storage' => ['s3'],
+                'auth' => ['oidc'],
+                'mail' => ['smtp'],
+            ],
+            self::PLANKA => [
+                'databases' => ['postgresql'],
+                'cache' => [],
+                'storage' => ['s3'],
+                'auth' => ['oidc'],
+                'mail' => ['smtp'],
+            ],
+            self::KUTT => [
+                'databases' => ['postgresql'],
+                'cache' => ['redis'],
+                'storage' => [],
+                'auth' => [],
+                'mail' => ['smtp'],
+            ],
+            self::UMAMI => [
+                'databases' => ['postgresql', 'mysql'],
+                'cache' => ['redis'],
+                'storage' => [],
+                'auth' => [],
+                'mail' => [],
+            ],
+            self::PLAUSIBLE => [
+                'databases' => ['postgresql'],
+                'cache' => [],
+                'storage' => [],
+                'auth' => [],
+                'mail' => ['smtp'],
+            ],
+            self::TEABLE => [
+                'databases' => ['postgresql'],
+                'cache' => ['redis'],
+                'storage' => ['s3'],
+                'auth' => ['oidc'],
+                'mail' => ['smtp'],
+            ],
+            self::MATRIX => [
+                'databases' => ['postgresql'],
+                'cache' => [],
+                'storage' => [],
+                'auth' => ['oidc'],
+                'mail' => ['smtp'],
+            ],
+            self::LIVEKIT => [
+                'databases' => [],
+                'cache' => ['redis'],
+                'storage' => [],
+                'auth' => ['oidc'],
+                'mail' => [],
+            ],
+            self::OPENBAO => [
+                'databases' => [],
+                'cache' => [],
+                'storage' => ['s3'],
+                'auth' => ['oidc'],
+                'mail' => [],
+            ],
+            self::ZITADEL => [
+                'databases' => ['postgresql'],
+                'cache' => [],
+                'storage' => [],
+                'auth' => [],
+                'mail' => ['smtp'],
+            ],
+            self::OCIS => [
+                'databases' => [],
+                'cache' => [],
+                'storage' => ['s3'],
+                'auth' => ['oidc'],
+                'mail' => ['smtp'],
+            ],
+            self::HEADLAMP => [
+                'databases' => [],
+                'cache' => [],
+                'storage' => [],
+                'auth' => ['oidc'],
+                'mail' => [],
+            ],
+            self::BULWARK => [
+                'databases' => [],
+                'cache' => [],
+                'storage' => [],
+                'auth' => ['oidc'],
+                'mail' => ['smtp'],
+            ],
+            self::YOPASS => [
+                'databases' => [],
+                'cache' => ['redis'],
+                'storage' => [],
+                'auth' => [],
+                'mail' => [],
+            ],
+            self::SENDREC => [
+                'databases' => ['postgresql'],
+                'cache' => [],
+                'storage' => ['s3'],
+                'auth' => [],
+                'mail' => [],
+            ],
+            self::KUMA => [
+                'databases' => ['sqlite'],
+                'cache' => [],
+                'storage' => [],
+                'auth' => [],
+                'mail' => ['smtp'],
+            ],
+            self::VAULTWARDEN => [
+                'databases' => ['sqlite', 'postgresql', 'mysql', 'mariadb'],
+                'cache' => [],
+                'storage' => [],
+                'auth' => ['oidc'],
+                'mail' => ['smtp'],
+            ],
+            self::RESUME => [
+                'databases' => ['postgresql'],
+                'cache' => ['redis'],
+                'storage' => ['s3'],
+                'auth' => [],
+                'mail' => ['smtp'],
+            ],
+            self::GRAFANA => [
+                'databases' => ['sqlite', 'postgresql', 'mysql'],
+                'cache' => [],
+                'storage' => [],
+                'auth' => ['oidc'],
+                'mail' => ['smtp'],
+            ],
+            self::NETBIRD => [
+                'databases' => ['sqlite', 'postgresql'],
+                'cache' => [],
+                'storage' => [],
+                'auth' => ['oidc'],
+                'mail' => [],
+            ],
+            self::EXTERNAL_DNS => [
+                'databases' => [],
+                'cache' => [],
+                'storage' => [],
+                'auth' => [],
+                'mail' => [],
+            ],
         };
     }
 
@@ -1384,6 +1653,7 @@ enum ClusterTool: string implements HasWorkloadComponents
         return match ($this->canonicalTool($engine)) {
             self::POCKETBASE,
             self::DIRECTUS,
+            self::WORDPRESS,
             self::ZITADEL,
             self::STALWART,
             self::METABASE,
@@ -1420,7 +1690,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function hasInstanceAwareRemoval(): bool
     {
         return match ($this) {
-            self::DATA, self::POCKETBASE, self::DIRECTUS, self::NOTES, self::OUTLINE, self::CRM, self::TWENTY,
+            self::DATA, self::POCKETBASE, self::DIRECTUS, self::WORDPRESS, self::NOTES, self::OUTLINE, self::CRM, self::TWENTY,
             self::DESIGN, self::PENPOT, self::PASTE, self::YOPASS, self::SIGN, self::DOCUMENSO,
             self::FLOW, self::N8N, self::WINDMILL, self::LINK, self::KUTT, self::ANALYTICS, self::UMAMI, self::PLAUSIBLE,
             self::SHEETS, self::TEABLE, self::TASKS, self::PLANKA, self::UPTIME, self::KUMA, self::INSIGHTS, self::METABASE,
@@ -1756,7 +2026,7 @@ enum ClusterTool: string implements HasWorkloadComponents
         return match ($this) {
             self::MONITOR, self::GRAFANA, self::GIT, self::FORGEJO, self::NOTES, self::OUTLINE,
             self::FLOW, self::N8N, self::WINDMILL, self::SIGN, self::DOCUMENSO, self::DATA, self::POCKETBASE,
-            self::DIRECTUS, self::LINK, self::KUTT, self::ANALYTICS, self::UMAMI, self::PLAUSIBLE, self::SHEETS,
+            self::DIRECTUS, self::WORDPRESS, self::LINK, self::KUTT, self::ANALYTICS, self::UMAMI, self::PLAUSIBLE, self::SHEETS,
             self::TEABLE, self::TASKS, self::PLANKA, self::DASHBOARD, self::HEADLAMP, self::MEET,
             self::LIVEKIT, self::WEBMAIL, self::BULWARK, self::DRIVE, self::OCIS, self::VPN, self::NETBIRD,
             self::CRM, self::TWENTY, self::PASSWORDS, self::VAULTWARDEN, self::CHAT, self::MATRIX, self::MAIL, self::STALWART,
@@ -2026,6 +2296,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     // Canonical Individual Tool Cases
     case POCKETBASE = 'pocketbase';
     case DIRECTUS = 'directus';
+    case WORDPRESS = 'wordpress';
     case N8N = 'n8n';
     case WINDMILL = 'windmill';
     case MATRIX = 'matrix';

@@ -43,7 +43,7 @@ abstract class DataRemoveCommand extends AbstractToolRemoveCommand
             return null;
         }
 
-        foreach (['pocketbase', 'directus'] as $engine) {
+        foreach (['pocketbase', 'directus', 'wordpress'] as $engine) {
             $names = ToolInstance::forInstance(ClusterTool::DATA, $instance, $engine);
             if ($this->deploymentExists($kubectl, $names->namespace(), $names->deployment())) {
                 return $engine;
@@ -80,45 +80,51 @@ abstract class DataRemoveCommand extends AbstractToolRemoveCommand
 
         $namesPb = ToolInstance::forInstance(ClusterTool::DATA, $instance, 'pocketbase');
         $namesDir = ToolInstance::forInstance(ClusterTool::DATA, $instance, 'directus');
+        $namesWp = ToolInstance::forInstance(ClusterTool::DATA, $instance, 'wordpress');
 
         $directusDeploy = $namesDir->deployment();
         $pocketbaseDeploy = $namesPb->deployment();
+        $wpDeploy = $namesWp->deployment();
 
         $requested = $this->hasOption('engine')
             ? strtolower((string) ($this->option('engine') ?: ''))
             : ($this->instanceEngine($kubectl, $instance) ?? '');
         $hasDirectus = $this->deploymentExists($kubectl, $namespace, $directusDeploy);
         $hasPocketbase = $this->deploymentExists($kubectl, $namespace, $pocketbaseDeploy);
+        $hasWp = $this->deploymentExists($kubectl, $namespace, $wpDeploy);
 
-        // Ambiguous only when both are actually there — never prompt/require
-        // the flag otherwise, so the common single-engine case stays frictionless.
-        if ($requested === '' && $hasDirectus && $hasPocketbase) {
+        // Ambiguous only when 2+ are actually there
+        $deployedCount = (int) $hasDirectus + (int) $hasPocketbase + (int) $hasWp;
+        if ($requested === '' && $deployedCount > 1) {
             $requested = $this->flagOrPrompt(
                 'engine',
                 fn () => select(
-                    label: "Instance '{$instance}' has both Directus and PocketBase deployed — remove which?",
-                    options: [
-                        'directus' => 'Directus only',
-                        'pocketbase' => 'PocketBase only',
-                        'all' => 'Both',
-                    ],
+                    label: "Instance '{$instance}' has multiple Data engines deployed — remove which?",
+                    options: array_filter([
+                        $hasDirectus ? 'directus' : null => 'Directus only',
+                        $hasPocketbase ? 'pocketbase' : null => 'PocketBase only',
+                        $hasWp ? 'wordpress' : null => 'WordPress only',
+                        'all' => 'All',
+                    ]),
                 ),
-                'which Data engine to remove — both are deployed for this instance',
-                '--engine=directus',
+                'which Data engine to remove — multiple are deployed for this instance',
+                '--engine=all',
             );
         }
 
         $removeDirectus = $requested === 'directus' || $requested === 'all' || ($requested === '' && $hasDirectus);
         $removePocketbase = $requested === 'pocketbase' || $requested === 'all' || ($requested === '' && $hasPocketbase);
+        $removeWp = $requested === 'wordpress' || $requested === 'all' || ($requested === '' && $hasWp);
 
         // If neither deployment is found and no specific engine requested,
-        // clean up both so any lingering resources or PVCs are purged.
-        if (! $removeDirectus && ! $removePocketbase && $requested === '') {
+        // clean up all so any lingering resources or PVCs are purged.
+        if (! $removeDirectus && ! $removePocketbase && ! $removeWp && $requested === '') {
             $removeDirectus = true;
             $removePocketbase = true;
+            $removeWp = true;
         }
 
-        $labels = array_filter([$removeDirectus ? 'Directus' : null, $removePocketbase ? 'PocketBase' : null]);
+        $labels = array_filter([$removeDirectus ? 'Directus' : null, $removePocketbase ? 'PocketBase' : null, $removeWp ? 'WordPress' : null]);
         $this->laraKubeInfo('Removing '.implode(' and ', $labels)." for instance '{$instance}'...");
 
         $resources = '';
@@ -136,6 +142,11 @@ abstract class DataRemoveCommand extends AbstractToolRemoveCommand
             $secretsToDelete[] = $namesPb->secret(SecretKind::SMTP);
             $secretsToDelete[] = $namesPb->secret(SecretKind::OIDC);
         }
+        if ($removeWp) {
+            $resources .= "deployment/{$wpDeploy} service/{$wpDeploy} ingress/{$wpDeploy} ";
+            $secretsToDelete[] = $namesWp->secret();
+            $secretsToDelete[] = $namesWp->secret(SecretKind::SMTP);
+        }
 
         $secretArgs = implode(' ', array_map(fn ($s) => "secret/{$s}", array_unique($secretsToDelete)));
         $ok = $this->removeResources(
@@ -143,15 +154,21 @@ abstract class DataRemoveCommand extends AbstractToolRemoveCommand
             "{$kubectl} delete {$resources}{$secretArgs} -n {$namespace} --ignore-not-found",
         );
 
-        // PocketBase keeps its SQLite database and uploads on its own volume,
-        // not in Plex Commons, so --purge must delete that volume too. It
-        // can't be deleted while the pod still mounts it.
         if ($removePocketbase && $this->option('purge')) {
             Process::run("{$kubectl} wait --for=delete pod -l app.kubernetes.io/name={$pocketbaseDeploy} -n {$namespace} --timeout=60s 2>/dev/null || true");
 
             $ok = $this->removeResources(
                 'Removing PocketBase storage...',
                 "{$kubectl} delete pvc/".$this->pocketbaseVolume($instance)." -n {$namespace} --ignore-not-found",
+            ) && $ok;
+        }
+
+        if ($removeWp && $this->option('purge')) {
+            Process::run("{$kubectl} wait --for=delete pod -l app.kubernetes.io/name={$wpDeploy} -n {$namespace} --timeout=60s 2>/dev/null || true");
+
+            $ok = $this->removeResources(
+                'Removing WordPress storage...',
+                "{$kubectl} delete pvc/{$namesWp->volume()} -n {$namespace} --ignore-not-found",
             ) && $ok;
         }
 

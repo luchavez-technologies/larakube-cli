@@ -174,6 +174,7 @@ class ToolListCommand extends Command
                         'redis' => array_values($tool->commonsRedisTenants($instance)),
                         'buckets' => array_values($tool->commonsBuckets($instance, $entry['engine'] ?? null)),
                     ],
+                    'commonsCapabilities' => $tool->commonsCapabilities($entry['engine'] ?? null),
                     'initFields' => ToolInitSpec::fields($tool, $entry['engine'] ?? null),
                     'vendor' => $vendor,
                     'components' => array_map(fn ($c) => [

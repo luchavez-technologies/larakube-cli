@@ -131,6 +131,7 @@ final class ToolInitCommands
             ClusterTool::PLANKA => TasksInitCommand::class,
             ClusterTool::PLAUSIBLE => AnalyticsInitCommand::class,
             ClusterTool::POCKETBASE => DataInitCommand::class,
+            ClusterTool::WORDPRESS => DataInitCommand::class,
             ClusterTool::RESUME => ResumeInitCommand::class,
             ClusterTool::SENDREC => RecordInitCommand::class,
             ClusterTool::STALWART => MailInitCommand::class,

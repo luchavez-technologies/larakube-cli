@@ -20,6 +20,7 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
         return match ($this) {
             self::POCKETBASE => 'PocketBase',
             self::DIRECTUS => 'Directus',
+            self::WORDPRESS => 'WordPress',
         };
     }
 
@@ -28,6 +29,7 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
         return match ($this) {
             self::POCKETBASE => 'data-pocketbase',
             self::DIRECTUS => 'data-directus',
+            self::WORDPRESS => 'data-wordpress',
         };
     }
 
@@ -36,6 +38,7 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
         return match ($this) {
             self::POCKETBASE => 'pocketbase',
             self::DIRECTUS => 'directus',
+            self::WORDPRESS => 'wordpress',
         };
     }
 
@@ -71,6 +74,20 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
                     'user' => 'EMAIL_SMTP_USER',
                     'password' => 'EMAIL_SMTP_PASSWORD',
                     'from' => 'EMAIL_FROM',
+                ],
+            ],
+            self::WORDPRESS => [
+                'deployment' => $names?->deployment() ?? $base,
+                'secret' => $names?->secret(SecretKind::SMTP) ?? $base.'-'.SecretKind::SMTP->value,
+                'static' => [
+                    'WORDPRESS_SMTP_ENABLED' => 'true',
+                ],
+                'vars' => [
+                    'host' => 'WORDPRESS_SMTP_HOST',
+                    'port' => 'WORDPRESS_SMTP_PORT',
+                    'user' => 'WORDPRESS_SMTP_USER',
+                    'password' => 'WORDPRESS_SMTP_PASSWORD',
+                    'from' => 'WORDPRESS_SMTP_FROM',
                 ],
             ],
         };
@@ -121,6 +138,7 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
                 'string_cast' => ['client_id'],
                 'redirect_path' => '/auth/login/zitadel/callback',
             ],
+            self::WORDPRESS => null,
         };
     }
 
@@ -130,6 +148,7 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
         return match ($this) {
             self::POCKETBASE => null,
             self::DIRECTUS => ['secret' => 'directus-secrets', 'key' => 'db-password'],
+            self::WORDPRESS => ['secret' => 'data-wordpress-secrets', 'key' => 'db-password'],
         };
     }
 
@@ -138,6 +157,7 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
         return match ($this) {
             self::POCKETBASE => [],
             self::DIRECTUS => ['data_directus'],
+            self::WORDPRESS => ['data_wordpress'],
         };
     }
 
@@ -146,6 +166,7 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
         return match ($this) {
             self::POCKETBASE => [],
             self::DIRECTUS => ['directus'],
+            self::WORDPRESS => ['wordpress'],
         };
     }
 
@@ -158,6 +179,7 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
             // so it owns no Commons bucket.
             self::POCKETBASE => [],
             self::DIRECTUS => ['data-directus-storage'],
+            self::WORDPRESS => ['data-wordpress-storage'],
         };
     }
 
@@ -166,6 +188,7 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
         return match ($this) {
             self::POCKETBASE => [],
             self::DIRECTUS => ['directus-storage'],
+            self::WORDPRESS => ['wordpress-storage'],
         };
     }
 
@@ -176,8 +199,10 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
             self::DIRECTUS => 'Directus v12 moved SSO/OIDC out of its free Core tier (MSCL license, June 2026) — a paid Team/Enterprise '
                 .'license (or their Open Innovation Grant) is required even self-hosted. This wiring is ready to go the '
                 .'moment you have one; login will not work until then.',
+            self::WORDPRESS => null,
         };
     }
     case POCKETBASE = 'pocketbase';
     case DIRECTUS = 'directus';
+    case WORDPRESS = 'wordpress';
 }

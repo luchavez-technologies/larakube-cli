@@ -64,7 +64,11 @@ abstract class DataInitCommand extends AbstractToolInitCommand
         // 'pocket-luchtech-dev', deploy a SECOND PocketBase from scratch
         // (data-pocketbase-{slug}) and register it as a duplicate row
         // (confirmed live 2026-08-09).
-        $engineLabel = $engine === 'pocketbase' ? 'PocketBase' : 'Directus';
+        $engineLabel = match ($engine) {
+            'pocketbase' => 'PocketBase',
+            'wordpress' => 'WordPress',
+            default => 'Directus',
+        };
         [$host, $instance] = $this->resolveInstanceAwareHost(SharedClusterService::DATA, ClusterTool::DATA, $env, $kubectl, $engineLabel);
         $aliasHosts = $this->resolveToolAliasHosts($kubectl, ClusterTool::DATA, $instance);
         $vpnOnly = (bool) $this->option('vpn-only');
@@ -90,30 +94,37 @@ abstract class DataInitCommand extends AbstractToolInitCommand
         $deployName = $names->deployment();
         $labels = $names->labels();
 
-        $otherEngine = $engine === 'pocketbase' ? 'directus' : 'pocketbase';
-        $otherNames = ToolInstance::forInstance(ClusterTool::DATA, $instance, $otherEngine);
-        if ($this->deploymentExists($kubectl, $ns, $otherNames->deployment())) {
-            $otherLabel = $otherEngine === 'pocketbase' ? 'PocketBase' : 'Directus';
-            if ($this->cannotPrompt()) {
-                $this->laraKubeError("Host '{$host}' is already in use by {$otherLabel}. Pass a different --domain or remove {$otherLabel} first with 'larakube directus:remove --domain={$host}'.");
+        $allEngines = ['pocketbase', 'directus', 'wordpress'];
+        foreach (array_diff($allEngines, [$engine]) as $otherEngine) {
+            $otherNames = ToolInstance::forInstance(ClusterTool::DATA, $instance, $otherEngine);
+            if ($this->deploymentExists($kubectl, $ns, $otherNames->deployment())) {
+                $otherLabel = match ($otherEngine) {
+                    'pocketbase' => 'PocketBase',
+                    'wordpress' => 'WordPress',
+                    default => 'Directus',
+                };
+                if ($this->cannotPrompt()) {
+                    $this->laraKubeError("Host '{$host}' is already in use by {$otherLabel}. Pass a different --domain or remove {$otherLabel} first with 'larakube directus:remove --domain={$host}'.");
 
-                return 1;
+                    return 1;
+                }
+
+                $this->laraKubeWarn("Host '{$host}' is already in use by {$otherLabel}.");
+                $newHost = text(
+                    label: "What host should {$engineLabel} use instead?",
+                    placeholder: 'e.g. data2.example.com',
+                    required: true,
+                );
+                $host = $this->sanitizeDomainInput($newHost);
+                $instance = $this->resolveInstanceForDomain($kubectl, ClusterTool::DATA, $host);
+                $names = ToolInstance::forInstance(ClusterTool::DATA, $instance, $engine);
+                $secretName = $names->secret();
+                $smtpSecretName = $names->secret(SecretKind::SMTP);
+                $oidcSecretName = $names->secret(SecretKind::OIDC);
+                $deployName = $names->deployment();
+                $labels = $names->labels();
+                break;
             }
-
-            $this->laraKubeWarn("Host '{$host}' is already in use by {$otherLabel}.");
-            $newHost = text(
-                label: "What host should {$engineLabel} use instead?",
-                placeholder: 'e.g. data2.example.com',
-                required: true,
-            );
-            $host = $this->sanitizeDomainInput($newHost);
-            $instance = $this->resolveInstanceForDomain($kubectl, ClusterTool::DATA, $host);
-            $names = ToolInstance::forInstance(ClusterTool::DATA, $instance, $engine);
-            $secretName = $names->secret();
-            $smtpSecretName = $names->secret(SecretKind::SMTP);
-            $oidcSecretName = $names->secret(SecretKind::OIDC);
-            $deployName = $names->deployment();
-            $labels = $names->labels();
         }
 
         $secret = $this->readDataSecret($kubectl, $ns, 'secret', $instance, $engine) ?? Str::uuid()->toString();
@@ -125,14 +136,11 @@ abstract class DataInitCommand extends AbstractToolInitCommand
         $domain = count($parts) > 2 ? implode('.', array_slice($parts, 1)) : $host;
         $adminEmail = $this->readDataSecret($kubectl, $ns, 'admin-email', $instance, $engine) ?? $this->resolveAdminEmail($host, $engineLabel);
 
-        // PocketBase owns no Commons bucket — its storage is a PVC (embedded
-        // SQLite + local disk), not S3 — so $bucket is only ever meaningful
-        // for Directus. Resolving it via the engine-aware commonsBuckets()
-        // rather than a bare fallback avoids it silently defaulting to
-        // Directus's bucket name if this were ever read for PocketBase.
         $bucket = null;
+        $dbEngine = 'sqlite';
 
         if ($engine === 'directus') {
+            $dbEngine = 'postgresql';
             if (! $this->ensureCommons(['postgres', 'redis', 'seaweedfs'])) {
                 return 1;
             }
@@ -147,6 +155,42 @@ abstract class DataInitCommand extends AbstractToolInitCommand
             $bucket = ClusterTool::DATA->commonsBuckets($instance, $engine)[0] ?? 'data-directus-storage';
             if (! $this->allocateStorageBucket(StorageDriver::SEAWEEDFS, $bucket)) {
                 return 1;
+            }
+        } elseif ($engine === 'wordpress') {
+            $dbChoice = $this->hasOption('db') ? strtolower((string) ($this->option('db') ?? '')) : null;
+            $noPlex = (bool) ($this->hasOption('no-plex') && $this->option('no-plex'));
+
+            if ($dbChoice === 'mysql' || $dbChoice === 'mariadb') {
+                $dbEngine = 'mysql';
+            } elseif ($dbChoice === 'sqlite') {
+                $dbEngine = 'sqlite';
+            } elseif (! $this->cannotPrompt()) {
+                $dbEngine = select(
+                    label: 'Which database engine for WordPress?',
+                    options: [
+                        'sqlite' => 'SQLite — Zero-container lightweight storage (<150MB RAM, Recommended for blogs/sites)',
+                        'mysql' => 'MySQL — Shared Plex Commons or Dedicated database container',
+                    ],
+                    default: 'sqlite',
+                );
+            } else {
+                $dbEngine = 'sqlite';
+            }
+
+            if ($dbEngine === 'mysql') {
+                if (! $noPlex && ! $this->ensureCommons(['mysql'])) {
+                    return 1;
+                }
+
+                $dbName = ClusterTool::DATA->commonsDatabases($instance, $engine)[0] ?? 'data_wordpress';
+                if (! $noPlex && ! $this->allocateDatabase(DatabaseDriver::MYSQL, $dbName, $dbPassword)) {
+                    return 1;
+                }
+
+                $redisIndex = $this->allocateCommonsRedisIndex($dbName);
+            } else {
+                $dbName = 'SQLite (embedded)';
+                $redisIndex = null;
             }
         } else {
             // PocketBase uses embedded SQLite, so no Postgres or Redis required
@@ -167,7 +211,11 @@ abstract class DataInitCommand extends AbstractToolInitCommand
 
         // Store to OpenBao vault if available
         if ($this->secretsBackendAvailable($kubectl)) {
-            $prefix = $engine === 'pocketbase' ? 'DATA_POCKETBASE' : 'DATA_DIRECTUS';
+            $prefix = match ($engine) {
+                'pocketbase' => 'DATA_POCKETBASE',
+                'wordpress' => 'DATA_WORDPRESS',
+                default => 'DATA_DIRECTUS',
+            };
             $prefix .= '_'.strtoupper(str_replace('-', '_', $instance));
 
             $this->pushClusterSecret($kubectl, "{$prefix}_SECRET", $secret, $env);
@@ -177,7 +225,7 @@ abstract class DataInitCommand extends AbstractToolInitCommand
             $this->pushClusterSecret($kubectl, "{$prefix}_S3_KEY", $s3Key, $env);
             $this->pushClusterSecret($kubectl, "{$prefix}_S3_SECRET", $s3Secret, $env);
 
-            if ($engine === 'directus') {
+            if ($engine === 'directus' || ($engine === 'wordpress' && $dbEngine === 'mysql')) {
                 $this->pushClusterSecret($kubectl, "{$prefix}_DB_PASSWORD", $dbPassword, $env);
             }
         }
@@ -187,6 +235,7 @@ abstract class DataInitCommand extends AbstractToolInitCommand
         $manifest = view('k8s.data.shared', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'engine' => $engine,
+            'dbEngine' => $dbEngine,
             'instance' => $instance,
             'deployName' => $deployName,
             'labels' => $labels,
@@ -194,6 +243,8 @@ abstract class DataInitCommand extends AbstractToolInitCommand
             'smtpSecretName' => $smtpSecretName,
             'oidcSecretName' => $oidcSecretName,
             'dbName' => $dbName,
+            'dbHost' => ($dbEngine === 'mysql') ? "mysql.{$this->plexNamespace()}.svc.cluster.local:3306" : '127.0.0.1',
+            'dbUser' => $dbName,
             'bucket' => $bucket,
             'pvcName' => $pvcName,
             'configMapName' => $configMapName,
@@ -204,15 +255,13 @@ abstract class DataInitCommand extends AbstractToolInitCommand
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
             'proxied' => $this->resolveProxied($env === 'local'),
-            'redisIndex' => $redisIndex ?? 0,
+            'redisIndex' => $redisIndex ?? null,
             'authProviders' => $ssoWired ? 'local,zitadel' : 'local',
         ])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();
         $tmp = $temporaryDirectory->path("larakube-{$deployName}.yaml");
         file_put_contents($tmp, $manifest);
-
-        $engineLabel = $engine === 'pocketbase' ? 'PocketBase' : 'Directus';
 
         $rolledOut = $this->withSpin(
             "Applying {$engineLabel} manifests...",
@@ -224,15 +273,23 @@ abstract class DataInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::DATA, $kubectl, $host, $instance, ['adminEmail' => $adminEmail, 'engine' => $engine]);
+        $this->registerDeployedTool(ClusterTool::DATA, $kubectl, $host, $instance, ['adminEmail' => $adminEmail, 'engine' => $engine, 'db' => $dbEngine]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo("✅ {$engineLabel} Data / Headless CMS stack is live.");
         $this->newLine();
-        $url = $engine === 'pocketbase' ? "https://{$host}/_/" : "https://{$host}";
+        $url = match ($engine) {
+            'pocketbase' => "https://{$host}/_/",
+            'wordpress' => "https://{$host}/wp-admin/",
+            default => "https://{$host}",
+        };
         $this->line("  <fg=gray>Access URL:</>      <fg=blue>{$url}</>");
         foreach ($aliasHosts as $aliasHost) {
-            $aliasUrl = $engine === 'pocketbase' ? "https://{$aliasHost}/_/" : "https://{$aliasHost}";
+            $aliasUrl = match ($engine) {
+                'pocketbase' => "https://{$aliasHost}/_/",
+                'wordpress' => "https://{$aliasHost}/wp-admin/",
+                default => "https://{$aliasHost}",
+            };
             $this->line("  <fg=gray>Alias:</>           <fg=blue>{$aliasUrl}</>");
         }
         $this->line("  <fg=gray>Admin Email:</>     <fg=blue>{$adminEmail}</>");
@@ -240,6 +297,11 @@ abstract class DataInitCommand extends AbstractToolInitCommand
         if ($engine === 'directus') {
             $this->line("  <fg=gray>Database:</>        <fg=blue>Commons Postgres</> · DB <fg=blue>{$dbName}</>");
             $this->line("  <fg=gray>Redis DB:</>        <fg=blue>{$redisIndex}</>");
+        } elseif ($engine === 'wordpress' && $dbEngine === 'mysql') {
+            $this->line("  <fg=gray>Database:</>        <fg=blue>Commons MySQL</> · DB <fg=blue>{$dbName}</>");
+            if ($redisIndex !== null) {
+                $this->line("  <fg=gray>Redis Cache:</>     <fg=blue>{$redisIndex}</>");
+            }
         } else {
             $this->line("  <fg=gray>Database:</>        <fg=blue>Embedded SQLite</> · PVC <fg=blue>{$pvcName}</>");
         }
@@ -264,7 +326,7 @@ abstract class DataInitCommand extends AbstractToolInitCommand
     protected function resolveEngine(): string
     {
         $explicit = strtolower((string) $this->option('engine'));
-        if (in_array($explicit, ['pocketbase', 'directus'], true)) {
+        if (in_array($explicit, ['pocketbase', 'directus', 'wordpress'], true)) {
             return $explicit;
         }
 
@@ -273,9 +335,10 @@ abstract class DataInitCommand extends AbstractToolInitCommand
         }
 
         return select(
-            label: 'Which Data / Headless CMS engine would you like to deploy?',
+            label: 'Which Data / CMS engine would you like to deploy?',
             options: [
                 'pocketbase' => 'PocketBase — Ultra-lightweight, zero-paywall, self-contained SQLite backend (Recommended)',
+                'wordpress' => 'WordPress — Publishing CMS supporting zero-RAM SQLite or Commons MySQL',
                 'directus' => 'Directus — Full Postgres + Redis + S3 Headless CMS stack',
             ],
             default: 'pocketbase',

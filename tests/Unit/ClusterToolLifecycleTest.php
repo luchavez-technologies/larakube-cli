@@ -234,7 +234,7 @@ test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance
     // list means its :remove command grew (or lost) real per-instance
     // teardown — a deliberate capability change, not drift.
     $expectedTrue = [
-        ClusterTool::DATA, ClusterTool::POCKETBASE, ClusterTool::DIRECTUS,
+        ClusterTool::DATA, ClusterTool::POCKETBASE, ClusterTool::DIRECTUS, ClusterTool::WORDPRESS,
         ClusterTool::NOTES, ClusterTool::OUTLINE,
         ClusterTool::CRM, ClusterTool::TWENTY,
         ClusterTool::DESIGN, ClusterTool::PENPOT,
