@@ -56,6 +56,17 @@ spec:
           image: {{ $spec['services']['postgres']['image'] }}
           ports:
             - containerPort: {{ $spec['services']['postgres']['port'] }}
+@if(! empty($spec['services']['postgres']['max_connections']) || ! empty($spec['services']['postgres']['shared_buffers']))
+          args:
+@if(! empty($spec['services']['postgres']['max_connections']))
+            - "-c"
+            - "max_connections={{ $spec['services']['postgres']['max_connections'] }}"
+@endif
+@if(! empty($spec['services']['postgres']['shared_buffers']))
+            - "-c"
+            - "shared_buffers={{ $spec['services']['postgres']['shared_buffers'] }}"
+@endif
+@endif
           env:
             - name: POSTGRES_PASSWORD
               valueFrom:
@@ -72,7 +83,7 @@ spec:
               # Shared DB ceiling — raise via the spec's postgres.memory if it OOMs
               # (a Commons serving many tenant databases needs headroom).
               memory: "{{ $spec['services']['postgres']['memory'] }}"
-              cpu: "500m"
+              cpu: "{{ $spec['services']['postgres']['cpu'] ?? '500m' }}"
           readinessProbe:
             tcpSocket:
               port: {{ $spec['services']['postgres']['port'] }}
@@ -319,7 +330,7 @@ spec:
             limits:
               # Shared DB ceiling — raise via the spec's {{ $engine }}.memory if it OOMs.
               memory: "{{ $spec['services'][$engine]['memory'] }}"
-              cpu: "500m"
+              cpu: "{{ $spec['services'][$engine]['cpu'] ?? '500m' }}"
           readinessProbe:
             tcpSocket:
               port: {{ $spec['services'][$engine]['port'] }}
@@ -403,6 +414,22 @@ spec:
       containers:
         - name: redis
           image: {{ $spec['services']['redis']['image'] }}
+@if(! empty($spec['services']['redis']['maxclients']) || ! empty($spec['services']['redis']['maxmemory_policy']) || ! empty($spec['services']['redis']['timeout']))
+          command:
+            - "redis-server"
+@if(! empty($spec['services']['redis']['maxclients']))
+            - "--maxclients"
+            - "{{ $spec['services']['redis']['maxclients'] }}"
+@endif
+@if(! empty($spec['services']['redis']['maxmemory_policy']))
+            - "--maxmemory-policy"
+            - "{{ $spec['services']['redis']['maxmemory_policy'] }}"
+@endif
+@if(! empty($spec['services']['redis']['timeout']))
+            - "--timeout"
+            - "{{ $spec['services']['redis']['timeout'] }}"
+@endif
+@endif
           ports:
             - containerPort: {{ $spec['services']['redis']['port'] }}
           resources:
@@ -411,7 +438,7 @@ spec:
               cpu: "50m"
             limits:
               memory: "{{ $spec['services']['redis']['memory'] }}"
-              cpu: "250m"
+              cpu: "{{ $spec['services']['redis']['cpu'] ?? '250m' }}"
           readinessProbe:
             exec:
               command: ["redis-cli", "ping"]
@@ -511,7 +538,7 @@ spec:
               cpu: "100m"
             limits:
               memory: "{{ $spec['services']['meilisearch']['memory'] }}"
-              cpu: "500m"
+              cpu: "{{ $spec['services']['meilisearch']['cpu'] ?? '500m' }}"
           volumeMounts:
             - name: data
               mountPath: /meili_data
@@ -632,7 +659,7 @@ spec:
               cpu: "100m"
             limits:
               memory: "{{ $spec['services']['seaweedfs']['memory'] }}"
-              cpu: "500m"
+              cpu: "{{ $spec['services']['seaweedfs']['cpu'] ?? '500m' }}"
           volumeMounts:
             - name: data
               mountPath: /data

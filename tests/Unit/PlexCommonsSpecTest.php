@@ -150,3 +150,47 @@ test('Postgres pooler image is pinned, never floating', function (): void {
         ->toContain(':')
         ->not->toEndWith(':latest');
 });
+
+test('Commons spec normalizes CPU limits and connection tuning defaults', function (): void {
+    $p = plexSpec();
+    $spec = $p->defaultCommonsSpec()['services'];
+
+    expect($spec['postgres']['cpu'])->toBe('500m')
+        ->and($spec['postgres']['max_connections'])->toBe(200)
+        ->and($spec['postgres']['shared_buffers'])->toBe('128MB')
+        ->and($spec['redis']['cpu'])->toBe('250m')
+        ->and($spec['redis']['maxclients'])->toBe(10000)
+        ->and($spec['redis']['maxmemory_policy'])->toBe('allkeys-lru')
+        ->and($spec['redis']['timeout'])->toBe(300)
+        ->and($spec['seaweedfs']['cpu'])->toBe('500m')
+        ->and($spec['meilisearch']['cpu'])->toBe('500m');
+});
+
+test('Commons spec preserves custom CPU limits and connection tuning overrides', function (): void {
+    $p = plexSpec();
+    $spec = $p->normalizeCommonsSpec([
+        'services' => [
+            'postgres' => [
+                'cpu' => '2000m',
+                'max_connections' => 500,
+            ],
+            'redis' => [
+                'cpu' => '1000m',
+                'maxclients' => 20000,
+                'timeout' => 600,
+            ],
+            'seaweedfs' => [
+                'cpu' => '1500m',
+                'memory' => '2Gi',
+            ],
+        ],
+    ]);
+
+    expect($spec['services']['postgres']['cpu'])->toBe('2000m')
+        ->and($spec['services']['postgres']['max_connections'])->toBe(500)
+        ->and($spec['services']['redis']['cpu'])->toBe('1000m')
+        ->and($spec['services']['redis']['maxclients'])->toBe(20000)
+        ->and($spec['services']['redis']['timeout'])->toBe(600)
+        ->and($spec['services']['seaweedfs']['cpu'])->toBe('1500m')
+        ->and($spec['services']['seaweedfs']['memory'])->toBe('2Gi');
+});

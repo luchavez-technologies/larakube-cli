@@ -84,16 +84,16 @@ final class PlexService
         // uses, so the Commons never drifts from the project defaults (e.g. Meili's
         // version stays in lockstep with SearchDriver instead of a stale literal).
         $defaults = [
-            'postgres' => ['image' => DatabaseDriver::POSTGRESQL->getDockerImage(), 'port' => DatabaseDriver::POSTGRESQL->dbPort(), 'storage' => '10Gi', 'memory' => '1Gi'],
-            'mysql' => ['image' => DatabaseDriver::MYSQL->getDockerImage(),       'port' => DatabaseDriver::MYSQL->dbPort(),       'storage' => '10Gi', 'memory' => '1Gi'],
-            'mariadb' => ['image' => DatabaseDriver::MARIADB->getDockerImage(),     'port' => DatabaseDriver::MARIADB->dbPort(),     'storage' => '10Gi', 'memory' => '1Gi'],
-            'redis' => ['image' => CacheDriver::REDIS->getDockerImage(),          'port' => CacheDriver::REDIS->dbPort(),                               'memory' => '128Mi'],
-            'meilisearch' => ['image' => SearchDriver::MEILISEARCH->getDockerImage(),    'port' => SearchDriver::MEILISEARCH->port(),      'storage' => '5Gi',  'memory' => '512Mi'],
-            'seaweedfs' => ['image' => StorageDriver::SEAWEEDFS->getDockerImage(),    'port' => StorageDriver::SEAWEEDFS->port(),      'storage' => '10Gi', 'memory' => '512Mi'],
-            'minio' => ['image' => StorageDriver::MINIO->getDockerImage(),        'port' => StorageDriver::MINIO->port(),          'storage' => '10Gi', 'memory' => '512Mi'],
-            'garage' => ['image' => StorageDriver::GARAGE->getDockerImage(),       'port' => StorageDriver::GARAGE->port(),         'storage' => '10Gi', 'memory' => '512Mi'],
+            'postgres' => ['image' => DatabaseDriver::POSTGRESQL->getDockerImage(), 'port' => DatabaseDriver::POSTGRESQL->dbPort(), 'storage' => '10Gi', 'memory' => '1Gi', 'cpu' => '500m', 'max_connections' => 200, 'shared_buffers' => '128MB'],
+            'mysql' => ['image' => DatabaseDriver::MYSQL->getDockerImage(),       'port' => DatabaseDriver::MYSQL->dbPort(),       'storage' => '10Gi', 'memory' => '1Gi', 'cpu' => '500m', 'max_connections' => 200],
+            'mariadb' => ['image' => DatabaseDriver::MARIADB->getDockerImage(),     'port' => DatabaseDriver::MARIADB->dbPort(),     'storage' => '10Gi', 'memory' => '1Gi', 'cpu' => '500m', 'max_connections' => 200],
+            'redis' => ['image' => CacheDriver::REDIS->getDockerImage(),          'port' => CacheDriver::REDIS->dbPort(),                               'memory' => '128Mi', 'cpu' => '250m', 'maxclients' => 10000, 'maxmemory_policy' => 'allkeys-lru', 'timeout' => 300],
+            'meilisearch' => ['image' => SearchDriver::MEILISEARCH->getDockerImage(),    'port' => SearchDriver::MEILISEARCH->port(),      'storage' => '5Gi',  'memory' => '512Mi', 'cpu' => '500m'],
+            'seaweedfs' => ['image' => StorageDriver::SEAWEEDFS->getDockerImage(),    'port' => StorageDriver::SEAWEEDFS->port(),      'storage' => '10Gi', 'memory' => '512Mi', 'cpu' => '500m'],
+            'minio' => ['image' => StorageDriver::MINIO->getDockerImage(),        'port' => StorageDriver::MINIO->port(),          'storage' => '10Gi', 'memory' => '512Mi', 'cpu' => '500m'],
+            'garage' => ['image' => StorageDriver::GARAGE->getDockerImage(),       'port' => StorageDriver::GARAGE->port(),         'storage' => '10Gi', 'memory' => '512Mi', 'cpu' => '500m'],
             // Stateless, like Redis: no storage key.
-            'headless-shell' => ['image' => RenderDriver::HEADLESS_CHROME->getDockerImage(), 'port' => RenderDriver::HEADLESS_CHROME->port(), 'memory' => '1Gi'],
+            'headless-shell' => ['image' => RenderDriver::HEADLESS_CHROME->getDockerImage(), 'port' => RenderDriver::HEADLESS_CHROME->port(), 'memory' => '1Gi', 'cpu' => '500m'],
         ];
 
         // See plans/active/commons-connection-pooling.md. Pooling is an

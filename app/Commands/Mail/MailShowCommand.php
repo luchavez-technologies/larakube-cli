@@ -91,6 +91,10 @@ abstract class MailShowCommand extends Command
         $relay = $this->resolveActiveMailRelay($kubectl, $ns);
 
         if ($this->option('json')) {
+            $ssoKubectl = Kubectl::forContext($this->resolveToolContext($env))->prefix();
+            $ssoNs = $this->ssoNamespace();
+            $hasSso = $this->isSsoInstalled($ssoKubectl, $ssoNs);
+
             $this->line((string) json_encode([
                 'installed' => true,
                 'host' => $host,
@@ -102,6 +106,7 @@ abstract class MailShowCommand extends Command
                 'smtp' => $host ? ['host' => $host, 'port' => 465, 'tls' => true] : null,
                 'queue' => (int) ($queued ?? 0),
                 'relay' => $relay,
+                'sso' => ['installed' => $hasSso],
             ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
             return 0;

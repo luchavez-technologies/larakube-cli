@@ -252,3 +252,64 @@ test('headless Chrome is an opt-in Commons service, pinned and given enough /dev
         // would make every re-apply fail (selectors are immutable).
         ->toContain("matchLabels:\n      app: headless-shell");
 });
+
+test('Postgres manifest renders max_connections args and custom CPU limit', function (): void {
+    $spec = plexHelper()->normalizeCommonsSpec([
+        'services' => [
+            'postgres' => [
+                'cpu' => '1500m',
+                'max_connections' => 350,
+                'shared_buffers' => '256MB',
+            ],
+        ],
+    ]);
+    $yaml = plexManifest($spec);
+
+    expect($yaml)
+        ->toContain('max_connections=350')
+        ->toContain('shared_buffers=256MB')
+        ->toContain('cpu: "1500m"');
+});
+
+test('Redis manifest renders command with maxclients, eviction policy, timeout and custom CPU limit', function (): void {
+    $spec = plexHelper()->normalizeCommonsSpec([
+        'services' => [
+            'redis' => [
+                'cpu' => '750m',
+                'maxclients' => 15000,
+                'maxmemory_policy' => 'volatile-lru',
+                'timeout' => 450,
+            ],
+        ],
+    ]);
+    $yaml = plexManifest($spec);
+
+    expect($yaml)
+        ->toContain('command:')
+        ->toContain('redis-server')
+        ->toContain('"--maxclients"')
+        ->toContain('"15000"')
+        ->toContain('"--maxmemory-policy"')
+        ->toContain('"volatile-lru"')
+        ->toContain('"--timeout"')
+        ->toContain('"450"')
+        ->toContain('cpu: "750m"');
+});
+
+test('SeaweedFS manifest renders custom CPU and memory limits', function (): void {
+    $spec = plexHelper()->normalizeCommonsSpec([
+        'services' => [
+            'seaweedfs' => [
+                'enabled' => true,
+                'cpu' => '2000m',
+                'memory' => '2Gi',
+            ],
+        ],
+    ]);
+    $yaml = plexManifest($spec);
+
+    expect($yaml)
+        ->toContain('name: seaweedfs')
+        ->toContain('cpu: "2000m"')
+        ->toContain('memory: "2Gi"');
+});

@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Services\Kubectl;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithMail;
+use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithStalwartApi;
 use App\Traits\LaraKubeOutput;
 
@@ -15,7 +16,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class MailAccountsCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithMail, InteractsWithStalwartApi, LaraKubeOutput;
+    use InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithStalwartApi, LaraKubeOutput;
 
     protected $signature = 'mail:accounts
         {environment=local : Environment whose mail server to target}
@@ -85,11 +86,16 @@ class MailAccountsCommand extends Command
             ];
         }, $accounts));
 
+        $ssoKubectl = Kubectl::forContext($context)->prefix();
+        $ssoNs = $this->ssoNamespace();
+        $ssoInstalled = $this->isSsoInstalled($ssoKubectl, $ssoNs);
+
         if ($this->option('json')) {
             $this->line((string) json_encode([
                 'installed' => true,
                 'accounts' => $accountList,
                 'queue' => (int) ($this->stalwartQueueCount($kubectl, $ns) ?? 0),
+                'sso' => $ssoInstalled,
             ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
             return 0;

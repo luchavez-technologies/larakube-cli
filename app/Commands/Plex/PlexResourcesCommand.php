@@ -24,14 +24,30 @@ class PlexResourcesCommand extends Command
 
     protected $signature = 'plex:resources
         {environment? : Environment whose Commons to configure — "local" (default) or a cloud environment. Omit to be prompted (used only inside a project).}
+        {--service= : Target specific Commons service (e.g. postgres, redis, seaweedfs)}
+        {--memory= : Memory limit (e.g. 512Mi, 1Gi, 2Gi)}
+        {--cpu= : CPU limit (e.g. 500m, 1000m, 2000m)}
+        {--storage= : Storage PVC size (e.g. 10Gi, 20Gi)}
+        {--max-connections= : PostgreSQL max_connections limit}
+        {--maxclients= : Redis maxclients limit}
+        {--pooler= : Enable or disable PgBouncer pooler ("on" / "off")}
+        {--pool-mode= : PgBouncer pool mode ("transaction" or "session")}
+        {--pool-size= : PgBouncer default pool size}
+        {--max-clients= : PgBouncer max client connections}
+        {--reset : Reset target service to Commons defaults}
+        {--json : Output result as JSON}
         {--context= : Target a specific kube-context (else: the project env context, or you are prompted)}';
 
-    protected $description = 'Configure Kubernetes resource limits and storage for Commons services';
+    protected $description = 'Configure Kubernetes resource limits, connection tuning and storage for Commons services';
 
     public function handle(): int
     {
-        $this->renderHeader();
-        $this->laraKubeInfo('LaraKube Plex — Commons Resource Configuration');
+        $isJson = (bool) $this->option('json');
+
+        if (! $isJson) {
+            $this->renderHeader();
+            $this->laraKubeInfo('LaraKube Plex — Commons Resource Configuration');
+        }
 
         $config = $this->isLaraKubeProject(false) ? $this->getProjectConfig(getcwd()) : null;
 
@@ -43,7 +59,11 @@ class PlexResourcesCommand extends Command
         } else {
             $target = $this->askForClusterContext();
             if (! $target) {
-                $this->laraKubeError('No Kubernetes context selected.');
+                if ($isJson) {
+                    $this->line((string) json_encode(['success' => false, 'error' => 'No Kubernetes context selected.']));
+                } else {
+                    $this->laraKubeError('No Kubernetes context selected.');
+                }
 
                 return 1;
             }
@@ -51,97 +71,263 @@ class PlexResourcesCommand extends Command
         }
 
         if (! $this->plexContextReachable()) {
-            $this->laraKubeError('The selected cluster is not reachable.');
+            if ($isJson) {
+                $this->line((string) json_encode(['success' => false, 'error' => 'The selected cluster is not reachable.']));
+            } else {
+                $this->laraKubeError('The selected cluster is not reachable.');
+            }
 
             return 1;
         }
 
         $spec = $this->getCommonsSpec();
         if ($spec === null) {
-            $this->laraKubeError('No Commons found on this cluster. Run `larakube plex:init` first.');
+            if ($isJson) {
+                $this->line((string) json_encode(['success' => false, 'error' => 'No Commons found on this cluster. Run `larakube plex:init` first.']));
+            } else {
+                $this->laraKubeError('No Commons found on this cluster. Run `larakube plex:init` first.');
+            }
 
             return 1;
         }
 
-        $this->showResourceTable($spec);
+        $spec = $this->normalizeCommonsSpec($spec);
+
+        if (! $isJson) {
+            $this->showResourceTable($spec);
+        }
 
         $enabled = $this->enabledCommonsServices($spec);
         if (empty($enabled)) {
-            $this->laraKubeError('No services are enabled on this Commons.');
+            if ($isJson) {
+                $this->line((string) json_encode(['success' => false, 'error' => 'No services are enabled on this Commons.']));
+            } else {
+                $this->laraKubeError('No services are enabled on this Commons.');
+            }
 
             return 1;
         }
 
-        $service = select(
-            label: 'Which Commons service do you want to configure?',
-            options: array_combine($enabled, $enabled),
-        );
+        $service = (string) ($this->option('service') ?: '');
+        if ($service !== '') {
+            if (! in_array($service, $enabled, true)) {
+                if ($isJson) {
+                    $this->line((string) json_encode(['success' => false, 'error' => "Service '{$service}' is not enabled on this Commons."]));
+                } else {
+                    $this->laraKubeError("Service '{$service}' is not enabled on this Commons.");
+                }
+
+                return 1;
+            }
+        } else {
+            $service = select(
+                label: 'Which Commons service do you want to configure?',
+                options: array_combine($enabled, $enabled),
+            );
+        }
 
         $driver = DatabaseDriver::tryFrom($service);
         $poolable = $driver?->supportsPooling() ?? false;
 
-        $actionOptions = [
-            'set' => 'Set or update resources',
-            'reset' => 'Reset to Commons defaults',
-        ];
-        if ($poolable) {
-            $actionOptions['pooler'] = 'Configure connection pooler (PgBouncer)';
-        }
+        $hasFlags = $this->option('reset')
+            || $this->option('cpu') !== null
+            || $this->option('memory') !== null
+            || $this->option('storage') !== null
+            || $this->option('max-connections') !== null
+            || $this->option('maxclients') !== null
+            || $this->option('pooler') !== null;
 
-        $action = select(
-            label: "What do you want to do with '{$service}'?",
-            options: $actionOptions,
-            default: 'set',
-        );
+        $action = 'set';
 
-        if ($action === 'pooler') {
-            $spec['services'][$service] = $this->promptPoolerConfig($service, $spec['services'][$service]);
-        } elseif ($action === 'reset') {
-            $normalized = $this->normalizeCommonsSpec(['services' => []]);
-            $defaults = $normalized['services'][$service] ?? [];
-            if (isset($defaults['memory'])) {
-                $spec['services'][$service]['memory'] = $defaults['memory'];
-            }
-            if (isset($defaults['storage'])) {
-                $spec['services'][$service]['storage'] = $defaults['storage'];
+        if ($hasFlags) {
+            if ($this->option('reset')) {
+                $action = 'reset';
+                $normalized = $this->normalizeCommonsSpec(['services' => []]);
+                $defaults = $normalized['services'][$service] ?? [];
+                foreach (['memory', 'storage', 'cpu', 'max_connections', 'shared_buffers', 'maxclients', 'maxmemory_policy', 'timeout'] as $k) {
+                    if (isset($defaults[$k])) {
+                        $spec['services'][$service][$k] = $defaults[$k];
+                    } else {
+                        unset($spec['services'][$service][$k]);
+                    }
+                }
+                if (isset($defaults['pooler'])) {
+                    $spec['services'][$service]['pooler'] = $defaults['pooler'];
+                }
+            } else {
+                if ($this->option('cpu') !== null) {
+                    $cpu = (string) $this->option('cpu');
+                    if (! ConfigData::isValidQuantity($cpu)) {
+                        $this->laraKubeError("Invalid Kubernetes quantity for CPU: {$cpu}");
+
+                        return 1;
+                    }
+                    $spec['services'][$service]['cpu'] = $cpu;
+                }
+
+                if ($this->option('memory') !== null) {
+                    $memory = (string) $this->option('memory');
+                    if (! ConfigData::isValidQuantity($memory)) {
+                        $this->laraKubeError("Invalid Kubernetes quantity for Memory: {$memory}");
+
+                        return 1;
+                    }
+                    $spec['services'][$service]['memory'] = $memory;
+                }
+
+                if ($this->option('storage') !== null && isset($spec['services'][$service]['storage'])) {
+                    $storage = (string) $this->option('storage');
+                    if (! ConfigData::isValidQuantity($storage)) {
+                        $this->laraKubeError("Invalid Kubernetes quantity for Storage: {$storage}");
+
+                        return 1;
+                    }
+                    $spec['services'][$service]['storage'] = $storage;
+                }
+
+                if ($this->option('max-connections') !== null && $service === 'postgres') {
+                    $spec['services'][$service]['max_connections'] = (int) $this->option('max-connections');
+                }
+
+                if ($this->option('maxclients') !== null && $service === 'redis') {
+                    $spec['services'][$service]['maxclients'] = (int) $this->option('maxclients');
+                }
+
+                if ($this->option('pooler') !== null && $poolable) {
+                    $action = 'pooler';
+                    $val = strtolower((string) $this->option('pooler'));
+                    $poolerEnabled = in_array($val, ['on', 'true', '1', 'enable', 'yes'], true);
+
+                    $currentPooler = $spec['services'][$service]['pooler'] ?? ['enabled' => false, 'mode' => 'transaction', 'poolSize' => 20, 'maxClients' => 400];
+                    $currentPooler['enabled'] = $poolerEnabled;
+
+                    if ($this->option('pool-mode') !== null) {
+                        $currentPooler['mode'] = (string) $this->option('pool-mode');
+                    }
+                    if ($this->option('pool-size') !== null) {
+                        $currentPooler['poolSize'] = (int) $this->option('pool-size');
+                    }
+                    if ($this->option('max-clients') !== null) {
+                        $currentPooler['maxClients'] = (int) $this->option('max-clients');
+                    }
+
+                    $spec['services'][$service]['pooler'] = $currentPooler;
+                }
             }
         } else {
-            $current = $spec['services'][$service];
-
-            $memory = $this->promptQuantity(
-                label: 'Memory Limit',
-                current: $current['memory'] ?? '—',
-                hint: 'e.g. 512Mi, 1Gi, 2Gi',
-            );
-
-            if ($memory !== '') {
-                $spec['services'][$service]['memory'] = $memory;
+            $actionOptions = [
+                'set' => 'Set or update resource limits (CPU, Memory, Storage)',
+                'reset' => 'Reset to Commons defaults',
+            ];
+            if ($poolable) {
+                $actionOptions['pooler'] = 'Configure connection pooler (PgBouncer)';
+            }
+            if ($service === 'postgres') {
+                $actionOptions['connections'] = 'Tune engine max_connections';
+            } elseif ($service === 'redis') {
+                $actionOptions['tuning'] = 'Tune Redis clients & eviction';
             }
 
-            if (isset($current['storage'])) {
-                $storage = $this->promptQuantity(
-                    label: 'Storage Size (PVC)',
-                    current: $current['storage'],
-                    hint: 'e.g. 10Gi, 20Gi — shrinking requires manual PVC resize',
+            $action = select(
+                label: "What do you want to do with '{$service}'?",
+                options: $actionOptions,
+                default: 'set',
+            );
+
+            if ($action === 'pooler') {
+                $spec['services'][$service] = $this->promptPoolerConfig($service, $spec['services'][$service]);
+            } elseif ($action === 'connections') {
+                $currentConn = $spec['services'][$service]['max_connections'] ?? 200;
+                $maxConn = text(
+                    label: 'PostgreSQL max_connections',
+                    placeholder: (string) $currentConn,
+                    default: '',
+                    required: false,
+                    hint: "Current: {$currentConn}. Raise to allow more concurrent tenant connections.",
                 );
-                if ($storage !== '') {
-                    $spec['services'][$service]['storage'] = $storage;
+                if ($maxConn !== '' && ctype_digit($maxConn)) {
+                    $spec['services'][$service]['max_connections'] = (int) $maxConn;
+                }
+            } elseif ($action === 'tuning') {
+                $currentClients = $spec['services'][$service]['maxclients'] ?? 10000;
+                $maxClients = text(
+                    label: 'Redis maxclients limit',
+                    placeholder: (string) $currentClients,
+                    default: '',
+                    required: false,
+                    hint: "Current: {$currentClients}.",
+                );
+                if ($maxClients !== '' && ctype_digit($maxClients)) {
+                    $spec['services'][$service]['maxclients'] = (int) $maxClients;
+                }
+
+                $spec['services'][$service]['maxmemory_policy'] = select(
+                    label: 'Eviction policy',
+                    options: [
+                        'allkeys-lru' => 'allkeys-lru (Evict least recently used keys — recommended)',
+                        'volatile-lru' => 'volatile-lru (Evict keys with expire set)',
+                        'noeviction' => 'noeviction (Reject writes when full)',
+                    ],
+                    default: $spec['services'][$service]['maxmemory_policy'] ?? 'allkeys-lru',
+                );
+            } elseif ($action === 'reset') {
+                $normalized = $this->normalizeCommonsSpec(['services' => []]);
+                $defaults = $normalized['services'][$service] ?? [];
+                foreach (['memory', 'storage', 'cpu', 'max_connections', 'shared_buffers', 'maxclients', 'maxmemory_policy', 'timeout'] as $k) {
+                    if (isset($defaults[$k])) {
+                        $spec['services'][$service][$k] = $defaults[$k];
+                    } else {
+                        unset($spec['services'][$service][$k]);
+                    }
+                }
+                if (isset($defaults['pooler'])) {
+                    $spec['services'][$service]['pooler'] = $defaults['pooler'];
+                }
+            } else {
+                $current = $spec['services'][$service];
+
+                $cpu = $this->promptQuantity(
+                    label: 'CPU Limit',
+                    current: $current['cpu'] ?? '500m',
+                    hint: 'e.g. 500m, 1000m, 2000m',
+                );
+                if ($cpu !== '') {
+                    $spec['services'][$service]['cpu'] = $cpu;
+                }
+
+                $memory = $this->promptQuantity(
+                    label: 'Memory Limit',
+                    current: $current['memory'] ?? '—',
+                    hint: 'e.g. 512Mi, 1Gi, 2Gi',
+                );
+                if ($memory !== '') {
+                    $spec['services'][$service]['memory'] = $memory;
+                }
+
+                if (isset($current['storage'])) {
+                    $storage = $this->promptQuantity(
+                        label: 'Storage Size (PVC)',
+                        current: $current['storage'],
+                        hint: 'e.g. 10Gi, 20Gi — shrinking requires manual PVC resize',
+                    );
+                    if ($storage !== '') {
+                        $spec['services'][$service]['storage'] = $storage;
+                    }
                 }
             }
         }
 
         if (! $this->applyCommons($spec, "Applying updated Commons manifests for '{$service}'...")) {
+            if ($isJson) {
+                $this->line((string) json_encode(['success' => false, 'error' => "Failed to apply updated manifests for '{$service}'."]));
+            }
+
             return 1;
         }
 
         $ns = $this->plexNamespace();
         $kubectl = $this->plexKubectl();
 
-        // Plain `apply` never prunes — disabling the pooler drops it from the
-        // rendered manifest, but its Deployment/Services would otherwise sit
-        // there running, unmanaged, until someone notices. The `postgres`
-        // Service already stopped pointing at them the moment this applied;
-        // this just stops them existing at all.
         $poolerNowOff = $action === 'pooler' && ! ($spec['services'][$service]['pooler']['enabled'] ?? false);
         if ($poolerNowOff) {
             $this->withSpin('Removing PgBouncer (pooler disabled)...', function () use ($kubectl, $ns) {
@@ -159,6 +345,16 @@ class PlexResourcesCommand extends Command
             ));
         }
 
+        if ($isJson) {
+            $this->line((string) json_encode([
+                'success' => true,
+                'service' => $service,
+                'spec' => $spec['services'][$service],
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+            return 0;
+        }
+
         $this->laraKubeInfo("✅ Commons '{$service}' updated successfully.");
         $this->newLine();
         $this->showResourceTable($spec);
@@ -173,15 +369,24 @@ class PlexResourcesCommand extends Command
             if (! ($cfg['enabled'] ?? false)) {
                 continue;
             }
+            $maxConn = '—';
+            if ($name === 'postgres' && isset($cfg['max_connections'])) {
+                $maxConn = "{$cfg['max_connections']} conn";
+            } elseif ($name === 'redis' && isset($cfg['maxclients'])) {
+                $maxConn = "{$cfg['maxclients']} clients";
+            }
+
             $rows[] = [
                 $name,
+                $cfg['cpu'] ?? '500m',
                 $cfg['memory'] ?? '—',
                 isset($cfg['storage']) ? $cfg['storage'] : '—',
                 isset($cfg['pooler']) ? ($cfg['pooler']['enabled'] ? "on ({$cfg['pooler']['mode']})" : 'off') : '—',
+                $maxConn,
             ];
         }
 
-        table(['Service', 'Memory Limit', 'Storage', 'Pooler'], $rows);
+        table(['Service', 'CPU Limit', 'Memory Limit', 'Storage', 'Pooler', 'Max Conn/Clients'], $rows);
     }
 
     /**
