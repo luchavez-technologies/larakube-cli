@@ -111,6 +111,7 @@ trait InteractsWithAws
         if ($this->flag('no-interaction')) {
             if (! $awsAuthed && ! ($this->getAwsAccessKeyId() && $this->getAwsSecretAccessKey())) {
                 $this->laraKubeError('No active AWS credentials detected. Pass --aws-access-key-id= and --aws-secret-access-key=, or configure via `aws configure`.');
+                $this->line('  <fg=gray>Hint: Target IAM user requires</> <fg=yellow>AmazonEC2FullAccess</> <fg=gray>or equivalent EC2 permissions.</>');
 
                 return false;
             }
@@ -158,6 +159,7 @@ trait InteractsWithAws
 
         // Prompt for manual Access Key ID and Secret Access Key
         $this->line('  <fg=gray>You can provide AWS IAM Access Keys directly.</>');
+        $this->line('  <fg=gray>IAM Permissions: Attach</> <fg=yellow>AmazonEC2FullAccess</> <fg=gray>under "Attach policies directly", or a scoped EC2 policy.</>');
         $keyId = text(
             label: 'AWS Access Key ID',
             placeholder: 'AKIA...',
