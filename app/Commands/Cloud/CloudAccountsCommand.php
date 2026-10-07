@@ -258,6 +258,27 @@ class CloudAccountsCommand extends Command
             return $this->failed("AWS profile '{$id}' not found.");
         }
 
+        if ($provider === 'gcp') {
+            $gcloudBin = \App\Enums\CliTool::GCLOUD->resolveBinary() ?? 'gcloud';
+            \Illuminate\Support\Facades\Process::run("{$gcloudBin} auth revoke ".escapeshellarg($id).' 2>/dev/null');
+
+            if ($config->gcpAccount === $id) {
+                $config->setGcpAccount(null);
+                $this->setGcpAccount(null);
+                $config->save();
+            }
+
+            if ($this->flag('json')) {
+                $this->jsonOutput(['success' => true, 'provider' => 'gcp', 'removed' => $id]);
+
+                return 0;
+            }
+
+            $this->laraKubeInfo("Revoked GCP account '{$id}'.");
+
+            return 0;
+        }
+
         $providers = $provider ? [$provider] : ['do', 'hetzner'];
 
         foreach ($providers as $p) {
