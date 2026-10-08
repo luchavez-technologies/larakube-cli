@@ -89,18 +89,27 @@ All code changes are fully tested, formatted with Pint/ESLint, type-checked with
 
 ### `desktop/` (NativePHP Application)
 - **Branch**: `develop`
-- **Recent AI Commits**:
-  - `2fc9230`: `ci(release): wire Apple code signing and notarization secrets for macOS`
-  - `08c0af2`: `fix(dashboard): remove unsupported --db flag from n8n and clean domain suggestions`
-- **Active Working Tree (Disregarded for User)**:
-  - User is actively developing server/activity/mail models and migrations (`app/Models/*`, `database/migrations/*`, `tools/show.tsx`, `mail/index.tsx`). Left completely untouched and uncommitted.
+- **Recent AI Commits & Changes**:
+  - Added Commons Service Restart Confirmation Dialog & Checkbox in [`quick-launch-modal.tsx`](file:///Users/jsluchavez/Codes/Ideas/laravel-k8s/desktop/resources/js/components/quick-launch-modal.tsx):
+    - In Step 4 (Review Deployment), displays a clear amber warning card informing the operator that shared Commons services (like Redis) may restart, with a confirmation checkbox.
+    - If unconfirmed when clicking "Launch", renders a modal confirmation dialog (`RestartConfirmDialog`) detailing Redis session/cache resets with "Cancel" and "Allow Restart & Launch" action buttons (strictly following the UI & Lucide Icon standard).
+  - Added Commons restart confirmation checkbox in [`tools/index.tsx`](file:///Users/jsluchavez/Codes/Ideas/laravel-k8s/desktop/resources/js/pages/tools/index.tsx) `InstallModal`.
+  - Updated [`QuickActionController.php`](file:///Users/jsluchavez/Codes/Ideas/laravel-k8s/desktop/app/Http/Controllers/QuickActionController.php) and [`ClusterToolController.php`](file:///Users/jsluchavez/Codes/Ideas/laravel-k8s/desktop/app/Http/Controllers/ClusterToolController.php) to forward `--confirm-commons-restart` into `tool:add` when confirmed.
+  - Added Pest feature tests in [`QuickActionControllerTest.php`](file:///Users/jsluchavez/Codes/Ideas/laravel-k8s/desktop/tests/Feature/QuickActionControllerTest.php).
+  - TypeScript types (`types:check`), Biome/Prettier formatting (`check:fix`), Pint, and Pest all pass 100%.
 
 ### `cli/` (LaraKube Core Engine)
 - **Branch**: `develop`
-- **Working Tree**: Contains uncommitted work on `app/Commands/Data/DataRemoveCommand.php` and `tests/Feature/PocketBaseDataInitTest.php` for Claude to continue.
+- **Recent Work**:
+  - Implemented `--confirm-commons-restart` globally across `InteractsWithPlex.php`, `ToolInitSpec.php`, `ToolInitCommand.php`, `ToolAddCommand.php`, and `PlexInitCommand.php`.
+  - Fixed `ensureCommons()` in [`app/Traits/InteractsWithPlex.php`](file:///Users/jsluchavez/Codes/Ideas/laravel-k8s/cli/app/Traits/InteractsWithPlex.php) to forward `--confirm-commons-restart` into `plex:init` sub-calls.
+  - Credentials standardization for `--json` output across `show` commands.
+  - Linter & Analyzer clean: Rector, Pint, and PHPStan pass with 0 errors. Pest test suite green.
 
 ---
 
 ## 🚀 Recommended Next Actions
-1. **Push to GitHub**: Running `git push origin develop` in `desktop/` will trigger the first automated cloud build with Apple code signing and notarization on GitHub Actions!
-2. **Continue Local Feature Work**: Claude can continue right where it left off on the desktop tool/mail views and migrations.
+1. **Rebuild CLI Binary**: User runs `./build` once so the binary has the `ensureCommons()` forwarding.
+2. **Launch via Desktop**: Click through Desktop's 1-Click Quick Launch wizard — it now prompts/confirms the Commons restart and deploys n8n smoothly!
+3. **Desktop App Distribution & macOS Release**: Push `desktop/` to GitHub (`git push origin develop`) to trigger Apple Developer ID signing and notarization in GitHub Actions.
+
