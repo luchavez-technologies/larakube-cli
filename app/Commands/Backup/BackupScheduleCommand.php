@@ -41,6 +41,7 @@ class BackupScheduleCommand extends Command
         {environment=local : Environment whose cluster to schedule backups on}
         {--cron= : Cron expression, read in --timezone. Prompts with common schedules when omitted.}
         {--timezone= : IANA timezone the schedule is read in (defaults to yours). Needs Kubernetes >= 1.27.}
+        {--prune-after-days=7 : Delete backups older than this many days right after each successful run. 0 disables it — nothing is ever pruned automatically.}
         {--context= : Target a specific kube-context}';
 
     protected $description = 'Deploy the nightly backup CronJob into the cluster';
@@ -88,6 +89,14 @@ class BackupScheduleCommand extends Command
 
         $volumes = $this->backupVolumeTargets($kubectl);
 
+        $pruneAfterDays = (int) $this->option('prune-after-days');
+
+        if ($pruneAfterDays < 0) {
+            $this->laraKubeError('--prune-after-days cannot be negative.');
+
+            return 1;
+        }
+
         $manifest = view('k8s.backup.cronjob', [
             'schedule' => $schedule,
             'timezone' => $timezone,
@@ -99,6 +108,7 @@ class BackupScheduleCommand extends Command
             // in the job script (MySQL's own -p"$VAR" makes another layer of
             // double quotes impossible), so the name is substituted by sed.
             'dbDumpTemplate' => $driver->commonsBackupCommand('__DB__'),
+            'pruneAfterDays' => $pruneAfterDays,
         ])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();
@@ -125,9 +135,10 @@ class BackupScheduleCommand extends Command
         $this->line('  <fg=gray>Covers:</>    <fg=blue>'.count($volumes)." volumes + every {$driver->value} database</>");
         $this->newLine();
         if (($growth = $this->describeGrowth($schedule)) !== null) {
-            // No pruning exists yet, so every archive accumulates. R2's free
-            // tier is 10GB; better to see that now than at the overage email.
-            $this->line("  <fg=gray>Growth:</>    <fg=blue>{$growth}</> <fg=gray>(nothing is pruned yet)</>");
+            $pruneNote = $pruneAfterDays > 0
+                ? "(auto-pruned after {$pruneAfterDays}d)"
+                : '(nothing is pruned — pass --prune-after-days to cap growth)';
+            $this->line("  <fg=gray>Growth:</>    <fg=blue>{$growth}</> <fg=gray>{$pruneNote}</>");
             $this->newLine();
         }
 
@@ -143,6 +154,12 @@ class BackupScheduleCommand extends Command
         $this->line("  <fg=gray>Run one now:</>          <fg=blue>kubectl create job --from=cronjob/larakube-backup backup-now -n {$ns}</>");
         $this->line("  <fg=gray>Stop scheduling:</>      <fg=blue>larakube backup:unschedule {$env}</>");
         $this->newLine();
+        if ($pruneAfterDays > 0) {
+            $this->line('  <fg=gray>The age cutoff above is a safety net, not a retention policy. For');
+            $this->line('  daily/weekly/monthly keep-counts instead, run it yourself or on its own');
+            $this->line("  schedule:</>  <fg=blue>larakube backup:prune {$env}</>");
+            $this->newLine();
+        }
         $this->line('  <fg=gray>Scheduling is not verification. Prove it still restores:</>');
         $this->line("  <fg=blue>larakube backup:restore {$env}</>");
         $this->newLine();
@@ -196,8 +213,8 @@ class BackupScheduleCommand extends Command
 
     /**
      * Rough monthly storage at this frequency, so the choice is made with its
-     * cost visible. Matters more than usual right now: there is no pruning yet,
-     * so every archive accumulates and R2's free tier is 10 GB.
+     * cost visible — R2's free tier is 10 GB, and --prune-after-days=0 means
+     * every archive accumulates toward it.
      */
     protected function describeGrowth(string $cron, int $archiveMb = 55): ?string
     {

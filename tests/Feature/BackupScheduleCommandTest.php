@@ -252,13 +252,13 @@ test('non-interactive falls back to a nightly default rather than refusing', fun
         ->expectsOutputToContain('03:17 UTC');
 });
 
-test('the projected storage is shown, because nothing prunes it yet', function (): void {
+test('the projected storage is shown, since it still matters with pruning off', function (): void {
     $method = new ReflectionMethod(BackupScheduleCommand::class, 'describeGrowth');
     $method->setAccessible(true);
     $cmd = new BackupScheduleCommand;
 
-    // R2's free tier is 10GB and there is no retention policy, so a six-hourly
-    // schedule quietly fills it in under two months.
+    // R2's free tier is 10GB; with --prune-after-days=0 a six-hourly schedule
+    // quietly fills it in under two months.
     expect($method->invoke($cmd, '17 3 * * *', 55))->toContain('~30 archives')
         ->and($method->invoke($cmd, '17 */6 * * *', 55))->toContain('~120 archives')
         ->and($method->invoke($cmd, '17 3 * * 0', 55))->toContain('~4 archives')
@@ -373,6 +373,106 @@ test('an unsupported Commons engine is refused rather than scheduled', function 
         ->and(DatabaseDriver::POSTGRESQL->hasCommonsDumpCommand())->toBeTrue()
         ->and(DatabaseDriver::MYSQL->hasCommonsDumpCommand())->toBeTrue()
         ->and(DatabaseDriver::MARIADB->hasCommonsDumpCommand())->toBeTrue();
+});
+
+test('backup:schedule defaults to pruning backups after 7 days', function (): void {
+    Process::fake(backupScheduleFakes(['*apply -f *' => Process::result(output: 'created')]));
+
+    $this->artisan('backup:schedule local --no-interaction --timezone=UTC')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('auto-pruned after 7d');
+
+    Process::assertRan(fn ($job) => str_contains($job->command, 'apply -f'));
+});
+
+test('--prune-after-days=0 disables automatic pruning', function (): void {
+    Process::fake(backupScheduleFakes(['*apply -f *' => Process::result(output: 'created')]));
+
+    $this->artisan('backup:schedule local --no-interaction --timezone=UTC --prune-after-days=0')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('nothing is pruned');
+});
+
+test('backup:schedule rejects a negative --prune-after-days', function (): void {
+    Process::fake(backupScheduleFakes(['*apply -f *' => Process::result(output: 'created')]));
+
+    $this->artisan('backup:schedule local --no-interaction --timezone=UTC --prune-after-days=-1')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('cannot be negative');
+
+    Process::assertNotRan(fn ($job) => str_contains($job->command, 'apply -f'));
+});
+
+test('the prune step only runs when --prune-after-days is greater than zero', function (): void {
+    $withPrune = view('k8s.backup.cronjob', [
+        'schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => [],
+        'dbDriver' => 'postgres', 'dbService' => 'postgres',
+        'dbListCommand' => 'psql -l', 'dbDumpTemplate' => 'pg_dump __DB__',
+        'pruneAfterDays' => 7,
+    ])->render();
+
+    $withoutPrune = view('k8s.backup.cronjob', [
+        'schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => [],
+        'dbDriver' => 'postgres', 'dbService' => 'postgres',
+        'dbListCommand' => 'psql -l', 'dbDumpTemplate' => 'pg_dump __DB__',
+        'pruneAfterDays' => 0,
+    ])->render();
+
+    $uploadScript = fn (string $manifest): string => backupCronJobDoc($manifest)['spec']['jobTemplate']['spec']['template']['spec']['containers'][0]['command'][2];
+
+    expect($uploadScript($withPrune))
+        ->toContain('pruning backups older than 7d')
+        ->toContain('s3 rm')
+        // Never deletes before this run's own manifest is safely uploaded.
+        ->and(strpos($uploadScript($withPrune), 'manifest.json'))
+        ->toBeLessThan(strpos($uploadScript($withPrune), 'pruning backups'))
+        ->and($uploadScript($withoutPrune))->not->toContain('s3 rm');
+});
+
+test('pruning never deletes the backup this very run just uploaded', function (): void {
+    $manifest = view('k8s.backup.cronjob', [
+        'schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => [],
+        'dbDriver' => 'postgres', 'dbService' => 'postgres',
+        'dbListCommand' => 'psql -l', 'dbDumpTemplate' => 'pg_dump __DB__',
+        'pruneAfterDays' => 7,
+    ])->render();
+
+    $uploadScript = backupCronJobDoc($manifest)['spec']['jobTemplate']['spec']['template']['spec']['containers'][0]['command'][2];
+
+    expect($uploadScript)->toContain('[ "$STAMP_NAME" = "$(cat STAMP)" ] && continue');
+});
+
+test('a failed deletion during pruning does not fail the whole backup run', function (): void {
+    // A prune hiccup (permissions, a transient network blip) must never turn a
+    // successful backup into a failed Job — the archive is already safe.
+    $manifest = view('k8s.backup.cronjob', [
+        'schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => [],
+        'dbDriver' => 'postgres', 'dbService' => 'postgres',
+        'dbListCommand' => 'psql -l', 'dbDumpTemplate' => 'pg_dump __DB__',
+        'pruneAfterDays' => 7,
+    ])->render();
+
+    $uploadScript = backupCronJobDoc($manifest)['spec']['jobTemplate']['spec']['template']['spec']['containers'][0]['command'][2];
+
+    expect($uploadScript)->toContain('failed to delete $p');
+
+    $deleteLine = collect(explode("\n", $uploadScript))->first(fn ($line) => str_contains($line, 's3 rm'));
+    expect($deleteLine)->not->toBeNull()->and(trim($deleteLine))->toStartWith('aws ');
+});
+
+test('changing only --prune-after-days still rolls the CronJob', function (): void {
+    $checksum = function (int $days): string {
+        $manifest = view('k8s.backup.cronjob', [
+            'schedule' => '17 3 * * *', 'timezone' => 'UTC', 'volumes' => [],
+            'dbDriver' => 'postgres', 'dbService' => 'postgres',
+            'dbListCommand' => 'psql -l', 'dbDumpTemplate' => 'pg_dump __DB__',
+            'pruneAfterDays' => $days,
+        ])->render();
+
+        return backupCronJobDoc($manifest)['spec']['jobTemplate']['spec']['template']['metadata']['annotations']['larakube.io/config-checksum'];
+    };
+
+    expect($checksum(7))->not->toBe($checksum(14));
 });
 
 test('the CronJob writes the same per-item layout the CLI does', function (): void {

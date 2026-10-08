@@ -7,6 +7,8 @@
     // Rendered from InteractsWithBackup::backupVolumeTargets() so the schedule
     // and `backup:run` can never disagree about what is worth keeping.
     $namespaces = collect($volumes)->pluck('namespace')->push('larakube-plex')->unique()->sort()->values();
+
+    $pruneAfterDays = $pruneAfterDays ?? 0;
 @endphp
 apiVersion: v1
 kind: ServiceAccount
@@ -77,7 +79,7 @@ spec:
       template:
         metadata:
           annotations:
-            larakube.io/config-checksum: "{{ substr(hash('sha256', $schedule.$timezone.$__tplHash.json_encode($volumes)), 0, 16) }}"
+            larakube.io/config-checksum: "{{ substr(hash('sha256', $schedule.$timezone.$__tplHash.json_encode($volumes).$pruneAfterDays), 0, 16) }}"
         spec:
           restartPolicy: OnFailure
           serviceAccountName: larakube-backup
@@ -251,6 +253,31 @@ spec:
                     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "{{ $dbDriver }}" "${ITEMS%,}" "${MISSED%,}" > manifest.json
                   aws --endpoint-url "$ENDPOINT" --no-progress s3 cp manifest.json "s3://$BUCKET/$PREFIX/manifest.json"
                   echo "stored s3://$BUCKET/$PREFIX/ ($(echo "$ITEMS" | tr -cd ',' | wc -c) objects)"
+
+@if($pruneAfterDays > 0)
+                  # Prune LAST and only after this run's own manifest is safely
+                  # uploaded — never risk deleting older archives before a
+                  # newer one is confirmed to exist. Age-based only: a real
+                  # GFS (daily/weekly/monthly) policy is `backup:prune`, run
+                  # separately by choice, not folded in here.
+                  echo "› pruning backups older than {{ $pruneAfterDays }}d"
+                  CUTOFF_EPOCH=$(date -u -d "-{{ $pruneAfterDays }} days" +%s)
+                  PREFIXES=$(aws --endpoint-url "$ENDPOINT" --no-progress s3api list-objects-v2 \
+                    --bucket "$BUCKET" --prefix "larakube/" --delimiter "/" \
+                    --query 'CommonPrefixes[].Prefix' --output text 2>/dev/null || true)
+                  [ "$PREFIXES" = "None" ] && PREFIXES=""
+                  for p in $PREFIXES; do
+                    STAMP_NAME=$(basename "$p")
+                    [ "$STAMP_NAME" = "$(cat STAMP)" ] && continue
+                    STAMP_ISO=$(echo "$STAMP_NAME" | sed -E 's/^([0-9]{4}-[0-9]{2}-[0-9]{2})-([0-9]{2})([0-9]{2})([0-9]{2})$/\1 \2:\3:\4/')
+                    STAMP_EPOCH=$(date -u -d "$STAMP_ISO" +%s 2>/dev/null || echo 0)
+                    if [ "$STAMP_EPOCH" -gt 0 ] && [ "$STAMP_EPOCH" -lt "$CUTOFF_EPOCH" ]; then
+                      echo "  deleting $p"
+                      aws --endpoint-url "$ENDPOINT" --no-progress s3 rm "s3://$BUCKET/$p" --recursive >/dev/null \
+                        || echo "    ✗ failed to delete $p" >&2
+                    fi
+                  done
+@endif
 
                   # Fail AFTER the upload, never before it. An incomplete backup
                   # in the bucket beats no backup at all, but the Job must still
