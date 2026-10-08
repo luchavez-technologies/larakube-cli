@@ -9,11 +9,10 @@
 
 ## 📌 Executive Summary
 
-This plan outlines the end-to-end integration of the **SignPath Foundation** free code signing service for LaraKube Desktop's Windows installers (`.exe`). It provides:
-1. An architectural assessment of the integration difficulty with NativePHP / Electron.
-2. A ready-to-submit application form answers template for [signpath.org/apply.html](https://signpath.org/apply.html).
-3. The exact GitHub Actions workflow updates needed in [`desktop/.github/workflows/release.yml`](file:///Users/jsluchavez/Codes/Ideas/laravel-k8s/desktop/.github/workflows/release.yml).
-4. The mandatory repository policy snippet required by SignPath's Code of Conduct.
+> [!NOTE]
+> **Status: DEFERRED / STRATEGIC PIVOT**  
+> Rather than navigating SignPath Foundation's early-stage reputation gatekeeping (media coverage, download thresholds), Windows code signing is deferred to **Microsoft Trusted Signing ($9.99/month)** under the official organization identity once cloud monetization launches.  
+> In the interim, Windows releases build as standard NSIS installers (`.exe`) with the standard *"More info → Run anyway"* guidance, while macOS releases are 100% signed and notarized via Apple Developer ID.
 
 ---
 
