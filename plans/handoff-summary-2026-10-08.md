@@ -62,31 +62,26 @@ All code changes are fully tested, formatted with Pint/ESLint, type-checked with
 
 ## 🍎 Apple Developer Account & Desktop App Distribution
 
-### Current Status
-- The user has registered an Apple ID and initiated enrollment in the paid **Apple Developer Program ($99/year)** on **October 8, 2026**.
-- **Pending Window**: Currently waiting up to 24–48 hours for Apple's identity verification and payment confirmation.
-
-### Crucial Architectural Constraint: Mac App Store (MAS) vs Direct Distribution
-- **Mac App Store (MAS) Sandbox**: Requires `com.apple.security.app-sandbox`. Sandboxed MAS apps **cannot** spawn unrestricted child processes (`docker`, `k3d`, `kubectl`), communicate with Docker Unix sockets, or manage `/etc/hosts` for `.dev.test` local routing.
-- **Industry Standard for Dev Tools**: Like Docker Desktop, OrbStack, TablePlus, Herd, and VS Code, LaraKube Desktop must be distributed **outside the Mac App Store** via **Apple Developer ID-signed and Notarized `.dmg` / `.zip`**.
-- **NativePHP Setup**: LaraKube Desktop already has the notarization pipeline configured in [`desktop/nativephp/electron/build/notarize.js`](file:///Users/jsluchavez/Codes/Ideas/laravel-k8s/desktop/nativephp/electron/build/notarize.js) and [`desktop/config/nativephp.php`](file:///Users/jsluchavez/Codes/Ideas/laravel-k8s/desktop/config/nativephp.php).
-
-### Next Steps When Apple Enrollment Is Approved
-1. **Generate Certificate**: In Apple Developer Portal (`Certificates, Identifiers & Profiles`), create a **Developer ID Application** certificate using Mac Keychain Access CSR, download, and install into Keychain.
-2. **Retrieve Team ID**: Obtain the 10-character Team ID from Apple Developer Membership details.
-3. **App-Specific Password**: Generate an App-Specific Password from `appleid.apple.com` labeled `larakube-desktop-notarize`.
-4. **Configure `.env` in `desktop/`**:
-   ```env
-   NATIVEPHP_APPLE_ID=user@example.com
-   NATIVEPHP_APPLE_ID_PASS=xxxx-xxxx-xxxx-xxxx
-   NATIVEPHP_APPLE_TEAM_ID=ABC123XYZ4
-   ```
-5. **Build & Notarize**:
-   ```bash
-   cd desktop
-   php artisan native:build mac
-   ```
-   Electron-builder will automatically sign with the Keychain certificate, submit to Apple Notary Service (`notarytool`), staple the notarization ticket, and output an install-ready `.dmg`.
+### Status: APPROVED & FULLY CONFIGURED 🎉
+- **Account Approved**: James Carlo Luchavez (`7UR8RL4U6Q`).
+- **Certificate**: Created **Developer ID Application** certificate using the **G2 Sub-CA (Xcode 11.4.1 or later)**.
+- **Keychain Trust Chain**: Downloaded and imported Apple's official `Developer ID - G2 CA` intermediate certificate into macOS Keychain Access.
+- **Identity Verified**:
+  ```
+  1) 22FE61F18493C953ECA6F100D02473E8DA912753 "Developer ID Application: James Carlo Luchavez (7UR8RL4U6Q)"
+     1 valid identities found
+  ```
+- **Local `.env`**: Configured `NATIVEPHP_APPLE_ID`, `NATIVEPHP_APPLE_ID_PASS`, and `NATIVEPHP_APPLE_TEAM_ID` in `desktop/.env` (verified 100% gitignored).
+- **GitHub Repository Secrets**: Added all 5 repository secrets to `luchavez-technologies/larakube-desktop`:
+  - `CSC_LINK` (base64 `.p12` bundle)
+  - `CSC_KEY_PASSWORD` (p12 decryption password)
+  - `NATIVEPHP_APPLE_ID` (`jamescarloluchavez@icloud.com`)
+  - `NATIVEPHP_APPLE_ID_PASS` (App-Specific Password)
+  - `NATIVEPHP_APPLE_TEAM_ID` (`7UR8RL4U6Q`)
+- **CI/CD Workflow Committed**: Updated [`desktop/.github/workflows/release.yml`](file:///Users/jsluchavez/Codes/Ideas/laravel-k8s/desktop/.github/workflows/release.yml) in commit `2fc9230`:
+  - Scoped secrets to `macos-latest` runners (`${{ matrix.target == 'mac' && secrets.CSC_LINK || '' }}`) so Windows builds don't fail.
+  - Passes credentials into `.env` and runner environment for `native:build` to sign and notarize.
+  - Both Canary (`develop`) and stable (`v*`) releases are signed and notarized by Apple.
 
 ---
 
@@ -94,34 +89,18 @@ All code changes are fully tested, formatted with Pint/ESLint, type-checked with
 
 ### `desktop/` (NativePHP Application)
 - **Branch**: `develop`
-- **Working Tree**: Clean (`git status` clean)
-- **Recent Commits**:
+- **Recent AI Commits**:
+  - `2fc9230`: `ci(release): wire Apple code signing and notarization secrets for macOS`
   - `08c0af2`: `fix(dashboard): remove unsupported --db flag from n8n and clean domain suggestions`
-  - `3a30a94`: `feat(dashboard): polish quick launch domain dropdown and contextualize companion integrations`
-  - `c2866db`: `feat(dashboard): leverage cluster externaldns zones in quick launch wizard`
-  - `6ed7f6a`: `feat(dashboard): convert quick launch modal into 4-step wizard`
-  - `34f4658`: `fix(dashboard): remove redundant banner buttons and clarify dns prerequisites`
-  - `4653b86`: `feat(dashboard): integrate 1-click companions into top banner and fix health score gauge color`
-  - `4e16b89`: `fix(dashboard): balance grid layout and fix onboarding redundancy`
-  - `1e72405`: `fix(dashboard): remove uptime kuma and streamline dashboard layout`
-- **CI / Quality Checks**:
-  - `vp check` / `vp check --fix`: 0 warnings, 0 errors.
-  - `tsc --noEmit`: Passes cleanly.
-  - `pint --parallel --test`: Passes cleanly.
-  - `phpstan analyse`: Passes cleanly (0 errors).
-  - `php artisan test --parallel`: 397/397 tests passing (2,277 assertions).
+- **Active Working Tree (Disregarded for User)**:
+  - User is actively developing server/activity/mail models and migrations (`app/Models/*`, `database/migrations/*`, `tools/show.tsx`, `mail/index.tsx`). Left completely untouched and uncommitted.
 
 ### `cli/` (LaraKube Core Engine)
 - **Branch**: `develop`
-- **Working Tree**: Clean (`git status` clean)
-- **Recent Commits**:
-  - `dbbfe24f`: `feat(tools): support select choices and conditional options in tool init specs`
-  - `4c9770e4`: `feat(tool): standardize commons capabilities and add 1-click wordpress companion`
-- **Rule Reminder**: AI agents are **strictly forbidden** from running `./build`. If a binary recompile is needed, instruct the human operator.
+- **Working Tree**: Contains uncommitted work on `app/Commands/Data/DataRemoveCommand.php` and `tests/Feature/PocketBaseDataInitTest.php` for Claude to continue.
 
 ---
 
 ## 🚀 Recommended Next Actions
-1. **Test 1-Click Launch**: Open Desktop in development mode (`composer dev` or `php artisan dev`) and test the 4-step wizard with `n8n`, `wordpress`, and `pocketbase`.
-2. **Monitor Apple Developer Approval**: Once approved (email notification), configure the 3 `.env` keys and run the first notarized macOS build.
-3. **Distribution CI**: If distributing via GitHub Releases or S3/Spaces, verify the updater configuration in `desktop/config/nativephp.php`.
+1. **Push to GitHub**: Running `git push origin develop` in `desktop/` will trigger the first automated cloud build with Apple code signing and notarization on GitHub Actions!
+2. **Continue Local Feature Work**: Claude can continue right where it left off on the desktop tool/mail views and migrations.
