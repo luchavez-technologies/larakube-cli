@@ -278,7 +278,7 @@ test('pocketbase:remove removes pocketbase resources', function (): void {
 
     $this->artisan('pocketbase:remove local --force')
         ->assertExitCode(0)
-        ->expectsOutputToContain('Removing Data resources...');
+        ->expectsOutputToContain('Removing PocketBase resources...');
 });
 
 test('pocketbase:remove tears down pocketbase\'s own Service and Ingress, not just Directus-shaped names', function (): void {

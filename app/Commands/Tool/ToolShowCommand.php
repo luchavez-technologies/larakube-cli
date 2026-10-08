@@ -27,6 +27,7 @@ class ToolShowCommand extends Command
     protected $signature = 'tool:show
         {environment? : The environment to inspect}
         {--tool=      : Tool slug to show (e.g. flow, passwords)}
+        {--domain=    : Forwarded to the underlying {tool}:show, to target one instance (or "all")}
         {--context=   : Target a specific kube-context}
         {--json       : Forwarded to the underlying {tool}:show}';
 
@@ -51,6 +52,9 @@ class ToolShowCommand extends Command
 
         if ($this->option('context')) {
             $params['--context'] = $this->option('context');
+        }
+        if ($this->option('domain')) {
+            $params['--domain'] = $this->option('domain');
         }
         if ($this->option('json')) {
             $params['--json'] = true;

@@ -48,6 +48,26 @@ test('show exits non-zero and points at init when the tool is not installed', fu
         ->expectsOutputToContain('tool:init local --tool=outline');
 });
 
+test('the tool:show --tool= proxy forwards --domain= to the underlying {tool}:show', function (): void {
+    // Regression: the dispatcher's own signature never declared --domain, so
+    // `tool:show --tool=pocketbase --domain=X` failed outright ("The
+    // --domain option does not exist") before this was fixed — silently
+    // breaking any caller (e.g. the Desktop app) that targets one instance
+    // through the generic entry point instead of pocketbase:show directly.
+    Process::fake([
+        '*larakube-tools-registry*' => Process::result(output: ''),
+        '*get deployment -n larakube-shared *' => Process::result(output: 'pocketbase-peanut-example-com'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $exit = Artisan::call('tool:show local --tool=pocketbase --domain=peanut.example.com --json --no-interaction');
+    $payload = json_decode(Artisan::output(), true);
+
+    expect($exit)->toBe(0)
+        ->and($payload['tool'])->toBe('pocketbase')
+        ->and($payload['instance'])->toBe('peanut-example-com');
+});
+
 test('--json emits a machine-readable object instead of a table', function (): void {
     Process::fake([
         // The registry Secret holds base64'd JSON — a flat list across every tool/instance.

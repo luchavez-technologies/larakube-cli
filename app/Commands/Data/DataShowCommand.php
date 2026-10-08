@@ -36,6 +36,23 @@ abstract class DataShowCommand extends AbstractToolShowCommand
 
     protected function afterTable(?string $host, string $env, string $instance = ''): void
     {
+        $creds = $this->credentials($host, $env, $instance);
+
+        if ($creds !== null) {
+            $this->newLine();
+            $this->line('  <fg=gray>Bootstrap Admin Credentials:</>');
+            if (isset($creds['admin_email'])) {
+                $this->line("  <fg=gray>Admin Email:</>     <fg=blue>{$creds['admin_email']}</>");
+            }
+            if (isset($creds['admin_password'])) {
+                $this->line("  <fg=gray>Admin Password:</>  <fg=yellow>{$creds['admin_password']}</>");
+            }
+            $this->newLine();
+        }
+    }
+
+    protected function credentials(?string $host, string $env, string $instance = ''): ?array
+    {
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
         $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->dataNamespace();
@@ -43,16 +60,13 @@ abstract class DataShowCommand extends AbstractToolShowCommand
         $adminEmail = $this->readDataSecret($kubectl, $ns, 'admin-email', $instance);
         $adminPassword = $this->readDataSecret($kubectl, $ns, 'admin-password', $instance);
 
-        if ($adminEmail || $adminPassword) {
-            $this->newLine();
-            $this->line('  <fg=gray>Bootstrap Admin Credentials:</>');
-            if ($adminEmail) {
-                $this->line("  <fg=gray>Admin Email:</>     <fg=blue>{$adminEmail}</>");
-            }
-            if ($adminPassword) {
-                $this->line("  <fg=gray>Admin Password:</>  <fg=yellow>{$adminPassword}</>");
-            }
-            $this->newLine();
+        if (! $adminEmail && ! $adminPassword) {
+            return null;
         }
+
+        return array_filter([
+            'admin_email' => $adminEmail,
+            'admin_password' => $adminPassword,
+        ], fn (?string $v): bool => $v !== null);
     }
 }

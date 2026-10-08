@@ -101,6 +101,9 @@ abstract class AbstractToolShowCommand extends Command
                 'url' => $host !== null ? "https://{$host}" : null,
                 'wirings' => $this->supportedWirings($tool),
                 'components' => $this->componentSummary($tool, $instance),
+                // null when the tool has none (e.g. n8n, where the first
+                // visitor claims admin) — never guessed or left stale.
+                'credentials' => $installed ? $this->credentials($host, $env, $instance) : null,
             ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
             return $installed ? 0 : 1;
@@ -243,6 +246,20 @@ abstract class AbstractToolShowCommand extends Command
 
     /** Hook for post-table guidance (first-login steps, credential hints). */
     protected function afterTable(?string $host, string $env, string $instance = ''): void {}
+
+    /**
+     * Structured bootstrap credentials for `--json` callers (e.g. the Desktop
+     * app showing them right after an install, without scraping a Run's
+     * plain-text output). Default null: most tools have none to report (first
+     * visitor claims admin, or there is no local account at all). Override
+     * alongside afterTable() when a tool prints credentials there.
+     *
+     * @return array<string, string>|null
+     */
+    protected function credentials(?string $host, string $env, string $instance = ''): ?array
+    {
+        return null;
+    }
 
     /**
      * Registry first (what was actually deployed), then .larakube.json, then

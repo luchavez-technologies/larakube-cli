@@ -5,6 +5,7 @@ namespace App\Commands\Webmail;
 use App\Commands\Tool\AbstractToolShowCommand;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 
 abstract class WebmailShowCommand extends AbstractToolShowCommand
 {
@@ -47,5 +48,19 @@ abstract class WebmailShowCommand extends AbstractToolShowCommand
         }
 
         return $rows;
+    }
+
+    protected function credentials(?string $host, string $env, string $instance = ''): ?array
+    {
+        if ($instance === '') {
+            return null;
+        }
+
+        $kubectl = Kubectl::forContext($this->resolveToolContext($env, (string) $this->option('context') ?: null))->prefix();
+        $names = ToolInstance::forInstance(ClusterTool::WEBMAIL, $instance);
+        $adminPassword = $this->secretValue($kubectl, $names->namespace(), $names->secret(), 'WEBMAIL_ADMIN_PASSWORD')
+            ?? $this->secretValue($kubectl, $names->namespace(), $names->secret(), 'admin-password');
+
+        return $adminPassword !== null ? ['admin_password' => $adminPassword] : null;
     }
 }

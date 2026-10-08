@@ -150,7 +150,7 @@ abstract class DataRemoveCommand extends AbstractToolRemoveCommand
 
         $secretArgs = implode(' ', array_map(fn ($s) => "secret/{$s}", array_unique($secretsToDelete)));
         $ok = $this->removeResources(
-            'Removing Data resources...',
+            'Removing '.implode(' and ', $labels).' resources...',
             "{$kubectl} delete {$resources}{$secretArgs} -n {$namespace} --ignore-not-found",
         );
 
