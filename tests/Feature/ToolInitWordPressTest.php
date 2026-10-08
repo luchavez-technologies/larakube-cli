@@ -8,7 +8,7 @@ test('tool:init deploys 1-click WordPress with SQLite by default', function (): 
 
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: ''),
-        '*get deployment -l larakube-tool=flow*' => Process::result(output: ''),
+        '*get deployment -l larakube.io/tool=windmill*' => Process::result(output: ''),
         '*get deployment -l larakube.io/tool=meet*' => Process::result(output: ''),
         '*has deployment*' => Process::result(output: ''),
         '*get deployment*' => Process::result(output: ''),
@@ -31,7 +31,7 @@ test('tool:init deploys 1-click WordPress with SQLite by default', function (): 
 test('tool:init deploys 1-click WordPress with Commons MySQL when --db=mysql', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: ''),
-        '*get deployment -l larakube-tool=flow*' => Process::result(output: ''),
+        '*get deployment -l larakube.io/tool=windmill*' => Process::result(output: ''),
         '*get deployment -l larakube.io/tool=meet*' => Process::result(output: ''),
         '*get deployment*' => Process::result(output: ''),
         '*create namespace*' => Process::result(output: 'namespace/larakube-shared created'),

@@ -35,7 +35,7 @@ final class N8n implements ClusterToolVendor, HasCommonsDatabases, HasDeployment
 
     public function baseDeploymentName(): string
     {
-        return 'flow-n8n';
+        return 'n8n';
     }
 
     public function canonicalComponentName(): string
@@ -58,19 +58,19 @@ final class N8n implements ClusterToolVendor, HasCommonsDatabases, HasDeployment
     {
         return [
             'name' => ($instance === null || $instance === '')
-                ? 'flow-vpn-only'
-                : ToolInstance::forInstance(ClusterTool::FLOW, $instance, self::ENGINE)->name('vpn-only'),
-            'namespace' => ClusterTool::FLOW->namespace(),
+                ? 'n8n-vpn-only'
+                : ToolInstance::forInstance(ClusterTool::N8N, $instance, self::ENGINE)->name('vpn-only'),
+            'namespace' => ClusterTool::N8N->namespace(),
         ];
     }
 
     public function smtpEnv(?string $instance = null): ?array
     {
-        $names = ($instance === null || $instance === '') ? null : ToolInstance::forInstance(ClusterTool::FLOW, $instance, self::ENGINE);
+        $names = ($instance === null || $instance === '') ? null : ToolInstance::forInstance(ClusterTool::N8N, $instance, self::ENGINE);
         // Without an instance there is no ToolInstance to ask, but the name
         // still has to follow the tool's current naming generation — reading
         // baseDeploymentName() directly would pin it to the pre-migration one.
-        $base = ClusterTool::FLOW->deploymentName(engine: self::ENGINE);
+        $base = ClusterTool::N8N->deploymentName(engine: self::ENGINE);
 
         return [
             'deployment' => $names?->deployment() ?? $base,

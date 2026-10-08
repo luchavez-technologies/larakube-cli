@@ -69,7 +69,11 @@ test('tool:init --tool=n8n names every n8n resource after its host and pins the 
         ->toContain('claimName: n8n-storage-flow-example-com')
         ->toContain('value: n8n_flow_example_com')
         ->toContain('image: '.(new App\Tools\N8n)->image('n8n'))
-        ->toContain('larakube-tool: flow')
+        // The old labels said `larakube-tool: flow` — a leftover category name
+        // that never matched the real tool. The modern `larakube.io/*` labels
+        // (from $names->labels()) must say n8n, not the category it dispatches from.
+        ->toContain('larakube.io/tool: n8n')
+        ->not->toContain('larakube-tool: flow')
         ->not->toContain('flow-secrets')
         ->not->toContain('  name: n8n'.PHP_EOL)
         ->and($seen['secret']['metadata']['name'] ?? null)->toBe('n8n-secrets-flow-example-com');
@@ -111,8 +115,8 @@ test('tool:init deploys each engine locally at its default host using Plex Commo
 
     $this->artisan("tool:init --tool={$engine} local")
         ->assertExitCode(0)
-        ->expectsOutputToContain("Applying Flow ({$label}) manifests...")
-        ->expectsOutputToContain("Flow ({$label}) stack is live.");
+        ->expectsOutputToContain("Applying {$label} manifests...")
+        ->expectsOutputToContain("{$label} stack is live.");
 
     expect($seen['manifest'])->toContain("name: {$engine}-")
         ->toContain('postgres.larakube-plex.svc.cluster.local');

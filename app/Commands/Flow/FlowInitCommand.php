@@ -4,7 +4,6 @@ namespace App\Commands\Flow;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
-use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\FlowTool;
 use App\Enums\SharedClusterService;
@@ -37,13 +36,15 @@ abstract class FlowInitCommand extends AbstractToolInitCommand
     protected function deployFlow(): int
     {
         $engine = $this->resolveEngine();
+        $canonicalTool = $this->tool()->canonicalTool($engine);
+        $toolBrand = $canonicalTool->brandName();
         $env = $this->resolveEnvironment();
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = Kubectl::forContext($context)->prefix();
-        $host = $this->resolveToolHost(SharedClusterService::FLOW, ClusterTool::FLOW, $env, $kubectl, '', $this->engineLabel($engine));
+        [$host, $instance] = $this->resolveInstanceAwareHost(SharedClusterService::FLOW, $canonicalTool, $env, $kubectl, $toolBrand);
 
-        $names = ToolInstance::forHost(ClusterTool::FLOW, $host, $engine);
+        $names = ToolInstance::forHost($canonicalTool, $host, $engine);
         $ns = $names->namespace();
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
@@ -51,12 +52,13 @@ abstract class FlowInitCommand extends AbstractToolInitCommand
 
         $other = $this->otherFlowEngineOnHost($cluster, $host, $engine);
         if ($other !== null) {
-            $this->laraKubeError("{$host} already runs {$other->tool()->getLabel()}. A host runs one engine: remove it first with `larakube n8n:remove {$env} --domain={$host}`, or pick another --domain.");
+            $otherLabel = FlowTool::from($other->value)->tool()->getLabel();
+            $this->laraKubeError("{$host} already runs {$otherLabel}. A host runs one engine: remove it first with `larakube {$other->value}:remove {$env} --domain={$host}`, or pick another --domain.");
 
             return 1;
         }
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::FLOW, $kubectl, $names->instance, $names->engine)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware($canonicalTool, $kubectl, $names->instance, $names->engine)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -122,17 +124,15 @@ abstract class FlowInitCommand extends AbstractToolInitCommand
             'proxied' => $this->resolveProxied($env === 'local'),
         ])->render();
 
-        $engineName = $this->engineLabel($engine);
-
-        if (! $this->kubectlStep("Applying Flow ({$engineName}) manifests...", fn () => $cluster->apply($manifest))
-            || ! $this->kubectlStep("Waiting for Flow ({$engineName})...", fn () => $cluster->rolloutStatus($ns, $names->deployment()))) {
+        if (! $this->kubectlStep("Applying {$toolBrand} manifests...", fn () => $cluster->apply($manifest))
+            || ! $this->kubectlStep("Waiting for {$toolBrand}...", fn () => $cluster->rolloutStatus($ns, $names->deployment(), timeoutSeconds: 420))) {
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::FLOW, $kubectl, $host, extra: ['engine' => $engine]);
+        $this->registerDeployedTool($canonicalTool, $kubectl, $host, instance: $instance, extra: ['engine' => $engine]);
 
         $this->laraKubeNewLine();
-        $this->laraKubeInfo("✅ Flow ({$engineName}) stack is live.");
+        $this->laraKubeInfo("✅ {$toolBrand} stack is live.");
         $this->newLine();
         $this->line("  <fg=gray>Access URL:</>              <fg=blue>https://{$host}</>");
 
@@ -148,7 +148,7 @@ abstract class FlowInitCommand extends AbstractToolInitCommand
 
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::FLOW);
+        return $this->resolveToolEnvironment($this->tool()->canonicalTool());
     }
 
     protected function resolveEngine(): string

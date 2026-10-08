@@ -1,6 +1,6 @@
 @php
-    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::FLOW, $host, 'n8n');
-    $tool = \App\Enums\ClusterTool::FLOW->vendor('n8n');
+    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::N8N, $host, 'n8n');
+    $tool = \App\Enums\ClusterTool::N8N->vendor('n8n');
     $dbName ??= $names->database();
     $deployment = $names->deployment();
     $labels = $names->labels();
@@ -28,8 +28,6 @@ metadata:
   namespace: {{ $names->namespace() }}
   labels:
     app: {{ $deployment }}
-    larakube-tool: flow
-    larakube-engine: n8n
 @foreach($labels as $key => $value)
     {{ $key }}: {{ $value }}
 @endforeach

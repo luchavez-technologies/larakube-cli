@@ -36,7 +36,7 @@ final class Windmill implements ClusterToolVendor, HasCommonsDatabases, HasDeplo
 
     public function baseDeploymentName(): string
     {
-        return 'flow-windmill';
+        return 'windmill';
     }
 
     public function canonicalComponentName(): string
@@ -59,9 +59,9 @@ final class Windmill implements ClusterToolVendor, HasCommonsDatabases, HasDeplo
     {
         return [
             'name' => ($instance === null || $instance === '')
-                ? 'flow-vpn-only'
-                : ToolInstance::forInstance(ClusterTool::FLOW, $instance, self::ENGINE)->name('vpn-only'),
-            'namespace' => ClusterTool::FLOW->namespace(),
+                ? 'windmill-vpn-only'
+                : ToolInstance::forInstance(ClusterTool::WINDMILL, $instance, self::ENGINE)->name('vpn-only'),
+            'namespace' => ClusterTool::WINDMILL->namespace(),
         ];
     }
 

@@ -71,7 +71,10 @@ enum SharedClusterService: string
             // current kube-context is slow/unreachable this degrades to the
             // default engine instead of blocking (default Process timeout is 60s).
             self::FLOW => [
-                'engine' => trim(Process::timeout(10)->run(Kubectl::current()->prefix().' get deployment -l larakube-tool=flow,larakube-engine=windmill -n larakube-shared -o name --ignore-not-found 2>/dev/null')->output()) !== '' ? 'windmill' : 'n8n',
+                // Windmill and n8n each carry their own canonical larakube.io/tool
+                // value now (not a shared "flow" category label + engine sub-label),
+                // so a plain tool=windmill selector is enough on its own.
+                'engine' => trim(Process::timeout(10)->run(Kubectl::current()->prefix().' get deployment -l larakube.io/tool=windmill -n larakube-shared -o name --ignore-not-found 2>/dev/null')->output()) !== '' ? 'windmill' : 'n8n',
             ],
             self::DRIVE => ['engine' => 'ocis'],
             // The Matrix bridge is a wiring artifact, not part of Meet itself —
@@ -359,7 +362,7 @@ enum SharedClusterService: string
             self::ERRORS => 'Refreshing GlitchTip ingress...',
             self::SECRETS => 'Refreshing OpenBao ingress...',
             self::FORGEJO => 'Refreshing Forgejo ingress...',
-            self::FLOW => 'Refreshing Flow (n8n) ingress...',
+            self::FLOW => 'Refreshing n8n (Flow) ingress...',
             self::SHEET => 'Refreshing Sheet ingress...',
             self::DRIVE => 'Refreshing Drive ingress...',
             self::INSIGHTS => 'Refreshing Insights (Metabase) ingress...',

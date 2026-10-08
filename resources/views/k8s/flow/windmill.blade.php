@@ -1,6 +1,6 @@
 @php
-    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::FLOW, $host, 'windmill');
-    $tool = \App\Enums\ClusterTool::FLOW->vendor('windmill');
+    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::WINDMILL, $host, 'windmill');
+    $tool = \App\Enums\ClusterTool::WINDMILL->vendor('windmill');
     $dbName ??= $names->database();
     $deployment = $names->deployment();
     $bundledDb = $names->name('db');
@@ -79,8 +79,6 @@ metadata:
   namespace: {{ $names->namespace() }}
   labels:
     app: {{ $deployment }}
-    larakube-tool: flow
-    larakube-engine: windmill
 @foreach($labels as $key => $value)
     {{ $key }}: {{ $value }}
 @endforeach

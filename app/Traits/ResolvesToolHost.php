@@ -147,6 +147,20 @@ trait ResolvesToolHost
             return $domain;
         }
 
+        // Check if the domain already starts with the tool's own canonical slug or alias
+        if ($tool !== null) {
+            $candidates = array_unique(array_filter([
+                $tool->value,
+                $tool->canonicalTool()->value,
+            ]));
+            foreach ($candidates as $cand) {
+                $candPrefix = $instance !== '' ? "{$cand}-{$instance}" : $cand;
+                if (str_starts_with($domain, "{$candPrefix}.")) {
+                    return $domain;
+                }
+            }
+        }
+
         // A host this tool already answers on is a host, not a base domain,
         // whatever its prefix looks like. The registry is the only thing that
         // knows the difference.
