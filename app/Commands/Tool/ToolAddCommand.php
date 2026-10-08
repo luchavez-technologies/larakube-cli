@@ -22,18 +22,18 @@ class ToolAddCommand extends Command
     use ConfirmsDestructiveAction, InteractsWithMail, InteractsWithSso, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesClusterTool, ResolvesStandaloneEnvironment;
 
     /** What tool:add already answers itself, so tool-specific options never shadow it. */
-    private const OWN_OPTIONS = ['tool', 'context', 'domain', 'admin-email', 'force', 'wire-mail', 'no-wire-mail', 'wire-sso', 'no-wire-sso'];
+    private const OWN_OPTIONS = ['tool', 'context', 'domain', 'force', 'wire-mail', 'no-wire-mail', 'wire-sso', 'no-wire-sso', 'confirm-commons-restart'];
 
     protected $signature = 'tool:add
         {environment? : The environment to target}
         {--tool= : Comma-separated tool slugs to install (e.g. flow,passwords)}
         {--context= : Target a specific kube-context}
         {--domain=  : Base domain for all tool hosts (e.g. example.com → flow.example.com)}
-        {--admin-email= : Primary administrator email for tools that require an admin account}
         {--wire-mail : Wire each installed tool to Stalwart without asking}
         {--no-wire-mail : Never wire to Stalwart, even interactively}
         {--wire-sso : Wire each installed tool to Zitadel SSO without asking}
         {--no-wire-sso : Never wire to SSO, even interactively}
+        {--confirm-commons-restart : Confirm restarting a running Commons service (e.g. Redis), without an interactive prompt}
         {--force : Skip the confirmation prompt}';
 
     protected $description = 'Interactively discover and install LaraKube shared cluster tools';
@@ -78,8 +78,8 @@ class ToolAddCommand extends Command
         if ($domain) {
             $params['--domain'] = $domain;
         }
-        if ($this->option('admin-email')) {
-            $params['--admin-email'] = $this->option('admin-email');
+        if ($this->option('confirm-commons-restart')) {
+            $params['--confirm-commons-restart'] = true;
         }
 
         $extra = array_values(array_filter(

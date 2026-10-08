@@ -511,6 +511,9 @@ trait InteractsWithPlex
             if ($plex->context()) {
                 $bootstrap['--context'] = $plex->context();
             }
+            if ($this->hasOption('confirm-commons-restart') && $this->option('confirm-commons-restart')) {
+                $bootstrap['--confirm-commons-restart'] = true;
+            }
             $this->call('plex:init', $bootstrap);
             $spec = $plex->commonsSpec();
 
@@ -530,6 +533,9 @@ trait InteractsWithPlex
                 $bootstrap = ['--services' => implode(',', $allServices)];
                 if ($plex->context()) {
                     $bootstrap['--context'] = $plex->context();
+                }
+                if ($this->hasOption('confirm-commons-restart') && $this->option('confirm-commons-restart')) {
+                    $bootstrap['--confirm-commons-restart'] = true;
                 }
                 $this->call('plex:init', $bootstrap);
                 $spec = $plex->commonsSpec();
@@ -1072,11 +1078,21 @@ trait InteractsWithPlex
             $this->laraKubeLine('  Redis keeps its data in memory only: sessions, caches and queued jobs are lost.');
         }
 
+        // The explicit escape hatch for a caller that already confirmed this
+        // with its own user (e.g. the Desktop app's own "Launch"/"Install"
+        // click) and cannot answer a terminal prompt at all. Still warned
+        // above, just never silently assumed — this only fires when asked for.
+        if ($this->hasOption('confirm-commons-restart') && $this->option('confirm-commons-restart')) {
+            $this->laraKubeLine('  <fg=gray>Confirmed via --confirm-commons-restart.</>');
+
+            return true;
+        }
+
         $interactive = ! ($this->hasOption('no-interaction') && $this->option('no-interaction'))
             && ! app()->runningUnitTests() && stream_isatty(STDIN);
 
         if (! $interactive) {
-            $this->laraKubeError('Not restarting them without confirmation. Re-run interactively to confirm.');
+            $this->laraKubeError('Not restarting them without confirmation. Re-run interactively to confirm, or pass --confirm-commons-restart.');
 
             return false;
         }

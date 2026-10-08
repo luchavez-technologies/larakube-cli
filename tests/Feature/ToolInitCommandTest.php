@@ -98,7 +98,7 @@ test('a command built from the spec has the name, options and description the sp
         }
 
         $built = ToolInitCommands::for($tool);
-        $names = array_values(array_diff(array_keys($built->getDefinition()->getOptions()), array_keys(Artisan::all()['about']->getDefinition()->getOptions())));
+        $names = array_values(array_diff(array_keys($built->getDefinition()->getOptions()), array_keys(Artisan::all()['about']->getDefinition()->getOptions()), ['confirm-commons-restart']));
         $spec = array_map(fn (InitOption $option): string => $option->name, ToolInitSpec::for($tool));
         sort($names);
         sort($spec);
@@ -126,6 +126,21 @@ test('tool:add takes every tool\'s own init options, and refuses one a chosen to
     $this->artisan('tool:add local --tool=vaultwarden --app-name=Vault --force --no-interaction')
         ->assertExitCode(1)
         ->expectsOutputToContain('has no --app-name option');
+
+    Process::assertNotRan(fn ($process) => str_contains((string) $process->command, 'apply -f'));
+});
+
+test('tool:add refuses --admin-email for a tool that does not take one, same as any other tool-specific option', function (): void {
+    // admin-email must not be hardcoded into tool:add's own always-accepted options —
+    // it has to go through the same per-tool refusedBy() check as app-name, no-plex, etc.
+    $definition = Artisan::all()['tool:add']->getDefinition();
+    expect($definition->hasOption('admin-email'))->toBeTrue('tool:add has no --admin-email');
+
+    toolInitFakes();
+
+    $this->artisan('tool:add local --tool=n8n --admin-email=admin@example.com --force --no-interaction')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('has no --admin-email option');
 
     Process::assertNotRan(fn ($process) => str_contains((string) $process->command, 'apply -f'));
 });

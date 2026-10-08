@@ -353,6 +353,12 @@ final class ToolInitSpec
     {
         $options = array_map(fn (InitOption $option): string => $option->signature(), self::for($tool));
 
+        // Global, not per-tool: any family can share a Commons service, so this
+        // is infrastructure plumbing (like --context), not a deploy choice —
+        // it stays out of self::for()/fields() and never shows up as a Desktop
+        // form field.
+        $options[] = '{--confirm-commons-restart : Confirm restarting a running Commons service (e.g. Redis), without an interactive prompt}';
+
         return $tool->canonicalTool()->value.':init {environment? : Environment this install targets — "local" (default) or cloud.} '.implode(' ', $options);
     }
 

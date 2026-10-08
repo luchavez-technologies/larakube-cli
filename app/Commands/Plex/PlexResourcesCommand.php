@@ -36,6 +36,7 @@ class PlexResourcesCommand extends Command
         {--max-clients= : PgBouncer max client connections}
         {--reset : Reset target service to Commons defaults}
         {--json : Output result as JSON}
+        {--confirm-commons-restart : Confirm restarting a running Commons service (e.g. Redis), without an interactive prompt}
         {--context= : Target a specific kube-context (else: the project env context, or you are prompted)}';
 
     protected $description = 'Configure Kubernetes resource limits, connection tuning and storage for Commons services';

@@ -69,6 +69,21 @@ test('without a terminal to confirm, a restarting Commons apply is refused and n
     expect($applied)->toBe([]);
 });
 
+test('with --confirm-commons-restart, a restarting Commons apply goes ahead non-interactively', function (): void {
+    $applied = [];
+    Process::fake(plexApplyFakes(
+        [['kind' => 'Deployment', 'metadata' => ['name' => 'redis'], 'spec' => ['template' => plexApplyTemplate([['name' => 'redis']])]]],
+        ['redis' => plexApplyTemplate([['name' => 'redis'], ['name' => 'redis-exporter']])],
+        $applied,
+    ));
+
+    $this->artisan('plex:init local --services=postgres,redis --confirm-commons-restart --no-interaction')
+        ->expectsOutputToContain('Confirmed via --confirm-commons-restart')
+        ->assertExitCode(0);
+
+    expect($applied)->toHaveCount(1);
+});
+
 test('an apply that restarts nothing goes ahead', function (): void {
     $applied = [];
     $same = plexApplyTemplate([['name' => 'redis']]);

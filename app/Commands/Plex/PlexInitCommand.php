@@ -30,6 +30,7 @@ class PlexInitCommand extends Command
     protected $signature = 'plex:init
         {environment? : Environment this Commons install targets — "local" (default) or a cloud env. Omit to be prompted (when run from inside a project) or pick a raw kube-context (when not).}
         {--services= : Comma-separated services to provision non-interactively, e.g. postgres,redis,meilisearch (no prompt; nothing assumed)}
+        {--confirm-commons-restart : Confirm restarting a running Commons service (e.g. Redis), without an interactive prompt}
         {--context= : Target a specific kube-context non-interactively (else you are prompted)}
         {--s3-host= : Public host for the object-storage S3 (creates an ingress; used for tenant AWS_URL)}
         {--from= : Rebuild the Commons from an exported spec file (see plex:export)}';

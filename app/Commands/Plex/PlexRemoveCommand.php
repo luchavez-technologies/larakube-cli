@@ -22,6 +22,7 @@ class PlexRemoveCommand extends Command
         {--service= : The Commons service to remove (postgres, redis, meilisearch, seaweedfs). Omit to be prompted.}
         {--context= : Target a specific kube-context (defaults to the environment\'s saved target, or the current context for local)}
         {--keep-data : Delete the workload but KEEP its PersistentVolumeClaim (data)}
+        {--confirm-commons-restart : Confirm restarting a running Commons service (e.g. Redis), without an interactive prompt}
         {--force : Skip the confirmation (and the tenant-in-use guard)}';
 
     protected $description = 'Remove an unused service from the shared Commons';
