@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Enums\DnsProvider;
 use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
@@ -394,8 +395,13 @@ BASH;
      *                                   reads it from the cluster (see
      *                                   ManagesTraefikAcmeChallenge), so every
      *                                   re-render keeps what `tls:init` set.
+     * @param  DnsProvider|null  $dnsProvider  Which provider the DNS challenge proves
+     *                                         control through. Null re-reads it from the
+     *                                         cluster the same way $dnsChallenge does —
+     *                                         `tls:init` passes it explicitly since it
+     *                                         already knows, to skip the extra round-trip.
      */
-    protected function deployTraefik(string $contextName, string $ip, bool $force = false, ?bool $dnsChallenge = null): bool
+    protected function deployTraefik(string $contextName, string $ip, bool $force = false, ?bool $dnsChallenge = null, ?DnsProvider $dnsProvider = null): bool
     {
         if (! $force && $this->traefikInstalledOnContext($contextName)) {
             $this->laraKubeInfo('ℹ️  Traefik is already installed on this cluster — skipping deploy.');
@@ -452,6 +458,8 @@ BASH;
         }
 
         // 3. Apply Traefik Cloud manifest
+        $useDns = $dnsChallenge ?? $this->traefikUsesDnsChallenge($kubectl);
+        $provider = $useDns ? ($dnsProvider ?? $this->traefikDnsProvider($kubectl) ?? DnsProvider::CLOUDFLARE) : null;
         $tmpInstall = $temporaryDirectory->path('traefik-cloud.yaml');
         file_put_contents($tmpInstall, view('k8s.traefik-cloud', [
             // The running cluster's ACME email wins over this machine's global
@@ -459,10 +467,14 @@ BASH;
             // Let's Encrypt account, or drop ACME when they have no email set.
             'email' => $this->liveTraefikAcmeEmail($kubectl) ?? $this->getEmail(),
             'ip' => $ip,
-            'dnsChallenge' => $useDns = $dnsChallenge ?? $this->traefikUsesDnsChallenge($kubectl),
-            // A Cloudflare cluster may have proxied hosts: trust Cloudflare's
-            // edge for X-Forwarded-For so apps see the visitor's IP.
-            'trustedIps' => $useDns ? $this->cloudflareTrustedRanges($kubectl) : [],
+            'dnsChallenge' => $useDns,
+            'dnsProvider' => $provider,
+            // Only meaningful for an actually-Cloudflare-proxied cluster: trust
+            // Cloudflare's edge for X-Forwarded-For so apps see the visitor's
+            // IP. A Route53 (or any non-Cloudflare) DNS challenge has no proxy
+            // layer to trust — trusting Cloudflare's ranges there would be
+            // wrong (and let anyone on those ranges spoof X-Forwarded-For).
+            'trustedIps' => $provider === DnsProvider::CLOUDFLARE ? $this->cloudflareTrustedRanges($kubectl) : [],
         ])->render());
         $ok = $this->applyAndVerifyRollout($kubectl, $tmpInstall, $namespace, 'traefik', extraApplyFlags: '--validate=false');
         $temporaryDirectory->delete();

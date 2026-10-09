@@ -54,8 +54,25 @@ final class ToolInitSpec
                 InitOption::proxied(),
             ],
             ClusterTool::EXTERNAL_DNS => [
-                InitOption::value('cloudflare-token', 'API token — every zone it can see is discovered and managed, unless --zone= narrows that. Or set LARAKUBE_CLOUDFLARE_TOKEN'),
-                InitOption::list('zone', 'Optional — restrict to a subset of what the token can see. Omit to manage every zone the token has access to.'),
+                InitOption::select(
+                    'provider',
+                    'Which DNS backend this instance manages records on',
+                    [
+                        'cloudflare' => 'Cloudflare',
+                        'route53' => 'AWS Route 53',
+                    ],
+                    default: 'cloudflare',
+                    label: 'DNS Provider',
+                ),
+                InitOption::value('cloudflare-token', 'API token — every zone it can see is discovered and managed, unless --zone= narrows that. Or set LARAKUBE_CLOUDFLARE_TOKEN')
+                    ->visibleWhen(['provider' => 'cloudflare']),
+                InitOption::value('aws-access-key-id', 'IAM access key ID with Route53 permissions. Or set AWS_ACCESS_KEY_ID')
+                    ->visibleWhen(['provider' => 'route53']),
+                InitOption::value('aws-secret-access-key', 'IAM secret access key. Or set AWS_SECRET_ACCESS_KEY')
+                    ->visibleWhen(['provider' => 'route53']),
+                InitOption::value('aws-region', 'AWS region. Default us-east-1, or set AWS_DEFAULT_REGION')
+                    ->visibleWhen(['provider' => 'route53']),
+                InitOption::list('zone', 'Optional — restrict to a subset of what the credential can see. Omit to manage every zone it has access to.'),
                 InitOption::value('group', 'Stable name for this instance. Default: the sole zone\'s own slug (unchanged single-zone behavior) — required when 2+ zones are in scope'),
                 InitOption::context(),
                 InitOption::force(),

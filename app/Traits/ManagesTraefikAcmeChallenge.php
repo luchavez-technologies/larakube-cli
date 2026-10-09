@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Enums\DnsProvider;
 use App\Http\Integrations\Cloudflare\CloudflareConnector;
 use App\Http\Integrations\Cloudflare\Requests\CreateDnsRecordRequest;
 use App\Http\Integrations\Cloudflare\Requests\DeleteDnsRecordRequest;
@@ -28,7 +29,20 @@ trait ManagesTraefikAcmeChallenge
 
     protected function traefikUsesDnsChallenge(string $kubectl): bool
     {
-        return trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'secret', self::TRAEFIK_ACME_TOKEN_SECRET, '-n', 'traefik', '-o', 'name', '--ignore-not-found'])->output) !== '';
+        return $this->traefikDnsProvider($kubectl) !== null;
+    }
+
+    /** Which provider's credential Secret is stored for Traefik's DNS challenge, if any. */
+    protected function traefikDnsProvider(string $kubectl): ?DnsProvider
+    {
+        foreach (DnsProvider::cases() as $provider) {
+            $name = trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'secret', $provider->traefikAcmeSecretName(), '-n', 'traefik', '-o', 'name', '--ignore-not-found'])->output);
+            if ($name !== '') {
+                return $provider;
+            }
+        }
+
+        return null;
     }
 
     /** Managed clusters (DOKS) keep acme.json on a PVC; VPS clusters use a hostPath. */

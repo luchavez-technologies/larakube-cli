@@ -465,6 +465,53 @@ test('tool:init --tool=external-dns reuses the stored Cloudflare token instead o
         ->expectsOutputToContain('Reusing the stored Cloudflare token');
 });
 
+test('tool:init --tool=external-dns manages a Route53 zone when --provider=route53 is given', function (): void {
+    $secret = null;
+
+    Process::fake(dnsFakes('abc12345', [
+        '*command -v aws*' => Process::result(output: '/usr/local/bin/aws'),
+        '*route53 list-hosted-zones*' => Process::result(output: (string) json_encode([
+            'HostedZones' => [['Id' => '/hostedzone/Z123', 'Name' => 'example.com.']],
+        ])),
+        '*apply -f -*' => function ($process) use (&$secret) {
+            $manifest = json_decode((string) $process->input, true);
+            if (($manifest['kind'] ?? null) === 'Secret') {
+                $secret = $manifest;
+            }
+
+            return Process::result(output: 'applied');
+        },
+    ]));
+
+    $this->artisan('tool:init --tool=external-dns prod --context=ctx --provider=route53 --aws-access-key-id=AKIAFAKE --aws-secret-access-key=shh --aws-region=us-west-2 --no-interaction --force')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('ExternalDNS is managing example.com');
+
+    expect($secret['metadata']['name'])->toBe('route53-credential-example-com')
+        ->and(base64_decode($secret['data']['access_key_id']))->toBe('AKIAFAKE')
+        ->and(base64_decode($secret['data']['secret_access_key']))->toBe('shh')
+        ->and(base64_decode($secret['data']['region']))->toBe('us-west-2');
+    Process::assertNotRan(fn ($process) => str_contains((string) $process->command, 'shh'));
+});
+
+test('tool:init --tool=external-dns --provider=route53 refuses non-interactively without the aws CLI', function (): void {
+    Process::fake(dnsFakes('abc12345', [
+        '*command -v aws*' => Process::result(output: '', exitCode: 1),
+    ]));
+
+    $this->artisan('tool:init --tool=external-dns prod --context=ctx --provider=route53 --aws-access-key-id=AKIAFAKE --aws-secret-access-key=shh --no-interaction --force')
+        ->expectsOutputToContain('AWS CLI is required')
+        ->assertExitCode(1);
+});
+
+test('tool:init --tool=external-dns --provider=route53 requires the access key flags non-interactively', function (): void {
+    Process::fake(dnsFakes('abc12345', [
+        '*command -v aws*' => Process::result(output: '/usr/local/bin/aws'),
+    ]));
+
+    $this->artisan('tool:init --tool=external-dns prod --context=ctx --provider=route53 --no-interaction --force')->run();
+})->throws(MissingFlagException::class, 'Missing required --aws-access-key-id');
+
 test('tool:init --tool=external-dns takes the token from LARAKUBE_CLOUDFLARE_TOKEN so it never reaches argv', function (): void {
     $secret = null;
     Process::fake(dnsFakes('abc12345', [

@@ -116,7 +116,23 @@
   }
  },
  "external-dns:init": {
+  "provider": {
+   "default": "cloudflare",
+   "kind": "select"
+  },
   "cloudflare-token": {
+   "default": null,
+   "kind": "value"
+  },
+  "aws-access-key-id": {
+   "default": null,
+   "kind": "value"
+  },
+  "aws-secret-access-key": {
+   "default": null,
+   "kind": "value"
+  },
+  "aws-region": {
    "default": null,
    "kind": "value"
   },

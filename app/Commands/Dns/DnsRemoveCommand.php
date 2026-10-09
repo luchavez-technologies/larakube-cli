@@ -3,6 +3,7 @@
 namespace App\Commands\Dns;
 
 use App\Enums\ClusterTool;
+use App\Enums\DnsProvider;
 use App\Exceptions\MissingFlagException;
 use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
@@ -90,10 +91,17 @@ abstract class DnsRemoveCommand extends Command
         foreach ($targets as $target) {
             $slug = $target['slug'];
 
+            // Only one of these secrets exists per slug (whichever provider this
+            // instance used) — --ignore-not-found makes naming both harmless.
+            $credentialSecrets = implode(' ', array_map(
+                fn (DnsProvider $provider): string => 'secret/'.$provider->credentialSecretName($slug),
+                DnsProvider::cases(),
+            ));
+
             $ok = $this->removeResources(
                 'Removing ExternalDNS for '.implode(', ', $target['zones']).'...',
                 "{$kubectl} delete deployment/external-dns-{$slug} "
-                ."serviceaccount/external-dns-{$slug} secret/cloudflare-token-{$slug} "
+                ."serviceaccount/external-dns-{$slug} {$credentialSecrets} "
                 ."-n {$ns} --ignore-not-found",
             ) && $ok;
 

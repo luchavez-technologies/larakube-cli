@@ -1,10 +1,11 @@
 {{--
-  One ExternalDNS instance per tool:init --tool=external-dns GROUP — one or more Cloudflare zones
-  that share a single API token (docs/decisions — see tool:init --tool=external-dns's own docblock
-  for why token-sharing, not zone count, is the actual isolation boundary).
+  One ExternalDNS instance per tool:init --tool=external-dns GROUP — one or more zones on ONE
+  provider that share a single credential (docs/decisions — see tool:init --tool=external-dns's own
+  docblock for why credential-sharing, not zone count, is the actual isolation
+  boundary).
 
   Every name is suffixed with the group slug so several groups — including
-  zones in DIFFERENT Cloudflare accounts, each with its own API token —
+  zones on DIFFERENT providers or accounts, each with its own credential —
   coexist on one cluster. Two things carry the safety properties:
 
     --domain-filter   one flag PER zone in this group. Without at least one,
@@ -92,7 +93,7 @@ spec:
           image: registry.k8s.io/external-dns/external-dns:v0.21.0
           args:
             - --source=ingress
-            - --provider=cloudflare
+            - --provider={{ $provider->externalDnsProviderFlag() }}
             - --policy=sync
             - --registry=txt
 @foreach($zones as $zone)
@@ -106,8 +107,26 @@ spec:
                  and every wait built on top of it) waits with it. --}}
             - --events
           env:
+@if($provider === \App\Enums\DnsProvider::CLOUDFLARE)
             - name: CF_API_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: cloudflare-token-{{ $slug }}
                   key: token
+@else
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: route53-credential-{{ $slug }}
+                  key: access_key_id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: route53-credential-{{ $slug }}
+                  key: secret_access_key
+            - name: AWS_DEFAULT_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: route53-credential-{{ $slug }}
+                  key: region
+@endif

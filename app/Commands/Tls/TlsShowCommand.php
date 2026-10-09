@@ -2,10 +2,12 @@
 
 namespace App\Commands\Tls;
 
+use App\Enums\DnsProvider;
 use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithCloudflareApi;
+use App\Traits\InteractsWithRoute53Api;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ProvisionsK3sNode;
 use App\Traits\ReadsCommandOptions;
@@ -18,7 +20,7 @@ use LaravelZero\Framework\Commands\Command;
  */
 class TlsShowCommand extends Command
 {
-    use DeploysClusterTool, EmitsJsonOutput, InteractsWithCloudflareApi, LaraKubeOutput, ProvisionsK3sNode, ReadsCommandOptions, ResolvesToolEnvironment;
+    use DeploysClusterTool, EmitsJsonOutput, InteractsWithCloudflareApi, InteractsWithRoute53Api, LaraKubeOutput, ProvisionsK3sNode, ReadsCommandOptions, ResolvesToolEnvironment;
 
     protected $signature = 'tls:show
         {environment? : The cloud environment to inspect}
@@ -70,15 +72,17 @@ class TlsShowCommand extends Command
         $ingresses = $this->clusterIngresses($kubectl);
         $hosts = $this->letsEncryptHosts($ingresses);
         $proxied = $this->proxiedHosts($ingresses);
-        $dns = $this->traefikUsesDnsChallenge($kubectl);
+        $provider = $this->traefikDnsProvider($kubectl);
+        $dns = $provider !== null;
 
-        $this->line('  <fg=gray>Challenge:</>  '.($dns ? '<fg=green>Cloudflare DNS</>' : '<fg=yellow>HTTP</>'));
+        $this->line('  <fg=gray>Challenge:</>  '.($dns ? "<fg=green>{$provider->label()} DNS</>" : '<fg=yellow>HTTP</>'));
         $this->line('  <fg=gray>Hosts:</>      '.count($hosts).' with Let\'s Encrypt certificates, '.count($proxied).' proxied');
 
         $ok = true;
         $report = [
             'success' => true,
             'challenge' => $dns ? 'dns' : 'http',
+            'provider' => $provider?->value,
             'hosts' => $hosts,
             'proxied' => $proxied,
             'zones' => [],
@@ -87,8 +91,8 @@ class TlsShowCommand extends Command
             'unusedCertificates' => [],
         ];
 
-        if ($dns) {
-            $token = (string) $this->readClusterSecretKey($kubectl, 'traefik', self::TRAEFIK_ACME_TOKEN_SECRET, 'token');
+        if ($provider === DnsProvider::CLOUDFLARE) {
+            $token = (string) $this->readClusterSecretKey($kubectl, 'traefik', $provider->traefikAcmeSecretName(), 'token');
             $zones = $token !== '' ? $this->cloudflareListZones($token) : [];
             $this->line('  <fg=gray>Zones:</>      '.($zones !== [] ? implode(', ', $zones) : '<fg=red>none (the stored token is invalid or revoked)</>'));
             $report['zones'] = array_values($zones);
@@ -109,6 +113,26 @@ class TlsShowCommand extends Command
                 $report['cannotRenew'] = $uncovered;
                 $this->newLine();
                 $this->laraKubeWarn('Outside the token\'s zones, so these can\'t renew:');
+                foreach ($uncovered as $host) {
+                    $this->line("  <fg=red>•</> {$host}");
+                }
+            }
+        } elseif ($provider === DnsProvider::ROUTE53) {
+            $env53 = $this->route53Env([
+                'access_key_id' => (string) $this->readClusterSecretKey($kubectl, 'traefik', $provider->traefikAcmeSecretName(), 'access_key_id'),
+                'secret_access_key' => (string) $this->readClusterSecretKey($kubectl, 'traefik', $provider->traefikAcmeSecretName(), 'secret_access_key'),
+                'region' => (string) $this->readClusterSecretKey($kubectl, 'traefik', $provider->traefikAcmeSecretName(), 'region'),
+            ]);
+            $zones = $env53['AWS_ACCESS_KEY_ID'] !== '' ? $this->route53ListZones($env53) : [];
+            $this->line('  <fg=gray>Zones:</>      '.($zones !== [] ? implode(', ', $zones) : '<fg=red>none (the stored credential is invalid or revoked)</>'));
+            $report['zones'] = array_values($zones);
+
+            $uncovered = array_values(array_filter($hosts, fn (string $host) => $this->zoneForHost($host, $zones) === null));
+            if ($uncovered !== []) {
+                $ok = false;
+                $report['cannotRenew'] = $uncovered;
+                $this->newLine();
+                $this->laraKubeWarn('Outside the credential\'s zones, so these can\'t renew:');
                 foreach ($uncovered as $host) {
                     $this->line("  <fg=red>•</> {$host}");
                 }

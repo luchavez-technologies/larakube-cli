@@ -151,21 +151,39 @@ spec:
             - --certificatesresolvers.letsencrypt.acme.email={{ $email }}
             - --certificatesresolvers.letsencrypt.acme.storage=/data/acme.json
 @if($dnsChallenge ?? false)
-            {{-- `larakube tls:init`: prove control through a Cloudflare TXT record,
-                 so renewal works for proxied (orange-cloud) hosts too. Checked
-                 against Cloudflare's resolvers, not the node's. --}}
-            - --certificatesresolvers.letsencrypt.acme.dnschallenge.provider=cloudflare
+            {{-- `larakube tls:init`: prove control through a provider TXT record,
+                 so renewal works for proxied/wildcard hosts too. Checked
+                 against public resolvers, not the node's. --}}
+            - --certificatesresolvers.letsencrypt.acme.dnschallenge.provider={{ $dnsProvider->legoProviderFlag() }}
             - --certificatesresolvers.letsencrypt.acme.dnschallenge.resolvers=1.1.1.1:53,1.0.0.1:53
 @else
             - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
 @endif
 @if(($dnsChallenge ?? false) && isset($email))
           env:
+@if($dnsProvider === \App\Enums\DnsProvider::CLOUDFLARE)
             - name: CF_DNS_API_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: traefik-acme-cloudflare
                   key: token
+@else
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: traefik-acme-route53
+                  key: access_key_id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: traefik-acme-route53
+                  key: secret_access_key
+            - name: AWS_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: traefik-acme-route53
+                  key: region
+@endif
 @endif
           ports:
             - name: web

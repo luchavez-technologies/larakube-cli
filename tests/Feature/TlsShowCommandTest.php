@@ -162,6 +162,36 @@ test('tls:show --json reports the challenge and what cannot renew, on one stdout
     ]);
 });
 
+test('tls:show reports the Route53 zones when that provider is active', function (): void {
+    Process::fake([
+        '*get secret traefik-acme-cloudflare -n traefik -o name*' => Process::result(output: ''),
+        '*get secret traefik-acme-route53 -n traefik -o name*' => Process::result(output: 'secret/traefik-acme-route53'),
+        '*get secret traefik-acme-route53 -n traefik -o jsonpath*access_key_id*' => Process::result(output: base64_encode('AKIAFAKE')),
+        '*get secret traefik-acme-route53 -n traefik -o jsonpath*secret_access_key*' => Process::result(output: base64_encode('shh')),
+        '*get secret traefik-acme-route53 -n traefik -o jsonpath*region*' => Process::result(output: base64_encode('us-west-2')),
+        '*route53 list-hosted-zones*' => Process::result(output: (string) json_encode([
+            'HostedZones' => [['Id' => '/hostedzone/Z123', 'Name' => 'example.com.']],
+        ])),
+        '*get ingress -A -o json*' => Process::result(output: (string) json_encode(['items' => [
+            ['metadata' => ['namespace' => 'apps', 'name' => 'web', 'annotations' => ['traefik.ingress.kubernetes.io/router.tls.certresolver' => 'letsencrypt']], 'spec' => ['rules' => [['host' => 'app.example.com']]]],
+        ]])),
+        '*exec -n traefik deploy/traefik*' => Process::result(output: ''),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('tls:show production --context=ctx')
+        ->expectsOutputToContain('AWS Route 53 DNS')
+        ->expectsOutputToContain('example.com')
+        ->assertExitCode(0);
+
+    Artisan::call('tls:show', ['environment' => 'production', '--context' => 'ctx', '--json' => true]);
+    $report = tlsShowJsonReport();
+
+    expect($report['challenge'])->toBe('dns')
+        ->and($report['provider'])->toBe('route53')
+        ->and($report['zones'])->toBe(['example.com']);
+});
+
 test('tls:show --json on the DNS challenge lists the token zones and their SSL modes', function (): void {
     Process::fake(tlsShowFakes(dnsChallenge: true, proxied: false));
     Saloon::fake([

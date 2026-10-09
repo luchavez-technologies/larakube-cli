@@ -55,8 +55,12 @@ test('every option the spec names exists on the command, with the same kind', fu
 
             $actual = $definition->getOption($option->name);
             $kind = ! $actual->acceptValue() ? InitOption::FLAG : ($actual->isArray() ? InitOption::LIST : InitOption::VALUE);
+            // Symfony's own InputOption has no "select" concept — it's a plain
+            // value option underneath, with the dropdown purely a form-rendering
+            // hint for Desktop (InitOption::field()). Compare it as VALUE.
+            $expectedKind = $option->kind === InitOption::SELECT ? InitOption::VALUE : $option->kind;
 
-            expect($kind)->toBe($option->kind, "{$command} --{$option->name}");
+            expect($kind)->toBe($expectedKind, "{$command} --{$option->name}");
         }
     }
 });

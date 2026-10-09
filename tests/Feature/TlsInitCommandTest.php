@@ -46,10 +46,23 @@ function tlsInitFakes(array $storedTokens, array $hosts, array &$captured, array
             "*get secret cloudflare-token-{$group} -n larakube-shared*" => Process::result(output: base64_encode($token)),
         ])->all(),
         '*get ingress -A -o json*' => Process::result(output: tlsInitIngresses($hosts)),
-        '*create secret generic traefik-acme-cloudflare*' => function (PendingProcess $process) use (&$captured) {
-            $captured['token'] = $process->input;
+        // putSecret() pipes a Secret manifest (JSON) on stdin and applies it —
+        // several OTHER steps inside deployTraefik() also end in "apply -f -"
+        // (namespace/configmap/certs, each a shell `| kubectl apply -f -` with
+        // no explicit stdin), so only act when this call actually HAS JSON
+        // Secret input — anything else just gets a generic success result.
+        '*apply -f -' => function (PendingProcess $process) use (&$captured) {
+            $manifest = $process->input !== null ? json_decode((string) $process->input, true) : null;
 
-            return Process::result(output: 'secret/traefik-acme-cloudflare configured');
+            if (is_array($manifest) && ($manifest['kind'] ?? null) === 'Secret') {
+                $captured['secretName'] = $manifest['metadata']['name'] ?? null;
+                $captured['token'] = isset($manifest['data']['token']) ? base64_decode($manifest['data']['token']) : null;
+                $captured['secretData'] = array_map('base64_decode', $manifest['data'] ?? []);
+
+                return Process::result(output: 'secret/'.($manifest['metadata']['name'] ?? '').' configured');
+            }
+
+            return Process::result(output: '');
         },
         '*get deployment traefik -n traefik -o jsonpath*' => Process::result(
             output: '["--certificatesresolvers.letsencrypt.acme.email=ops@example.com","--providers.kubernetesingress.ingressendpoint.ip=203.0.113.10"]',
@@ -157,7 +170,7 @@ test('a host outside the token\'s zones stops tls:init before anything is writte
     tlsInitCloudflare();
 
     $this->artisan('tls:init production --context=ctx --force --no-interaction')
-        ->expectsOutputToContain('outside every zone this token can see')
+        ->expectsOutputToContain('outside every zone this credential can see')
         ->expectsOutputToContain('shop.elsewhere.net')
         ->assertExitCode(1);
 
@@ -218,6 +231,26 @@ test('--group= picks that tool:init --tool=external-dns group\'s token', functio
     $this->artisan('tls:init production --context=ctx --group=example-org --force --no-interaction')->assertExitCode(0);
 
     expect($captured['token'])->toBe('token-b');
+});
+
+test('tls:init issues certificates through the Route53 DNS challenge when --provider=route53 is given', function (): void {
+    $captured = [];
+    Process::fake(tlsInitFakes([], ['app.example.com'], $captured, [
+        '*command -v aws*' => Process::result(output: '/usr/local/bin/aws'),
+        '*route53 list-hosted-zones*' => Process::result(output: (string) json_encode([
+            'HostedZones' => [['Id' => '/hostedzone/Z123', 'Name' => 'example.com.']],
+        ])),
+        '*route53 change-resource-record-sets*' => Process::result(output: (string) json_encode(['ChangeInfo' => ['Id' => 'C1', 'Status' => 'PENDING']])),
+    ]));
+
+    $this->artisan('tls:init production --context=ctx --provider=route53 --aws-access-key-id=AKIAFAKE --aws-secret-access-key=shh --aws-region=us-west-2 --force --no-interaction')
+        ->expectsOutputToContain('now uses the AWS Route 53 DNS challenge')
+        ->assertExitCode(0);
+
+    expect($captured['secretName'])->toBe('traefik-acme-route53')
+        ->and($captured['token'])->toBeNull()
+        ->and($captured['secretData'])->toBe(['access_key_id' => 'AKIAFAKE', 'secret_access_key' => 'shh', 'region' => 'us-west-2']);
+    Process::assertNotRan(fn ($process) => str_contains((string) $process->command, 'shh'));
 });
 
 test('tls:init refuses managed clusters for now', function (): void {

@@ -2,6 +2,7 @@
 
 namespace App\Commands\Tls;
 
+use App\Enums\DnsProvider;
 use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
@@ -86,7 +87,9 @@ class TlsRemoveCommand extends Command
             return 1;
         }
 
-        Process::run("{$kubectl} delete secret ".self::TRAEFIK_ACME_TOKEN_SECRET.' -n traefik --ignore-not-found');
+        // Only one of these exists (whichever provider was active) — --ignore-not-found makes naming both harmless.
+        $secrets = implode(' ', array_map(fn (DnsProvider $provider): string => 'secret/'.$provider->traefikAcmeSecretName(), DnsProvider::cases()));
+        Process::run("{$kubectl} delete {$secrets} -n traefik --ignore-not-found");
 
         $this->laraKubeInfo("✅ Let's Encrypt on '{$env}' is back on the HTTP challenge.");
 

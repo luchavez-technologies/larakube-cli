@@ -1,6 +1,7 @@
 <?php
 
 use App\Data\ConfigData;
+use App\Enums\DnsProvider;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -42,6 +43,7 @@ test('the DNS challenge swaps the HTTP challenge for Cloudflare and injects the 
         'ip' => '203.0.113.10',
         'loadBalancerName' => 'lb-example',
         'dnsChallenge' => true,
+        'dnsProvider' => DnsProvider::CLOUDFLARE,
     ])->render();
 
     $container = collect(Yaml::parse(
@@ -55,6 +57,26 @@ test('the DNS challenge swaps the HTTP challenge for Cloudflare and injects the 
             'name' => 'CF_DNS_API_TOKEN',
             'valueFrom' => ['secretKeyRef' => ['name' => 'traefik-acme-cloudflare', 'key' => 'token']],
         ]]);
+})->with(['k8s.traefik-cloud', 'k8s.traefik-managed']);
+
+test('the DNS challenge renders the Route53 provider flag and AWS credential env vars', function (string $view): void {
+    $rendered = view($view, [
+        'email' => 'ops@example.com',
+        'ip' => '203.0.113.10',
+        'loadBalancerName' => 'lb-example',
+        'dnsChallenge' => true,
+        'dnsProvider' => DnsProvider::ROUTE53,
+    ])->render();
+
+    $container = collect(Yaml::parse(
+        collect(preg_split('/^---\s*$/m', $rendered))->first(fn ($doc) => str_contains($doc, 'kind: Deployment')),
+    )['spec']['template']['spec']['containers'])->first();
+
+    expect($container['args'])
+        ->toContain('--certificatesresolvers.letsencrypt.acme.dnschallenge.provider=route53')
+        ->not->toContain('--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web')
+        ->and(collect($container['env'])->pluck('name')->all())->toBe(['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_REGION'])
+        ->and(collect($container['env'])->pluck('valueFrom.secretKeyRef.name')->unique()->all())->toBe(['traefik-acme-route53']);
 })->with(['k8s.traefik-cloud', 'k8s.traefik-managed']);
 
 test('the HTTP challenge stays the default and carries no Cloudflare token', function (): void {

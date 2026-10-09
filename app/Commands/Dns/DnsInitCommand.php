@@ -4,6 +4,7 @@ namespace App\Commands\Dns;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Enums\ClusterTool;
+use App\Enums\DnsProvider;
 use App\Exceptions\MissingFlagException;
 use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
@@ -12,14 +13,16 @@ use App\Traits\InteractsWithCloudflareApi;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithClusterIdentity;
 use App\Traits\InteractsWithDnsZones;
+use App\Traits\InteractsWithRoute53Api;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PromotesIngressDns;
-use App\Traits\ReadsStoredCloudflareTokens;
+use App\Traits\ReadsStoredDnsCredentials;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 
+use function Laravel\Prompts\password;
 use function Laravel\Prompts\text;
 
 /**
@@ -57,8 +60,8 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithCloudflareApi,
         InteractsWithClusterContext, InteractsWithClusterIdentity, InteractsWithDnsZones,
-        LaraKubeOutput, PromotesIngressDns, ReadsStoredCloudflareTokens, RequiresFlagsWhenNonInteractive,
-        ResolvesToolEnvironment, StreamsProcessOutput;
+        InteractsWithRoute53Api, LaraKubeOutput, PromotesIngressDns, ReadsStoredDnsCredentials,
+        RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, StreamsProcessOutput;
 
     private const CLOUDFLARE_TOKEN_ENV = 'LARAKUBE_CLOUDFLARE_TOKEN';
 
@@ -81,9 +84,20 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
         $kubectl = Kubectl::forContext($context)->prefix();
         $ns = 'larakube-shared';
 
-        $token = $this->resolveToken($kubectl, $ns);
+        $provider = DnsProvider::from((string) ($this->option('provider') ?: DnsProvider::CLOUDFLARE->value));
 
-        $zones = $this->resolveZones($token);
+        if ($provider === DnsProvider::ROUTE53 && ! $this->route53Available()) {
+            $this->laraKubeError('The AWS CLI is required to manage Route53 zones. Run `larakube setup --tools=aws` first.');
+
+            return 1;
+        }
+
+        $credential = $this->resolveCredential($provider, $kubectl, $ns);
+        if ($credential === null) {
+            return 1;
+        }
+
+        $zones = $this->resolveZones($provider, $credential);
         if ($zones === []) {
             return 1;
         }
@@ -127,20 +141,21 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
         $zoneList = implode(', ', $zones);
 
         if (! $this->confirmDestructive([
-            "ExternalDNS will manage {$zoneList} from '{$env}':",
+            "ExternalDNS will manage {$zoneList} from '{$env}' via {$provider->label()}:",
             "Records are created and DELETED to match this cluster's ingresses.",
             "Only records owned by {$ownerId} are touched.",
         ])) {
             return 0;
         }
 
-        $this->withSpin("Syncing the Cloudflare token for {$groupSlug}...", fn () => Kubectl::fromPrefix($kubectl)->putSecret($ns, "cloudflare-token-{$groupSlug}", ['token' => $token]));
+        $this->withSpin("Syncing the {$provider->label()} credential for {$groupSlug}...", fn () => Kubectl::fromPrefix($kubectl)->putSecret($ns, $provider->credentialSecretName($groupSlug), $credential));
 
         $manifest = view('k8s.dns.zone', [
             'namespace' => $ns,
             'zones' => $zones,
             'slug' => $groupSlug,
             'ownerId' => $ownerId,
+            'provider' => $provider,
         ])->render();
 
         $this->line("  Applying ExternalDNS for {$zoneList}...");
@@ -162,8 +177,8 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
         $this->line("  <fg=gray>Owner ID:</>   <fg=blue>{$ownerId}</> <fg=gray>(this cluster only)</>");
         $this->line("  <fg=gray>Instance:</>   <fg=blue>external-dns-{$groupSlug}</>");
         $this->newLine();
-        $this->line('  <fg=gray>A zone with a different Cloudflare account (different token) needs its own group:</>');
-        $this->line("  <fg=blue>larakube tool:init --tool=external-dns {$env} --cloudflare-token=…</>");
+        $this->line('  <fg=gray>A zone with a different account or provider needs its own group:</>');
+        $this->line("  <fg=blue>larakube tool:init --tool=external-dns {$env} --provider=… --cloudflare-token=…</>");
         $this->line('  <fg=gray>See everything this cluster manages:</> <fg=blue>larakube external-dns:list '.$env.'</>');
         $this->newLine();
 
@@ -171,22 +186,36 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
     }
 
     /**
-     * The Cloudflare API token driving discovery. No zone is known yet at
-     * this point — the token's own Cloudflare-side scope IS what determines
-     * which zone(s) this instance ends up managing (see resolveZones()).
+     * The credential driving discovery, as Secret data keyed by
+     * $provider->credentialSecretKeys(). No zone is known yet at this point —
+     * the credential's own scope IS what determines which zone(s) this
+     * instance ends up managing (see resolveZones()).
+     *
+     * @return array<string, string>|null
      */
-    protected function resolveToken(string $kubectl, string $ns): string
+    protected function resolveCredential(DnsProvider $provider, string $kubectl, string $ns): ?array
+    {
+        return match ($provider) {
+            DnsProvider::CLOUDFLARE => $this->resolveCloudflareCredential($kubectl, $ns),
+            DnsProvider::ROUTE53 => $this->resolveRoute53Credential($kubectl, $ns),
+        };
+    }
+
+    /**
+     * @return array<string, string>|null
+     */
+    protected function resolveCloudflareCredential(string $kubectl, string $ns): ?array
     {
         $token = (string) ($this->option('cloudflare-token') ?? '');
         if ($token !== '') {
-            return $token;
+            return ['token' => $token];
         }
 
         // The same variable tls:init reads, so a caller can hand the token over
         // without it ever appearing in the process list.
         $fromEnv = trim((string) getenv(self::CLOUDFLARE_TOKEN_ENV));
         if ($fromEnv !== '') {
-            return $fromEnv;
+            return ['token' => $fromEnv];
         }
 
         // Reuse what is already stored, so this command is re-runnable like
@@ -199,14 +228,17 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
         // Only when exactly one is stored: the slug is derived from the zones a
         // token can see, so with several there is no way to know which one this
         // run means without being told via --cloudflare-token= or --group=.
-        $stored = $this->storedCloudflareTokens($kubectl, $ns);
+        $stored = array_filter(
+            $this->storedDnsCredentials($kubectl, $ns),
+            fn (array $entry): bool => $entry['provider'] === DnsProvider::CLOUDFLARE,
+        );
 
         if (count($stored) === 1) {
             $slug = array_key_first($stored);
             $this->laraKubeInfo("Reusing the stored Cloudflare token for '{$slug}'.");
             $this->line('  <fg=gray>Pass</> <fg=blue>--cloudflare-token=</> <fg=gray>to replace it.</>');
 
-            return $stored[$slug];
+            return $stored[$slug]['data'];
         }
 
         if ($this->cannotPrompt()) {
@@ -227,24 +259,78 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
         $this->line('     <fg=gray>scope it deliberately, the same second line of defence --domain-filter always adds.</>');
         $this->newLine();
 
-        return (string) text(label: 'Cloudflare API token', required: true);
+        return ['token' => (string) text(label: 'Cloudflare API token', required: true)];
     }
 
     /**
-     * The zone(s) this instance will manage: every zone the token can see,
-     * narrowed to an explicit --zone= subset when given. Returns [] (having
-     * already printed its own error) on a bad token, a token with no zone
-     * access, or a --zone= naming something the token can't actually see —
+     * @return array<string, string>|null
+     */
+    protected function resolveRoute53Credential(string $kubectl, string $ns): ?array
+    {
+        $accessKeyId = (string) ($this->option('aws-access-key-id') ?: getenv('AWS_ACCESS_KEY_ID') ?: '');
+        $secretAccessKey = (string) ($this->option('aws-secret-access-key') ?: getenv('AWS_SECRET_ACCESS_KEY') ?: '');
+
+        if ($accessKeyId !== '' && $secretAccessKey !== '') {
+            $region = (string) ($this->option('aws-region') ?: getenv('AWS_DEFAULT_REGION') ?: 'us-east-1');
+
+            return ['access_key_id' => $accessKeyId, 'secret_access_key' => $secretAccessKey, 'region' => $region];
+        }
+
+        $stored = array_filter(
+            $this->storedDnsCredentials($kubectl, $ns),
+            fn (array $entry): bool => $entry['provider'] === DnsProvider::ROUTE53,
+        );
+
+        if (count($stored) === 1) {
+            $slug = array_key_first($stored);
+            $this->laraKubeInfo("Reusing the stored Route53 credential for '{$slug}'.");
+            $this->line('  <fg=gray>Pass</> <fg=blue>--aws-access-key-id=</> <fg=gray>/</> <fg=blue>--aws-secret-access-key=</> <fg=gray>to replace it.</>');
+
+            return $stored[$slug]['data'];
+        }
+
+        if ($this->cannotPrompt()) {
+            throw new MissingFlagException(
+                'aws-access-key-id',
+                'the AWS access key ID and secret access key for Route53 (--aws-access-key-id= and --aws-secret-access-key=)',
+                'larakube tool:init --tool=external-dns production --provider=route53 --aws-access-key-id=… --aws-secret-access-key=…',
+            );
+        }
+
+        $this->newLine();
+        foreach (DnsProvider::ROUTE53->onboardingSteps() as $step) {
+            $this->line("  <fg=gray>{$step}</>");
+        }
+        $this->newLine();
+
+        $keyId = (string) text(label: 'AWS Access Key ID', placeholder: 'AKIA...', required: true);
+        $secret = (string) password(label: 'AWS Secret Access Key', required: true);
+        $region = (string) text(label: 'AWS Region', default: 'us-east-1', required: true);
+
+        $this->registerSecret($secret);
+
+        return ['access_key_id' => $keyId, 'secret_access_key' => $secret, 'region' => $region];
+    }
+
+    /**
+     * The zone(s) this instance will manage: every zone the credential can
+     * see, narrowed to an explicit --zone= subset when given. Returns []
+     * (having already printed its own error) on a bad credential, one with
+     * no zone access, or a --zone= naming something it can't actually see —
      * never guesses or silently drops an unrecognised zone.
      *
+     * @param  array<string, string>  $credential
      * @return list<string>
      */
-    protected function resolveZones(string $token): array
+    protected function resolveZones(DnsProvider $provider, array $credential): array
     {
-        $discovered = array_values($this->cloudflareListZones($token));
+        $discovered = array_values(match ($provider) {
+            DnsProvider::CLOUDFLARE => $this->cloudflareListZones($credential['token']),
+            DnsProvider::ROUTE53 => $this->route53ListZones($this->route53Env($credential)),
+        });
 
         if ($discovered === []) {
-            $this->laraKubeError("This token has no zone access — check it's valid and scoped correctly in Cloudflare.");
+            $this->laraKubeError("This credential has no zone access — check it's valid and scoped correctly for {$provider->label()}.");
 
             return [];
         }
@@ -257,7 +343,7 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
 
         $missing = array_diff($requested, $discovered);
         if ($missing !== []) {
-            $this->laraKubeError("This token can't see: ".implode(', ', $missing));
+            $this->laraKubeError("This credential can't see: ".implode(', ', $missing));
             $this->line('  <fg=gray>Zones it can see: </>'.implode(', ', $discovered));
 
             return [];
@@ -296,15 +382,15 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
         if ($this->cannotPrompt()) {
             $auto = $this->zoneSlug($env);
             $this->laraKubeInfo(
-                'This token manages '.count($zones).' zones ('.implode(', ', $zones).') — no --group given, '
-                ."using '{$auto}' (this cluster's own name) so it can't collide with another cluster sharing this token.",
+                'This credential manages '.count($zones).' zones ('.implode(', ', $zones).') — no --group given, '
+                ."using '{$auto}' (this cluster's own name) so it can't collide with another cluster sharing this credential.",
             );
 
             return $auto;
         }
 
         return (string) text(
-            label: 'This token manages '.count($zones).' zones ('.implode(', ', $zones).') — name this instance',
+            label: 'This credential manages '.count($zones).' zones ('.implode(', ', $zones).') — name this instance',
             placeholder: 'shared',
             required: true,
         );
