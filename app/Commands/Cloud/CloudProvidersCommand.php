@@ -62,7 +62,7 @@ class CloudProvidersCommand extends Command
     }
 
     /**
-     * @return array{slug: string, label: string, regions: list<array{value: string, label: string}>, defaultRegion: string, vpsSizes: list<array{value: string, label: string}>, defaultVpsSize: string, defaultDevBoxSize: string, managedSizes: list<array{value: string, label: string}>, defaultManagedSize: string, credentials: array{ready: bool, hint: ?string}}
+     * @return array{slug: string, label: string, regions: list<array{value: string, label: string}>, defaultRegion: string, vpsSizes: list<array{value: string, label: string}>, defaultVpsSize: string, defaultDevBoxSize: string, managedSizes: list<array{value: string, label: string}>, defaultManagedSize: string, managedProvider: string, haOption: string, haCost: ?string, credentials: array{ready: bool, hint: ?string}}
      */
     protected function describe(CloudProvider $provider): array
     {
@@ -98,6 +98,9 @@ class CloudProvidersCommand extends Command
             'defaultDevBoxSize' => $this->devBoxSize($priced ?? $sizes, $defaultSize),
             'managedSizes' => $this->pickerOptions($provider->managedSizes()),
             'defaultManagedSize' => $provider->defaultManagedSize(),
+            'managedProvider' => $provider->managedProvider()->value,
+            'haOption' => $provider->managedProvider()->haOption(),
+            'haCost' => $provider->managedProvider()->haCost(),
             'pricing' => $pricing,
             'credentials' => $credentials,
             'accounts' => $accountData['accounts'],

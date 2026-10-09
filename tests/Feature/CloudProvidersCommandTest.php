@@ -46,6 +46,19 @@ test('--json lists every active provider with its regions, sizes, and defaults',
         ->and(array_column($gcp['vpsSizes'], 'value'))->toBe(array_keys(CloudProvider::GCP->vpsSizes()));
 });
 
+test('--json exposes each provider\'s managed-Kubernetes mapping, HA model, and HA cost', function (): void {
+    cloudProvidersClearCredentialEnv();
+    Process::fake(['*' => Process::result(exitCode: 1)]);
+
+    $providers = cloudProvidersRunJson();
+
+    expect($providers['do'])->toMatchArray(['managedProvider' => 'doks', 'haOption' => 'boolean', 'haCost' => '$40/month'])
+        ->and($providers['gcp'])->toMatchArray(['managedProvider' => 'gke', 'haOption' => 'always', 'haCost' => null])
+        ->and($providers['aws'])->toMatchArray(['managedProvider' => 'eks', 'haOption' => 'always', 'haCost' => null])
+        ->and($providers['hetzner'])->toMatchArray(['managedProvider' => 'custom', 'haOption' => 'unknown', 'haCost' => null])
+        ->and($providers['hetzner']['managedSizes'])->toBe([]);
+});
+
 test('a saved DigitalOcean token reports ready, a missing one reports a hint', function (): void {
     cloudProvidersClearCredentialEnv();
     Process::fake(['*' => Process::result(exitCode: 1)]);
