@@ -26,6 +26,8 @@ enum DnsProvider: string
 }
 ```
 
+**2026-10 note — GoDaddy considered, deliberately left out for now.** Re-verified live: Traefik's DNS-01 side would be fine (`go-acme/lego`, the ACME library compiled directly into Traefik's own binary, has a first-party [`godaddy` provider](https://go-acme.github.io/lego/dns/godaddy/)), but ExternalDNS's GoDaddy support sits at **Alpha** stability — community-provided, maintainers only review PRs, no testing on a real GoDaddy account (confirmed against [ExternalDNS's provider status table](https://github.com/kubernetes-sigs/external-dns/blob/master/docs/faq.md)). Per this repo's own tool-verification standard, that's not stable enough to ship yet — revisit if/when it graduates past Alpha. See "Explicitly out of scope" below.
+
 Per-provider methods, mirroring `RelayProvider`'s shape:
 
 - `label()` — "Cloudflare", "AWS Route 53", "Google Cloud DNS".
@@ -61,6 +63,7 @@ Sources checked live: [ExternalDNS AWS tutorial](https://github.com/kubernetes-s
 
 - **DigitalOcean** — ExternalDNS dropped in-tree DO support; it's webhook-only now (a separate Deployment, not a flag). Heavier lift, defer.
 - **Azure DNS** — both ExternalDNS and lego support it, but the user doesn't currently have an Azure test account; no urgency.
+- **GoDaddy** — Traefik/lego's DNS-01 side is fully native and would be fine, but ExternalDNS's GoDaddy support is Alpha-tier (community-provided, not maintainer-tested) — not stable enough to ship per this repo's own tool-verification standard. Revisit once it's no longer Alpha.
 - Narrowing the GCP IAM role below `roles/dns.admin` — flag it, don't block the first working version on it.
 
 ## Suggested phasing
@@ -72,3 +75,15 @@ Sources checked live: [ExternalDNS AWS tutorial](https://github.com/kubernetes-s
 ## Open question to resolve before implementation
 
 Should `tls:init` and `external-dns:init` be forced onto the *same* provider/credential for a given zone, or could a cluster reasonably use Route53 for ExternalDNS but Cloudflare for cert issuance on the same domain? Today's single-provider (Cloudflare) design doesn't have to answer this. Recommend: same provider per zone, for the same reason `DnsInitCommand`'s own docblock gives for one-owner-ID-per-zone — two different credentials touching the same zone's DNS is exactly the kind of split-brain this codebase has already been burned by once (see the zone-conflict detection `checkForConflicts()` already guards against).
+
+## 2026-10 addendum: should `external-dns:init`/`tls:init` just be merged into one command?
+
+Asked directly by the user; answered here rather than left open, since the code already gives a clear answer: **no, keep them separate**, but keep extending the one thing that should stay shared — credentials.
+
+- They're already deliberately decoupled in the existing code: `TlsInitCommand`'s own docblock says it's "unrelated to ExternalDNS apart from the credential," and `resolveCloudflareToken()` already defaults to reusing whatever `dns:init` stored rather than asking again. This plan's `DnsProvider` abstraction is exactly what lets that same reuse work for Route53/GCDNS credentials too — the fix is generalizing the shared credential layer both commands already lean on, not merging the commands.
+- They solve orthogonal problems with genuinely independent "skip this" cases (next section) — merging would force a user who only wants one into configuring both, or complicate the one real legitimate case of wanting just one.
+
+### When would a user legitimately need neither?
+
+- **`tls:init` (the DNS-01 challenge):** Traefik's default HTTP-01 challenge already works with zero `tls:init` involvement for most setups. It's only needed when (a) the host is proxied through something that intercepts the HTTP-01 challenge (Cloudflare's orange-cloud is the only case supported today), or (b) the user wants a wildcard certificate (HTTP-01 structurally cannot issue one; only DNS-01 can).
+- **`dns:init` (ExternalDNS):** only valuable to someone who wants new Cluster Tool/app subdomains to get DNS records created automatically. Anyone with a small, static set of hosts, or anyone deliberately keeping DNS outside LaraKube's control (e.g. a shared corporate zone under change control), has no reason to run it — they just add records by hand and never touch this command.
