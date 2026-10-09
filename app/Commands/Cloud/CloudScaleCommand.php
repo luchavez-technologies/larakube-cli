@@ -13,6 +13,7 @@ use App\Traits\InteractsWithGcp;
 use App\Traits\InteractsWithHetzner;
 use App\Traits\InteractsWithOpenTofu;
 use App\Traits\InteractsWithProjectConfig;
+use App\Traits\InteractsWithRemoteSsh;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ReadsCommandOptions;
 use App\Traits\ResolvesEnvironmentContext;
@@ -25,7 +26,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class CloudScaleCommand extends Command
 {
-    use EmitsJsonOutput, InteractsWithAws, InteractsWithEnvironments, InteractsWithGcp, InteractsWithHetzner, InteractsWithOpenTofu, InteractsWithProjectConfig, LaraKubeOutput, ReadsCommandOptions, ResolvesEnvironmentContext;
+    use EmitsJsonOutput, InteractsWithAws, InteractsWithEnvironments, InteractsWithGcp, InteractsWithHetzner, InteractsWithOpenTofu, InteractsWithProjectConfig, InteractsWithRemoteSsh, LaraKubeOutput, ReadsCommandOptions, ResolvesEnvironmentContext;
 
     protected $signature = 'cloud:scale
         {environment? : Environment bound to a stack (e.g. prod) or direct stack name}
@@ -270,6 +271,31 @@ class CloudScaleCommand extends Command
 
             return $this->tofuApply($bin, $stack->name);
         });
+
+        // Terraform returning only means the provider accepted the resize
+        // request — many providers reboot the VM to apply it, and nothing
+        // above confirms k3s (or even sshd) actually survived that.
+        if ($stack->ip !== null && $stack->sshKey !== null && is_file($stack->sshKey)) {
+            $this->laraKubeInfo("Waiting for '{$stack->name}' to come back...");
+
+            if (! $this->waitForSsh('larakube', $stack->ip, '22', $stack->sshKey)) {
+                $message = "'{$stack->name}' did not come back over SSH after scaling. Check it in your provider's console.";
+                $this->laraKubeError($message);
+                State::setLastError($message);
+
+                return 1;
+            }
+
+            if ($stack->context !== null && ! $this->waitForKubernetes($stack->context)) {
+                $message = "'{$stack->name}' is back, but Kubernetes is not answering yet. Give it another minute, then check the server's page.";
+                $this->laraKubeWarn($message);
+                State::setLastError($message);
+
+                return 1;
+            }
+
+            $this->laraKubeInfo("'{$stack->name}' is back and serving again.");
+        }
 
         $this->result = [
             'stackName' => $stack->name,

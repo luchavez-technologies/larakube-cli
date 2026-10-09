@@ -66,6 +66,29 @@ trait InteractsWithRemoteSsh
     }
 
     /**
+     * Poll an already-synced kube-context's API server until it answers (or
+     * we give up). Used after anything that might have interrupted k3s
+     * without reprovisioning it — a reboot (cloud:restart) or a live VPS
+     * resize (cloud:scale) — never during first-time provisioning, which has
+     * no local context to poll yet (see ProvisionsK3sNode::waitForK3sReady(),
+     * its SSH-based equivalent for that earlier stage).
+     */
+    protected function waitForKubernetes(string $context, int $attempts = 36, int $delay = 5): bool
+    {
+        $this->laraKubeInfo('Waiting for Kubernetes...');
+
+        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+            if (Process::timeout(15)->run(['kubectl', "--context={$context}", 'get', '--raw=/readyz', '--request-timeout=5s'])->successful()) {
+                return true;
+            }
+
+            Sleep::sleep($delay);
+        }
+
+        return false;
+    }
+
+    /**
      * If a system upgrade pulled in a kernel/library update that needs a
      * reboot to fully take effect (Ubuntu/Debian flag this via the presence
      * of /var/run/reboot-required), reboot now and wait for the box to come

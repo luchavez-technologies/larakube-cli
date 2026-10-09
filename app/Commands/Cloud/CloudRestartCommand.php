@@ -99,19 +99,4 @@ class CloudRestartCommand extends Command
 
         return 0;
     }
-
-    private function waitForKubernetes(string $context, int $attempts = 36, int $delay = 5): bool
-    {
-        $this->laraKubeInfo('Waiting for Kubernetes...');
-
-        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
-            if (Process::timeout(15)->run(['kubectl', "--context={$context}", 'get', '--raw=/readyz', '--request-timeout=5s'])->successful()) {
-                return true;
-            }
-
-            Sleep::sleep($delay);
-        }
-
-        return false;
-    }
 }
