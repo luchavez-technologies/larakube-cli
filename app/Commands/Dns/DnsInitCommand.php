@@ -88,7 +88,7 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $group = $this->resolveGroup($zones);
+        $group = $this->resolveGroup($zones, $env);
         if ($group === false) {
             return 1;
         }
@@ -267,16 +267,22 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
     }
 
     /**
-     * The stable --group= name for this instance. Required whenever 2+
-     * zones are in scope — never silently derived from the zone set (see
-     * groupSlug()'s own docblock for why). false signals "already errored,
-     * abort" — the same tri-state shape resolveInstanceForTool() uses
-     * elsewhere in this codebase, kept consistent rather than inventing a
-     * second convention for the same kind of decision.
+     * The stable --group= name for this instance. Never silently derived
+     * from the zone set (see groupSlug()'s own docblock for why — it would
+     * orphan the Deployment the moment a zone is added or removed from the
+     * token's scope). Derived from the environment name instead when no
+     * human is present to ask: that identifier is already unique per
+     * cluster and zone-independent, so two different clusters sharing the
+     * same multi-zone token can never collide — the exact incident a
+     * shared/hardcoded owner ID caused before (see project history).
+     * false signals "already errored, abort" — the same tri-state shape
+     * resolveInstanceForTool() uses elsewhere in this codebase, kept
+     * consistent rather than inventing a second convention for the same
+     * kind of decision.
      *
      * @param  list<string>  $zones
      */
-    protected function resolveGroup(array $zones): string|false|null
+    protected function resolveGroup(array $zones, string $env): string|false|null
     {
         $group = (string) ($this->option('group') ?: '');
         if ($group !== '') {
@@ -288,11 +294,13 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
         }
 
         if ($this->cannotPrompt()) {
-            throw new MissingFlagException(
-                'group',
-                'a stable name for this multi-zone instance ('.implode(', ', $zones).')',
-                'larakube tool:init --tool=external-dns production --group=shared --cloudflare-token=…',
+            $auto = $this->zoneSlug($env);
+            $this->laraKubeInfo(
+                'This token manages '.count($zones).' zones ('.implode(', ', $zones).') — no --group given, '
+                ."using '{$auto}' (this cluster's own name) so it can't collide with another cluster sharing this token.",
             );
+
+            return $auto;
         }
 
         return (string) text(

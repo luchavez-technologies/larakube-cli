@@ -75,15 +75,48 @@ test('tool:init --tool=external-dns manages the sole zone the token can see when
         ->expectsOutputToContain('ExternalDNS is managing example.com');
 });
 
-test('tool:init --tool=external-dns requires --group= when the token covers multiple zones and none is given', function (): void {
-    // An unfiltered/unnamed multi-zone instance is exactly the ambiguity this
-    // flag exists to avoid guessing at — a stable identity must never be
-    // derived from a mutable zone set (see groupSlug()'s own docblock).
-    Process::fake(dnsFakes());
+test('tool:init --tool=external-dns auto-names a multi-zone instance after the environment when no human is present to ask', function (): void {
+    // A person just pasting in a Cloudflare token has no way to know it's
+    // multi-zone, so this must never throw non-interactively — but the
+    // auto-name still can't be derived from the (mutable) zone set, so it
+    // falls back to the one identifier that's both already unique per
+    // cluster and zone-independent: the environment name.
+    Process::fake(dnsFakes('abc12345', [
+        '*apply -f -*' => Process::result(output: 'applied'),
+    ]));
     dnsZonesSaloonFake(['ourfridays.com', 'larakube.app']);
 
-    $this->artisan('tool:init --tool=external-dns prod --context=ctx --cloudflare-token=t --no-interaction --force')->run();
-})->throws(MissingFlagException::class, 'Missing required --group');
+    $this->artisan('tool:init --tool=external-dns prod --context=ctx --cloudflare-token=t --no-interaction --force')
+        ->assertExitCode(0)
+        ->expectsOutputToContain("using 'prod'")
+        ->expectsOutputToContain('external-dns-prod');
+});
+
+test('two clusters sharing one multi-zone token auto-name into two different groups, never colliding', function (): void {
+    // The exact prior incident (project_dns_multizone): a shared/derived
+    // owner ID across clusters deletes the other cluster's DNS records.
+    $appliedByEnv = [];
+
+    foreach (['prod', 'staging'] as $env) {
+        Process::fake(dnsFakes('abc12345', [
+            '*apply -f -*' => function ($process) use (&$appliedByEnv, $env) {
+                $cmd = is_string($process->command) ? $process->command : implode(' ', (array) $process->command);
+                if (str_contains($cmd, 'external-dns')) {
+                    $appliedByEnv[$env] = $cmd;
+                }
+
+                return Process::result(output: 'applied');
+            },
+        ]));
+        dnsZonesSaloonFake(['ourfridays.com', 'larakube.app']);
+
+        $this->artisan("tool:init --tool=external-dns {$env} --context=ctx --cloudflare-token=t --no-interaction --force")
+            ->assertExitCode(0);
+    }
+
+    expect($appliedByEnv['prod'])->toContain('--txt-owner-id=larakube-abc12345-prod')
+        ->and($appliedByEnv['staging'])->toContain('--txt-owner-id=larakube-abc12345-staging');
+});
 
 test('tool:init --tool=external-dns confines the instance to one zone and gives it a cluster-unique owner', function (): void {
     $applied = null;
