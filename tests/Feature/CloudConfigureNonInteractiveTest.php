@@ -15,10 +15,12 @@
  */
 
 use App\Commands\Cloud\CloudConfigureCommand;
+use App\Data\CloudData;
 use App\Data\ConfigData;
 use App\Data\RegistryData;
 use App\Enums\IngressController;
 use App\Enums\RegistryProvider;
+use App\Exceptions\MissingFlagException;
 use App\Facades\State;
 use Laravel\Prompts\Prompt;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
@@ -35,6 +37,10 @@ function cloudConfigureFlagRunner(array $options = []): CloudConfigureCommand
         public function bindOptions(array $options): void
         {
             $this->input = new ArrayInput($options, $this->getDefinition());
+            // ArrayInput doesn't go through Application::doRunCommand()'s own
+            // --no-interaction handling, so set it explicitly — this whole
+            // file is about non-interactive flag behavior (see docblock).
+            $this->input->setInteractive(false);
         }
 
         // --- public wrappers around the protected methods under test ---
@@ -57,6 +63,11 @@ function cloudConfigureFlagRunner(array $options = []): CloudConfigureCommand
         public function registry(ConfigData $config, string $envName, bool $required): RegistryData
         {
             return $this->promptRegistry($config, $envName, $required);
+        }
+
+        public function base(?string $environment): int
+        {
+            return $this->configureBase($environment);
         }
     };
 
@@ -155,6 +166,57 @@ function saveNonInteractiveProject(string $dir): ConfigData
 
     return $config;
 }
+
+// --- --context / --rebind (the rebind-no-op fix) ---------------------------
+
+function saveRebindProject(string $dir, string $existingContext): ConfigData
+{
+    $config = nonInteractiveConfig();
+    $config->setCloud('production', new CloudData(context: $existingContext, provider: 'doks'));
+    $config->setHost('production', 'web', 'rebindtest.example.com');
+    $config->setPath($dir);
+    $config->saveToFile($dir);
+
+    return $config;
+}
+
+test('non-interactive --context naming a DIFFERENT target without --rebind throws, naming the flag', function (): void {
+    saveRebindProject($this->tempDir, 'do-nyc1-old-cluster');
+
+    expect(fn () => cloudConfigureFlagRunner(['--context' => 'do-nyc1-new-cluster'])->base('production'))
+        ->toThrow(MissingFlagException::class, 'Missing required --rebind');
+
+    // Nothing was written — the old target survives the refused attempt.
+    $reloaded = ConfigData::loadFromFile($this->tempDir);
+    expect($reloaded->getCloud('production')->context)->toBe('do-nyc1-old-cluster');
+});
+
+test('non-interactive --context naming the SAME target already saved succeeds as a no-op, no --rebind needed', function (): void {
+    saveRebindProject($this->tempDir, 'do-nyc1-old-cluster');
+
+    expect(cloudConfigureFlagRunner(['--context' => 'do-nyc1-old-cluster'])->base('production'))->toBe(0);
+
+    $reloaded = ConfigData::loadFromFile($this->tempDir);
+    expect($reloaded->getCloud('production')->context)->toBe('do-nyc1-old-cluster');
+});
+
+test('non-interactive --context with --rebind actually moves the environment to the new target', function (): void {
+    saveRebindProject($this->tempDir, 'do-nyc1-old-cluster');
+
+    expect(cloudConfigureFlagRunner(['--context' => 'do-nyc1-new-cluster', '--rebind' => true])->base('production'))->toBe(0);
+
+    $reloaded = ConfigData::loadFromFile($this->tempDir);
+    expect($reloaded->getCloud('production')->context)->toBe('do-nyc1-new-cluster');
+});
+
+test('non-interactive re-run with no --context and no --rebind leaves an existing target alone', function (): void {
+    saveRebindProject($this->tempDir, 'do-nyc1-old-cluster');
+
+    expect(cloudConfigureFlagRunner([])->base('production'))->toBe(0);
+
+    $reloaded = ConfigData::loadFromFile($this->tempDir);
+    expect($reloaded->getCloud('production')->context)->toBe('do-nyc1-old-cluster');
+});
 
 test('cloud:configure --only=registry with flags configures and persists headlessly', function (): void {
     saveNonInteractiveProject($this->tempDir);

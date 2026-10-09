@@ -9,6 +9,7 @@ use App\Data\RegistryData;
 use App\Enums\AppFramework;
 use App\Enums\ClusterTool;
 use App\Enums\RegistryProvider;
+use App\Exceptions\MissingFlagException;
 use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 
@@ -119,14 +120,43 @@ trait ConfiguresCloudEnvironment
         // for confirmation first — everything else here is idempotent (skips
         // re-prompting when a real value already exists), this is the one step
         // that isn't, so it needs its own guard against an accidental reset.
+        //
+        // Non-interactively, that confirm() used to silently default to "no"
+        // and exit 0 — a caller passing --context=<new> on an already-bound
+        // environment got told nothing happened, with no way to actually force
+        // it short of hand-editing .larakube.local.json. --rebind is the
+        // explicit, auditable way to say "yes, move it" without a human present
+        // (this repo's own Strict Non-Interactive Flag Rule: never guess,
+        // never silently no-op — fail loudly and name the flag instead).
         $existingCloud = $config->getCloud($environment);
         $hasExistingTarget = $existingCloud !== null && ($existingCloud->ip !== null || $existingCloud->context !== null);
 
-        if (! $hasExistingTarget || confirm(
-            "'{$environment}' already targets '".($existingCloud->context ?? $existingCloud->ip)."' — reconfigure the deploy target?",
-            false,
-        )) {
+        if (! $hasExistingTarget) {
             $config = $this->promptCloudTarget($config, $environment, $projectPath);
+        } else {
+            $currentTarget = $existingCloud->context ?? $this->environmentContextName((string) $existingCloud->ip);
+            $requestedTarget = method_exists($this, 'hasOption') && $this->hasOption('context') ? trim((string) $this->option('context')) : '';
+            $rebind = method_exists($this, 'hasOption') && $this->hasOption('rebind') && (bool) $this->option('rebind');
+            $interactive = ! isset($this->input) || $this->input->isInteractive();
+
+            if ($requestedTarget !== '' && $requestedTarget === $currentTarget) {
+                // Already correct — idempotent no-op, no flag or prompt needed
+                // just to re-assert the value that's already saved.
+            } elseif ($rebind) {
+                $config = $this->promptCloudTarget($config, $environment, $projectPath);
+            } elseif ($interactive) {
+                if (confirm("'{$environment}' already targets '{$currentTarget}' — reconfigure the deploy target?", false)) {
+                    $config = $this->promptCloudTarget($config, $environment, $projectPath);
+                }
+            } elseif ($requestedTarget !== '') {
+                throw new MissingFlagException(
+                    'rebind',
+                    "confirmation that '{$environment}' should move from '{$currentTarget}' to '{$requestedTarget}'",
+                    "larakube cloud:configure {$environment} --context={$requestedTarget} --rebind",
+                );
+            }
+            // else: non-interactive, no --rebind, no new --context given at
+            // all — nothing was asked for, leave the existing target as-is.
         }
 
         // 🌐 Ensure a real web host + every client-facing non-web host (Reverb WS,

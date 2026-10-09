@@ -29,6 +29,9 @@ class CloudConfigureCommand extends Command
         {environment? : The environment to configure}
         {--only= : Re-run just one step instead of the full guided flow: registry|ci|hosts}
         {--rotate : Revoke the current deploy token/secrets and mint fresh ones (use after a leak) — only with --only=ci}
+        {--context= : Kube-context (or larakube-<ip> for a VPS) to bind the environment\'s deploy target to, non-interactively}
+        {--rebind : Overwrite an already-configured deploy target non-interactively — required when --context= names a DIFFERENT target than what is already saved}
+        {--ssh-key= : Path to the SSH private key, when --context= resolves to a VPS (skips the prompt)}
         {--ingress= : Ingress controller slug for the environment (skips the prompt)}
         {--managed= : Comma-separated externally-managed services; pass an empty value for none (skips the prompt)}
         {--web-host= : The environment\'s primary web host, e.g. app.example.com (skips the prompt)}
