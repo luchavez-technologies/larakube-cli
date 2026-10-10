@@ -16,6 +16,7 @@ use App\Commands\Cloud\CloudMigrateCommand;
 use App\Data\CloudData;
 use App\Data\ConfigData;
 use Illuminate\Console\OutputStyle;
+use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
@@ -37,12 +38,17 @@ afterEach(function (): void {
     $this->temporaryDirectory->delete();
 });
 
+/**
+ * 'managed' defaults to ['mysql', 'storage'] so ownStorageItems() returns []
+ * and tests not about that feature don't also have to fake its kubectl exec
+ * calls — tests for migrateOwnStorage() itself override 'managed' back to [].
+ */
 function migrateProject(array $overrides = []): ConfigData
 {
     $config = ConfigData::from(array_merge([
         'name' => 'migratetest',
         'database' => 'mysql',
-        'environments' => ['local' => [], 'production' => []],
+        'environments' => ['local' => [], 'production' => ['managed' => ['mysql', 'storage']]],
     ], $overrides));
 
     $config->setCloud('production', new CloudData(context: 'larakube-1.2.3.4'));
@@ -281,7 +287,7 @@ function migrateBackupFakes(): array
 }
 
 test('a Commons environment rebuilds structure, copies data, and restores every manifest item', function (): void {
-    saveMigrateProject($this->tempDir, ['environments' => ['local' => [], 'production' => ['plex' => ['mysql']]]]);
+    saveMigrateProject($this->tempDir, ['environments' => ['local' => [], 'production' => ['plex' => ['mysql'], 'managed' => ['storage']]]]);
 
     Process::fake(migrateBackupFakes());
 
@@ -322,7 +328,7 @@ test('a Commons environment rebuilds structure, copies data, and restores every 
 });
 
 test('a missing backup destination rebuilds Commons structure but warns data was not copied, without failing the migration', function (): void {
-    saveMigrateProject($this->tempDir, ['environments' => ['local' => [], 'production' => ['plex' => ['mysql']]]]);
+    saveMigrateProject($this->tempDir, ['environments' => ['local' => [], 'production' => ['plex' => ['mysql'], 'managed' => ['storage']]]]);
 
     Process::fake(['*' => Process::result(output: '')]); // no bucket configured
 
@@ -344,7 +350,7 @@ test('a missing backup destination rebuilds Commons structure but warns data was
 });
 
 test('--quiesce pauses the app before the Commons snapshot and resumes it after', function (): void {
-    saveMigrateProject($this->tempDir, ['environments' => ['local' => [], 'production' => ['plex' => ['mysql']]]]);
+    saveMigrateProject($this->tempDir, ['environments' => ['local' => [], 'production' => ['plex' => ['mysql'], 'managed' => ['storage']]]]);
 
     // The specific pattern must be listed BEFORE migrateBackupFakes()'s own
     // trailing '*' catch-all — Process::fake() matches in insertion order, so
@@ -383,4 +389,83 @@ test('--quiesce pauses the app before the Commons snapshot and resumes it after'
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'scale deployment/web --replicas=0'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'scale deployment/web --replicas=3'));
+});
+
+// --- own-storage copy (SQLite/self-hosted DB/local storage, post-redeploy) --
+
+/**
+ * Simulates the `> 'file'` redirect a real exec would produce — Process::fake()
+ * never touches the filesystem, so the dump/archive "out" steps must write
+ * their own dummy bytes for the subsequent sizeOf() check to see anything.
+ */
+function writesRedirectedFile(): Closure
+{
+    return function (PendingProcess $process) {
+        if (preg_match("/> '([^']+)'$/", $process->command, $m)) {
+            file_put_contents($m[1], str_repeat('x', 200));
+        }
+
+        return Process::result(exitCode: 0);
+    };
+}
+
+function migrateOwnStorageFakes(): array
+{
+    return [
+        '*exec deploy/web*tar czf*' => writesRedirectedFile(),
+        '*exec deploy/mysql*sh -c*' => writesRedirectedFile(),
+        '*exec -i deploy/web*tar xzf*' => Process::result(exitCode: 0),
+        '*exec -i deploy/mysql*sh -c*' => Process::result(exitCode: 0),
+        '*' => Process::result(output: ''),
+    ];
+}
+
+test('after a successful redeploy, the self-hosted database and local storage are copied live', function (): void {
+    saveMigrateProject($this->tempDir, ['environments' => ['local' => [], 'production' => ['managed' => []]]]);
+
+    Process::fake(migrateOwnStorageFakes());
+
+    $command = migrateRunner(
+        ['environment' => 'production', '--to-context' => 'do-nyc1-new', '--force' => true, '--json' => true],
+        [
+            'dotenv:push' => 0,
+            'cloud:configure' => 0,
+            'cloud:deploy' => 0,
+        ],
+    );
+
+    expect($command->handle())->toBe(0);
+
+    $output = lastJsonLine($command->buffer->fetch());
+
+    expect($output['ownStorageCopied'])->toContain('self-hosted mysql database')
+        ->and($output['ownStorageCopied'])->toContain('local storage/app/public')
+        ->and($output['ownStorageFailed'])->toBe([]);
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'exec deploy/mysql -n') && str_contains($process->command, '-- sh -c'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'exec -i deploy/mysql'));
+});
+
+test('a failed own-storage copy is reported but does not fail the overall migration', function (): void {
+    saveMigrateProject($this->tempDir, ['environments' => ['local' => [], 'production' => ['managed' => []]]]);
+
+    $fakes = migrateOwnStorageFakes();
+    $fakes['*exec deploy/mysql*sh -c*'] = Process::result(output: '', exitCode: 1); // the dump itself fails
+    Process::fake($fakes);
+
+    $command = migrateRunner(
+        ['environment' => 'production', '--to-context' => 'do-nyc1-new', '--force' => true, '--json' => true],
+        [
+            'dotenv:push' => 0,
+            'cloud:configure' => 0,
+            'cloud:deploy' => 0,
+        ],
+    );
+
+    expect($command->handle())->toBe(0); // cloud:deploy already succeeded — a copy failure doesn't un-succeed it
+
+    $output = lastJsonLine($command->buffer->fetch());
+
+    expect($output['ownStorageFailed'])->toContain('self-hosted mysql database')
+        ->and($output['ownStorageCopied'])->toContain('local storage/app/public');
 });

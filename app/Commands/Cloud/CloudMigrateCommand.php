@@ -3,6 +3,7 @@
 namespace App\Commands\Cloud;
 
 use App\Data\ConfigData;
+use App\Enums\AppFramework;
 use App\Enums\DatabaseDriver;
 use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
@@ -15,6 +16,7 @@ use App\Traits\QuiescesAppDeployments;
 use App\Traits\ReadsCommandOptions;
 use App\Traits\ResolvesEnvironmentContext;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Console\Output\BufferedOutput;
@@ -28,19 +30,29 @@ use Symfony\Component\Console\Output\BufferedOutput;
  * cloud:deploy (redeploy). See cli/plans/active/managed-kubernetes-desktop-
  * and-migration.md Phase C for the design this implements.
  *
+ * After cloud:deploy succeeds on the destination, migrateOwnStorage() also
+ * copies the project's OWN data that nothing else backs up: its SQLite file
+ * or self-hosted (non-Commons, non-externally-managed) database (dump+
+ * restore via the live `web`/`{driver}` pods' own `kubectl exec`, reusing
+ * DatabaseDriver::selfHostedDumpCommand()/selfHostedRestoreCommand() —
+ * exactly PlexMigrateCommand's/PlexLeaveCommand's own mechanism, just across
+ * two contexts instead of one) and its local storage directory
+ * (`storage/app/public`, or Bedrock's `web/app/uploads`) when 'storage'
+ * isn't externally managed. This deliberately does NOT reuse backup:run's
+ * throwaway-PVC-mount restore path — that path drops `subPath` when it
+ * re-mounts a claim (see resolveVolumeClaim()), which would silently land
+ * data in the wrong place for this PVC's several subPath-bound mounts; a
+ * direct live-pod-to-live-pod `tar` pipe sidesteps that entirely, since
+ * `kubectl exec` always sees the container's own (subPath-resolved)
+ * filesystem view, on both ends. ownStorageItems() is also what populates
+ * the pre-flight confirmation list.
+ *
  * Deliberately NOT fully automatic:
  *   - DNS cutover is guidance only (inherited from cloud:deploy's own
  *     printIngressDnsGuidance() — no DNS-provider automation exists for this).
  *   - Commons volume restore stays "deliberately half-manual" per ADR 0010 —
  *     this command surfaces backup:restore's own printed instructions, never
  *     runs them for you.
- *   - The project's OWN storage (its laravel-storage/-data PVCs) and any
- *     SELF-HOSTED (non-Commons, non-externally-managed) database are not
- *     copied by anything today — see detectUnmigratedOwnStorage(). Rather
- *     than ship an untested, structurally-mismatched copy (the app's own
- *     storage PVC is mounted via several `subPath` binds, not one clean
- *     mount point the existing tar-based backup targets assume), this
- *     prints exactly what's uncovered so nothing is silently lost.
  *   - The source cluster is never torn down — it may be shared with other
  *     projects.
  */
@@ -59,7 +71,7 @@ class CloudMigrateCommand extends Command
         {--node-count= : Node count for --provision-managed}
         {--ha : Enable HA control plane for --provision-managed}
         {--k8s-version-prefix= : Managed Kubernetes minor version prefix for --provision-managed}
-        {--quiesce : Scale the app to 0 replicas immediately before the final Commons snapshot, shrinking the write-loss window}
+        {--quiesce : Pause background app deployments immediately before the Commons snapshot and the own-storage copy, shrinking the write-loss window}
         {--skip-dns-guidance : Suppress the printed DNS cutover reminder}
         {--force : Skip confirmation prompts}
         {--json : Emit one machine-readable JSON result on stdout}';
@@ -123,23 +135,15 @@ class CloudMigrateCommand extends Command
 
         $sourceKubectl = Kubectl::forContext($sourceContext)->prefix();
         $plexServices = $config->getPlex($environment);
-        $unmigrated = $this->detectUnmigratedOwnStorage($config, $environment);
+        $ownItems = $this->ownStorageItems($config, $environment);
 
         if (! $this->confirmDestructive([
             "'{$environment}' moves from '{$sourceContext}' to '{$destinationContext}':",
             $plexServices !== [] ? 'Commons structure + data will be copied to the new cluster.' : 'This environment has no Commons to migrate.',
-            $unmigrated === [] ? 'Nothing else needs a manual data copy.' : (count($unmigrated).' item(s) need a MANUAL data copy — listed below, not automated.'),
+            $ownItems === [] ? "Nothing else of this project's own lives outside Commons." : ('Also copied after redeploy: '.implode(', ', array_column($ownItems, 'label')).'.'),
             'The source cluster is left running — tear it down yourself once you have verified the new one.',
         ])) {
             return 0;
-        }
-
-        if ($unmigrated !== []) {
-            $this->newLine();
-            $this->laraKubeWarn('Nothing automates these — copy them yourself before (or after) this run:');
-            foreach ($unmigrated as $line) {
-                $this->line("  <fg=yellow>•</> {$line}");
-            }
         }
 
         if ($plexServices !== [] && ! $this->migrateCommons($config, $environment, $sourceContext, $destinationContext, $sourceKubectl)) {
@@ -172,6 +176,10 @@ class CloudMigrateCommand extends Command
             return 1;
         }
 
+        $ownResults = $ownItems !== []
+            ? $this->migrateOwnStorage($config, $environment, $sourceKubectl, Kubectl::forContext($destinationContext)->prefix(), $ownItems)
+            : [];
+
         $this->newLine();
         $this->laraKubeInfo("✅ '{$environment}' is migrated to '{$destinationContext}'.");
         $this->line("  <fg=gray>Verify it, then tear down the old cluster yourself when you're ready.</>");
@@ -189,7 +197,8 @@ class CloudMigrateCommand extends Command
                 'sourceContext' => $sourceContext,
                 'destinationContext' => $destinationContext,
                 'commonsMigrated' => $plexServices !== [],
-                'manualCopyNeeded' => $unmigrated,
+                'ownStorageCopied' => array_keys(array_filter($ownResults)),
+                'ownStorageFailed' => array_keys(array_filter($ownResults, fn (bool $ok): bool => ! $ok)),
             ]);
         }
 
@@ -339,47 +348,151 @@ class CloudMigrateCommand extends Command
     }
 
     /**
-     * The project's own storage (its laravel-storage/-data PVCs) and any
-     * self-hosted (non-Commons, non-externally-managed) database — nothing
-     * backs these up or copies them anywhere today (confirmed:
+     * The project's own data that lives outside Commons/external management —
+     * nothing backed this up before this command (confirmed:
      * InteractsWithBackup::larakubeNamespaces() only ever scans `larakube-*`
-     * namespaces, never a project's own `{name}-{env}`). Reported so it is
-     * never silently lost, not attempted here — see this class's own
-     * docblock for why.
+     * namespaces, never a project's own `{name}-{env}`). migrateOwnStorage()
+     * copies every item this returns; this is also what the pre-flight
+     * confirmation prompt lists.
      *
-     * @return list<string>
+     * @return list<array{type: 'sqlite'|'database'|'storage', driver: ?DatabaseDriver, path: ?string, label: string}>
      */
-    private function detectUnmigratedOwnStorage(ConfigData $config, string $environment): array
+    private function ownStorageItems(ConfigData $config, string $environment): array
     {
         $plex = $config->getPlex($environment);
         $managed = $config->getManaged($environment);
-        $warnings = [];
+        $items = [];
 
         if ($config->hasDatabase(DatabaseDriver::SQLITE)
             && ! in_array(DatabaseDriver::SQLITE->value, $plex, true)
             && ! in_array(DatabaseDriver::SQLITE->value, $managed, true)
         ) {
-            $warnings[] = "SQLite data ({$config->getName()}-laravel-data-pvc) — dump the file yourself (e.g. `larakube shell web` then copy /var/lib/larakube/database.sqlite) and place it on the new cluster before redeploying.";
+            $items[] = ['type' => 'sqlite', 'driver' => null, 'path' => null, 'label' => 'SQLite data'];
         }
 
         foreach ($config->getDatabases() as $driver) {
             if ($driver === DatabaseDriver::SQLITE) {
-                continue; // already covered above, with its own specific instructions.
+                continue; // already covered above, with its own copy path.
             }
 
             if (in_array($driver->value, $plex, true) || in_array($driver->value, $managed, true)) {
                 continue; // Commons-backed or externally managed — not this project's own storage.
             }
 
-            $warnings[] = "Self-hosted {$driver->value} database — dump it yourself (e.g. `larakube shell {$driver->value}`) and restore it on the new cluster before redeploying.";
+            $items[] = ['type' => 'database', 'driver' => $driver, 'path' => null, 'label' => "self-hosted {$driver->value} database"];
         }
 
         // Always true unless every byte lives in Commons/S3 — logs/cache/sessions
-        // are rebuildable, but anything written under storage/app/public is not.
-        if ($warnings === [] && ! in_array('storage', $managed, true)) {
-            $warnings[] = "The app's own storage volume ({$config->getName()}-laravel-storage-pvc, e.g. storage/app/public) — copy anything irreplaceable in it yourself; nothing backs it up automatically.";
+        // are rebuildable, but anything written here is not.
+        if (! in_array('storage', $managed, true)) {
+            $path = $config->framework === AppFramework::WORDPRESS ? 'web/app/uploads' : 'storage/app/public';
+            $items[] = ['type' => 'storage', 'driver' => null, 'path' => $path, 'label' => "local {$path}"];
         }
 
-        return $warnings;
+        return $items;
+    }
+
+    /**
+     * Copy every ownStorageItems() entry straight between the two clusters'
+     * LIVE pods — dump/tar via `kubectl exec` on the source, pipe through one
+     * local temp file, restore/untar via `kubectl exec -i` on the
+     * destination (whose `cloud:deploy` has already created fresh, empty
+     * PVCs and pods for this to land in). No throwaway helper pod and no raw
+     * PVC mount is involved — see this class's own docblock for why that
+     * matters for a `subPath`-mounted claim like this one. Never fatal: a
+     * failed item is reported and the migration still completes, since
+     * cloud:deploy already succeeded and the environment is live.
+     *
+     * @param  list<array{type: string, driver: ?DatabaseDriver, path: ?string, label: string}>  $items
+     * @return array<string, bool> keyed by item label
+     */
+    private function migrateOwnStorage(ConfigData $config, string $environment, string $sourceKubectl, string $destinationKubectl, array $items): array
+    {
+        $this->newLine();
+        $this->laraKubeInfo("Copying this project's own data to the new cluster...");
+
+        $namespace = $config->getNamespace($environment);
+
+        // 'web' stays up (needed to read storage/app/public live); any
+        // self-hosted DB driver stays up too (needed to dump it); everything
+        // else in the namespace (queues, scheduler, …) is a write source we
+        // can safely pause — same --quiesce convention migrateCommons() uses.
+        $databaseItem = collect($items)->firstWhere('type', 'database');
+        $exclude = array_values(array_filter(['web', $databaseItem['driver']?->value ?? null]));
+
+        $original = [];
+        if ($this->flag('quiesce')) {
+            $original = $this->quiesceAppDeployments($sourceKubectl, $namespace, $exclude);
+        }
+
+        $results = [];
+
+        try {
+            foreach ($items as $item) {
+                $ok = match ($item['type']) {
+                    'sqlite' => $this->pipeExecArchive($sourceKubectl, $destinationKubectl, $namespace, 'web', 'php', '/var/lib/larakube', 'database.sqlite'),
+                    'storage' => $this->pipeExecArchive($sourceKubectl, $destinationKubectl, $namespace, 'web', 'php', '/var/www/html/'.dirname($item['path']), basename($item['path'])),
+                    'database' => $this->pipeExecDump($sourceKubectl, $destinationKubectl, $namespace, $item['driver']),
+                };
+
+                $results[$item['label']] = $ok;
+
+                $this->line($ok
+                    ? "  <fg=green>✓</> Copied {$item['label']}."
+                    : "  <fg=red>✗</> Could not copy {$item['label']} — copy it manually before relying on the new cluster.");
+            }
+        } finally {
+            if ($this->flag('quiesce')) {
+                $this->resumeAppDeployments($sourceKubectl, $namespace, $original);
+            }
+        }
+
+        return $results;
+    }
+
+    /** Tar a directory out of the source pod, pipe it, untar into the destination pod at the same path. */
+    private function pipeExecArchive(string $sourceKubectl, string $destinationKubectl, string $namespace, string $deployment, string $container, string $dir, string $base): bool
+    {
+        $work = TemporaryDirectory::make()->deleteWhenDestroyed();
+        $archive = $work->path('archive.tar.gz');
+
+        $dumped = Process::timeout(900)->run(
+            "{$sourceKubectl} exec deploy/{$deployment} -n ".escapeshellarg($namespace)." -c {$container} -- "
+            .'tar czf - -C '.escapeshellarg($dir).' '.escapeshellarg($base)
+            .' > '.escapeshellarg($archive),
+        )->successful();
+
+        if (! $dumped || $this->sizeOf($archive) === 0) {
+            return false;
+        }
+
+        return Process::timeout(900)->run(
+            'cat '.escapeshellarg($archive)." | {$destinationKubectl} exec -i deploy/{$deployment} -n ".escapeshellarg($namespace)." -c {$container} -- "
+            .'tar xzf - -C '.escapeshellarg($dir),
+        )->successful();
+    }
+
+    /** Dump the source's self-hosted database, pipe it, restore it into the destination's (same driver, freshly deployed). */
+    private function pipeExecDump(string $sourceKubectl, string $destinationKubectl, string $namespace, DatabaseDriver $driver): bool
+    {
+        // permission() must be set BEFORE create() — make() already creates
+        // the directory, so setting it after would be a no-op on disk.
+        $work = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $dump = $work->path('dump.sql');
+
+        $dumped = Process::timeout(900)->run(
+            "{$sourceKubectl} exec deploy/{$driver->value} -n ".escapeshellarg($namespace).' -- sh -c '
+            .escapeshellarg($driver->selfHostedDumpCommand())
+            .' > '.escapeshellarg($dump),
+        )->successful();
+
+        if (! $dumped || $this->sizeOf($dump) === 0) {
+            return false;
+        }
+
+        return Process::timeout(900)->run(
+            'cat '.escapeshellarg($dump)." | {$destinationKubectl} exec -i deploy/{$driver->value} -n ".escapeshellarg($namespace).' -- sh -c '
+            .escapeshellarg($driver->selfHostedRestoreCommand()),
+        )->successful();
     }
 }
