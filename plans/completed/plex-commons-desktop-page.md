@@ -1,5 +1,15 @@
 # Plex Commons: a dedicated Desktop page
 
+## ✅ SHIPPED 2026-10-10 — all 5 phases
+
+- **Phase 1** (`cli`) — `plex:show --json`: `{initialized, context, services, tenants: {tool, project, custom}}`.
+- **Phase 2** (`cli`) — `plex:provision`: on-demand Commons credentials for apps outside the LaraKube project model.
+- **Phase 3** (`desktop`) — `ClusterStatus::plex()` repointed at the CLI (validates the JSON shape explicitly via `parsePlexReport()` rather than trusting it blindly); `ServerSwitcher` extracted from Tools/Mail and retrofitted onto both, provider icon now shown by default everywhere (a user-caught inconsistency — Tools had it, Mail didn't).
+- **Phase 4** (`desktop`) — the dedicated `/plex` page: `PlexController` (`entry`/`index`/`refresh`/`provision`), `PlexCommonsServices` (maps `plex:show`'s services map into `ToolCommons::describe()`'s existing `{kind, label, driver, name, mode, details}` shape, so `BackingServicesCard` renders it for free), Application Tenants table split by tool/project/custom, Resource Usage panel (`podMetrics()` reused as-is — `extractComponent()` already strips Commons pod-name hashes correctly, no changes needed), Provision-credentials form.
+- **Phase 5** (`desktop`) — per-tenant Evict (confirm dialog) and Rotate (one-click, scoped to `--only=db`) row actions.
+
+Deviations from the original design, found while building: `PlexCommonsCard`'s hardcoded 3-tile grid flattens the new `{tool,project,custom}` tenant shape immediately (not deferred to Phase 4) rather than shipping a known regression on an already-live page between phases; `ToolCommons::describe()` needed updating too, for the same reason (it reads `tenants.tool` as a list now, not a flat map).
+
 ## Context
 
 LaraKube already has a working Commons backend — 13 `plex:*` CLI commands (`plex:init/join/leave/migrate/export/evict/remove/rotate/resources/show/start/stop/destroy`, all in `cli/app/Commands/Plex/`, built on `App\Services\PlexService`/`App\Traits\InteractsWithPlex`) — and partial Desktop wiring (`PlexController` with 5 actions, a `PlexCommonsCard` component, `ClusterStatus::plex()`). The user wants a dedicated `/plex` page, structured like the existing "Tools" and "Mail" pages (server picker at top, per-server detail page, covers a server that has nothing installed yet), because they'll use it to check on resource-usage spikes, see which tools/projects are connected to which Commons services, and provision on-demand credentials (e.g. a database) for a custom app.
