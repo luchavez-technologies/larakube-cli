@@ -6,6 +6,7 @@ use App\Enums\DatabaseDriver;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
+use App\Traits\QuiescesAppDeployments;
 use App\Traits\ResolvesEnvironmentContext;
 use Illuminate\Support\Facades\Process;
 
@@ -21,7 +22,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class PlexMigrateCommand extends Command
 {
-    use InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext;
+    use InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, QuiescesAppDeployments, ResolvesEnvironmentContext;
 
     protected $signature = 'plex:migrate
         {environment? : Environment whose data to migrate to the Commons — "local" (default) or a cloud environment. Omit to be prompted.}
@@ -490,70 +491,5 @@ class PlexMigrateCommand extends Command
         }
 
         return false;
-    }
-
-    /**
-     * Scale every deployment in the namespace to zero EXCEPT the source
-     * service(s) being copied from (which must stay up to be read) —
-     * quiesces writes so the dump/mirror gets a consistent snapshot. Returns
-     * the original replica counts (empty if nothing else runs there) so
-     * resumeAppDeployments() can restore them afterwards.
-     *
-     * @param  array<int, string>  $excludeDeployments
-     * @return array<string, int>
-     */
-    protected function quiesceAppDeployments(string $kubectl, string $namespace, array $excludeDeployments): array
-    {
-        $decoded = json_decode(Process::run(
-            "{$kubectl} get deployments -n ".escapeshellarg($namespace).' -o json',
-        )->output(), true);
-
-        $original = [];
-        foreach ($decoded['items'] ?? [] as $item) {
-            $name = $item['metadata']['name'] ?? null;
-            $replicas = $item['spec']['replicas'] ?? 1;
-
-            if ($name === null || in_array($name, $excludeDeployments, true) || $replicas < 1) {
-                continue;
-            }
-
-            $original[$name] = $replicas;
-        }
-
-        if (empty($original)) {
-            return [];
-        }
-
-        $this->withSpin('Pausing app writes ('.implode(', ', array_keys($original)).')...', function () use ($kubectl, $namespace, $original) {
-            foreach (array_keys($original) as $name) {
-                Process::run("{$kubectl} scale deployment/{$name} --replicas=0 -n ".escapeshellarg($namespace));
-            }
-
-            return true;
-        });
-
-        return $original;
-    }
-
-    /**
-     * Restore the replica counts captured by quiesceAppDeployments(). Called
-     * from a `finally` block so the app resumes whether the copy succeeded or
-     * failed.
-     *
-     * @param  array<string, int>  $original
-     */
-    protected function resumeAppDeployments(string $kubectl, string $namespace, array $original): void
-    {
-        if (empty($original)) {
-            return;
-        }
-
-        $this->withSpin('Resuming app...', function () use ($kubectl, $namespace, $original) {
-            foreach ($original as $name => $replicas) {
-                Process::run("{$kubectl} scale deployment/{$name} --replicas={$replicas} -n ".escapeshellarg($namespace));
-            }
-
-            return true;
-        });
     }
 }
