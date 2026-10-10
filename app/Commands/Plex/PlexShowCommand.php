@@ -212,9 +212,17 @@ class PlexShowCommand extends Command
                 'redisIndex' => $alloc['redis_index'] ?? null,
                 's3Bucket' => $alloc['s3_bucket'] ?? null,
                 'rotation' => ($alloc['db'] ?? null) ? $this->rotationStatusData($openBaoReady, $dbWired, $kubectl, 'tenant-'.$name) : null,
+                // getLabel() is a verbose "Product (category tagline)" string meant
+                // for a catalog listing — brandName()/tagline() (same pair tool:list
+                // --json already sends) are what a compact UI needs. canonicalTool()
+                // resolves a legacy category case (GIT, NOTES, ...) to its real
+                // product (FORGEJO, OUTLINE, ...) first; both methods call it with
+                // no engine hint, so an engine-family tool (Flow) always agrees on
+                // its default engine (n8n) between the two.
                 'clusterTool' => $tool !== null ? [
                     'tool' => $tool->value,
-                    'label' => $tool->getLabel(),
+                    'name' => $tool->canonicalTool()->brandName(),
+                    'tagline' => $tool->tagline(),
                     'logo' => $tool->logo(),
                     'icon' => $tool->icon(),
                 ] : null,
