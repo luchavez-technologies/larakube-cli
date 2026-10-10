@@ -93,6 +93,17 @@ spec:
           ports:
             - containerPort: 5678
               name: http
+          # n8n's own example manifests request 250Mi/limit 500Mi, but real
+          # idle usage on a live instance (Postgres-backed, community nodes
+          # loaded) already runs ~450Mi — requests reflect that baseline, with
+          # the limit leaving headroom for Code-node/data-heavy executions.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
           startupProbe:
             tcpSocket:
               port: 5678

@@ -169,6 +169,17 @@ spec:
             - "--web.enable-lifecycle"
           ports:
             - containerPort: 9090
+          # The heaviest of the 6 monitoring components (TSDB + scraping) —
+          # sized for a small single-node cluster's own metrics, well below
+          # the 2-replica HA production guidance (500m/2Gi requests,
+          # 2000m/8Gi limits) community docs cite for real multi-tenant use.
+          resources:
+            requests:
+              cpu: 150m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
           volumeMounts:
             - name: config
               mountPath: /etc/prometheus/
@@ -303,6 +314,13 @@ spec:
           ports:
             - containerPort: 3100
               name: http
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
           volumeMounts:
             - name: config
               mountPath: /etc/loki/
@@ -437,6 +455,13 @@ spec:
               name: otlp-grpc
             - containerPort: 4318
               name: otlp-http
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 512Mi
           volumeMounts:
             - name: config
               mountPath: /etc/tempo/
@@ -591,6 +616,16 @@ spec:
           ports:
             - containerPort: 9080
               name: http
+          # Matches Promtail's own documented default (200m/128Mi, same for
+          # requests and limits) — this is a DaemonSet, so the real total
+          # cost is this × live node count, not a single pod.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
           volumeMounts:
             - name: config
               mountPath: /etc/promtail/
@@ -687,6 +722,13 @@ spec:
               name: http-metrics
             - containerPort: 8081
               name: telemetry
+          resources:
+            requests:
+              cpu: 25m
+              memory: 50Mi
+            limits:
+              cpu: 100m
+              memory: 150Mi
           readinessProbe:
             httpGet:
               path: /healthz
@@ -852,6 +894,16 @@ spec:
           image: grafana/grafana:10.4.2
           ports:
             - containerPort: 3000
+          # Grafana's own published evaluation floor is 512Mi/1 core as a
+          # LIMIT, not a steady-state request — it's idle most of the time
+          # between dashboard loads, unlike Prometheus/Loki beneath it.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
           env:
             - name: GF_SECURITY_ADMIN_PASSWORD
               valueFrom:

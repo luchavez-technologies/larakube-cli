@@ -94,6 +94,18 @@ spec:
               name: http
             - containerPort: 22
               name: ssh
+          # Gitea's own Helm chart defaults (Forgejo is a Gitea fork, same
+          # profile) are 100m/512Mi requests, 1000m/512Mi limits — matched
+          # here, with a slightly higher memory limit for LFS/Actions/package
+          # registry traffic this image also serves. No official Forgejo
+          # k8s minimum is published; revise once real usage data exists.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
           env:
             {{-- FORGEJO__<SECTION>__<KEY> is Forgejo's native prefix. GITEA__ is
                  still honoured for compatibility, but we template these, so there
