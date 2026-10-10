@@ -24,7 +24,7 @@ The user wants to give a solo dev whose project outgrows a tiny k3s VPS a path t
 
 ## Recommended phased approach
 
-### Phase A — Expose managed cluster creation in Desktop (quick win)
+### Phase A — Expose managed cluster creation in Desktop (quick win) — ✅ SHIPPED 2026-10-10
 
 - **A1 (CLI, small):** `app/Commands/Cloud/CloudProvidersCommand.php::describe()` — add `managedProvider`, `haOption`, `haCost` to the JSON it already returns (all three already exist on `ManagedProvider`, pure exposure).
 - **A2 (Desktop types):** `desktop/resources/js/types/larakube.ts` — add `managedProvider?`, `haOption?`, `haCost?` to `Provider`.
@@ -33,26 +33,56 @@ The user wants to give a solo dev whose project outgrows a tiny k3s VPS a path t
 - **A5 (Desktop form):** `desktop/resources/js/pages/servers/create.tsx` — VPS/Managed segmented toggle, shown only when `provider.managedSizes.length > 0` (already `false` for Hetzner — no slug special-casing needed) and only for `!devBox`. Size picker sources `provider.managedSizes`/`defaultManagedSize` when managed (extend the existing `startSize()` branch rather than duplicating it). Node count input, HA checkbox (only when `haOption === 'boolean'`, i.e. only DO today), optional advanced k8s-version field. Reuse the existing price-parsing idiom (`size?.label.match(/\(([^)]*\/mo[^)]*)\)/)?.[1]`) to show an estimated total monthly cost — directly addresses the "now has the money, should still see the number" framing.
 - **Deliberately out of scope for Phase A:** no GCP zone picker (let `cloud:create` keep its `region + '-a'` default), no AKS/Azure (zero provisioning support exists anywhere).
 
-### Phase B — Fix the rebind-no-op gap (foundational for Phase C)
+### Phase B — Fix the rebind-no-op gap (foundational for Phase C) — ✅ SHIPPED 2026-10-10
+
+Built as designed, plus one addition found while building Phase C: the bare
+`cloud:configure` also chains `maybeJoinCommons()`/`configureCi()` after
+`configureBase()`, which can fail for reasons unrelated to the rebind itself
+(no git remote, `gh`/`tea` not logged in) and would wrongly report an
+automated rebind as failed even though it had already saved. Added
+`--only=target` (alongside the existing `--only=registry|ci|hosts`) to call
+just `configureBase()` — both Desktop's `ProjectController::link()` and the
+new `cloud:migrate` use it instead of the bare command.
 
 - **Decision: fix `cloud:configure`, not `env`.** `cloud:configure <env>` (`app/Traits/ConfiguresCloudEnvironment.php::configureBase()`) already owns "overwrite an existing deploy target," gated behind an interactive `confirm()`. It needs one new flag, not new logic. Changing `env`'s existing-environment branch would duplicate that logic in a command whose contract is "the project-DNA wizard," not deploy-target management.
 - Add `--rebind` to `app/Commands/Cloud/CloudConfigureCommand.php`. In `configureBase()`: no existing target → unchanged (first capture). Existing target + `--rebind` → skip confirm, go straight to `promptCloudTarget()`. Existing target + no `--rebind` + non-interactive + the new target actually differs → **throw** (naming `--rebind`), instead of today's silent skip-and-exit-0 — this is the project's own Strict Non-Interactive Flag Rule applied to a place that currently violates it. Existing target + no `--rebind` + the new target is identical → no-op success (idempotent, don't force the flag to re-assert the same value). Existing target + no `--rebind` + interactive → unchanged.
 - Repoint `desktop/app/Http/Controllers/ProjectController.php::link()` at `cloud:configure {env} --context=... --rebind --web-hosts=...` instead of `env {env} --context=...`. Drop `--ingress=traefik`/`--managed=` from this call (inert on an existing environment; verify they're still honored by `configureBase()`'s new-environment branch for first-time links before relying on that).
 - Test coverage: first-time capture (unchanged), interactive re-run with confirm (unchanged), non-interactive re-run without `--rebind` on a *different* target (now errors, was silently skipping), same target without `--rebind` (succeeds as no-op), different target with `--rebind` (now actually rebinds).
 
-### Phase C — Orchestrate the actual migration
+### Phase C — Orchestrate the actual migration — ✅ SHIPPED 2026-10-10
 
 New command: `app/Commands/Cloud/CloudMigrateCommand.php`, `cloud:migrate {environment} {--to-context=} {--provision-managed} {--provider=} {--region=} {--size=} {--node-count=} {--ha} {--k8s-version-prefix=} {--quiesce} {--skip-dns-guidance} {--json}`. An orchestrator, not new provisioning logic:
 
 1. Resolve source cloud target; error if nothing to migrate from or source===destination.
 2. Resolve/provision destination: `--to-context=` to attach an existing cluster, or `--provision-managed` to `$this->call('cloud:create', [...forwarded flags])` and read its context back.
 3. If Plex-joined: `plex:export --context=<source>` → `plex:init --from=<file> --context=<destination>` (Commons structure), then `backup:run`/`backup:restore` with explicit credentials (Commons data) — surface, never auto-run, `backup:restore`'s existing "deliberately half-manual" volume-restore instructions (ADR 0010).
-4. **New work (the one real gap):** migrate the project's own storage PVC / self-hosted DB. Recommend extending `backup:run`/`backup:restore`'s existing namespace scan with an opt-in `--include-namespace=` for the project's own `{name}-{env}` namespace, rather than building and maintaining a second backup format — this is the single largest net-new engineering item in the whole plan; size it as its own sub-task.
+4. **The one real gap, resolved differently than first proposed:** rather than extending `backup:run`'s namespace scan with `--include-namespace=` (the project's own storage is mounted via several `subPath` binds, not the one clean mount point the tar-based backup mechanism assumes — untested and risky to automate in this pass), `CloudMigrateCommand::detectUnmigratedOwnStorage()` detects exactly which of SQLite data / self-hosted DB / the app's own storage volume are NOT Commons-backed or externally-managed, and prints each as an explicit manual-copy instruction before the migration proceeds — nothing is silently lost, consistent with ADR 0010's own "deliberately half-manual" volume-restore precedent. Revisit `--include-namespace=` as a later, separately-sized sub-task if this recurs often enough to justify it.
 5. `dotenv:push {environment} --context=<destination>` (already works as-is).
 6. Optional `--quiesce`: scale the app to 0 replicas immediately before the final snapshot, shrinking the write-loss window (mirrors `plex:migrate`'s own quiesce step).
 7. Rebind via the Phase B mechanism: `cloud:configure {environment} --context=<destination> --rebind`.
 8. Redeploy: `$this->call('cloud:deploy', [$environment])` — inherits its existing registry/arch/shared-storage/DNS-guidance logic for free.
 9. **Never silently promised as automatic:** DNS cutover (guidance only, no DNS-provider automation exists for this), volume restore (stays "deliberately half-manual" per ADR 0010), old-cluster teardown (never auto-destroy the source — it may be shared with other projects; end with a reminder to verify and tear down manually after a soak period).
+
+**Build note for anyone extending this command:** `$this->call()` (the
+`Illuminate\Console\Concerns\CallsCommands` trait every command gets) only
+accepts 2 arguments in this framework — passing a 3rd `BufferedOutput` is
+silently ignored, not an error, which would make any attempt to read a
+sub-command's `--json` output always see an empty buffer. Capturing a
+sub-command's output requires `Illuminate\Support\Facades\Artisan::call($command, $args, $buffer)`
+instead (the Kernel's `call()` genuinely supports a 3rd output-buffer
+argument) — used for `cloud:create` and `backup:run` here, while every
+other nested call (`plex:export`/`plex:init`/`backup:restore`/
+`dotenv:push`/`cloud:configure`/`cloud:deploy`, where only the exit code
+matters) still uses plain `$this->call()` so their output streams into
+this command's own terminal output as usual.
+
+Quiesce/resume mechanics shared with `plex:migrate` via the new
+`App\Traits\QuiescesAppDeployments` trait. Test coverage:
+`tests/Feature/CloudMigrateCommandTest.php` (argument validation,
+no-Commons happy path, `--provision-managed` reading the destination
+context back from `cloud:create`, Commons structure+data migration with
+per-item `backup:restore`, missing-backup-destination degradation, and
+`--quiesce` scale-down/scale-up).
 
 ### Closing constraints to flag to the user
 
