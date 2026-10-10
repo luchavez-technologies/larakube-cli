@@ -103,7 +103,7 @@ abstract class InsightsInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Insights (Metabase) manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 120),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 120, tool: ClusterTool::INSIGHTS),
         );
         $temporaryDirectory->delete();
 

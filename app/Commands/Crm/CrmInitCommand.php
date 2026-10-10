@@ -164,7 +164,7 @@ abstract class CrmInitCommand extends AbstractToolInitCommand
         // successfully on its own a few minutes later.
         $rolledOut = $this->withSpin(
             'Applying Twenty CRM manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 420),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 420, tool: ClusterTool::CRM),
         );
         $temporaryDirectory->delete();
 

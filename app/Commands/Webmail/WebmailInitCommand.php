@@ -131,7 +131,7 @@ abstract class WebmailInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Bulwark manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180, tool: ClusterTool::WEBMAIL),
         );
         $temporaryDirectory->delete();
 

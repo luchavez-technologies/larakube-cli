@@ -272,7 +272,7 @@ abstract class GitInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Forgejo core manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deployment, 120),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deployment, 120, tool: ClusterTool::GIT),
         );
         $temporaryDirectory->delete();
 

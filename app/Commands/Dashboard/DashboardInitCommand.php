@@ -80,7 +80,7 @@ abstract class DashboardInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Headlamp Control Plane manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180, tool: ClusterTool::DASHBOARD),
         );
         $temporaryDirectory->delete();
 

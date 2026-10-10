@@ -105,7 +105,7 @@ abstract class LinkInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Kutt manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180, tool: ClusterTool::LINK),
         );
         $temporaryDirectory->delete();
 

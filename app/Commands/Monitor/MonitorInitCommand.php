@@ -150,6 +150,10 @@ abstract class MonitorInitCommand extends AbstractToolInitCommand
             'withTraces' => $withTraces,
         ])->render();
 
+        if (! $this->guardClusterCapacity($kubectl, $manifest)) {
+            return 1;
+        }
+
         $temporaryDirectory = TemporaryDirectory::make();
         $tmp = $temporaryDirectory->path('larakube-monitoring.yaml');
         file_put_contents($tmp, $manifest);

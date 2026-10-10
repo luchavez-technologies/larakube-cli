@@ -97,7 +97,7 @@ abstract class MeetInitCommand extends AbstractToolInitCommand
         // is the one thing that must not happen.
         $rolledOut = $this->withSpin(
             'Applying LiveKit (Meet) manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180, tool: ClusterTool::MEET),
         );
         $temporaryDirectory->delete();
 

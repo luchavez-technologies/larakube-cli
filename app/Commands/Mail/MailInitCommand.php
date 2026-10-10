@@ -178,7 +178,7 @@ abstract class MailInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Stalwart manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, ClusterTool::MAIL->deploymentName($resourceInstance), 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, ClusterTool::MAIL->deploymentName($resourceInstance), 180, tool: ClusterTool::MAIL),
         );
         $temporaryDirectory->delete();
 

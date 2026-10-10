@@ -183,7 +183,7 @@ abstract class NotesInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Outline wiki manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180, tool: ClusterTool::NOTES),
         );
         $temporaryDirectory->delete();
 

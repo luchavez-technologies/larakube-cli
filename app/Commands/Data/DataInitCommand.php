@@ -265,7 +265,7 @@ abstract class DataInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             "Applying {$engineLabel} manifests...",
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deployName, 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deployName, 180, tool: ClusterTool::DATA),
         );
         $temporaryDirectory->delete();
 

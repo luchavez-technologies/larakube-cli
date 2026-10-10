@@ -109,7 +109,7 @@ abstract class PasteInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Yopass manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 120),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 120, tool: ClusterTool::PASTE),
         );
         $temporaryDirectory->delete();
 

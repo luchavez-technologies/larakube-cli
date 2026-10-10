@@ -111,7 +111,7 @@ abstract class SheetsInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Sheet (Teable) manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 300),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 300, tool: ClusterTool::SHEETS),
         );
         $temporaryDirectory->delete();
 

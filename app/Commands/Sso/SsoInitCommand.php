@@ -188,7 +188,7 @@ abstract class SsoInitCommand extends AbstractToolInitCommand
         // serving traffic — give it generous headroom (up to 300s).
         $rolledOut = $this->withSpin(
             'Applying Zitadel manifests (first boot runs schema setup)...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 300),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 300, tool: ClusterTool::SSO),
         );
         $temporaryDirectory->delete();
 

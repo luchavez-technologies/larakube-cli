@@ -225,7 +225,7 @@ abstract class VpnInitCommand extends AbstractToolInitCommand
 
         $clientRolledOut = $this->withSpin(
             'Deploying NetBird Client...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $clientTmp, $ns, $client, 120),
+            fn () => $this->applyAndVerifyRollout($kubectl, $clientTmp, $ns, $client, 120, tool: ClusterTool::VPN),
         );
         $clientTemporaryDirectory->delete();
 

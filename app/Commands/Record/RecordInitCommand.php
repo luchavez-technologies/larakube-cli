@@ -159,7 +159,7 @@ abstract class RecordInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Sendrec manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180, tool: ClusterTool::RECORD),
         );
         $temporaryDirectory->delete();
 

@@ -108,7 +108,7 @@ abstract class PasswordsInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Vaultwarden manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 120),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 120, tool: ClusterTool::PASSWORDS),
         );
         $temporaryDirectory->delete();
 

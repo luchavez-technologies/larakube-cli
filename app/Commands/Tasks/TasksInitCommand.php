@@ -95,7 +95,7 @@ abstract class TasksInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Planka tasks manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180, tool: ClusterTool::TASKS),
         );
         $temporaryDirectory->delete();
 

@@ -108,7 +108,7 @@ abstract class SupportInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Chatwoot manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180, tool: ClusterTool::SUPPORT),
         );
         $temporaryDirectory->delete();
 

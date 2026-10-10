@@ -78,7 +78,7 @@ abstract class UptimeInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Uptime Kuma manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 120),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 120, tool: ClusterTool::UPTIME),
         );
         $temporaryDirectory->delete();
 

@@ -10,13 +10,21 @@ use Illuminate\Support\Facades\Process;
  * @param  list<string>  $liveDeployments
  * @param  array{manifest: ?string, secret: ?array, commands: list<string>}|null  $seen
  */
-function fakeFlowInitCluster(?array &$seen, array $secret = [], array $liveDeployments = [], bool $rolloutFails = false): void
+function fakeFlowInitCluster(?array &$seen, array $secret = [], array $liveDeployments = [], bool $rolloutFails = false, ?array $capacity = null): void
 {
     $seen = ['manifest' => null, 'secret' => null, 'commands' => []];
 
-    Process::fake(function ($process) use (&$seen, $secret, $liveDeployments, $rolloutFails) {
+    Process::fake(function ($process) use (&$seen, $secret, $liveDeployments, $rolloutFails, $capacity) {
         $cmd = (string) $process->command;
         $seen['commands'][] = $cmd;
+
+        if ($capacity !== null && str_contains($cmd, 'get nodes -o json')) {
+            return Process::result(output: (string) json_encode(['items' => $capacity['nodes']]));
+        }
+
+        if ($capacity !== null && str_contains($cmd, 'get pods -A -o json')) {
+            return Process::result(output: (string) json_encode(['items' => $capacity['pods']]));
+        }
 
         if (str_contains($cmd, ' apply -f -')) {
             $input = (string) $process->input;
@@ -134,3 +142,40 @@ test('tool:init --tool=n8n stops, instead of reporting it live, when the rollout
 // n8n:remove's own coverage lives in ToolRemoveCommandTest.php (shared
 // AbstractToolRemoveCommand behavior tested once across tools, including
 // flow) rather than duplicated here.
+
+/** A single, nearly-full node — too small for n8n's real resources: block to fit. */
+function tinyOneNodeCapacity(): array
+{
+    return [
+        'nodes' => [['status' => ['allocatable' => ['cpu' => '1', 'memory' => '1Gi']]]],
+        'pods' => [[
+            'status' => ['phase' => 'Running'],
+            'spec' => ['containers' => [['resources' => ['requests' => ['cpu' => '900m', 'memory' => '900Mi']]]]],
+        ]],
+    ];
+}
+
+test('tool:init --tool=n8n refuses on a cluster without enough free capacity, non-interactively and without --force', function (): void {
+    fakeFlowInitCluster($seen, capacity: tinyOneNodeCapacity());
+
+    test()->artisan('tool:init', [
+        '--tool' => 'n8n',
+        'environment' => 'local',
+        '--domain' => 'flow.example.com',
+        '--no-interaction' => true,
+    ])
+        ->assertExitCode(1)
+        ->expectsOutputToContain('This cluster may not have enough free capacity for this install');
+
+    expect($seen['manifest'])->toBeNull();
+});
+
+test('tool:init --tool=n8n --force proceeds past a cluster without enough free capacity', function (): void {
+    fakeFlowInitCluster($seen, capacity: tinyOneNodeCapacity());
+
+    runFlowInit() // already passes --force
+        ->assertExitCode(0)
+        ->expectsOutputToContain('Proceeding despite low free cluster capacity (--force).');
+
+    expect($seen['manifest'])->not->toBeNull();
+});

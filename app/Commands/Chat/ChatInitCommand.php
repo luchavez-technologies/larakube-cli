@@ -170,6 +170,10 @@ abstract class ChatInitCommand extends AbstractToolInitCommand
             'mas' => $mas,
         ])->render();
 
+        if (! $this->guardClusterCapacity($kubectl, $manifest)) {
+            return 1;
+        }
+
         $temporaryDirectory = TemporaryDirectory::make();
         $tmp = $temporaryDirectory->path('larakube-chat.yaml');
         file_put_contents($tmp, $manifest);

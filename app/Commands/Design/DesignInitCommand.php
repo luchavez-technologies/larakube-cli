@@ -165,7 +165,7 @@ abstract class DesignInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Penpot manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $backendName, 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $backendName, 180, tool: ClusterTool::DESIGN),
         );
         $temporaryDirectory->delete();
 

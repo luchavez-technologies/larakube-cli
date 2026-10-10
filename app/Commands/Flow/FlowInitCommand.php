@@ -124,6 +124,10 @@ abstract class FlowInitCommand extends AbstractToolInitCommand
             'proxied' => $this->resolveProxied($env === 'local'),
         ])->render();
 
+        if (! $this->guardClusterCapacity($kubectl, $manifest)) {
+            return 1;
+        }
+
         if (! $this->kubectlStep("Applying {$toolBrand} manifests...", fn () => $cluster->apply($manifest))
             || ! $this->kubectlStep("Waiting for {$toolBrand}...", fn () => $cluster->rolloutStatus($ns, $names->deployment(), timeoutSeconds: 420))) {
             return 1;

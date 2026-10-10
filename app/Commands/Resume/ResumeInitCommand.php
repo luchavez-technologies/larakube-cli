@@ -138,7 +138,7 @@ abstract class ResumeInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Reactive Resume manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180, tool: ClusterTool::RESUME),
         );
         $temporaryDirectory->delete();
 

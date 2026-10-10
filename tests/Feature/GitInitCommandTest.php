@@ -9,6 +9,22 @@ afterEach(function (): void {
     MockClient::destroyGlobal();
 });
 
+/** A single, nearly-full node — small enough that Forgejo's real resources: block won't fit. */
+function tinyOneNodeClusterFakes(): array
+{
+    return [
+        '*get nodes -o json*' => Process::result(output: json_encode(['items' => [
+            ['status' => ['allocatable' => ['cpu' => '1', 'memory' => '1Gi']]],
+        ]])),
+        '*get pods -A -o json*' => Process::result(output: json_encode(['items' => [
+            [
+                'status' => ['phase' => 'Running'],
+                'spec' => ['containers' => [['resources' => ['requests' => ['cpu' => '900m', 'memory' => '900Mi']]]]],
+            ],
+        ]])),
+    ];
+}
+
 test('tool:init --tool=forgejo deploys forgejo using plex commons seaweedfs by default', function (): void {
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
@@ -214,3 +230,56 @@ test('tool:init --tool=forgejo reads and keeps the brand name on its own instanc
 
 // forgejo:remove's own coverage lives in GitRemoveCommandTest.php (the
 // resource-set regression test) rather than duplicated here.
+
+test('tool:init --tool=forgejo refuses on a cluster without enough free capacity, non-interactively and without --force', function (): void {
+    Process::fake([
+        ...tinyOneNodeClusterFakes(),
+        '*get configmap plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => [
+                'postgres' => ['enabled' => true],
+                'redis' => ['enabled' => true],
+                'seaweedfs' => ['enabled' => true],
+            ],
+        ]),
+        '*get secret plex-admin*' => base64_encode('test-cred'),
+        '*get secret forgejo-admin*' => Process::result(output: '', exitCode: 1),
+        '*exec *' => Process::result(output: 'success'),
+        '*create namespace*' => Process::result(output: 'namespace created'),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout *' => Process::result(output: 'rollout success'),
+    ]);
+
+    $this->artisan('tool:init --tool=forgejo local --no-interaction --admin-email=admin@example.com')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('This cluster may not have enough free capacity for this install');
+
+    // The guard must stop BEFORE the Forgejo manifest itself is ever applied
+    // (namespace creation also shells out through "apply -f" and legitimately
+    // still runs ahead of the guard, so this checks the actual manifest file).
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'larakube-forgejo.yaml'));
+});
+
+test('tool:init --tool=forgejo --force proceeds past a cluster without enough free capacity', function (): void {
+    Process::fake([
+        ...tinyOneNodeClusterFakes(),
+        '*get configmap plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => [
+                'postgres' => ['enabled' => true],
+                'redis' => ['enabled' => true],
+                'seaweedfs' => ['enabled' => true],
+            ],
+        ]),
+        '*get secret plex-admin*' => base64_encode('test-cred'),
+        '*get secret forgejo-admin*' => Process::result(output: '', exitCode: 1),
+        '*exec *' => Process::result(output: 'success'),
+        '*create namespace*' => Process::result(output: 'namespace created'),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout *' => Process::result(output: 'rollout success'),
+    ]);
+
+    $this->artisan('tool:init --tool=forgejo local --no-interaction --admin-email=admin@example.com --force')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('Proceeding despite low free cluster capacity (--force).');
+});

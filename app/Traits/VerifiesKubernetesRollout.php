@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Enums\ClusterTool;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -25,9 +26,15 @@ trait VerifiesKubernetesRollout
      *
      * @param  string  $kubectl  the full kubectl invocation prefix (e.g. "kubectl", "KUBECONFIG=... kubectl --context X")
      * @param  string  $extraApplyFlags  appended verbatim to the apply command (e.g. '--validate=false')
+     * @param  ?ClusterTool  $tool  when given, the pre-install capacity guard runs against $manifestPath before anything is applied. Left null for the handful of callers that apply a manifest before any tool exists to check against (cluster-provisioning Traefik installers).
      */
-    protected function applyAndVerifyRollout(string $kubectl, string $manifestPath, string $namespace, string $deployment, int $timeoutSeconds = 120, string $extraApplyFlags = ''): bool
+    protected function applyAndVerifyRollout(string $kubectl, string $manifestPath, string $namespace, string $deployment, int $timeoutSeconds = 120, string $extraApplyFlags = '', ?ClusterTool $tool = null): bool
     {
+        if ($tool !== null && method_exists($this, 'guardClusterCapacity')
+            && ! $this->guardClusterCapacity($kubectl, file_get_contents($manifestPath) ?: '')) {
+            return false;
+        }
+
         // Process::run()'s default PHP-level timeout is 60s — well under
         // kubectl's OWN --timeout flags below on a slow rollout (e.g. a
         // Recreate-strategy Deployment waiting out a terminating pod). Without

@@ -133,6 +133,11 @@ test('tool:init --tool=netbird targets the CHOSEN environment\'s own saved conte
             '*get secret netbird-config*' => Process::result(output: vpnManagementConfigFixture('vpn.example.com'), exitCode: 0),
             '*larakube-tools-registry*' => Process::result(output: ''),
             '*create namespace larakube-shared*' => Process::result(output: 'created'),
+            // Pre-install capacity guard reads (VPN client pod): unreadable
+            // on purpose, so the guard steps aside rather than needing a
+            // full node/pod fixture just for this unrelated test.
+            '*get nodes -o json*' => Process::result(output: '', exitCode: 1),
+            '*get pods -A -o json*' => Process::result(output: '', exitCode: 1),
         ]);
         Process::preventStrayProcesses();
 

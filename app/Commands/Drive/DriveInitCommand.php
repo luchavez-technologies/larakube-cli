@@ -135,7 +135,7 @@ abstract class DriveInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             "Applying Drive ({$engineName}) manifests...",
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 120),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 120, tool: ClusterTool::DRIVE),
         );
         $temporaryDirectory->delete();
 
