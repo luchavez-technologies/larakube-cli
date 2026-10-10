@@ -1,11 +1,27 @@
 <?php
 
 use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Process;
 use Saloon\Http\Faking\MockClient;
 use Saloon\Http\Faking\MockResponse;
 use Saloon\Laravel\Facades\Saloon;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
+
+/**
+ * plex:show always prints human lines too, even under --json — only the
+ * LAST line is the JSON result. Uses Artisan::call() (not $this->artisan(),
+ * whose PendingCommand doesn't reliably feed Artisan::output()) — same
+ * precedent as CloudProvidersCommandTest's cloudProvidersRunJson().
+ */
+function plexShowJsonReport(array $arguments = []): array
+{
+    expect(Artisan::call('plex:show', array_merge($arguments, ['--json' => true])))->toBe(0);
+
+    $lines = preg_split('/\R/', trim(Artisan::output())) ?: [];
+
+    return json_decode((string) end($lines), true);
+}
 
 afterEach(function (): void {
     MockClient::destroyGlobal();
@@ -151,4 +167,75 @@ test('plex:show never touches OpenBao when it is not installed', function (): vo
         ->expectsOutputToContain('manual (.env) — OpenBao not installed');
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'port-forward'));
+});
+
+// --- --json (Desktop's ClusterStatus::plex() contract) ----------------------
+
+test('plex:show --json reports initialized: false when Commons has not been set up', function (): void {
+    Process::fake(plexShowFakes([
+        '*get configmap plex-commons*' => Process::result(output: ''),
+    ]));
+
+    expect(plexShowJsonReport(['environment' => 'local', '--context' => 'test-ctx']))->toBe([
+        'initialized' => false,
+        'context' => 'test-ctx',
+        'services' => [],
+        'tenants' => ['tool' => [], 'project' => [], 'custom' => []],
+    ]);
+});
+
+test('plex:show --json groups tenants into tool, project, and custom buckets', function (): void {
+    Process::fake(plexShowFakes([
+        '*get configmap plex-registry*' => Process::result(output: (string) json_encode(['tenants' => [
+            'forgejo' => ['db' => 'forgejo', 'db_service' => 'postgres'],
+            'demo_production' => ['db' => 'demo_production', 'db_service' => 'postgres'],
+            'my-side-project' => ['redis_index' => 3, 'kind' => 'custom'],
+        ]])),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
+    ]));
+
+    $report = plexShowJsonReport(['environment' => 'local', '--context' => 'test-ctx']);
+
+    expect($report['initialized'])->toBeTrue()
+        ->and($report['services']['postgres']['enabled'])->toBeTrue()
+        ->and(collect($report['tenants']['tool'])->pluck('name')->all())->toBe(['forgejo'])
+        ->and(collect($report['tenants']['project'])->pluck('name')->all())->toBe(['demo_production'])
+        ->and(collect($report['tenants']['custom'])->pluck('name')->all())->toBe(['my-side-project'])
+        ->and(collect($report['tenants']['custom'])->first()['redisIndex'])->toBe(3)
+        ->and(collect($report['tenants']['custom'])->first()['rotation'])->toBeNull() // no database — nothing to rotate
+        ->and(collect($report['tenants']['project'])->first()['rotation'])->toBe(['state' => 'manual', 'nextRotation' => null]);
+});
+
+test('plex:show --json never leaks credentials, even with a matching project checked out locally', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $temporaryDirectory->path();
+    $cwd = getcwd();
+
+    try {
+        file_put_contents($dir.'/.larakube.json', json_encode([
+            'name' => 'demo',
+            'environments' => ['local' => ['plex' => ['postgres']]],
+        ]));
+        file_put_contents($dir.'/.env', "DB_HOST=postgres.larakube-plex.svc.cluster.local\nDB_DATABASE=demo_local\nDB_USERNAME=demo_local\nDB_PASSWORD=super-secret-should-never-print\n");
+
+        chdir($dir);
+
+        Process::fake(plexShowFakes([
+            '*get configmap plex-registry*' => Process::result(
+                output: (string) json_encode(['tenants' => ['demo_local' => ['db' => 'demo_local', 'db_service' => 'postgres']]]),
+            ),
+            '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
+        ]));
+
+        // No --context= here on purpose — this is the one path where a
+        // project config IS present, exactly the case showSelfCredentials()
+        // guards against leaking into --json. 'local' is explicit so
+        // resolvePlexEnvironment() doesn't prompt.
+        plexShowJsonReport(['environment' => 'local']);
+
+        expect(trim(Artisan::output()))->not->toContain('super-secret-should-never-print');
+    } finally {
+        chdir($cwd);
+        $temporaryDirectory->delete();
+    }
 });
