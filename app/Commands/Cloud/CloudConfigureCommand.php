@@ -20,14 +20,19 @@ class CloudConfigureCommand extends Command
      * The name and signature of the console command. The bare command runs the
      * full guided setup (deploy target + hosts → optional Commons → CI).
      * `--only` re-runs a single step instead — replaces the old
-     * `cloud:configure:registry` / `:gha` / `:gitlab` sub-commands. There's no
-     * direct replacement for the old `:base`: its host half is `--only=hosts`
-     * (now covering every client-facing host, not just web); its deploy-target
-     * half only changes via a full guided re-run (`cloud:configure {env}`).
+     * `cloud:configure:registry` / `:gha` / `:gitlab` sub-commands. The old
+     * `:base`'s host half is `--only=hosts` (now covering every client-facing
+     * host, not just web); its deploy-target half is `--only=target` —
+     * deliberately narrower than the bare command, which ALSO chains
+     * maybeJoinCommons()/configureCi() afterward: those can fail for reasons
+     * that have nothing to do with the deploy target (no git remote, gh/tea
+     * not logged in), which would wrongly report a REBIND as failed even
+     * though it already saved. Automated callers (Desktop, cloud:migrate)
+     * use --only=target for exactly this reason.
      */
     protected $signature = 'cloud:configure
         {environment? : The environment to configure}
-        {--only= : Re-run just one step instead of the full guided flow: registry|ci|hosts}
+        {--only= : Re-run just one step instead of the full guided flow: target|registry|ci|hosts}
         {--rotate : Revoke the current deploy token/secrets and mint fresh ones (use after a leak) — only with --only=ci}
         {--context= : Kube-context (or larakube-<ip> for a VPS) to bind the environment\'s deploy target to, non-interactively}
         {--rebind : Overwrite an already-configured deploy target non-interactively — required when --context= names a DIFFERENT target than what is already saved}
@@ -71,6 +76,7 @@ class CloudConfigureCommand extends Command
         try {
             return match ($only) {
                 null => $this->configureAll($environment),
+                'target' => $this->configureBase($environment),
                 'registry' => $this->configureRegistry($environment),
                 'ci' => $this->configureCi($environment, (bool) $this->option('rotate')),
                 'hosts' => $this->configureHosts($environment),
@@ -88,7 +94,7 @@ class CloudConfigureCommand extends Command
 
     private function unsupportedOnlyValue(string $only): int
     {
-        $this->laraKubeError("Unknown --only value '{$only}'. Use one of: registry, ci, hosts.");
+        $this->laraKubeError("Unknown --only value '{$only}'. Use one of: target, registry, ci, hosts.");
 
         return 1;
     }
