@@ -28,6 +28,15 @@ trait ProvisionsK3sNode
     use InstallsK3s, InteractsWithRemoteSsh, InteractsWithServerHardening, ManagesTraefikAcmeChallenge, VerifiesKubernetesRollout;
 
     /**
+     * Set by provisionK3sNode() when its Traefik step fails. The pipeline still
+     * returns the context name either way — the node itself provisioned fine —
+     * so a caller that wants to surface this (e.g. cloud:create's --json result
+     * and run-step tracker) reads it after calling provisionK3sNode(); nothing
+     * reads it automatically.
+     */
+    protected ?string $traefikWarning = null;
+
+    /**
      * Install K3s on the remote server.
      */
     protected function installK3s($user, $ip, $port, $keyPath, $config): bool
@@ -549,7 +558,8 @@ BASH;
             $this->line('  👉 Fix the kubeconfig issue above, then re-run this command to pick up from here.');
         } elseif (! $interactive || confirm('Deploy Traefik (Single-Node Hero)?', true)) {
             if (! $this->deployTraefik($contextName, $ip)) {
-                $this->line('  👉 Traefik deploy failed — re-run this command to retry just that step (everything else here is idempotent).');
+                $this->traefikWarning = 'Traefik deploy failed — re-run this command to retry just that step (everything else here is idempotent).';
+                $this->line("  👉 {$this->traefikWarning}");
             }
         }
 

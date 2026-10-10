@@ -621,6 +621,9 @@ class CloudCreateCommand extends Command
         }
 
         $this->result += ['ip' => $ip, 'context' => $context];
+        if ($this->traefikWarning !== null) {
+            $this->result['warnings'] = [$this->traefikWarning];
+        }
 
         $this->newLine();
         $this->laraKubeInfo('✅ VPS provisioning complete!');
@@ -807,13 +810,15 @@ class CloudCreateCommand extends Command
         }
 
         if ($provider === 'gcp' && $projectId = $this->getGcpProjectId()) {
-            Process::run("gcloud container clusters get-credentials {$stackName} --zone {$zone} --project {$projectId} 2>/dev/null");
+            // A regional cluster (HA) is addressed by --region, a zonal one by --zone — passing the wrong one fails to find it.
+            $locationFlag = $ha ? "--region {$region}" : "--zone {$zone}";
+            Process::run("gcloud container clusters get-credentials {$stackName} {$locationFlag} --project {$projectId} 2>/dev/null");
         }
         if ($provider === 'aws') {
             Process::run("aws eks update-kubeconfig --name {$stackName} --region {$region} 2>/dev/null");
         }
 
-        $this->call($initCommand, $doksArgs);
+        $traefikExit = $this->call($initCommand, $doksArgs);
 
         if ($config && $environment) {
             $this->recordManagedTarget($config, $environment, $projectPath, $context, $managedProvider);
@@ -821,6 +826,11 @@ class CloudCreateCommand extends Command
         }
 
         $this->result += ['ip' => null, 'context' => $context];
+        // The cluster itself is up and usable either way — only ingress/TLS
+        // needs a retry, so this stays a warning rather than a failed exit.
+        if ($traefikExit !== 0) {
+            $this->result['warnings'] = ["Traefik installation failed — re-run `{$initCommand} --context={$context}` to retry."];
+        }
 
         $this->newLine();
         $this->laraKubeInfo('✅ Managed k8s provisioning complete!');

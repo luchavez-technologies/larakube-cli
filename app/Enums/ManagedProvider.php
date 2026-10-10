@@ -39,9 +39,10 @@ enum ManagedProvider: string
     /**
      * Whether this provider offers HA as an opt-in choice, is always-on, or tier-based.
      *
-     * - 'boolean'  → simple on/off toggle (DOKS, LKE)
+     * - 'boolean'  → simple on/off toggle (DOKS, LKE, GKE — zonal vs regional location)
      * - 'tier'     → tiered pricing model (AKS: Free/Standard/Premium)
-     * - 'always'   → HA is the default, no choice needed (EKS, GKE, Civo)
+     * - 'always'   → HA is the default, no choice needed (EKS: control plane is
+     *                always multi-AZ by design, no non-HA option exists at all)
      * - 'unknown'  → custom provider, skip the prompt
      */
     public function haOption(): string
@@ -49,8 +50,9 @@ enum ManagedProvider: string
         return match ($this) {
             self::DOKS => 'boolean',
             self::LKE => 'boolean',
+            self::GKE => 'boolean',
             self::AKS => 'tier',
-            self::EKS, self::GKE, self::CIVO => 'always',
+            self::EKS, self::CIVO => 'always',
             self::CUSTOM => 'unknown',
         };
     }
@@ -61,6 +63,10 @@ enum ManagedProvider: string
         return match ($this) {
             self::DOKS => '$40/month',
             self::LKE => '$60/month',
+            // Regional (multi-zone) control plane charges GCP's standard
+            // cluster-management fee (~$0.10/hr); a zonal cluster is exempt
+            // from it for the first cluster per project.
+            self::GKE => '~$73/month (regional control plane)',
             self::AKS => '$73/month (Standard) or $438/month (Premium)',
             default => null,
         };

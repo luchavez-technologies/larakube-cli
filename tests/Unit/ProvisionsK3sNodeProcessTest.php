@@ -36,6 +36,57 @@ test('traefikInstalledOnContext reflects whether the traefik Deployment exists o
     expect(k3sNodeHelper()->traefikInstalled('larakube-1.2.3.4'))->toBeFalse();
 });
 
+test('provisionK3sNode records a traefikWarning when the Traefik step fails, but still returns the context name', function (): void {
+    // Every other step is stubbed out (real SSH/scp/cert I/O, same reason
+    // deployTraefik() itself isn't exercised here) so this isolates ONLY the
+    // Traefik-failure propagation this test is about.
+    $helper = new class
+    {
+        use ProvisionsK3sNode;
+
+        public function hardenServer(...$args): void {}
+
+        public function createLaraKubeUser(...$args): void {}
+
+        public function installK3s(...$args): bool
+        {
+            return true;
+        }
+
+        public function waitForK3sReady(...$args): bool
+        {
+            return true;
+        }
+
+        public function syncKubeconfig(...$args): bool
+        {
+            return true;
+        }
+
+        public function deployTraefik(...$args): bool
+        {
+            return false;
+        }
+
+        public function line(...$args): void {}
+
+        public function run(): string
+        {
+            return $this->provisionK3sNode('larakube', '203.0.113.9', '22', '/tmp/key', null, interactive: false);
+        }
+
+        public function warning(): ?string
+        {
+            return $this->traefikWarning;
+        }
+    };
+
+    $context = $helper->run();
+
+    expect($context)->toBe('larakube-203.0.113.9')
+        ->and($helper->warning())->toContain('Traefik deploy failed');
+});
+
 test('k3s is installed with the short host name as its node name, so a long cloud host name cannot stop the node registering', function (): void {
     Process::fake(['*' => Process::result(output: 'ok')]);
 

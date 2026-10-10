@@ -153,7 +153,23 @@ test('GCP GKE managed tofu template renders cluster with deletion_protection dis
     expect($rendered)->toContain('resource "google_container_cluster" "larakube"')
         ->and($rendered)->toContain('deletion_protection = false')
         ->and($rendered)->toContain('machine_type = "e2-medium"')
-        ->and($rendered)->toContain('initial_node_count  = 2');
+        ->and($rendered)->toContain('initial_node_count  = 2')
+        // Zonal (not HA) by default — a single control-plane replica.
+        ->and($rendered)->toContain('location = "us-central1-a"');
+});
+
+test('GCP GKE managed tofu template uses a regional location for HA control plane', function (): void {
+    $rendered = view('tofu.gcp.managed', [
+        'region' => 'us-central1',
+        'zone' => 'us-central1-a',
+        'clusterName' => 'larakube-cluster-test',
+        'size' => 'e2-medium',
+        'nodeCount' => 2,
+        'ha' => true,
+    ])->render();
+
+    expect($rendered)->toContain('location = "us-central1"')
+        ->and($rendered)->not->toContain('location = "us-central1-a"');
 });
 
 test('cloud:scale command accepts GCP project and credentials options', function (): void {

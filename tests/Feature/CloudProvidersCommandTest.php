@@ -53,7 +53,10 @@ test('--json exposes each provider\'s managed-Kubernetes mapping, HA model, and 
     $providers = cloudProvidersRunJson();
 
     expect($providers['do'])->toMatchArray(['managedProvider' => 'doks', 'haOption' => 'boolean', 'haCost' => '$40/month'])
-        ->and($providers['gcp'])->toMatchArray(['managedProvider' => 'gke', 'haOption' => 'always', 'haCost' => null])
+        // GKE's "HA" is the zonal-vs-regional location choice — a real toggle,
+        // not always-on (EKS's control plane really is always multi-AZ, no
+        // non-HA option exists on that provider at all).
+        ->and($providers['gcp'])->toMatchArray(['managedProvider' => 'gke', 'haOption' => 'boolean', 'haCost' => '~$73/month (regional control plane)'])
         ->and($providers['aws'])->toMatchArray(['managedProvider' => 'eks', 'haOption' => 'always', 'haCost' => null])
         ->and($providers['hetzner'])->toMatchArray(['managedProvider' => 'custom', 'haOption' => 'unknown', 'haCost' => null])
         ->and($providers['hetzner']['managedSizes'])->toBe([]);

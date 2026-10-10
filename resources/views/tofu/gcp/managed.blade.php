@@ -43,9 +43,12 @@ data "google_client_config" "default" {}
 
 resource "google_container_cluster" "larakube" {
   name     = "{{ $clusterName }}"
-  location = "{{ $zone ?? ($region . '-a') }}"
+  {{-- A bare region (e.g. "us-central1") gives GKE a 3-zone regional control
+       plane (HA, always billed); a zone (e.g. "us-central1-a") gives a single
+       zonal control plane (not HA, free for the first cluster per project).
+       $ha picks between them — zonal by default to minimize cost. --}}
+  location = "{{ ($ha ?? false) ? $region : ($zone ?? $region.'-a') }}"
 
-  # Zonal single-pool deployment minimizes resource costs and control-plane fees for workshops
   initial_node_count  = {{ (int) ($nodeCount ?? 2) }}
   deletion_protection = false
 
