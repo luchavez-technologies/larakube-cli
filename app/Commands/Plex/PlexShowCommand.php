@@ -185,20 +185,21 @@ class PlexShowCommand extends Command
     }
 
     /**
-     * {initialized, context, services, tenants: {tool, project, custom}} —
+     * {initialized, context, services, serviceCatalog, tenants: {tool, project, custom}} —
      * the shape Desktop's ClusterStatus::plex() reads. Self credentials are
      * never included here: showSelfCredentials() above only ever prints when
      * a project config is present in cwd, which a `--context=`-only Desktop
      * invocation never has — intentional, not a gap to "fix" later.
      *
-     * @return array{initialized: bool, context: ?string, services: array<string, mixed>, tenants: array{tool: list<array<string, mixed>>, project: list<array<string, mixed>>, custom: list<array<string, mixed>>}}
+     * @return array{initialized: bool, context: ?string, services: array<string, mixed>, serviceCatalog: array<string, array{active: ?string, options: array<string, bool>}>, tenants: array{tool: list<array<string, mixed>>, project: list<array<string, mixed>>, custom: list<array<string, mixed>>}}
      */
     private function buildJsonReport(?string $context, array $spec, array $tenants, string $kubectl, bool $openBaoReady): array
     {
         $buckets = ['tool' => [], 'project' => [], 'custom' => []];
 
         foreach ($tenants as $name => $alloc) {
-            $bucket = ClusterTool::forCommonsResource($name) !== null
+            $tool = ClusterTool::forCommonsResource($name);
+            $bucket = $tool !== null
                 ? 'tool'
                 : (($alloc['kind'] ?? 'project') === 'custom' ? 'custom' : 'project');
 
@@ -211,6 +212,12 @@ class PlexShowCommand extends Command
                 'redisIndex' => $alloc['redis_index'] ?? null,
                 's3Bucket' => $alloc['s3_bucket'] ?? null,
                 'rotation' => ($alloc['db'] ?? null) ? $this->rotationStatusData($openBaoReady, $dbWired, $kubectl, 'tenant-'.$name) : null,
+                'clusterTool' => $tool !== null ? [
+                    'tool' => $tool->value,
+                    'label' => $tool->getLabel(),
+                    'logo' => $tool->logo(),
+                    'icon' => $tool->icon(),
+                ] : null,
             ];
         }
 
@@ -218,8 +225,51 @@ class PlexShowCommand extends Command
             'initialized' => true,
             'context' => $context,
             'services' => $spec['services'] ?? [],
+            'serviceCatalog' => $this->buildServiceCatalog($spec),
             'tenants' => $buckets,
         ];
+    }
+
+    /**
+     * Every Commons-shareable driver, grouped by category, with which one (if
+     * any) is live on THIS cluster — the single source of truth Desktop's
+     * Commons-services card reads, so it never has to hardcode its own
+     * duplicate list of driver options (that list drifted out of sync with
+     * these very enums before this existed). A driver the CLI can't actually
+     * provision yet (`ready: false`, e.g. Memcached/Typesense today) is still
+     * listed — same "— not yet available" convention plex:init's own picker
+     * already uses — so it reads as "coming soon", not silently absent.
+     *
+     * @param  array<string, mixed>  $spec
+     * @return array<string, array{active: ?string, options: array<string, array{label: string, enabled: bool, ready: bool}>}>
+     */
+    private function buildServiceCatalog(array $spec): array
+    {
+        $liveServices = $spec['services'] ?? [];
+        $byCategory = [];
+
+        foreach ($this->commonsServiceCatalog() as $service => $meta) {
+            $enabled = $meta['ready'] && (bool) ($liveServices[$service]['enabled'] ?? false);
+            $byCategory[$meta['category']]['options'][$service] = [
+                // The enum's own getLabel() carries a parenthetical qualifier
+                // meant for plex:init's picker ("SeaweedFS (High Performance)")
+                // — too long for a compact UI pill, so this strips it rather
+                // than hand-maintaining a second, shorter label somewhere else.
+                'label' => trim((string) preg_replace('/\s*\(.*\)$/', '', $meta['label'])),
+                'enabled' => $enabled,
+                'ready' => $meta['ready'],
+            ];
+
+            if ($enabled) {
+                $byCategory[$meta['category']]['active'] = $service;
+            }
+        }
+
+        foreach ($byCategory as $category => $entry) {
+            $byCategory[$category]['active'] ??= null;
+        }
+
+        return $byCategory;
     }
 
     /**

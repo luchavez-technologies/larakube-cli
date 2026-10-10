@@ -174,6 +174,13 @@ final class PlexService
                 'label' => $driver->getLabel() ?? $service,
                 'ready' => $driver->isPlexReady(),
                 'driver' => $driver,
+                'category' => match (true) {
+                    $driver instanceof DatabaseDriver => 'database',
+                    $driver instanceof CacheDriver => 'cache',
+                    $driver instanceof StorageDriver => 'storage',
+                    $driver instanceof SearchDriver => 'search',
+                    $driver instanceof RenderDriver => 'render',
+                },
             ];
         }
 

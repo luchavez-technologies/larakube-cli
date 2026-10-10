@@ -203,7 +203,43 @@ test('plex:show --json groups tenants into tool, project, and custom buckets', f
         ->and(collect($report['tenants']['custom'])->pluck('name')->all())->toBe(['my-side-project'])
         ->and(collect($report['tenants']['custom'])->first()['redisIndex'])->toBe(3)
         ->and(collect($report['tenants']['custom'])->first()['rotation'])->toBeNull() // no database — nothing to rotate
-        ->and(collect($report['tenants']['project'])->first()['rotation'])->toBe(['state' => 'manual', 'nextRotation' => null]);
+        ->and(collect($report['tenants']['project'])->first()['rotation'])->toBe(['state' => 'manual', 'nextRotation' => null])
+        ->and(collect($report['tenants']['tool'])->first()['clusterTool']['tool'])->toBe('git')
+        ->and(collect($report['tenants']['project'])->first()['clusterTool'])->toBeNull();
+});
+
+test('plex:show --json reports the service catalog grouped by category, with only the live engine marked active', function (): void {
+    Process::fake(plexShowFakes());
+
+    $report = plexShowJsonReport(['environment' => 'local', '--context' => 'test-ctx']);
+    $catalog = $report['serviceCatalog'];
+
+    expect($catalog['database']['active'])->toBe('postgres')
+        ->and($catalog['database']['options'])->toEqual([
+            'mysql' => ['label' => 'MySQL', 'enabled' => false, 'ready' => true],
+            'mariadb' => ['label' => 'MariaDB', 'enabled' => false, 'ready' => true],
+            'postgres' => ['label' => 'PostgreSQL', 'enabled' => true, 'ready' => true],
+            'mongodb' => ['label' => 'MongoDB', 'enabled' => false, 'ready' => false],
+        ])
+        ->and($catalog['cache']['active'])->toBeNull()
+        ->and($catalog['cache']['options'])->toEqual([
+            'redis' => ['label' => 'Redis', 'enabled' => false, 'ready' => true],
+            'memcached' => ['label' => 'Memcached', 'enabled' => false, 'ready' => false],
+        ])
+        ->and($catalog['storage']['active'])->toBeNull()
+        ->and($catalog['storage']['options'])->toEqual([
+            'seaweedfs' => ['label' => 'SeaweedFS', 'enabled' => false, 'ready' => true],
+            'minio' => ['label' => 'MinIO', 'enabled' => false, 'ready' => true],
+            'garage' => ['label' => 'Garage', 'enabled' => false, 'ready' => true],
+        ])
+        ->and($catalog['search']['active'])->toBeNull()
+        ->and($catalog['search']['options'])->toEqual([
+            'meilisearch' => ['label' => 'Meilisearch', 'enabled' => false, 'ready' => true],
+            'typesense' => ['label' => 'Typesense', 'enabled' => false, 'ready' => false],
+        ])
+        // The verbose qualifier in a few enums' own getLabel() ("MinIO (Legacy / AGPL)")
+        // is stripped for the compact pill UI — proven here, not just assumed.
+        ->and($catalog['render']['options'])->toHaveKey('headless-shell');
 });
 
 test('plex:show --json never leaks credentials, even with a matching project checked out locally', function (): void {
