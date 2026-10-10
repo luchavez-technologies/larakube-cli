@@ -560,6 +560,9 @@ class SetupCommand extends Command
             if ($tool === CliTool::GCLOUD || $tool === CliTool::AWS) {
                 $tool->ensureAuth(prompt: $this->input->isInteractive());
             }
+            if ($tool === CliTool::GCLOUD) {
+                $this->installGkeAuthPluginQuietly();
+            }
         }
 
         return 0;
@@ -609,7 +612,30 @@ class SetupCommand extends Command
             if ($available && ($tool === CliTool::GCLOUD || $tool === CliTool::AWS)) {
                 $tool->ensureAuth(prompt: $this->input->isInteractive());
             }
+            if ($available && $tool === CliTool::GCLOUD) {
+                $this->installGkeAuthPluginQuietly();
+            }
         }
+    }
+
+    /**
+     * gke-gcloud-auth-plugin authenticates kubectl against a GKE cluster —
+     * required since client-go v1.26, and NOT symlinked onto PATH by a
+     * Homebrew-cask gcloud install, confirmed live. Installed quietly here,
+     * right alongside gcloud itself, so a GKE user never hits the
+     * "every kubectl call fails" wall this caused in production before this
+     * was added. Best-effort: failure here doesn't fail setup — a later
+     * GKE command still catches and fixes a missing plugin on its own
+     * (EnsuresGkeAuthPlugin), this just means they don't need to.
+     */
+    protected function installGkeAuthPluginQuietly(): void
+    {
+        if (trim(Process::run('command -v gke-gcloud-auth-plugin')->output()) !== '') {
+            return;
+        }
+
+        $bin = CliTool::GCLOUD->resolveBinary() ?? 'gcloud';
+        Process::forever()->run("{$bin} components install gke-gcloud-auth-plugin --quiet");
     }
 
     protected function resolveLocalClusterContext(): ?string

@@ -4,7 +4,12 @@ use App\Facades\State;
 use Illuminate\Support\Facades\Process;
 
 beforeEach(function (): void {
-    Process::fake(['*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake([
+        // Not what these tests are about — only --email validation is —
+        // so the auth-plugin preflight passes through cleanly.
+        'command -v gke-gcloud-auth-plugin' => Process::result('/usr/local/bin/gke-gcloud-auth-plugin'),
+        '*' => Process::result(output: '', exitCode: 1),
+    ]);
 });
 
 test('cloud:init:gke rejects invalid --email before anything is installed', function (): void {

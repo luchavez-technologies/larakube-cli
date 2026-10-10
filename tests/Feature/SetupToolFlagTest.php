@@ -46,6 +46,31 @@ test('setup --tools=gcloud configures gcloud and checks auth', function (): void
         ->assertExitCode(0);
 });
 
+test('setup --tools=gcloud also installs gke-gcloud-auth-plugin when missing, so GKE kubectl calls don\'t fail later', function (): void {
+    Process::fake([
+        'command -v gcloud' => Process::result('/usr/bin/gcloud'),
+        '*gcloud auth print-access-token*' => Process::result('ya29.fake-token'),
+        'command -v gke-gcloud-auth-plugin' => Process::result('', exitCode: 1),
+        '*components install gke-gcloud-auth-plugin*' => Process::result('installed'),
+    ]);
+
+    $this->artisan('setup', ['--tools' => 'gcloud'])->assertExitCode(0);
+
+    Process::assertRan(fn ($process) => str_contains($process->command, '/usr/bin/gcloud components install gke-gcloud-auth-plugin --quiet'));
+});
+
+test('setup --tools=gcloud skips the install when gke-gcloud-auth-plugin is already there', function (): void {
+    Process::fake([
+        'command -v gcloud' => Process::result('/usr/bin/gcloud'),
+        '*gcloud auth print-access-token*' => Process::result('ya29.fake-token'),
+        'command -v gke-gcloud-auth-plugin' => Process::result('/opt/homebrew/share/google-cloud-sdk/bin/gke-gcloud-auth-plugin'),
+    ]);
+
+    $this->artisan('setup', ['--tools' => 'gcloud'])->assertExitCode(0);
+
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'components install'));
+});
+
 test('setup --tools=tea configures tea', function (): void {
     Process::fake([
         'command -v tea' => Process::result('/usr/local/bin/tea'),

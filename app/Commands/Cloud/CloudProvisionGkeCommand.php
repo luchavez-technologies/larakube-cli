@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Enums\ManagedProvider;
 use App\Services\Kubectl;
+use App\Traits\EnsuresGkeAuthPlugin;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithGlobalConfig;
@@ -25,7 +26,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class CloudProvisionGkeCommand extends Command
 {
-    use InteractsWithClusterContext, InteractsWithEnvironments, InteractsWithGlobalConfig, InteractsWithProjectConfig, LaraKubeOutput, PromotesIngressDns, ResolvesEnvironmentContext, VerifiesKubernetesRollout;
+    use EnsuresGkeAuthPlugin, InteractsWithClusterContext, InteractsWithEnvironments, InteractsWithGlobalConfig, InteractsWithProjectConfig, LaraKubeOutput, PromotesIngressDns, ResolvesEnvironmentContext, VerifiesKubernetesRollout;
 
     protected $signature = 'cloud:init:gke
         {environment? : Inside a project, the environment to bind to this cluster.}
@@ -51,6 +52,12 @@ class CloudProvisionGkeCommand extends Command
         if (! $context) {
             $this->laraKubeError('No Kubernetes context selected.');
 
+            return 1;
+        }
+
+        // Every kubectl call below fails identically without this — checked
+        // once, here, before the first one (traefikInstalled() just below).
+        if (! $this->ensureGkeAuthPlugin()) {
             return 1;
         }
 
