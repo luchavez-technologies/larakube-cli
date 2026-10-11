@@ -81,3 +81,52 @@ test('setup --tools=tea configures tea', function (): void {
         ->expectsOutputToContain('Already installed at: /usr/local/bin/tea')
         ->assertExitCode(0);
 });
+
+test('setup --tools without --update leaves an already-installed tool alone', function (): void {
+    Process::fake([
+        'command -v gcloud' => Process::result('/usr/bin/gcloud'),
+        '*gcloud auth print-access-token*' => Process::result('ya29.fake-token'),
+    ]);
+
+    $this->artisan('setup', ['--tools' => 'gcloud'])
+        ->expectsOutputToContain('Already installed at: /usr/bin/gcloud')
+        ->doesntExpectOutputToContain('Updating')
+        ->assertExitCode(0);
+});
+
+test('setup --tools --update brings an installed tool up to date instead of leaving it alone', function (): void {
+    Process::fake([
+        'command -v gcloud' => Process::result('/usr/bin/gcloud'),
+        '*components update --quiet*' => Process::result('Updated.'),
+        '*gcloud auth print-access-token*' => Process::result('ya29.fake-token'),
+        '*' => Process::result(''),
+    ]);
+
+    $this->artisan('setup', ['--tools' => 'gcloud', '--update' => true])
+        ->expectsOutputToContain('Updating Google Cloud SDK (gcloud CLI)...')
+        ->expectsOutputToContain('Google Cloud SDK (gcloud CLI) updated successfully.')
+        ->assertExitCode(0);
+});
+
+test('setup --tools --update reports a failure instead of silently leaving the tool as-is', function (): void {
+    Process::fake([
+        'command -v gcloud' => Process::result('/usr/bin/gcloud'),
+        '*components update --quiet*' => Process::result('', exitCode: 1),
+        '*' => Process::result(''),
+    ]);
+
+    $this->artisan('setup', ['--tools' => 'gcloud', '--update' => true])
+        ->expectsOutputToContain('Failed to update Google Cloud SDK (gcloud CLI).')
+        ->assertExitCode(1);
+});
+
+test('setup --tools --update installs a tool outright when it was never there to begin with', function (): void {
+    Process::fake([
+        'command -v tea' => Process::result('', exitCode: 1),
+        '*' => Process::result(''),
+    ]);
+
+    $this->artisan('setup', ['--tools' => 'tea', '--update' => true])
+        ->expectsOutputToContain('Installing Tea CLI (Forgejo / Gitea)...')
+        ->doesntExpectOutputToContain('Updating');
+});

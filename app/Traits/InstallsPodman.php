@@ -63,6 +63,35 @@ trait InstallsPodman
     }
 
     /**
+     * Upgrade an already-installed rootless Podman to whatever apt's
+     * configured repos currently offer — unlike every other tool here,
+     * `apt-get install` on a package that is already present never pulls a
+     * newer version by itself; `--only-upgrade` is what actually does that.
+     */
+    protected function updateRootlessPodman(): bool
+    {
+        if (! $this->isDebianLike()) {
+            $this->laraKubeWarn('Automatic Podman updates currently support Debian/Ubuntu (apt) hosts only.');
+
+            return false;
+        }
+
+        $this->laraKubeInfo('Updating rootless Podman...');
+        $prefix = $this->privilegePrefix();
+        $code = $this->runStreaming("{$prefix}apt-get update && {$prefix}apt-get install --only-upgrade -y podman slirp4netns fuse-overlayfs uidmap");
+
+        if ($code !== 0) {
+            $this->laraKubeError('Podman update failed. See output above.');
+
+            return false;
+        }
+
+        $this->laraKubeInfo('✅ Rootless Podman updated.');
+
+        return true;
+    }
+
+    /**
      * Let Podman resolve Docker Hub short names. Unlike Docker, Podman has no
      * built-in default registry, so `podman pull serversideup/php:8.5-cli-alpine`
      * fails with "short-name ... did not resolve to an alias and no

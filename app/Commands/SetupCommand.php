@@ -30,7 +30,8 @@ class SetupCommand extends Command
         {--profile= : What this machine is for — "local" (development, needs a container runtime) or "remote" (Cluster Tools and cloud clusters only)}
         {--runtime= : Container runtime to install without prompting (podman or docker)}
         {--tool=* : Specific CLI tool(s) to install without running full setup (k9s, tofu, gcloud, gh, tea, aws)}
-        {--tools= : Comma-separated list of CLI tools to install without running full setup}';
+        {--tools= : Comma-separated list of CLI tools to install without running full setup}
+        {--update : Update the named tool(s) instead of only installing them if missing}';
 
     protected $description = 'First-time setup: kubectl and developer CLI tools, plus a local cluster when this machine is for development';
 
@@ -541,9 +542,20 @@ class SetupCommand extends Command
             $validTools[] = $tool;
         }
 
+        $update = (bool) $this->option('update');
+
         foreach ($validTools as $tool) {
             $this->laraKubeInfo("Configuring {$tool->label()}...");
-            if ($tool->isInstalled()) {
+
+            if ($update && $tool->isInstalled()) {
+                $this->line("  Updating {$tool->label()}...");
+                if (! $tool->update()) {
+                    $this->laraKubeError("Failed to update {$tool->label()}.");
+
+                    return 1;
+                }
+                $this->line("  <fg=green>✓</> {$tool->label()} updated successfully.");
+            } elseif ($tool->isInstalled()) {
                 $binPath = $tool->resolveBinary() ?? $tool->binary();
                 $this->line("  <fg=green>✓</> Already installed at: {$binPath}");
             } else {

@@ -185,6 +185,41 @@ enum CliTool: string
     }
 
     /**
+     * Bring an already-installed tool up to date. Unlike install(), this never
+     * short-circuits on "already present" — a brew-managed tool gets
+     * `brew upgrade`, and everything else re-runs the same "latest release"
+     * download its installer already uses (no version is ever pinned here, so
+     * re-running it naturally fetches whatever is current and overwrites the
+     * existing binary in place).
+     */
+    public function update(): bool
+    {
+        if (! $this->isInstalled()) {
+            return $this->install();
+        }
+
+        if ($this->isBrewManaged()) {
+            return $this->brewUpgrade();
+        }
+
+        return match ($this) {
+            self::KUBECTL => $this->updateKubectl(),
+            self::K9S => $this->updateK9s(),
+            self::TOFU => $this->updateTofu(),
+            self::GCLOUD => $this->updateGcloud(),
+            self::AWS => $this->updateAws(),
+            self::HCLOUD => $this->updateHcloud(),
+            self::GH => $this->updateGh(),
+            self::TEA => $this->updateTea(),
+        };
+    }
+
+    public static function awsUpdateCommand(string $binDir): string
+    {
+        return 'curl -fsSL https://awscli.amazonaws.com/v2/install.sh | XDG_BIN_HOME='.escapeshellarg($binDir).' bash -s -- --update';
+    }
+
+    /**
      * For tools that support browser/interactive login after installation (e.g. gcloud, aws).
      *
      * These read from the terminal, so they go through runInteractive()
@@ -305,6 +340,122 @@ enum CliTool: string
         $url = "https://github.com/hetznercloud/cli/releases/latest/download/hcloud-{$targetOs}-{$arch}.tar.gz";
 
         return 'curl -fsSL '.escapeshellarg($url).' | tar -xz -C '.escapeshellarg($binDir).' hcloud';
+    }
+
+    /**
+     * Whether the resolved binary lives under a Homebrew prefix — the signal
+     * that `brew upgrade` is the right update path instead of re-running the
+     * direct-download installer, which would leave Homebrew's own record of
+     * the install stale.
+     */
+    protected function isBrewManaged(): bool
+    {
+        $bin = $this->resolveBinary();
+
+        return $bin !== null && (str_starts_with($bin, '/opt/homebrew/') || str_starts_with($bin, '/home/linuxbrew/'));
+    }
+
+    protected function brewUpgrade(): bool
+    {
+        // gcloud was installed under one of two possible cask names (whichever
+        // succeeded first) — upgrade whichever one is actually present.
+        return match ($this) {
+            self::GCLOUD => $this->runStreaming('brew upgrade --cask gcloud-cli') === 0
+                || $this->runStreaming('brew upgrade --cask google-cloud-sdk') === 0,
+            self::KUBECTL => $this->runStreaming('brew upgrade kubernetes-cli') === 0,
+            self::K9S => $this->runStreaming('brew upgrade k9s') === 0,
+            self::TOFU => $this->runStreaming('brew upgrade opentofu') === 0,
+            self::AWS => $this->runStreaming('brew upgrade awscli') === 0,
+            self::HCLOUD => $this->runStreaming('brew upgrade hcloud') === 0,
+            self::GH => $this->runStreaming('brew upgrade gh') === 0,
+            self::TEA => $this->runStreaming('brew upgrade tea') === 0,
+        };
+    }
+
+    protected function updateKubectl(): bool
+    {
+        $binDir = self::binDir();
+        @mkdir($binDir, 0755, true);
+
+        return $this->runStreaming(self::kubectlInstallCommand(self::hostOs(), self::hostArch(), $binDir)) === 0 && $this->isInstalled();
+    }
+
+    protected function updateK9s(): bool
+    {
+        return $this->runDirectBinaryUpdate(self::k9sInstallCommand(self::hostOs(), self::hostArch(), self::binDir()), 'k9s');
+    }
+
+    protected function updateTofu(): bool
+    {
+        return $this->runDirectBinaryUpdate(self::tofuInstallCommand(self::hostOs(), self::hostArch(), self::binDir()), 'tofu');
+    }
+
+    protected function updateHcloud(): bool
+    {
+        return $this->runDirectBinaryUpdate(self::hcloudInstallCommand(self::hostOs(), self::hostArch(), self::binDir()), 'hcloud');
+    }
+
+    protected function updateGh(): bool
+    {
+        return $this->runDirectBinaryUpdate(self::ghInstallCommand(self::hostArch(), self::binDir(), self::hostOs()), 'gh');
+    }
+
+    protected function updateTea(): bool
+    {
+        $binDir = self::binDir();
+
+        return $this->runDirectBinaryUpdate(self::teaInstallCommand(self::hostArch(), "{$binDir}/tea", self::hostOs()), 'tea');
+    }
+
+    protected function updateAws(): bool
+    {
+        $binDir = self::binDir();
+        @mkdir($binDir, 0755, true);
+
+        return $this->runStreaming(self::awsUpdateCommand($binDir)) === 0 && $this->isInstalled();
+    }
+
+    /**
+     * The Google Cloud SDK ships its own updater — far better than re-running
+     * the bundled install.sh against a directory that already exists.
+     */
+    protected function updateGcloud(): bool
+    {
+        $bin = $this->resolveBinary() ?? 'gcloud';
+
+        return $this->runStreaming(escapeshellarg($bin).' components update --quiet') === 0;
+    }
+
+    /**
+     * Runs an install command whose job is "download/extract the named file
+     * into binDir", then verifies and chmods the result — the shared tail
+     * every direct-download tool's installer already repeats inline.
+     */
+    protected function runDirectBinaryUpdate(string $command, string $filename): bool
+    {
+        $binDir = self::binDir();
+        @mkdir($binDir, 0755, true);
+
+        $code = Process::forever()->run($command)->exitCode();
+        $target = "{$binDir}/{$filename}";
+
+        if ($code === 0 && file_exists($target)) {
+            @chmod($target, 0755);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    protected static function hostOs(): string
+    {
+        return PHP_OS_FAMILY === 'Darwin' ? 'darwin' : 'linux';
+    }
+
+    protected static function hostArch(): string
+    {
+        return in_array(php_uname('m'), ['arm64', 'aarch64'], true) ? 'arm64' : 'amd64';
     }
 
     /**

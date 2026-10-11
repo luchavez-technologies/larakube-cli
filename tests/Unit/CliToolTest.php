@@ -125,6 +125,63 @@ test('an unsupported python stops the gcloud install rather than crashing inside
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'sdk.cloud.google.com'));
 });
 
+test('update() upgrades via brew when the tool is brew-managed', function (): void {
+    Process::fake([
+        'command -v k9s' => Process::result('/opt/homebrew/bin/k9s'),
+        '*' => Process::result(''),
+    ]);
+
+    CliTool::K9S->update();
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'brew upgrade k9s'));
+});
+
+test('update() re-runs the direct-download installer for a tool Homebrew never touched', function (): void {
+    Process::fake([
+        'command -v tofu' => Process::result('/Users/dev/.larakube/bin/tofu'),
+        '*' => Process::result(''),
+    ]);
+
+    CliTool::TOFU->update();
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'opentofu/releases/latest'));
+});
+
+test('update() appends --update to the AWS CLI\'s own installer instead of reinstalling from scratch', function (): void {
+    Process::fake([
+        'command -v aws' => Process::result('/Users/dev/.larakube/bin/aws'),
+        '*' => Process::result(''),
+    ]);
+
+    CliTool::AWS->update();
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'install.sh | XDG_BIN_HOME=')
+        && str_contains($process->command, 'bash -s -- --update'));
+});
+
+test('update() asks the Google Cloud SDK to update itself rather than re-running its installer', function (): void {
+    Process::fake([
+        'command -v gcloud' => Process::result('/Users/dev/.larakube/google-cloud-sdk/bin/gcloud'),
+        '*' => Process::result(''),
+    ]);
+
+    CliTool::GCLOUD->update();
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'components update --quiet')
+        && ! str_contains($process->command, 'sdk.cloud.google.com'));
+});
+
+test('update() installs a missing tool instead of trying to upgrade nothing', function (): void {
+    Process::fake([
+        'command -v hcloud' => Process::result('', exitCode: 1),
+        '*' => Process::result(''),
+    ]);
+
+    CliTool::HCLOUD->update();
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'hetznercloud/cli/releases/latest'));
+});
+
 test('kubectl is a first-class installable tool', function (): void {
     // It is the one hard dependency of every cluster command, yet it was the
     // only tool the CLI could not install — `which kubectl` plus a URL.

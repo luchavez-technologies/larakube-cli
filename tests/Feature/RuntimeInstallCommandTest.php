@@ -29,6 +29,32 @@ test('runtime:install does nothing when Podman already works', function (): void
     Process::assertNotRan(fn ($p) => str_contains($p->command, 'apt-get'));
 });
 
+test('runtime:install --update upgrades an already-installed Podman', function (): void {
+    Process::fake([
+        'command -v podman' => Process::result(output: '/usr/bin/podman'),
+        'podman info' => Process::result(output: 'host: ...'),
+        'command -v apt-get' => Process::result(output: '/usr/bin/apt-get'),
+        '*apt-get update*' => Process::result(output: 'updated'),
+        '*apt-get install --only-upgrade*podman*' => Process::result(output: 'upgraded'),
+    ]);
+
+    $this->artisan('runtime:install --update')->assertExitCode(0);
+
+    Process::assertRan(fn ($p) => str_contains($p->command, 'apt-get install --only-upgrade -y podman slirp4netns fuse-overlayfs uidmap'));
+});
+
+test('runtime:install --update refuses to update a runtime that was never installed', function (): void {
+    Process::fake([
+        'command -v podman' => Process::result(output: '', exitCode: 1),
+    ]);
+
+    $this->artisan('runtime:install --update')
+        ->expectsOutputToContain('nothing to update')
+        ->assertExitCode(1);
+
+    Process::assertNotRan(fn ($p) => str_contains($p->command, 'apt-get'));
+});
+
 test('runtime:install refuses a runtime it cannot install', function (): void {
     Process::fake();
 

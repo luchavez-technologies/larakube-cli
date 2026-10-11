@@ -14,7 +14,8 @@ class RuntimeInstallCommand extends Command
     use CollectsReminders, InstallsPodman, LaraKubeOutput, ResolvesContainerRuntime, StreamsProcessOutput;
 
     protected $signature = 'runtime:install
-        {--runtime=podman : Container runtime to install (only podman today)}';
+        {--runtime=podman : Container runtime to install (only podman today)}
+        {--update : Update an already-installed runtime instead of leaving it alone}';
 
     protected $description = 'Install the container runtime that builds your apps (rootless Podman) without a full local setup';
 
@@ -26,6 +27,16 @@ class RuntimeInstallCommand extends Command
             $this->laraKubeError('Only --runtime=podman is supported. Install Docker from https://docs.docker.com/get-docker/.');
 
             return 1;
+        }
+
+        if ($this->option('update')) {
+            if (! $this->podmanIsFunctional()) {
+                $this->laraKubeError('Rootless Podman is not installed — nothing to update. Run without --update first.');
+
+                return 1;
+            }
+
+            return $this->updateRootlessPodman() ? 0 : 1;
         }
 
         if ($this->podmanIsFunctional()) {
