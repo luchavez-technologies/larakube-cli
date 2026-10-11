@@ -75,6 +75,27 @@ test('tool:init --tool=external-dns manages the sole zone the token can see when
         ->expectsOutputToContain('ExternalDNS is managing example.com');
 });
 
+test('tool:init --tool=external-dns stamps the deployed manifest with the provider actually used', function (): void {
+    // This annotation is the only thing that lets external-dns:list later
+    // tell a Cloudflare zone from a Route53 one — without it, Desktop cannot
+    // know whether "Proxied" (a Cloudflare-only concept) applies here.
+    $appliedManifest = '';
+
+    Process::fake(dnsFakes('abc12345', [
+        '*apply -f -*' => function ($process) use (&$appliedManifest) {
+            $appliedManifest .= $process->command;
+
+            return Process::result(output: 'applied');
+        },
+    ]));
+    dnsZonesSaloonFake(['example.com']);
+
+    $this->artisan('tool:init --tool=external-dns prod --context=ctx --cloudflare-token=t --no-interaction --force')
+        ->assertExitCode(0);
+
+    expect($appliedManifest)->toContain('larakube.io/dns-provider: cloudflare');
+});
+
 test('tool:init --tool=external-dns auto-names a multi-zone instance after the environment when no human is present to ask', function (): void {
     // A person just pasting in a Cloudflare token has no way to know it's
     // multi-zone, so this must never throw non-interactively — but the
@@ -418,7 +439,34 @@ test('external-dns:list surfaces the owner id, which is how zone conflicts are d
     expect($exit)->toBe(0)
         ->and($payload[0]['zone'])->toBe('example.com')
         ->and($payload[0]['owner'])->toBe('larakube-abc12345-example-com')
-        ->and($payload[0]['ready'])->toBeTrue();
+        ->and($payload[0]['ready'])->toBeTrue()
+        // No `larakube.io/dns-provider` annotation: this Deployment predates
+        // Route53 support, when Cloudflare was the only provider that existed.
+        ->and($payload[0]['provider'])->toBe('cloudflare');
+});
+
+test('external-dns:list reports the provider a zone is actually managed through', function (): void {
+    Process::fake([
+        '*get deployments*' => Process::result(output: (string) json_encode(['items' => [[
+            'metadata' => [
+                'name' => 'external-dns-example-com',
+                'labels' => ['larakube.io/dns-zone' => 'example-com'],
+                'annotations' => [
+                    'larakube.io/dns-domain' => 'example.com',
+                    'larakube.io/dns-owner-id' => 'larakube-abc12345-example-com',
+                    'larakube.io/dns-provider' => 'route53',
+                ],
+            ],
+            'status' => ['readyReplicas' => 1],
+        ]]])),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $exit = Artisan::call('external-dns:list prod --context=ctx --json');
+    $payload = json_decode(Artisan::output(), true);
+
+    expect($exit)->toBe(0)
+        ->and($payload[0]['provider'])->toBe('route53');
 });
 
 test('external-dns:list shows one row per zone for a multi-zone group, sharing the same instance', function (): void {
@@ -467,13 +515,15 @@ test('tool:init --tool=external-dns reuses the stored Cloudflare token instead o
 
 test('tool:init --tool=external-dns manages a Route53 zone when --provider=route53 is given', function (): void {
     $secret = null;
+    $appliedManifest = '';
 
     Process::fake(dnsFakes('abc12345', [
         '*command -v aws*' => Process::result(output: '/usr/local/bin/aws'),
         '*route53 list-hosted-zones*' => Process::result(output: (string) json_encode([
             'HostedZones' => [['Id' => '/hostedzone/Z123', 'Name' => 'example.com.']],
         ])),
-        '*apply -f -*' => function ($process) use (&$secret) {
+        '*apply -f -*' => function ($process) use (&$secret, &$appliedManifest) {
+            $appliedManifest .= $process->command;
             $manifest = json_decode((string) $process->input, true);
             if (($manifest['kind'] ?? null) === 'Secret') {
                 $secret = $manifest;
@@ -490,7 +540,8 @@ test('tool:init --tool=external-dns manages a Route53 zone when --provider=route
     expect($secret['metadata']['name'])->toBe('route53-credential-example-com')
         ->and(base64_decode($secret['data']['access_key_id']))->toBe('AKIAFAKE')
         ->and(base64_decode($secret['data']['secret_access_key']))->toBe('shh')
-        ->and(base64_decode($secret['data']['region']))->toBe('us-west-2');
+        ->and(base64_decode($secret['data']['region']))->toBe('us-west-2')
+        ->and($appliedManifest)->toContain('larakube.io/dns-provider: route53');
     Process::assertNotRan(fn ($process) => str_contains((string) $process->command, 'shh'));
 });
 

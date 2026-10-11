@@ -3,6 +3,7 @@
 namespace App\Commands\Dns;
 
 use App\Enums\ClusterTool;
+use App\Enums\DnsProvider;
 use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
@@ -53,10 +54,11 @@ abstract class DnsListCommand extends Command
         }
 
         table(
-            ['', 'Zone', 'Owner ID', 'Instance'],
+            ['', 'Zone', 'Provider', 'Owner ID', 'Instance'],
             array_map(fn (array $z) => [
                 $z['ready'] ? '<fg=green>●</>' : '<fg=yellow>◌</>',
                 $z['zone'],
+                DnsProvider::from($z['provider'])->label(),
                 $z['owner'] !== '' ? $z['owner'] : '<fg=red>unset</>',
                 'external-dns-'.$z['slug'],
             ], $zones),

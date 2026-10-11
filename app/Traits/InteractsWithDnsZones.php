@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Enums\DnsProvider;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -24,7 +25,7 @@ trait InteractsWithDnsZones
      * `external-dns:list`'s table reads that sharing directly off repeated values in
      * the "Instance" column, no separate grouped-view UI needed.
      *
-     * @return list<array{zone: string, slug: string, owner: string, ready: bool}>
+     * @return list<array{zone: string, slug: string, owner: string, ready: bool, provider: string}>
      */
     protected function installedDnsZones(string $kubectl, string $namespace = 'larakube-shared'): array
     {
@@ -59,6 +60,9 @@ trait InteractsWithDnsZones
             $status = $item['status'] ?? [];
             $owner = (string) ($annotations['larakube.io/dns-owner-id'] ?? '');
             $ready = (int) ($status['readyReplicas'] ?? 0) > 0;
+            // Instances deployed before this annotation existed had no other
+            // provider to be — Cloudflare was the only one `tool:init --tool=external-dns` offered.
+            $provider = (string) ($annotations['larakube.io/dns-provider'] ?? DnsProvider::CLOUDFLARE->value);
 
             foreach (explode(',', (string) $domainAnnotation) as $zone) {
                 $zone = trim($zone);
@@ -71,6 +75,7 @@ trait InteractsWithDnsZones
                     'slug' => (string) $slug,
                     'owner' => $owner,
                     'ready' => $ready,
+                    'provider' => $provider,
                 ];
             }
         }

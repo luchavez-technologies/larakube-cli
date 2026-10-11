@@ -75,6 +75,7 @@ metadata:
   annotations:
     larakube.io/dns-domain: {{ implode(',', $zones) }}
     larakube.io/dns-owner-id: {{ $ownerId }}
+    larakube.io/dns-provider: {{ $provider->value }}
 spec:
   strategy:
     type: Recreate
