@@ -2,6 +2,7 @@
 
 namespace App\Services\Cloud;
 
+use App\Enums\CliTool;
 use App\Enums\CloudProvider;
 use App\Http\Integrations\DigitalOcean\DigitalOceanConnector;
 use App\Http\Integrations\DigitalOcean\Requests\ListRegionsRequest;
@@ -9,6 +10,7 @@ use App\Http\Integrations\DigitalOcean\Requests\ListSizesRequest;
 use App\Http\Integrations\Hetzner\HetznerConnector;
 use App\Http\Integrations\Hetzner\Requests\ListLocationsRequest;
 use App\Http\Integrations\Hetzner\Requests\ListServerTypesRequest;
+use Illuminate\Support\Facades\Process;
 use Throwable;
 
 /**
@@ -27,11 +29,25 @@ class LiveProviderCatalog
     private const STALE_SECONDS = 14 * 86400;
 
     /**
+     * $credential is a provider token (DO/Hetzner), a GCP project ID, or the
+     * `aws` CLI env vars from InteractsWithAws::buildAwsEnv() — that last one
+     * can legitimately be an empty array (credentials living entirely in
+     * `~/.aws/credentials`), so AWS trusts the caller's own readiness check
+     * instead of this method's own non-empty-string gate.
+     *
      * @return array{regions: list<array{value: string, label: string}>, sizes: list<array{value: string, label: string, monthly: float, currency: string}>, currency: string, source: string, asOf: string}|null
      */
-    public function get(CloudProvider $provider, ?string $token, bool $refresh = false): ?array
+    public function get(CloudProvider $provider, mixed $credential, bool $refresh = false): ?array
     {
-        if (! in_array($provider, [CloudProvider::DO, CloudProvider::HETZNER], true) || $token === null || $token === '') {
+        if (! in_array($provider, [CloudProvider::DO, CloudProvider::HETZNER, CloudProvider::AWS, CloudProvider::GCP], true)) {
+            return null;
+        }
+
+        if ($provider !== CloudProvider::AWS && (! is_string($credential) || $credential === '')) {
+            return null;
+        }
+
+        if ($provider === CloudProvider::AWS && ! is_array($credential)) {
             return null;
         }
 
@@ -41,7 +57,7 @@ class LiveProviderCatalog
             return $this->present($cached, 'live');
         }
 
-        $fetched = $this->fetch($provider, $token);
+        $fetched = $this->fetch($provider, $credential);
 
         if ($fetched !== null) {
             $this->write($provider, $fetched);
@@ -148,15 +164,137 @@ class LiveProviderCatalog
     }
 
     /**
+     * General-purpose/compute/memory-optimized ("t"/"m"/"c"/"r" family)
+     * instance types only — not a curated handful, every current-generation,
+     * non-bare-metal one AWS actually offers this account. GPU/FPGA/HPC/
+     * storage-dense families are deliberately left out: they need device
+     * plugins and specialized AMIs LaraKube doesn't wire up, so listing them
+     * as a plain node choice would be misleading, not more complete.
+     * `describe-instance-types` carries no price at all — `monthly` here is
+     * a vCPU+RAM sort key, never a dollar figure; the caller's own
+     * "prices are estimates" note is what covers price.
+     *
+     * @param  array<string, mixed>  $regionsJson
+     * @param  array<string, mixed>  $typesJson
      * @return array{regions: list<array{value: string, label: string}>, sizes: list<array{value: string, label: string, monthly: float, currency: string}>, currency: string}|null
      */
-    private function fetch(CloudProvider $provider, string $token): ?array
+    public static function parseAws(array $regionsJson, array $typesJson): ?array
+    {
+        $regionLabels = CloudProvider::AWS->regions();
+        $places = [];
+
+        foreach ((array) ($regionsJson['Regions'] ?? []) as $region) {
+            if (is_array($region) && is_string($region['RegionName'] ?? null)) {
+                $code = $region['RegionName'];
+                $places[] = ['value' => $code, 'label' => $regionLabels[$code] ?? $code];
+            }
+        }
+
+        $options = [];
+
+        foreach ((array) ($typesJson['InstanceTypes'] ?? []) as $type) {
+            if (! is_array($type) || ! is_string($type['InstanceType'] ?? null) || preg_match('/^[tmcr]\d/', $type['InstanceType']) !== 1) {
+                continue;
+            }
+
+            // Defense-in-depth: fetchAws()'s own --filters already excludes
+            // bare metal server-side, but a pure function shouldn't trust its
+            // caller alone for something this consequential to filter out.
+            if (($type['BareMetal'] ?? false) === true) {
+                continue;
+            }
+
+            $vcpu = (int) ($type['VCpuInfo']['DefaultVCpus'] ?? 0);
+            $memory = (int) round(((float) ($type['MemoryInfo']['SizeInMiB'] ?? 0)) / 1024);
+
+            if ($vcpu <= 0 || $memory <= 0) {
+                continue;
+            }
+
+            $options[] = self::sizeOption($type['InstanceType'], $vcpu, $memory, 'USD');
+        }
+
+        usort($options, fn (array $a, array $b): int => $a['monthly'] <=> $b['monthly']);
+
+        return $options === [] || $places === [] ? null : ['regions' => $places, 'sizes' => $options, 'currency' => 'USD'];
+    }
+
+    /**
+     * Same filtering/shape as parseAws(), for GCP's general-purpose/compute/
+     * memory-optimized machine families — `gcloud ... --format=json` returns
+     * a bare array rather than a keyed object, and `compute machine-types
+     * list` carries no price either.
+     *
+     * @param  list<mixed>  $regionsJson
+     * @param  list<mixed>  $typesJson
+     * @return array{regions: list<array{value: string, label: string}>, sizes: list<array{value: string, label: string, monthly: float, currency: string}>, currency: string}|null
+     */
+    public static function parseGcp(array $regionsJson, array $typesJson): ?array
+    {
+        $regionLabels = CloudProvider::GCP->regions();
+        $places = [];
+
+        foreach ($regionsJson as $region) {
+            if (is_array($region) && is_string($region['name'] ?? null)) {
+                $code = $region['name'];
+                $places[] = ['value' => $code, 'label' => $regionLabels[$code] ?? $code];
+            }
+        }
+
+        $allowedFamilies = ['e2', 'n1', 'n2', 'n2d', 'n4', 'n4a', 'n4d', 'c2', 'c2d', 'c3', 'c3d', 'c4', 'c4a', 'c4d', 'c4n', 'm1', 'm2', 'm3', 'm4', 'm4n', 't2a', 't2d'];
+        $options = [];
+
+        foreach ($typesJson as $type) {
+            if (! is_array($type) || ! is_string($type['name'] ?? null)) {
+                continue;
+            }
+
+            $family = strstr($type['name'], '-', true);
+            if ($family === false || ! in_array($family, $allowedFamilies, true)) {
+                continue;
+            }
+
+            $vcpu = (int) ($type['guestCpus'] ?? 0);
+            $memory = (int) round(((float) ($type['memoryMb'] ?? 0)) / 1024);
+
+            if ($vcpu <= 0 || $memory <= 0) {
+                continue;
+            }
+
+            $options[] = self::sizeOption($type['name'], $vcpu, $memory, 'USD');
+        }
+
+        usort($options, fn (array $a, array $b): int => $a['monthly'] <=> $b['monthly']);
+
+        return $options === [] || $places === [] ? null : ['regions' => $places, 'sizes' => $options, 'currency' => 'USD'];
+    }
+
+    /**
+     * @return array{value: string, label: string, monthly: float, currency: string}
+     */
+    private static function sizeOption(string $code, int $vcpu, int $memory, string $currency): array
+    {
+        return [
+            'value' => $code,
+            'label' => sprintf('%s   —  %d vCPU, %d GB RAM', $code, $vcpu, $memory),
+            // No live price exists for AWS/GCP — this is a vCPU+RAM sort key
+            // (smallest first), never a dollar figure.
+            'monthly' => (float) ($vcpu * 1000 + $memory),
+            'currency' => $currency,
+        ];
+    }
+
+    /**
+     * @return array{regions: list<array{value: string, label: string}>, sizes: list<array{value: string, label: string, monthly: float, currency: string}>, currency: string}|null
+     */
+    private function fetch(CloudProvider $provider, mixed $credential): ?array
     {
         try {
             return match ($provider) {
-                CloudProvider::DO => $this->fetchDigitalOcean($token),
-                CloudProvider::HETZNER => $this->fetchHetzner($token),
-                default => null,
+                CloudProvider::DO => $this->fetchDigitalOcean((string) $credential),
+                CloudProvider::HETZNER => $this->fetchHetzner((string) $credential),
+                CloudProvider::AWS => $this->fetchAws((array) $credential),
+                CloudProvider::GCP => $this->fetchGcp((string) $credential),
             };
         } catch (Throwable) {
             return null;
@@ -187,6 +325,44 @@ class LiveProviderCatalog
         }
 
         return self::parseHetzner($types->json(), $locations->json());
+    }
+
+    /**
+     * `--filters` pushes the cheap part of the narrowing (current-gen,
+     * non-bare-metal) to AWS itself; the family-prefix allowlist (t/m/c/r
+     * only) happens client-side in parseAws() since it's a lot easier to
+     * read/test as PHP than as a growing wildcard filter string that would
+     * need updating every time AWS ships a new generation letter.
+     *
+     * @param  array<string, string>  $env
+     */
+    private function fetchAws(array $env): ?array
+    {
+        $bin = CliTool::AWS->resolveBinary() ?? 'aws';
+
+        $regions = Process::env($env)->run("{$bin} ec2 describe-regions --output json");
+        $types = Process::env($env)->run("{$bin} ec2 describe-instance-types --output json --filters Name=current-generation,Values=true Name=bare-metal,Values=false");
+
+        if (! $regions->successful() || ! $types->successful()) {
+            return null;
+        }
+
+        return self::parseAws((array) json_decode($regions->output(), true), (array) json_decode($types->output(), true));
+    }
+
+    private function fetchGcp(string $projectId): ?array
+    {
+        $bin = CliTool::GCLOUD->resolveBinary() ?? 'gcloud';
+        $zone = CloudProvider::GCP->defaultRegion().'-a';
+
+        $regions = Process::run("{$bin} compute regions list --project=".escapeshellarg($projectId).' --format=json');
+        $types = Process::run("{$bin} compute machine-types list --project=".escapeshellarg($projectId).' --filter='.escapeshellarg("zone:{$zone}").' --format=json');
+
+        if (! $regions->successful() || ! $types->successful()) {
+            return null;
+        }
+
+        return self::parseGcp((array) json_decode($regions->output(), true), (array) json_decode($types->output(), true));
     }
 
     /** `6`, not `6.00`; `3.79` stays. */

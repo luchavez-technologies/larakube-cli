@@ -25,6 +25,21 @@ enum CloudProvider: string
         };
     }
 
+    /**
+     * Where to see this provider's own current prices — only populated for
+     * providers whose size-listing API carries no price at all (AWS, GCP),
+     * so a picker can link out instead of ever claiming a live number it
+     * doesn't have.
+     */
+    public function pricingUrl(): ?string
+    {
+        return match ($this) {
+            self::AWS => 'https://aws.amazon.com/ec2/pricing/on-demand/',
+            self::GCP => 'https://cloud.google.com/compute/vm-instance-pricing',
+            default => null,
+        };
+    }
+
     /** Available regions for this provider. */
     public function regions(): array
     {

@@ -62,19 +62,21 @@ class CloudProvidersCommand extends Command
     }
 
     /**
-     * @return array{slug: string, label: string, regions: list<array{value: string, label: string}>, defaultRegion: string, vpsSizes: list<array{value: string, label: string}>, defaultVpsSize: string, defaultDevBoxSize: string, managedSizes: list<array{value: string, label: string}>, defaultManagedSize: string, managedProvider: string, haOption: string, haCost: ?string, credentials: array{ready: bool, hint: ?string}}
+     * @return array{slug: string, label: string, regions: list<array{value: string, label: string}>, defaultRegion: string, vpsSizes: list<array{value: string, label: string}>, defaultVpsSize: string, defaultDevBoxSize: string, managedSizes: list<array{value: string, label: string}>, defaultManagedSize: string, managedProvider: string, haOption: string, haCost: ?string, pricing: array{source: string, asOf: ?string, currency: ?string, priceIsEstimated: bool, officialPricingUrl: ?string}, credentials: array{ready: bool, hint: ?string}}
      */
     protected function describe(CloudProvider $provider): array
     {
         $credentials = $this->credentialStatus($provider);
         $regions = $this->pickerOptions($provider->regions());
         $sizes = $this->pickerOptions($provider->vpsSizes());
+        $managedSizes = $this->pickerOptions($provider->managedSizes());
         $defaultRegion = $provider->defaultRegion();
         $defaultSize = $provider->defaultVpsSize();
+        $defaultManagedSize = $provider->defaultManagedSize();
         // Without a connected account, the prices are the ones written into the CLI.
         $pricing = ['source' => 'builtin', 'asOf' => null, 'currency' => null];
 
-        $live = $credentials['ready'] ? (new LiveProviderCatalog)->get($provider, $this->tokenFor($provider), $this->flag('refresh')) : null;
+        $live = $credentials['ready'] ? (new LiveProviderCatalog)->get($provider, $this->credentialFor($provider), $this->flag('refresh')) : null;
         $priced = null;
 
         if ($live !== null) {
@@ -84,6 +86,21 @@ class CloudProvidersCommand extends Command
             $defaultSize = $this->defaultSize($provider, $live['sizes']);
             $pricing = ['source' => $live['source'], 'asOf' => $live['asOf'], 'currency' => $live['currency']];
             $priced = $live['sizes'];
+
+            // AWS/GCP only: this is a genuinely open discovery of every
+            // general-purpose/compute/memory-optimized instance type the
+            // account can use, not a narrower curated subset — Managed
+            // Kubernetes gets the exact same list the VPS picker just got,
+            // not a second, smaller one. (DO/Hetzner's managedSizes() stays
+            // static: their live sizes list is capped/sorted for the VPS
+            // picker specifically, cheapest 8, and isn't a stand-in catalog.)
+            if (in_array($provider, [CloudProvider::AWS, CloudProvider::GCP], true)) {
+                $managedSizes = $sizes;
+                $managedValues = array_column($managedSizes, 'value');
+                if ($managedValues !== [] && ! in_array($defaultManagedSize, $managedValues, true)) {
+                    $defaultManagedSize = $managedValues[0];
+                }
+            }
         }
 
         $accountData = $this->accountsFor($provider);
@@ -96,12 +113,16 @@ class CloudProvidersCommand extends Command
             'vpsSizes' => $sizes,
             'defaultVpsSize' => $defaultSize,
             'defaultDevBoxSize' => $this->devBoxSize($priced ?? $sizes, $defaultSize),
-            'managedSizes' => $this->pickerOptions($provider->managedSizes()),
-            'defaultManagedSize' => $provider->defaultManagedSize(),
+            'managedSizes' => $managedSizes,
+            'defaultManagedSize' => $defaultManagedSize,
             'managedProvider' => $provider->managedProvider()->value,
             'haOption' => $provider->managedProvider()->haOption(),
             'haCost' => $provider->managedProvider()->haCost(),
-            'pricing' => $pricing,
+            'pricing' => [
+                ...$pricing,
+                'priceIsEstimated' => $provider->pricingUrl() !== null,
+                'officialPricingUrl' => $provider->pricingUrl(),
+            ],
             'credentials' => $credentials,
             'accounts' => $accountData['accounts'],
             'activeAccount' => $accountData['activeAccount'],
@@ -229,12 +250,18 @@ class CloudProvidersCommand extends Command
         return $fits[0]['value'];
     }
 
-    private function tokenFor(CloudProvider $provider): ?string
+    /**
+     * What LiveProviderCatalog::get() needs to reach this provider: a token
+     * (DO/Hetzner), the `aws` CLI's resolved env vars (AWS), or the active
+     * GCP project ID.
+     */
+    private function credentialFor(CloudProvider $provider): mixed
     {
         return match ($provider) {
             CloudProvider::DO => $this->getDoToken() ?: (getenv('TF_VAR_do_token') ?: null),
             CloudProvider::HETZNER => $this->getHetznerToken(),
-            default => null,
+            CloudProvider::AWS => $this->buildAwsEnv(),
+            CloudProvider::GCP => $this->getGcpProjectId(),
         };
     }
 

@@ -68,7 +68,11 @@ enum ManagedProvider: string
             // from it for the first cluster per project.
             self::GKE => '~$73/month (regional control plane)',
             self::AKS => '$73/month (Standard) or $438/month (Premium)',
-            default => null,
+            // Not a toggle (haOption() is 'always'), but not free either —
+            // EKS's flat $0.10/cluster-hour control-plane fee applies no
+            // matter what, so this must never read as "included at no cost."
+            self::EKS => '~$73/month',
+            self::CIVO, self::CUSTOM => null,
         };
     }
 

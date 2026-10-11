@@ -57,7 +57,9 @@ test('--json exposes each provider\'s managed-Kubernetes mapping, HA model, and 
         // not always-on (EKS's control plane really is always multi-AZ, no
         // non-HA option exists on that provider at all).
         ->and($providers['gcp'])->toMatchArray(['managedProvider' => 'gke', 'haOption' => 'boolean', 'haCost' => '~$73/month (regional control plane)'])
-        ->and($providers['aws'])->toMatchArray(['managedProvider' => 'eks', 'haOption' => 'always', 'haCost' => null])
+        // 'always' means no non-HA option exists, never "no extra cost" —
+        // EKS's flat control-plane fee applies regardless.
+        ->and($providers['aws'])->toMatchArray(['managedProvider' => 'eks', 'haOption' => 'always', 'haCost' => '~$73/month'])
         ->and($providers['hetzner'])->toMatchArray(['managedProvider' => 'custom', 'haOption' => 'unknown', 'haCost' => null])
         ->and($providers['hetzner']['managedSizes'])->toBe([]);
 });
@@ -129,6 +131,43 @@ test('providers include accounts and activeAccount in json output', function ():
     expect($providers['do'])->toHaveKey('accounts')
         ->and($providers['do']['accounts'])->toHaveCount(2)
         ->and($providers['do']['activeAccount'])->not->toBeNull();
+});
+
+test('AWS and GCP always mark their price as an estimate with a real pricing-page link; DO/Hetzner don\'t', function (): void {
+    cloudProvidersClearCredentialEnv();
+    Process::fake(['*' => Process::result(exitCode: 1)]);
+
+    $providers = cloudProvidersRunJson();
+
+    expect($providers['aws']['pricing'])->toBe(['source' => 'builtin', 'asOf' => null, 'currency' => null, 'priceIsEstimated' => true, 'officialPricingUrl' => CloudProvider::AWS->pricingUrl()])
+        ->and($providers['gcp']['pricing']['priceIsEstimated'])->toBeTrue()
+        ->and($providers['gcp']['pricing']['officialPricingUrl'])->toBe(CloudProvider::GCP->pricingUrl())
+        ->and($providers['do']['pricing'])->toBe(['source' => 'builtin', 'asOf' => null, 'currency' => null, 'priceIsEstimated' => false, 'officialPricingUrl' => null])
+        ->and($providers['hetzner']['pricing']['priceIsEstimated'])->toBeFalse();
+});
+
+test('a connected AWS account gets its regions/sizes confirmed live, including the Managed Kubernetes list', function (): void {
+    cloudProvidersClearCredentialEnv();
+    Process::fake([
+        'command -v aws' => Process::result(output: '/usr/local/bin/aws'),
+        '*aws sts get-caller-identity*' => Process::result(output: '{"Account":"123"}'),
+        '*ec2 describe-regions*' => Process::result(output: (string) json_encode(['Regions' => [['RegionName' => 'us-east-1']]])),
+        '*ec2 describe-instance-types*' => Process::result(output: (string) json_encode(['InstanceTypes' => [
+            ['InstanceType' => 't3.medium', 'BareMetal' => false, 'VCpuInfo' => ['DefaultVCpus' => 2], 'MemoryInfo' => ['SizeInMiB' => 4096]],
+            ['InstanceType' => 'p5.48xlarge', 'BareMetal' => false, 'VCpuInfo' => ['DefaultVCpus' => 192], 'MemoryInfo' => ['SizeInMiB' => 2097152]], // GPU family — must not appear
+        ]])),
+        '*' => Process::result(exitCode: 1),
+    ]);
+
+    $providers = cloudProvidersRunJson();
+
+    expect($providers['aws']['credentials']['ready'])->toBeTrue()
+        ->and($providers['aws']['pricing']['source'])->toBe('live')
+        ->and(array_column($providers['aws']['regions'], 'value'))->toBe(['us-east-1'])
+        ->and(array_column($providers['aws']['vpsSizes'], 'value'))->toBe(['t3.medium'])
+        // Managed Kubernetes gets the exact same open, live-confirmed list
+        // as the VPS picker now — not a second, narrower curated subset.
+        ->and(array_column($providers['aws']['managedSizes'], 'value'))->toBe(['t3.medium']);
 });
 
 test('AWS provider surfaces specific STS error code when authentication fails', function (): void {
