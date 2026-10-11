@@ -2,17 +2,27 @@
 
 use Illuminate\Support\Facades\Process;
 
+/** Extract the JSON body a tool-registry write handed to `--from-file=registry.json=<tmpfile>`, before the trait unlinks it. Named distinctly from DeploysClusterToolRegistrationTest's own copy — Pest loads every file's top-level functions into one shared namespace per parallel worker process, and the two files don't always land in the same one. */
+function flowRegistryWrite(string $command): ?array
+{
+    if (! preg_match('/--from-file=registry\.json=(\S+)/', $command, $m)) {
+        return null;
+    }
+
+    return json_decode(file_get_contents($m[1]), true);
+}
+
 /**
  * Fakes a cluster for tool:init --tool=n8n. $secret seeds the instance's existing
  * credentials Secret; $liveDeployments are Deployments already running.
  *
  * @param  array<string, string>  $secret
  * @param  list<string>  $liveDeployments
- * @param  array{manifest: ?string, secret: ?array, commands: list<string>}|null  $seen
+ * @param  array{manifest: ?string, secret: ?array, commands: list<string>, registryWrite: ?array}|null  $seen
  */
 function fakeFlowInitCluster(?array &$seen, array $secret = [], array $liveDeployments = [], bool $rolloutFails = false, ?array $capacity = null): void
 {
-    $seen = ['manifest' => null, 'secret' => null, 'commands' => []];
+    $seen = ['manifest' => null, 'secret' => null, 'commands' => [], 'registryWrite' => null];
 
     Process::fake(function ($process) use (&$seen, $secret, $liveDeployments, $rolloutFails, $capacity) {
         $cmd = (string) $process->command;
@@ -24,6 +34,12 @@ function fakeFlowInitCluster(?array &$seen, array $secret = [], array $liveDeplo
 
         if ($capacity !== null && str_contains($cmd, 'get pods -A -o json')) {
             return Process::result(output: (string) json_encode(['items' => $capacity['pods']]));
+        }
+
+        if (str_contains($cmd, 'create secret generic larakube-tools-registry')) {
+            $seen['registryWrite'] = flowRegistryWrite($cmd);
+
+            return Process::result();
         }
 
         if (str_contains($cmd, ' apply -f -')) {
@@ -178,4 +194,20 @@ test('tool:init --tool=n8n --force proceeds past a cluster without enough free c
         ->expectsOutputToContain('Proceeding despite low free cluster capacity (--force).');
 
     expect($seen['manifest'])->not->toBeNull();
+});
+
+test('tool:init --tool=n8n --no-plex records the choice in the tool registry, so tool:list never reports a Commons tenant it never got', function (): void {
+    fakeFlowInitCluster($seen);
+
+    test()->artisan('tool:init', [
+        '--tool' => 'n8n',
+        'environment' => 'local',
+        '--domain' => 'flow.example.com',
+        '--no-plex' => true,
+        '--force' => true,
+        '--no-interaction' => true,
+    ])->assertExitCode(0);
+
+    expect($seen['registryWrite'])->not->toBeNull()
+        ->and($seen['registryWrite'][0]['noPlex'] ?? null)->toBeTrue();
 });

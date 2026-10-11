@@ -586,3 +586,17 @@ test('an installed tool row names what the instance holds on the Commons', funct
     expect($row['commons']['databases'])->not->toBeEmpty()
         ->and($row['commons'])->toHaveKeys(['databases', 'redis', 'buckets']);
 });
+
+test('a --no-plex instance never reports a Commons tenant, even though the tool itself can join one', function (): void {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ['tool' => 'n8n', 'instance' => 'n8n-lite-larakube-app', 'installedAt' => '2026-09-01T00:00:00+00:00', 'host' => 'n8n-lite.larakube.app', 'noPlex' => true],
+        ]))),
+        '*' => Process::result(output: ''),
+    ]);
+
+    Artisan::call('tool:list local --registry-only --json');
+    $row = collect(json_decode(Artisan::output(), true))->firstWhere('tool', 'n8n');
+
+    expect($row['commons'])->toBe(['databases' => [], 'redis' => [], 'buckets' => []]);
+});

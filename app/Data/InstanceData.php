@@ -46,6 +46,8 @@ class InstanceData extends Data
         public ?string $engine = null,
         /** Behind Cloudflare's proxy (tool:proxy, or --proxied); null when never set. */
         public ?bool $proxied = null,
+        /** Bypassed Plex Commons at install (--no-plex); null when the tool has no such option. */
+        public ?bool $noPlex = null,
         /** ISO-8601 timestamp. */
         public ?string $installedAt = null,
         /** ISO-8601 timestamp. */

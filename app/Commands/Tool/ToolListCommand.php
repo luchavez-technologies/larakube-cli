@@ -168,8 +168,11 @@ class ToolListCommand extends Command
                     'verified' => ! $registryOnly,
                     'requiresAdminEmail' => $tool->requiresAdminEmail($entry['engine'] ?? null),
                     'multiInstance' => $tool->supportsMultipleInstances(),
-                    // The names this instance holds on the shared Commons, so a GUI can find its tenants.
-                    'commons' => $instance === '' ? ['databases' => [], 'redis' => [], 'buckets' => []] : [
+                    // The names this instance holds on the shared Commons, so a GUI can find its
+                    // tenants — none of them when this instance bypassed Commons (--no-plex):
+                    // these are still just templated names, never confirmed against a live
+                    // tenant, so a --no-plex instance must not get one at all.
+                    'commons' => $instance === '' || ($entry['noPlex'] ?? false) === true ? ['databases' => [], 'redis' => [], 'buckets' => []] : [
                         'databases' => array_values($tool->commonsDatabases($instance, $entry['engine'] ?? null)),
                         'redis' => array_values($tool->commonsRedisTenants($instance)),
                         'buckets' => array_values($tool->commonsBuckets($instance, $entry['engine'] ?? null)),

@@ -286,6 +286,16 @@ trait DeploysClusterTool
             $metadata['proxied'] = $this->lastProxied;
         }
 
+        // Remember whether this instance bypassed Plex Commons — generically,
+        // for every *:init command that offers --no-plex, with no per-tool
+        // wiring needed here. Without this, `tool:list` has no way to tell a
+        // --no-plex instance apart from a Commons one and reports the same
+        // templated tenant name for both (the bug behind a --no-plex install
+        // showing a live "Plex Commons" database it never actually has).
+        if (method_exists($this, 'hasOption') && $this->hasOption('no-plex')) {
+            $metadata['noPlex'] = (bool) $this->option('no-plex');
+        }
+
         $registered = $this->registerTool($kubectl, $tool, array_merge($metadata, $extra), $instance);
 
         // Issue the local cert HERE, from the tool-install path, because this
