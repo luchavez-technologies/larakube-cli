@@ -92,6 +92,18 @@ test('the form fields leave out the command mechanics and use the new:frameworks
         ->and(collect(ToolInitSpec::fields(ClusterTool::GRAFANA))->firstWhere('key', 'noLogs')['role'])->toBe('option');
 });
 
+test('a proxied that defaults on is still a checkbox, not a bare text field', function (): void {
+    $outline = collect(ToolInitSpec::fields(ClusterTool::OUTLINE))->keyBy('key')['proxied'];
+    $pocketbase = collect(ToolInitSpec::fields(ClusterTool::POCKETBASE))->keyBy('key')['proxied'];
+
+    expect($outline['type'])->toBe('confirm')
+        ->and($outline['flag'])->toBe('--proxied')
+        ->and($outline['default'])->toBeFalse()
+        ->and($pocketbase['type'])->toBe('confirm')
+        ->and($pocketbase['flag'])->toBe('--proxied=')
+        ->and($pocketbase['default'])->toBe('1');
+});
+
 test('an option builds the signature fragment the init commands use', function (): void {
     expect(InitOption::flag('force', 'Skip it')->signature())->toBe('{--force : Skip it}')
         ->and(InitOption::value('domain', 'A host')->signature())->toBe('{--domain= : A host}')
@@ -113,5 +125,6 @@ test('wordpress init spec provides select choices for db and visibleWhen conditi
         ])
         ->and($fields->has('noPlex'))->toBeTrue()
         ->and($fields['noPlex']['type'])->toBe('confirm')
+        ->and($fields['noPlex']['label'])->toBe('No Plex Commons')
         ->and($fields['noPlex']['visibleWhen'])->toBe(['db' => 'mysql']);
 });

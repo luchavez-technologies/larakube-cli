@@ -129,7 +129,17 @@ final readonly class InitOption
     {
         $field = [
             'key' => lcfirst(str_replace(' ', '', ucwords(str_replace('-', ' ', $this->name)))),
-            'type' => $this->kind === self::FLAG ? 'confirm' : ($this->kind === self::SELECT ? 'select' : 'text'),
+            // A VALUE option whose default is literally '0' or '1' is a boolean
+            // that merely defaults ON instead of off (e.g. --proxied=1 by
+            // default, --proxied=0 opts out) — still a checkbox to a person,
+            // same as a FLAG, just resolved differently (FrameworkForm knows
+            // the '=' in `flag` below means "pass the value", not "pass bare").
+            'type' => match (true) {
+                $this->kind === self::FLAG => 'confirm',
+                $this->kind === self::SELECT => 'select',
+                $this->kind === self::VALUE && in_array($this->default, ['0', '1'], true) => 'confirm',
+                default => 'text',
+            },
             'role' => $this->role(),
             'label' => $this->label(),
             'description' => $this->description,
@@ -182,6 +192,9 @@ final readonly class InitOption
 
         $label = ucfirst(str_replace('-', ' ', $this->name));
 
-        return str_replace(['Sso', 'Vpn', 'Url', 'Plex', 'Cloudflare', 'Dns', 'Db'], ['SSO', 'VPN', 'URL', 'Plex', 'Cloudflare', 'DNS', 'Database Engine'], $label);
+        // "plex" alone (from option names like `no-plex`) means nothing outside
+        // LaraKube — spell out "Plex Commons", the same term the option's own
+        // description already uses.
+        return str_replace(['Sso', 'Vpn', 'Url', 'plex', 'Cloudflare', 'Dns', 'Db'], ['SSO', 'VPN', 'URL', 'Plex Commons', 'Cloudflare', 'DNS', 'Database Engine'], $label);
     }
 }
