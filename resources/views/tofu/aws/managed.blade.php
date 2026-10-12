@@ -80,6 +80,24 @@ resource "aws_iam_role_policy_attachment" "node_registry_policy" {
   role       = aws_iam_role.nodes.name
 }
 
+# A managed node group's CreateNodegroup call auto-creates the
+# AWSServiceRoleForAmazonEKSNodegroup service-linked role the first time
+# it's needed in an account — but that auto-create path first checks
+# whether the role already exists via a plain iam:GetRole call that AWS
+# evaluates strictly, in a way an ordinary scoped IAM policy can't satisfy
+# for a role that has never existed yet (a known AWS/Terraform gap — see
+# terraform-aws-modules/terraform-aws-eks#823). Creating it explicitly
+# here sidesteps that check entirely: once the role exists, the node
+# group's own create call never hits that gate. "|| true" makes repeat
+# runs (a second managed cluster in the same account) a no-op instead of
+# an "already exists" failure, so this stays idempotent without needing
+# Terraform to track the role in state.
+resource "null_resource" "eks_nodegroup_service_linked_role" {
+  provisioner "local-exec" {
+    command = "aws iam create-service-linked-role --aws-service-name eks-nodegroup.amazonaws.com || true"
+  }
+}
+
 # EKS Cluster
 resource "aws_eks_cluster" "larakube" {
   name     = "{{ $clusterName }}"
@@ -115,6 +133,7 @@ resource "aws_eks_node_group" "larakube" {
     aws_iam_role_policy_attachment.node_worker_policy,
     aws_iam_role_policy_attachment.node_cni_policy,
     aws_iam_role_policy_attachment.node_registry_policy,
+    null_resource.eks_nodegroup_service_linked_role,
   ]
 }
 
