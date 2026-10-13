@@ -80,3 +80,33 @@ test('cloud:accounts can remove an AWS profile', function (): void {
     expect($output['success'])->toBeTrue()
         ->and($output['removed'])->toBe('client-temp');
 });
+
+test('cloud:accounts can add a gcp service account and list it', function (): void {
+    $sa = [
+        'type' => 'service_account',
+        'project_id' => 'sa-project-123',
+        'client_email' => 'sa-dev@sa-project-123.iam.gserviceaccount.com',
+    ];
+    $filePath = home_path().'/test-sa.json';
+    file_put_contents($filePath, json_encode($sa));
+
+    Artisan::call('cloud:accounts', [
+        '--provider' => 'gcp',
+        '--name' => $filePath,
+        '--add' => true,
+        '--json' => true,
+    ]);
+
+    $output = json_decode(Artisan::output(), true);
+    expect($output['success'])->toBeTrue()
+        ->and($output['provider'])->toBe('gcp')
+        ->and($output['account'])->toBe('sa-dev@sa-project-123.iam.gserviceaccount.com');
+
+    Artisan::call('cloud:accounts', ['--provider' => 'gcp', '--json' => true]);
+    $listOutput = json_decode(Artisan::output(), true);
+    $gcpAccounts = $listOutput['accounts']['gcp'] ?? [];
+
+    expect(collect($gcpAccounts)->contains(fn ($acc) => $acc['id'] === 'sa-dev@sa-project-123.iam.gserviceaccount.com'))->toBeTrue();
+
+    @unlink($filePath);
+});

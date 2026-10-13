@@ -112,6 +112,7 @@ class CloudAccountsCommand extends Command
             'do' => 'DigitalOcean',
             'hetzner' => 'Hetzner Cloud',
             'aws' => 'Amazon Web Services',
+            'gcp' => 'Google Cloud',
         ], default: 'do');
 
         if (in_array($prov, ['do', 'hetzner'], true)) {
@@ -153,6 +154,66 @@ class CloudAccountsCommand extends Command
             }
 
             $this->laraKubeInfo("Saved AWS profile '{$profile}'.");
+
+            return 0;
+        }
+
+        if ($prov === 'gcp') {
+            $input = $this->option('token') ?: ($this->option('name') ?: text('Path to Service Account JSON key or JSON string', required: true));
+            $resolvedPath = str_replace('~', home_path(), trim((string) $input));
+            $filePath = null;
+            $data = null;
+
+            if (is_file($resolvedPath)) {
+                $filePath = $resolvedPath;
+                $content = file_get_contents($filePath);
+                $data = is_string($content) ? json_decode($content, true) : null;
+            } else {
+                $data = json_decode((string) $input, true);
+            }
+
+            if (! is_array($data) || empty($data['type']) || ($data['type'] !== 'service_account') || empty($data['client_email']) || empty($data['project_id'])) {
+                return $this->failed('Input is not a valid Google Cloud Service Account JSON key.');
+            }
+
+            $projectId = (string) $data['project_id'];
+            $clientEmail = (string) $data['client_email'];
+
+            if (! $filePath) {
+                $configDir = home_path().'/.larakube';
+                if (! is_dir($configDir)) {
+                    mkdir($configDir, 0755, true);
+                }
+                $filePath = $configDir."/gcp-credentials-{$projectId}.json";
+                file_put_contents($filePath, (string) $input);
+                chmod($filePath, 0600);
+            }
+
+            $config = $this->getGlobalConfig();
+            $config->setGcpCredentials($filePath);
+            $config->setGcpProjectId($projectId);
+            $config->setGcpAccount($clientEmail);
+            $config->save();
+
+            if (\App\Enums\CliTool::GCLOUD->isInstalled()) {
+                $gcloud = \App\Enums\CliTool::GCLOUD->resolveBinary() ?? 'gcloud';
+                \Illuminate\Support\Facades\Process::run("{$gcloud} auth activate-service-account --key-file=".escapeshellarg($filePath).' 2>/dev/null');
+                \Illuminate\Support\Facades\Process::run("{$gcloud} config set project ".escapeshellarg($projectId).' 2>/dev/null');
+            }
+
+            if ($this->flag('json')) {
+                $this->jsonOutput([
+                    'success' => true,
+                    'provider' => 'gcp',
+                    'id' => $clientEmail,
+                    'account' => $clientEmail,
+                    'project_id' => $projectId,
+                ]);
+
+                return 0;
+            }
+
+            $this->laraKubeInfo("Added Google Cloud Service Account '{$clientEmail}' for project '{$projectId}'.");
 
             return 0;
         }
@@ -265,8 +326,21 @@ class CloudAccountsCommand extends Command
             if ($config->gcpAccount === $id) {
                 $config->setGcpAccount(null);
                 $this->setGcpAccount(null);
-                $config->save();
             }
+
+            if ($config->getGcpCredentials()) {
+                $credsPath = $config->getGcpCredentials();
+                if (is_file($credsPath)) {
+                    $content = file_get_contents($credsPath);
+                    $saData = is_string($content) ? json_decode($content, true) : null;
+                    if (is_array($saData) && ($saData['client_email'] ?? '') === $id) {
+                        $config->setGcpCredentials(null);
+                        $this->setGcpCredentials(null);
+                    }
+                }
+            }
+
+            $config->save();
 
             if ($this->flag('json')) {
                 $this->jsonOutput(['success' => true, 'provider' => 'gcp', 'removed' => $id]);
@@ -358,12 +432,29 @@ class CloudAccountsCommand extends Command
         $activeGcp = $config->getGcpAccount();
         $gcloudBin = \App\Enums\CliTool::GCLOUD->resolveBinary() ?? 'gcloud';
         foreach ($this->listGcpAccounts($gcloudBin) as $email => $isActive) {
-            $gcpAccounts[] = [
+            $gcpAccounts[$email] = [
                 'id' => $email,
                 'name' => $email,
                 'default' => $activeGcp ? $email === $activeGcp : $isActive,
                 'meta' => 'Google Cloud account',
             ];
+        }
+
+        if ($credsPath = $config->getGcpCredentials()) {
+            if (is_file($credsPath)) {
+                $content = file_get_contents($credsPath);
+                $saData = is_string($content) ? json_decode($content, true) : null;
+                if (is_array($saData) && ! empty($saData['client_email'])) {
+                    $saEmail = (string) $saData['client_email'];
+                    $saProj = $saData['project_id'] ?? 'gcp';
+                    $gcpAccounts[$saEmail] = [
+                        'id' => $saEmail,
+                        'name' => $saEmail,
+                        'default' => $activeGcp ? $saEmail === $activeGcp : true,
+                        'meta' => "Service Account ({$saProj})",
+                    ];
+                }
+            }
         }
 
         return [
