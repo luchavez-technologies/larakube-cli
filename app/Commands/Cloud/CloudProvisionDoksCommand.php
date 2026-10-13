@@ -30,7 +30,9 @@ class CloudProvisionDoksCommand extends Command
     protected $signature = 'cloud:init:doks
         {environment? : Inside a project, the environment to bind to this cluster.}
         {--context= : Target a specific kube-context}
-        {--email= : Email for Let\'s Encrypt certificate notices}';
+        {--email= : Email for Let\'s Encrypt certificate notices}
+        {--skip-dns : Skip automating external-dns records}
+        {--skip-tls : Skip issuing Let\'s Encrypt certificates through DNS-01 challenge}';
 
     /**
      * Backward-compatible alias for the pre-rename command name.
@@ -159,8 +161,12 @@ class CloudProvisionDoksCommand extends Command
             $this->displayNextSteps($ip);
         }
 
-        if (! $this->option('no-interaction') && confirm('Would you like to automate DNS records with Cloudflare for this cluster?')) {
+        if (! $this->option('no-interaction') && ! $this->option('skip-dns') && confirm('Would you like to automate DNS records with ExternalDNS for this cluster?')) {
             $this->call('tool:init', ['--tool' => 'external-dns', 'environment' => $environment ?: 'production', '--context' => $context]);
+        }
+
+        if (! $this->option('no-interaction') && ! $this->option('skip-tls') && confirm('Would you like to enable a DNS-01 challenge for SSL certificates (so wildcard/proxied hosts keep renewing)?')) {
+            $this->call('tls:init', ['environment' => $environment ?: 'production', '--context' => $context]);
         }
 
         return 0;

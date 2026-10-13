@@ -83,3 +83,41 @@ test('a Cloudflare step that fails never fails the server', function (): void {
     // Both were still attempted: a failed DNS step must not skip SSL.
     expect(array_column($probe->called, 0))->toBe(['tool:init', 'tls:init']);
 });
+
+test('a scripted run sets up Route53 DNS and TLS with --dns-provider=route53', function (): void {
+    $probe = cloudflareProbe(['--no-interaction' => true, '--dns-provider' => 'route53']);
+    $probe->finish('staging', 'managed-ctx');
+
+    expect($probe->called)->toBe([
+        ['tool:init', ['--tool' => 'external-dns', 'environment' => 'staging', '--context' => 'managed-ctx', '--provider' => 'route53']],
+        ['tls:init', ['environment' => 'staging', '--context' => 'managed-ctx', '--provider' => 'route53']],
+    ]);
+});
+
+test('a scripted run sets up Google Cloud DNS with --dns-provider=google', function (): void {
+    $probe = cloudflareProbe(['--no-interaction' => true, '--dns-provider' => 'google']);
+    $probe->finish('production', 'gke-ctx');
+
+    expect($probe->called)->toBe([
+        ['tool:init', ['--tool' => 'external-dns', 'environment' => 'production', '--context' => 'gke-ctx', '--provider' => 'google']],
+        ['tls:init', ['environment' => 'production', '--context' => 'gke-ctx', '--provider' => 'google']],
+    ]);
+});
+
+test('--without-dns skips external-dns but runs tls:init', function (): void {
+    $probe = cloudflareProbe(['--no-interaction' => true, '--dns-provider' => 'route53', '--without-dns' => true]);
+    $probe->finish('prod', 'ctx');
+
+    expect($probe->called)->toBe([
+        ['tls:init', ['environment' => 'prod', '--context' => 'ctx', '--provider' => 'route53']],
+    ]);
+});
+
+test('--without-tls skips tls:init but runs external-dns', function (): void {
+    $probe = cloudflareProbe(['--no-interaction' => true, '--dns-provider' => 'google', '--without-tls' => true]);
+    $probe->finish('prod', 'ctx');
+
+    expect($probe->called)->toBe([
+        ['tool:init', ['--tool' => 'external-dns', 'environment' => 'prod', '--context' => 'ctx', '--provider' => 'google']],
+    ]);
+});

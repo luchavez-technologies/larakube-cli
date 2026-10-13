@@ -167,7 +167,7 @@ spec:
                 secretKeyRef:
                   name: traefik-acme-cloudflare
                   key: token
-@else
+@elseif($dnsProvider === \App\Enums\DnsProvider::ROUTE53)
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
@@ -183,6 +183,14 @@ spec:
                 secretKeyRef:
                   name: traefik-acme-route53
                   key: region
+@elseif($dnsProvider === \App\Enums\DnsProvider::GOOGLE)
+            - name: GCE_PROJECT
+              valueFrom:
+                secretKeyRef:
+                  name: traefik-acme-google
+                  key: project_id
+            - name: GCE_SERVICE_ACCOUNT_FILE
+              value: /etc/traefik-acme/credentials.json
 @endif
 @endif
           ports:
@@ -193,10 +201,20 @@ spec:
           volumeMounts:
             - name: acme
               mountPath: /data
+@if(($dnsChallenge ?? false) && $dnsProvider === \App\Enums\DnsProvider::GOOGLE)
+            - name: traefik-acme-google
+              mountPath: /etc/traefik-acme
+              readOnly: true
+@endif
       volumes:
         - name: acme
           persistentVolumeClaim:
             claimName: traefik-acme
+@if(($dnsChallenge ?? false) && $dnsProvider === \App\Enums\DnsProvider::GOOGLE)
+        - name: traefik-acme-google
+          secret:
+            secretName: traefik-acme-google
+@endif
 ---
 apiVersion: v1
 kind: Service

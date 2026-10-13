@@ -586,3 +586,54 @@ test('tool:init --tool=external-dns takes the token from LARAKUBE_CLOUDFLARE_TOK
 
     expect(base64_decode($secret['data']['token']))->toBe('env-token');
 });
+
+test('tool:init --tool=external-dns manages a Google Cloud DNS zone when --provider=google is given', function (): void {
+    $secret = null;
+    $appliedManifest = '';
+    $tempDir = Spatie\TemporaryDirectory\TemporaryDirectory::make()->deleteWhenDestroyed();
+    $saFile = $tempDir->path('sa.json');
+    file_put_contents($saFile, json_encode(['project_id' => 'my-gcp-project', 'private_key' => 'fake-key']));
+
+    Process::fake(dnsFakes('abc12345', [
+        '*command -v gcloud*' => Process::result(output: '/usr/local/bin/gcloud'),
+        '*dns managed-zones list*' => Process::result(output: (string) json_encode([
+            ['name' => 'zone-example', 'dnsName' => 'example.com.'],
+        ])),
+        '*apply -f -*' => function ($process) use (&$secret, &$appliedManifest) {
+            $appliedManifest .= $process->command;
+            $manifest = json_decode((string) $process->input, true);
+            if (($manifest['kind'] ?? null) === 'Secret') {
+                $secret = $manifest;
+            }
+
+            return Process::result(output: 'applied');
+        },
+    ]));
+
+    $this->artisan("tool:init --tool=external-dns prod --context=ctx --provider=google --gcp-credentials={$saFile} --gcp-project=my-gcp-project --no-interaction --force")
+        ->assertExitCode(0)
+        ->expectsOutputToContain('ExternalDNS is managing example.com');
+
+    expect($secret['metadata']['name'])->toBe('google-dns-credential-example-com')
+        ->and(base64_decode($secret['data']['project_id']))->toBe('my-gcp-project')
+        ->and(json_decode(base64_decode($secret['data']['credentials.json']), true)['project_id'])->toBe('my-gcp-project')
+        ->and($appliedManifest)->toContain('larakube.io/dns-provider: google');
+});
+
+test('tool:init --tool=external-dns --provider=google refuses non-interactively without gcloud', function (): void {
+    Process::fake(dnsFakes('abc12345', [
+        '*command -v gcloud*' => Process::result(output: '', exitCode: 1),
+    ]));
+
+    $this->artisan('tool:init --tool=external-dns prod --context=ctx --provider=google --gcp-credentials=/fake.json --gcp-project=proj --no-interaction --force')
+        ->expectsOutputToContain('Google Cloud SDK (gcloud) is required')
+        ->assertExitCode(1);
+});
+
+test('tool:init --tool=external-dns --provider=google requires credentials non-interactively', function (): void {
+    Process::fake(dnsFakes('abc12345', [
+        '*command -v gcloud*' => Process::result(output: '/usr/local/bin/gcloud'),
+    ]));
+
+    $this->artisan('tool:init --tool=external-dns prod --context=ctx --provider=google --no-interaction --force')->run();
+})->throws(MissingFlagException::class, 'Missing required --gcp-credentials');

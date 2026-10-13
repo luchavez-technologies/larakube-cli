@@ -466,16 +466,16 @@ BASH;
             $this->laraKubeWarn('Could not find local dev certificates. Skipping SSL secret creation.');
         }
 
-        // 3. Apply Traefik Cloud manifest
+        // 3. Apply Traefik manifest (cloud or managed)
+        $isManaged = $this->traefikIsManaged($kubectl);
         $useDns = $dnsChallenge ?? $this->traefikUsesDnsChallenge($kubectl);
         $provider = $useDns ? ($dnsProvider ?? $this->traefikDnsProvider($kubectl) ?? DnsProvider::CLOUDFLARE) : null;
-        $tmpInstall = $temporaryDirectory->path('traefik-cloud.yaml');
-        file_put_contents($tmpInstall, view('k8s.traefik-cloud', [
+        $viewName = $isManaged ? 'k8s.traefik-managed' : 'k8s.traefik-cloud';
+        $viewData = [
             // The running cluster's ACME email wins over this machine's global
             // config: another operator re-rendering Traefik must not change the
             // Let's Encrypt account, or drop ACME when they have no email set.
             'email' => $this->liveTraefikAcmeEmail($kubectl) ?? $this->getEmail(),
-            'ip' => $ip,
             'dnsChallenge' => $useDns,
             'dnsProvider' => $provider,
             // Only meaningful for an actually-Cloudflare-proxied cluster: trust
@@ -484,14 +484,19 @@ BASH;
             // layer to trust — trusting Cloudflare's ranges there would be
             // wrong (and let anyone on those ranges spoof X-Forwarded-For).
             'trustedIps' => $provider === DnsProvider::CLOUDFLARE ? $this->cloudflareTrustedRanges($kubectl) : [],
-        ])->render());
+        ];
+        if (! $isManaged) {
+            $viewData['ip'] = $ip;
+        }
+        $tmpInstall = $temporaryDirectory->path($isManaged ? 'traefik-managed.yaml' : 'traefik-cloud.yaml');
+        file_put_contents($tmpInstall, view($viewName, $viewData)->render());
         $ok = $this->applyAndVerifyRollout($kubectl, $tmpInstall, $namespace, 'traefik', extraApplyFlags: '--validate=false');
         $temporaryDirectory->delete();
         if (! $ok) {
             return false;
         }
 
-        $this->laraKubeInfo('Traefik deployed and configured with HostPort and ACME (Let\'sEncrypt).');
+        $this->laraKubeInfo($isManaged ? 'Traefik deployed and configured with LoadBalancer and ACME (Let\'sEncrypt).' : 'Traefik deployed and configured with HostPort and ACME (Let\'sEncrypt).');
 
         return true;
     }

@@ -13,6 +13,7 @@ use App\Traits\InteractsWithCloudflareApi;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithClusterIdentity;
 use App\Traits\InteractsWithDnsZones;
+use App\Traits\InteractsWithGoogleCloudDnsApi;
 use App\Traits\InteractsWithRoute53Api;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PromotesIngressDns;
@@ -60,7 +61,7 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithCloudflareApi,
         InteractsWithClusterContext, InteractsWithClusterIdentity, InteractsWithDnsZones,
-        InteractsWithRoute53Api, LaraKubeOutput, PromotesIngressDns, ReadsStoredDnsCredentials,
+        InteractsWithGoogleCloudDnsApi, InteractsWithRoute53Api, LaraKubeOutput, PromotesIngressDns, ReadsStoredDnsCredentials,
         RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, StreamsProcessOutput;
 
     private const CLOUDFLARE_TOKEN_ENV = 'LARAKUBE_CLOUDFLARE_TOKEN';
@@ -88,6 +89,12 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
 
         if ($provider === DnsProvider::ROUTE53 && ! $this->route53Available()) {
             $this->laraKubeError('The AWS CLI is required to manage Route53 zones. Run `larakube setup --tools=aws` first.');
+
+            return 1;
+        }
+
+        if ($provider === DnsProvider::GOOGLE && ! $this->googleCloudDnsAvailable()) {
+            $this->laraKubeError('The Google Cloud SDK (gcloud) is required to manage Google Cloud DNS zones. Run `larakube setup --tools=gcloud` first.');
 
             return 1;
         }
@@ -156,6 +163,7 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
             'slug' => $groupSlug,
             'ownerId' => $ownerId,
             'provider' => $provider,
+            'googleProject' => $credential['project_id'] ?? null,
         ])->render();
 
         $this->line("  Applying ExternalDNS for {$zoneList}...");
@@ -198,6 +206,7 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
         return match ($provider) {
             DnsProvider::CLOUDFLARE => $this->resolveCloudflareCredential($kubectl, $ns),
             DnsProvider::ROUTE53 => $this->resolveRoute53Credential($kubectl, $ns),
+            DnsProvider::GOOGLE => $this->resolveGoogleCredential($kubectl, $ns),
         };
     }
 
@@ -313,6 +322,73 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
     }
 
     /**
+     * @return array<string, string>|null
+     */
+    protected function resolveGoogleCredential(string $kubectl, string $ns): ?array
+    {
+        $project = (string) ($this->option('gcp-project') ?: getenv('GCP_PROJECT_ID') ?: getenv('GCLOUD_PROJECT') ?: '');
+        $credentialsPath = (string) ($this->option('gcp-credentials') ?: getenv('GOOGLE_APPLICATION_CREDENTIALS') ?: '');
+        $json = '';
+        if ($credentialsPath !== '' && file_exists($credentialsPath)) {
+            $json = (string) file_get_contents($credentialsPath);
+        } elseif (($envJson = getenv('GCP_SERVICE_ACCOUNT_JSON')) && trim((string) $envJson) !== '') {
+            $json = trim((string) $envJson);
+        }
+
+        if ($json !== '') {
+            if ($project === '') {
+                $decoded = json_decode($json, true);
+                if (is_array($decoded) && ! empty($decoded['project_id'])) {
+                    $project = (string) $decoded['project_id'];
+                }
+            }
+            if ($project !== '') {
+                return ['credentials.json' => $json, 'project_id' => $project];
+            }
+        }
+
+        $stored = array_filter(
+            $this->storedDnsCredentials($kubectl, $ns),
+            fn (array $entry): bool => $entry['provider'] === DnsProvider::GOOGLE,
+        );
+
+        if (count($stored) === 1) {
+            $slug = array_key_first($stored);
+            $this->laraKubeInfo("Reusing the stored Google Cloud DNS credential for '{$slug}'.");
+            $this->line('  <fg=gray>Pass</> <fg=blue>--gcp-credentials=</> <fg=gray>/</> <fg=blue>--gcp-project=</> <fg=gray>to replace it.</>');
+
+            return $stored[$slug]['data'];
+        }
+
+        if ($this->cannotPrompt()) {
+            throw new MissingFlagException(
+                'gcp-credentials',
+                'the Google Cloud Service Account JSON credentials file path (--gcp-credentials=)',
+                'larakube tool:init --tool=external-dns production --provider=google --gcp-credentials=… --gcp-project=…',
+            );
+        }
+
+        $this->newLine();
+        foreach (DnsProvider::GOOGLE->onboardingSteps() as $step) {
+            $this->line("  <fg=gray>{$step}</>");
+        }
+        $this->newLine();
+
+        $path = (string) text(label: 'Path to Service Account JSON key file', required: true);
+        if (! file_exists($path)) {
+            $this->laraKubeError("File not found: {$path}");
+
+            return null;
+        }
+        $content = (string) file_get_contents($path);
+        $decoded = json_decode($content, true);
+        $defaultProject = is_array($decoded) && ! empty($decoded['project_id']) ? (string) $decoded['project_id'] : '';
+        $chosenProject = (string) text(label: 'GCP Project ID', default: $defaultProject, required: true);
+
+        return ['credentials.json' => $content, 'project_id' => $chosenProject];
+    }
+
+    /**
      * The zone(s) this instance will manage: every zone the credential can
      * see, narrowed to an explicit --zone= subset when given. Returns []
      * (having already printed its own error) on a bad credential, one with
@@ -327,6 +403,7 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
         $discovered = array_values(match ($provider) {
             DnsProvider::CLOUDFLARE => $this->cloudflareListZones($credential['token']),
             DnsProvider::ROUTE53 => $this->route53ListZones($this->route53Env($credential)),
+            DnsProvider::GOOGLE => $this->googleCloudDnsListZones($credential),
         });
 
         if ($discovered === []) {

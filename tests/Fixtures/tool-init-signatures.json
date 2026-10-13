@@ -144,6 +144,14 @@
    "default": false,
    "kind": "flag"
   },
+  "gcp-credentials": {
+   "default": null,
+   "kind": "value"
+  },
+  "gcp-project": {
+   "default": null,
+   "kind": "value"
+  },
   "group": {
    "default": null,
    "kind": "value"

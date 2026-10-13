@@ -8,6 +8,7 @@ use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithCloudflareApi;
+use App\Traits\InteractsWithGoogleCloudDnsApi;
 use App\Traits\InteractsWithRoute53Api;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ProvisionsK3sNode;
@@ -34,20 +35,22 @@ use LaravelZero\Framework\Commands\Command;
  */
 class TlsInitCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithCloudflareApi, InteractsWithRoute53Api,
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithCloudflareApi, InteractsWithGoogleCloudDnsApi, InteractsWithRoute53Api,
         LaraKubeOutput, ProvisionsK3sNode, ReadsStoredDnsCredentials, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment;
 
     protected $signature = 'tls:init
         {environment? : The cloud environment whose cluster gets the DNS challenge}
         {--context=  : Target a specific kube-context}
-        {--provider= : Which DNS backend proves control — cloudflare (default) or route53}
+        {--provider= : Which DNS backend proves control — cloudflare (default), route53, or google}
         {--group=    : Reuse the credential of this tool:init --tool=external-dns group}
         {--aws-access-key-id=     : IAM access key ID with Route53 permissions. Or set AWS_ACCESS_KEY_ID}
         {--aws-secret-access-key= : IAM secret access key. Or set AWS_SECRET_ACCESS_KEY}
         {--aws-region=            : AWS region. Default us-east-1, or set AWS_DEFAULT_REGION}
+        {--gcp-project=           : Google Cloud project ID for Cloud DNS}
+        {--gcp-credentials=       : Path to Google service account JSON key file}
         {--force     : Skip the confirmation prompt}';
 
-    protected $description = 'Issue Let\'s Encrypt certificates through a DNS-01 challenge (Cloudflare or Route53), so proxied/wildcard hosts keep renewing';
+    protected $description = 'Issue Let\'s Encrypt certificates through a DNS-01 challenge (Cloudflare, Route53, or Google Cloud DNS), so proxied/wildcard hosts keep renewing';
 
     public function handle(): int
     {
@@ -76,16 +79,16 @@ class TlsInitCommand extends Command
             return 1;
         }
 
-        if ($this->traefikIsManaged($kubectl)) {
-            $this->laraKubeError('tls:init supports single-node (VPS) clusters for now. This is a managed cluster.');
-
-            return 1;
-        }
-
         $provider = DnsProvider::from((string) ($this->option('provider') ?: DnsProvider::CLOUDFLARE->value));
 
         if ($provider === DnsProvider::ROUTE53 && ! $this->route53Available()) {
             $this->laraKubeError('The AWS CLI is required to manage Route53 zones. Run `larakube setup --tools=aws` first.');
+
+            return 1;
+        }
+
+        if ($provider === DnsProvider::GOOGLE && ! $this->googleCloudDnsAvailable()) {
+            $this->laraKubeError('The Google Cloud CLI (gcloud) is required to manage Google Cloud DNS zones. Run `gcloud components install` or install the Google Cloud SDK.');
 
             return 1;
         }
@@ -96,9 +99,11 @@ class TlsInitCommand extends Command
         }
         [$credential, $source] = $resolved;
 
-        $zones = $provider === DnsProvider::CLOUDFLARE
-            ? $this->cloudflareListZones($credential['token'])
-            : $this->route53ListZones($this->route53Env($credential));
+        $zones = match ($provider) {
+            DnsProvider::CLOUDFLARE => $this->cloudflareListZones($credential['token']),
+            DnsProvider::ROUTE53 => $this->route53ListZones($this->route53Env($credential)),
+            DnsProvider::GOOGLE => $this->googleCloudDnsListZones($credential),
+        };
 
         if ($zones === []) {
             $this->laraKubeError("This credential sees no zones. Check that it is valid and scoped correctly for {$provider->label()}.");
@@ -144,11 +149,16 @@ class TlsInitCommand extends Command
             return 1;
         }
 
-        $ip = $this->resolveTraefikIngressIp($context);
-        if ($ip === null) {
-            $this->laraKubeError("Could not determine this cluster's ingress IP. Pass --context= for the right cluster.");
+        $isManaged = $this->traefikIsManaged($kubectl);
+        $ip = '';
+        if (! $isManaged) {
+            $resolvedIp = $this->resolveTraefikIngressIp($context);
+            if ($resolvedIp === null) {
+                $this->laraKubeError("Could not determine this cluster's ingress IP. Pass --context= for the right cluster.");
 
-            return 1;
+                return 1;
+            }
+            $ip = $resolvedIp;
         }
 
         if (! $this->deployTraefik($context, $ip, force: true, dnsChallenge: true, dnsProvider: $provider)) {
@@ -177,6 +187,7 @@ class TlsInitCommand extends Command
         return match ($provider) {
             DnsProvider::CLOUDFLARE => $this->resolveCloudflareCredential($kubectl),
             DnsProvider::ROUTE53 => $this->resolveRoute53Credential($kubectl),
+            DnsProvider::GOOGLE => $this->resolveGoogleCredential($kubectl),
         };
     }
 
@@ -333,6 +344,103 @@ class TlsInitCommand extends Command
     }
 
     /**
+     * @return array{0: array<string, string>, 1: string}|null
+     */
+    protected function resolveGoogleCredential(string $kubectl): ?array
+    {
+        $project = (string) ($this->option('gcp-project') ?: getenv('GCP_PROJECT_ID') ?: getenv('GCLOUD_PROJECT') ?: '');
+        $credentialsPath = (string) ($this->option('gcp-credentials') ?: getenv('GOOGLE_APPLICATION_CREDENTIALS') ?: '');
+        $json = '';
+        if ($credentialsPath !== '' && file_exists($credentialsPath)) {
+            $json = (string) file_get_contents($credentialsPath);
+        } elseif (($envJson = getenv('GCP_SERVICE_ACCOUNT_JSON')) && trim((string) $envJson) !== '') {
+            $json = trim((string) $envJson);
+        }
+
+        if ($json !== '') {
+            if ($project === '') {
+                $decoded = json_decode($json, true);
+                if (is_array($decoded) && ! empty($decoded['project_id'])) {
+                    $project = (string) $decoded['project_id'];
+                }
+            }
+            if ($project !== '') {
+                return [['credentials.json' => $json, 'project_id' => $project], 'from flags/environment'];
+            }
+        }
+
+        $stored = array_filter(
+            $this->storedDnsCredentials($kubectl, 'larakube-shared'),
+            fn (array $entry): bool => $entry['provider'] === DnsProvider::GOOGLE,
+        );
+        $group = (string) ($this->option('group') ?? '');
+
+        if ($group !== '') {
+            if (! isset($stored[$group])) {
+                $this->laraKubeError("No tool:init --tool=external-dns Google credential is stored for group '{$group}'.");
+                if ($stored !== []) {
+                    $this->line('  <fg=gray>Stored groups:</> '.implode(', ', array_keys($stored)));
+                }
+
+                return null;
+            }
+
+            return [$stored[$group]['data'], "reused from tool:init --tool=external-dns ({$group})"];
+        }
+
+        if (count($stored) === 1) {
+            $slug = (string) array_key_first($stored);
+
+            if ($this->cannotPrompt() || confirm("Reuse the Google Cloud DNS credential tool:init --tool=external-dns stored for '{$slug}'?")) {
+                return [$stored[$slug]['data'], "reused from tool:init --tool=external-dns ({$slug})"];
+            }
+        } elseif (count($stored) > 1) {
+            if ($this->cannotPrompt()) {
+                throw new MissingFlagException(
+                    'group',
+                    'which tool:init --tool=external-dns group\'s Google credential to reuse ('.implode(', ', array_keys($stored)).')',
+                    '--group='.array_key_first($stored),
+                );
+            }
+
+            $slug = (string) select(
+                label: 'Which tool:init --tool=external-dns Google credential should Traefik use?',
+                options: array_combine(array_keys($stored), array_keys($stored)),
+            );
+
+            return [$stored[$slug]['data'], "reused from tool:init --tool=external-dns ({$slug})"];
+        }
+
+        if ($this->cannotPrompt()) {
+            throw new MissingFlagException(
+                'gcp-credentials',
+                'the Google Cloud Service Account JSON credentials file path (--gcp-credentials=)',
+                'larakube tls:init production --provider=google --gcp-credentials=… --gcp-project=…',
+            );
+        }
+
+        $this->newLine();
+        foreach (DnsProvider::GOOGLE->onboardingSteps() as $step) {
+            $this->line("  <fg=gray>{$step}</>");
+        }
+        $this->newLine();
+
+        $path = (string) text(label: 'Path to Service Account JSON key file', required: true);
+        if (! file_exists($path)) {
+            $this->laraKubeError("File not found: {$path}");
+
+            return null;
+        }
+
+        $content = (string) file_get_contents($path);
+        $decoded = json_decode($content, true);
+        $defaultProject = is_array($decoded) && ! empty($decoded['project_id']) ? (string) $decoded['project_id'] : '';
+        $chosenProject = (string) text(label: 'GCP Project ID', default: $defaultProject, required: true);
+
+        return [['credentials.json' => $content, 'project_id' => $chosenProject], 'entered for tls:init'];
+    }
+
+    /**
      * Create and delete a test TXT record in every zone the certificates need.
      *
      * @param  array<string, string>  $credential
@@ -349,9 +457,11 @@ class TlsInitCommand extends Command
         foreach ($needed as $zone) {
             $zoneId = (string) array_search($zone, array_map('strtolower', $zones), true);
 
-            $canWrite = $provider === DnsProvider::CLOUDFLARE
-                ? $this->cloudflareCanWriteDns($credential['token'], $zoneId, $zone)
-                : $this->route53CanWriteDns($this->route53Env($credential), $zoneId, $zone);
+            $canWrite = match ($provider) {
+                DnsProvider::CLOUDFLARE => $this->cloudflareCanWriteDns($credential['token'], $zoneId, $zone),
+                DnsProvider::ROUTE53 => $this->route53CanWriteDns($this->route53Env($credential), $zoneId, $zone),
+                DnsProvider::GOOGLE => $this->googleCloudDnsCanWriteDns($credential, $zoneId, $zone),
+            };
 
             if (! $canWrite) {
                 $this->laraKubeError("The credential can read {$zone} but not write its DNS records.");

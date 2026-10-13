@@ -67,7 +67,7 @@ function tlsInitFakes(array $storedTokens, array $hosts, array &$captured, array
         '*get deployment traefik -n traefik -o jsonpath*' => Process::result(
             output: '["--certificatesresolvers.letsencrypt.acme.email=ops@example.com","--providers.kubernetesingress.ingressendpoint.ip=203.0.113.10"]',
         ),
-        '*apply -f *traefik-cloud.yaml*' => function (PendingProcess $process) use (&$captured) {
+        '*apply -f *traefik-*.yaml*' => function (PendingProcess $process) use (&$captured) {
             preg_match("/apply -f '([^']+)'/", $process->command, $m);
             $captured['manifest'] = file_get_contents($m[1]);
 
@@ -253,15 +253,54 @@ test('tls:init issues certificates through the Route53 DNS challenge when --prov
     Process::assertNotRan(fn ($process) => str_contains((string) $process->command, 'shh'));
 });
 
-test('tls:init refuses managed clusters for now', function (): void {
+test('tls:init succeeds on managed clusters and applies traefik-managed manifest', function (): void {
     $captured = [];
     Process::fake(tlsInitFakes(['example-com' => 'cf-token-123'], ['app.example.com'], $captured, [
         '*get pvc traefik-acme*' => Process::result(output: 'persistentvolumeclaim/traefik-acme'),
+        '*get secret traefik-acme-cloudflare -n traefik -o name*' => Process::result(output: 'secret/traefik-acme-cloudflare'),
     ]));
+    tlsInitCloudflare();
 
     $this->artisan('tls:init production --context=ctx --force --no-interaction')
-        ->expectsOutputToContain('single-node (VPS) clusters')
-        ->assertExitCode(1);
+        ->expectsOutputToContain('now uses the Cloudflare DNS challenge')
+        ->assertExitCode(0);
 
-    expect($captured['manifest'])->toBeNull();
+    expect($captured['token'])->toBe('cf-token-123')
+        ->and($captured['manifest'])
+        ->toContain('kind: PersistentVolumeClaim')
+        ->toContain('dnschallenge.provider=cloudflare');
+});
+
+test('tls:init issues certificates through Google Cloud DNS when --provider=google is given', function (): void {
+    $captured = [];
+    $tempDir = Spatie\TemporaryDirectory\TemporaryDirectory::make()->deleteWhenDestroyed();
+    $saFile = $tempDir->path('sa.json');
+    file_put_contents($saFile, json_encode(['project_id' => 'my-gcp-project', 'private_key' => 'fake-key']));
+
+    Process::fake(tlsInitFakes([], ['app.example.com'], $captured, [
+        '*command -v gcloud*' => Process::result(output: '/usr/local/bin/gcloud'),
+        '*dns managed-zones list*' => Process::result(output: (string) json_encode([
+            ['name' => 'zone-example', 'dnsName' => 'example.com.'],
+        ])),
+        '*dns record-sets transaction*' => Process::result(output: ''),
+    ]));
+
+    $this->artisan("tls:init production --context=ctx --provider=google --gcp-credentials={$saFile} --gcp-project=my-gcp-project --force --no-interaction")
+        ->expectsOutputToContain('now uses the Google Cloud DNS DNS challenge')
+        ->assertExitCode(0);
+
+    expect($captured['secretName'])->toBe('traefik-acme-google')
+        ->and($captured['secretData']['project_id'])->toBe('my-gcp-project')
+        ->and(json_decode($captured['secretData']['credentials.json'], true)['project_id'])->toBe('my-gcp-project');
+});
+
+test('tls:init --provider=google refuses when gcloud is not installed', function (): void {
+    $captured = [];
+    Process::fake(tlsInitFakes([], ['app.example.com'], $captured, [
+        '*command -v gcloud*' => Process::result(output: '', exitCode: 1),
+    ]));
+
+    $this->artisan('tls:init production --context=ctx --provider=google --gcp-credentials=/fake.json --gcp-project=proj --force --no-interaction')
+        ->expectsOutputToContain('Google Cloud CLI (gcloud) is required')
+        ->assertExitCode(1);
 });

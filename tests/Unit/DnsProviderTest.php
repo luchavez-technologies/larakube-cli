@@ -2,13 +2,13 @@
 
 use App\Enums\DnsProvider;
 
-test('DnsProvider cases are Cloudflare and Route53 — GoDaddy deliberately excluded (ExternalDNS Alpha-tier)', function (): void {
+test('DnsProvider cases are Cloudflare, Route53, and Google — GoDaddy deliberately excluded (ExternalDNS Alpha-tier)', function (): void {
     $cases = array_map(fn (DnsProvider $p) => $p->value, DnsProvider::cases());
 
-    expect($cases)->toBe(['cloudflare', 'route53']);
+    expect($cases)->toBe(['cloudflare', 'route53', 'google']);
 });
 
-test('CLOUDFLARE and ROUTE53 have distinct, correct wiring values', function (): void {
+test('CLOUDFLARE, ROUTE53, and GOOGLE have distinct, correct wiring values', function (): void {
     expect(DnsProvider::CLOUDFLARE->label())->toBe('Cloudflare')
         ->and(DnsProvider::CLOUDFLARE->externalDnsProviderFlag())->toBe('cloudflare')
         ->and(DnsProvider::CLOUDFLARE->legoProviderFlag())->toBe('cloudflare')
@@ -22,7 +22,14 @@ test('CLOUDFLARE and ROUTE53 have distinct, correct wiring values', function ():
         ->and(DnsProvider::ROUTE53->credentialSecretPrefix())->toBe('route53-credential-')
         ->and(DnsProvider::ROUTE53->credentialSecretName('example-com'))->toBe('route53-credential-example-com')
         ->and(DnsProvider::ROUTE53->credentialSecretKeys())->toBe(['access_key_id', 'secret_access_key', 'region'])
-        ->and(DnsProvider::ROUTE53->traefikAcmeSecretName())->toBe('traefik-acme-route53');
+        ->and(DnsProvider::ROUTE53->traefikAcmeSecretName())->toBe('traefik-acme-route53')
+        ->and(DnsProvider::GOOGLE->label())->toBe('Google Cloud DNS')
+        ->and(DnsProvider::GOOGLE->externalDnsProviderFlag())->toBe('google')
+        ->and(DnsProvider::GOOGLE->legoProviderFlag())->toBe('gcloud')
+        ->and(DnsProvider::GOOGLE->credentialSecretPrefix())->toBe('google-dns-credential-')
+        ->and(DnsProvider::GOOGLE->credentialSecretName('example-com'))->toBe('google-dns-credential-example-com')
+        ->and(DnsProvider::GOOGLE->credentialSecretKeys())->toBe(['credentials.json', 'project_id'])
+        ->and(DnsProvider::GOOGLE->traefikAcmeSecretName())->toBe('traefik-acme-google');
 });
 
 test('every provider has non-empty onboarding steps', function (): void {

@@ -101,6 +101,9 @@ spec:
             - --domain-filter={{ $zone }}
 @endforeach
             - --txt-owner-id={{ $ownerId }}
+@if($provider === \App\Enums\DnsProvider::GOOGLE && isset($googleProject))
+            - --google-project={{ $googleProject }}
+@endif
             {{-- Watch Ingress events instead of only polling. Without it
                  ExternalDNS reconciles on its default 60s interval, so a
                  freshly created Ingress waits up to a minute before its record
@@ -114,7 +117,7 @@ spec:
                 secretKeyRef:
                   name: cloudflare-token-{{ $slug }}
                   key: token
-@else
+@elseif($provider === \App\Enums\DnsProvider::ROUTE53)
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
@@ -130,4 +133,18 @@ spec:
                 secretKeyRef:
                   name: route53-credential-{{ $slug }}
                   key: region
+@elseif($provider === \App\Enums\DnsProvider::GOOGLE)
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /etc/google-cloud-dns/credentials.json
 @endif
+@if($provider === \App\Enums\DnsProvider::GOOGLE)
+          volumeMounts:
+            - name: google-dns-credential
+              mountPath: /etc/google-cloud-dns
+              readOnly: true
+      volumes:
+        - name: google-dns-credential
+          secret:
+            secretName: google-dns-credential-{{ $slug }}
+@endif
+

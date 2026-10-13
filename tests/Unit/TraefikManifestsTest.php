@@ -79,6 +79,29 @@ test('the DNS challenge renders the Route53 provider flag and AWS credential env
         ->and(collect($container['env'])->pluck('valueFrom.secretKeyRef.name')->unique()->all())->toBe(['traefik-acme-route53']);
 })->with(['k8s.traefik-cloud', 'k8s.traefik-managed']);
 
+test('the DNS challenge renders the Google provider flag, GCE env vars, and mounted credentials volume', function (string $view): void {
+    $rendered = view($view, [
+        'email' => 'ops@example.com',
+        'ip' => '203.0.113.10',
+        'loadBalancerName' => 'lb-example',
+        'dnsChallenge' => true,
+        'dnsProvider' => DnsProvider::GOOGLE,
+    ])->render();
+
+    $deployment = Yaml::parse(
+        collect(preg_split('/^---\s*$/m', $rendered))->first(fn ($doc) => str_contains($doc, 'kind: Deployment')),
+    );
+    $container = collect($deployment['spec']['template']['spec']['containers'])->first();
+    $volumes = $deployment['spec']['template']['spec']['volumes'] ?? [];
+
+    expect($container['args'])
+        ->toContain('--certificatesresolvers.letsencrypt.acme.dnschallenge.provider=gcloud')
+        ->not->toContain('--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web')
+        ->and(collect($container['env'])->pluck('name')->all())->toBe(['GCE_PROJECT', 'GCE_SERVICE_ACCOUNT_FILE'])
+        ->and(collect($container['volumeMounts'])->pluck('name')->all())->toContain('traefik-acme-google')
+        ->and(collect($volumes)->pluck('name')->all())->toContain('traefik-acme-google');
+})->with(['k8s.traefik-cloud', 'k8s.traefik-managed']);
+
 test('the HTTP challenge stays the default and carries no Cloudflare token', function (): void {
     $rendered = view('k8s.traefik-cloud', ['email' => 'ops@example.com', 'ip' => '203.0.113.10'])->render();
 

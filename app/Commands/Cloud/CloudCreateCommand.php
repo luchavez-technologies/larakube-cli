@@ -5,6 +5,7 @@ namespace App\Commands\Cloud;
 use App\Data\ConfigData;
 use App\Data\StackData;
 use App\Enums\CloudProvider;
+use App\Enums\DnsProvider;
 use App\Enums\ManagedProvider;
 use App\Facades\State;
 use App\Services\Cloud\LiveProviderCatalog;
@@ -75,7 +76,10 @@ class CloudCreateCommand extends Command
         {--aws-region= : AWS region for this run only}
         {--aws-access-key-id= : AWS Access Key ID for this run only}
         {--aws-secret-access-key= : AWS Secret Access Key for this run only}
-        {--cloudflare : After a VPS is ready, set up Cloudflare DNS records and SSL with the token in LARAKUBE_CLOUDFLARE_TOKEN (skipped quietly if it is not set)}
+        {--cloudflare : After a VPS is ready, set up Cloudflare DNS records and SSL with the token in LARAKUBE_CLOUDFLARE_TOKEN (deprecated alias for --dns-provider=cloudflare)}
+        {--dns-provider= : Automatically configure DNS & TLS using this provider (cloudflare, route53, or google)}
+        {--without-dns : Skip automating external-dns records during cluster creation}
+        {--without-tls : Skip automating Let\'s Encrypt DNS-01 TLS challenge during cluster creation}
         {--email= : Let\'s Encrypt email, forwarded to cloud:init:doks / cloud:init:gke / cloud:init:eks (managed)}
         {--json : Emit one machine-readable JSON result on stdout}
         {environment? : Inside a project, the environment to bind to this stack. Outside one, used as the stack name.}';
@@ -338,43 +342,107 @@ class CloudCreateCommand extends Command
     }
 
     /**
-     * The optional Cloudflare steps after a VPS is up: DNS records for every tool
+     * The optional DNS and TLS steps after a VPS or managed cluster is up: DNS records for every tool
      * and SSL through the DNS challenge. A person at a terminal is asked; a
-     * scripted run (Desktop) opts in with --cloudflare and the token in the
+     * scripted run (Desktop) opts in with --dns-provider= (or --cloudflare) and credentials in the
      * environment. Neither step can fail the server, which already exists: a
      * problem is reported with how to finish it later.
      */
-    protected function connectCloudflare(string $environment, string $context): void
+    protected function connectDnsAndTls(string $environment, string $context): void
     {
         $interactive = ! $this->flag('no-interaction');
-        $asked = (bool) $this->flag('cloudflare');
-        $token = trim((string) (getenv('LARAKUBE_CLOUDFLARE_TOKEN') ?: ''));
+        $providerSlug = (string) ($this->option('dns-provider') ?: ($this->flag('cloudflare') ? 'cloudflare' : ''));
+        $asked = $providerSlug !== '';
 
-        if (! $interactive && $asked && $token === '') {
-            $this->laraKubeWarn('--cloudflare was given but no Cloudflare token is set, so DNS and SSL were left for later.');
-
+        if (! $interactive && ! $asked) {
             return;
         }
 
-        $steps = [
-            'dns' => ['label' => 'Cloudflare DNS records', 'command' => 'tool:init', 'arguments' => ['--tool' => 'external-dns'], 'question' => 'Would you like to automate DNS records with Cloudflare for this cluster?', 'default' => true],
-            'ssl' => ['label' => 'SSL through the Cloudflare DNS challenge', 'command' => 'tls:init', 'arguments' => [], 'question' => 'Would you like to enable the Cloudflare DNS challenge for SSL certificates (so proxied hosts keep renewing)?', 'default' => true],
-        ];
+        $provider = $asked ? DnsProvider::tryFrom($providerSlug) : null;
+
+        if ($interactive && $provider === null) {
+            if (! confirm('Would you like to automate DNS records and SSL certificates for this cluster?', default: true)) {
+                return;
+            }
+
+            $chosen = select(
+                label: 'Which DNS provider would you like to use?',
+                options: [
+                    DnsProvider::CLOUDFLARE->value => DnsProvider::CLOUDFLARE->label(),
+                    DnsProvider::ROUTE53->value => DnsProvider::ROUTE53->label(),
+                    DnsProvider::GOOGLE->value => DnsProvider::GOOGLE->label(),
+                ],
+                default: DnsProvider::CLOUDFLARE->value,
+            );
+            $provider = DnsProvider::from((string) $chosen);
+        }
+
+        if ($provider === null) {
+            return;
+        }
+
+        if (! $interactive && $provider === DnsProvider::CLOUDFLARE) {
+            $token = trim((string) (getenv('LARAKUBE_CLOUDFLARE_TOKEN') ?: ''));
+            if ($token === '') {
+                $this->laraKubeWarn('--cloudflare was given but no Cloudflare token is set, so DNS and SSL were left for later.');
+
+                return;
+            }
+        }
+
+        $skipDns = (bool) $this->flag('without-dns');
+        $skipTls = (bool) $this->flag('without-tls');
+
+        $dnsArgs = ['--tool' => 'external-dns', 'environment' => $environment, '--context' => $context];
+        $tlsArgs = ['environment' => $environment, '--context' => $context];
+
+        if ($provider !== DnsProvider::CLOUDFLARE || $this->option('dns-provider')) {
+            $dnsArgs['--provider'] = $provider->value;
+            $tlsArgs['--provider'] = $provider->value;
+        }
+
+        $steps = [];
+        if (! $skipDns) {
+            $steps['dns'] = [
+                'label' => "{$provider->label()} DNS records",
+                'command' => 'tool:init',
+                'arguments' => $dnsArgs,
+                'question' => "Would you like to automate DNS records with {$provider->label()} for this cluster?",
+                'default' => true,
+            ];
+        }
+        if (! $skipTls) {
+            $steps['ssl'] = [
+                'label' => "SSL through the {$provider->label()} DNS challenge",
+                'command' => 'tls:init',
+                'arguments' => $tlsArgs,
+                'question' => "Would you like to enable the {$provider->label()} DNS challenge for SSL certificates (so proxied hosts keep renewing)?",
+                'default' => true,
+            ];
+        }
 
         foreach ($steps as $step) {
-            $wanted = $interactive ? ($asked || confirm($step['question'], default: $step['default'])) : $asked;
+            $wanted = $interactive ? ($asked || confirm($step['question'], default: $step['default'])) : true;
 
             if (! $wanted) {
                 continue;
             }
 
             try {
-                $this->call($step['command'], $step['arguments'] + ['environment' => $environment, '--context' => $context]);
+                $this->call($step['command'], $step['arguments']);
             } catch (Throwable $e) {
                 $this->laraKubeWarn("{$step['label']} could not be set up: {$e->getMessage()}");
                 $this->laraKubeLine('  <fg=gray>The server is ready. Finish this later from its page in LaraKube Desktop, or with</> <fg=yellow>larakube '.$step['command'].'</><fg=gray>.</>');
             }
         }
+    }
+
+    /**
+     * Backward-compatible alias for connectDnsAndTls.
+     */
+    protected function connectCloudflare(string $environment, string $context): void
+    {
+        $this->connectDnsAndTls($environment, $context);
     }
 
     protected function create(): int
@@ -629,7 +697,7 @@ class CloudCreateCommand extends Command
         $this->laraKubeInfo('✅ VPS provisioning complete!');
         $this->printVpsNextSteps($context, $environment);
 
-        $this->connectCloudflare($environment ?: 'production', $context);
+        $this->connectDnsAndTls($environment ?: 'production', $context);
 
         return 0;
     }
@@ -804,7 +872,11 @@ class CloudCreateCommand extends Command
             default => 'cloud:init:doks',
         };
         $this->laraKubeInfo("Installing Traefik + Let's Encrypt via {$initCommand}...");
-        $doksArgs = ['--context' => $context];
+        $doksArgs = [
+            '--context' => $context,
+            '--skip-dns' => true,
+            '--skip-tls' => true,
+        ];
         if ($email = $this->flag('email')) {
             $doksArgs['--email'] = $email;
         }
@@ -835,6 +907,8 @@ class CloudCreateCommand extends Command
         $this->newLine();
         $this->laraKubeInfo('✅ Managed k8s provisioning complete!');
         $this->line('  <fg=gray>Hardening follow-up:</> restrict the cluster\'s kube-API to your IP and add default-deny NetworkPolicies.');
+
+        $this->connectDnsAndTls($environment ?: 'production', $context);
 
         return 0;
     }

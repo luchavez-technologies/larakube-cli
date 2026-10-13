@@ -23,6 +23,7 @@ enum DnsProvider: string
         return match ($this) {
             self::CLOUDFLARE => 'Cloudflare',
             self::ROUTE53 => 'AWS Route 53',
+            self::GOOGLE => 'Google Cloud DNS',
         };
     }
 
@@ -32,6 +33,7 @@ enum DnsProvider: string
         return match ($this) {
             self::CLOUDFLARE => 'cloudflare',
             self::ROUTE53 => 'aws',
+            self::GOOGLE => 'google',
         };
     }
 
@@ -41,6 +43,7 @@ enum DnsProvider: string
         return match ($this) {
             self::CLOUDFLARE => 'cloudflare',
             self::ROUTE53 => 'route53',
+            self::GOOGLE => 'gcloud',
         };
     }
 
@@ -55,6 +58,7 @@ enum DnsProvider: string
         return match ($this) {
             self::CLOUDFLARE => 'cloudflare-token-',
             self::ROUTE53 => 'route53-credential-',
+            self::GOOGLE => 'google-dns-credential-',
         };
     }
 
@@ -73,6 +77,7 @@ enum DnsProvider: string
         return match ($this) {
             self::CLOUDFLARE => ['token'],
             self::ROUTE53 => ['access_key_id', 'secret_access_key', 'region'],
+            self::GOOGLE => ['credentials.json', 'project_id'],
         };
     }
 
@@ -82,6 +87,7 @@ enum DnsProvider: string
         return match ($this) {
             self::CLOUDFLARE => 'traefik-acme-cloudflare',
             self::ROUTE53 => 'traefik-acme-route53',
+            self::GOOGLE => 'traefik-acme-google',
         };
     }
 
@@ -108,8 +114,16 @@ enum DnsProvider: string
                 'IAM console → Users → Create user → Attach policies directly → create/attach the above.',
                 'Security credentials tab → Create access key → "Application running outside AWS".',
             ],
+            self::GOOGLE => [
+                'Create a Google Cloud Service Account with DNS administrator permissions:',
+                '  1. GCP Console → IAM & Admin → Service Accounts → Create Service Account',
+                '  2. Grant role: "DNS Administrator" (roles/dns.admin)',
+                '  3. Keys tab → Add Key → Create new key → JSON',
+                '  4. Supply the downloaded JSON credentials file and GCP Project ID.',
+            ],
         };
     }
     case CLOUDFLARE = 'cloudflare';
     case ROUTE53 = 'route53';
+    case GOOGLE = 'google';
 }

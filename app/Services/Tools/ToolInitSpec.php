@@ -60,6 +60,7 @@ final class ToolInitSpec
                     [
                         'cloudflare' => 'Cloudflare',
                         'route53' => 'AWS Route 53',
+                        'google' => 'Google Cloud DNS',
                     ],
                     default: 'cloudflare',
                     label: 'DNS Provider',
@@ -72,6 +73,10 @@ final class ToolInitSpec
                     ->visibleWhen(['provider' => 'route53']),
                 InitOption::value('aws-region', 'AWS region. Default us-east-1, or set AWS_DEFAULT_REGION')
                     ->visibleWhen(['provider' => 'route53']),
+                InitOption::value('gcp-project', 'Google Cloud project ID with Cloud DNS permissions. Or set GCP_PROJECT_ID')
+                    ->visibleWhen(['provider' => 'google']),
+                InitOption::value('gcp-credentials', 'Path to Google Cloud Service Account JSON key file. Or set GOOGLE_APPLICATION_CREDENTIALS')
+                    ->visibleWhen(['provider' => 'google']),
                 InitOption::list('zone', 'Optional — restrict to a subset of what the credential can see. Omit to manage every zone it has access to.'),
                 InitOption::value('group', 'Stable name for this instance. Default: the sole zone\'s own slug (unchanged single-zone behavior) — required when 2+ zones are in scope'),
                 InitOption::context(),
