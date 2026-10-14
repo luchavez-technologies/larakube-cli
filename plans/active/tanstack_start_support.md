@@ -45,7 +45,7 @@
 - Description: `'Full-stack React framework powered by TanStack Router, Vite, and Nitro.'`
 - Category: `'fullstack'`
 - Tech badge: `'React'`
-- Scaffold command: `'tanstack:new'` (alias: `'start:new'`)
+- Scaffold command: `'tanstack:new'`
 - Container port: `3000`
 - Dev ports: `[['name' => 'App', 'port' => 3000]]`
 - Dev command: `'npm run dev'`
@@ -103,7 +103,6 @@ CMD ["node", ".output/server/index.mjs"]
                           {name? : The name of the TanStack Start application}
                           {--fast : Skip wizard and use ideal defaults}
                           {--no-plex : Skip Plex Commons auto-provisioning}';
-  protected $aliases = ['start:new'];
   ```
 - Runner executes inside `node:24-alpine` container using official template:
   `npm create @tanstack/start@latest <name> -- --template basic`
