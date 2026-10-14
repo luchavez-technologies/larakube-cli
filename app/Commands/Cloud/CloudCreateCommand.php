@@ -718,6 +718,34 @@ class CloudCreateCommand extends Command
         }
     }
 
+    /** Merge a raw kubeconfig YAML into ~/.kube/config using kubectl's flatten. */
+    protected function mergeKubeconfig(string $rawYaml): void
+    {
+        $local = home_path('.kube/config');
+        if (! is_dir(home_path('.kube'))) {
+            @mkdir(home_path('.kube'), 0700, true);
+        }
+        if (file_exists($local)) {
+            copy($local, home_path('.kube/config.bak.'.time()));
+        }
+
+        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
+        $tmp = $temporaryDirectory->path().'/doks-kubeconfig';
+        file_put_contents($tmp, $rawYaml);
+
+        if (file_exists($local) && filesize($local) > 0) {
+            $merged = Process::run(Kubectl::forKubeconfig([$local, $tmp])->prefix().' config view --flatten')->output();
+            if ($merged !== '') {
+                file_put_contents($local, $merged);
+            } else {
+                $this->laraKubeError('Failed to merge kubeconfig — left local config untouched.');
+            }
+        } else {
+            copy($tmp, $local);
+        }
+        $temporaryDirectory->delete();
+    }
+
     /**
      * The provider's current regions, sizes and prices, when this machine is
      * connected to it; null means the built-in lists apply.
@@ -864,6 +892,8 @@ class CloudCreateCommand extends Command
             return 1;
         }
 
+        $originalContext = trim(Process::run(Kubectl::forContext(null)->prefix().' config current-context 2>/dev/null')->output());
+
         $this->mergeKubeconfig($kubeconfig);
         $this->laraKubeInfo("✅ Cluster ready. Context: <fg=cyan>{$context}</>");
         $this->registerStack($stackName, 'managed', $region, null, $context, $config, $environment, $provider);
@@ -893,6 +923,11 @@ class CloudCreateCommand extends Command
         }
         if ($provider === 'aws') {
             Process::run("aws eks update-kubeconfig --name {$stackName} --region {$region} 2>/dev/null");
+        }
+
+        // Restore active context: gcloud, aws, and kubeconfig merging should never hijack the user's active context.
+        if ($originalContext !== '') {
+            Process::run(Kubectl::forContext(null)->prefix().' config use-context '.escapeshellarg($originalContext).' 2>/dev/null');
         }
 
         $traefikExit = $this->call($initCommand, $doksArgs);
@@ -968,34 +1003,6 @@ class CloudCreateCommand extends Command
         ];
         ConfigData::from($data)->saveToFile($projectPath);
         $this->laraKubeInfo("Bound '{$environment}' to {$ip} (saved to .larakube.local.json).");
-    }
-
-    /** Merge a raw kubeconfig YAML into ~/.kube/config using kubectl's flatten. */
-    private function mergeKubeconfig(string $rawYaml): void
-    {
-        $local = home_path('.kube/config');
-        if (! is_dir(home_path('.kube'))) {
-            @mkdir(home_path('.kube'), 0700, true);
-        }
-        if (file_exists($local)) {
-            copy($local, home_path('.kube/config.bak.'.time()));
-        }
-
-        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-        $tmp = $temporaryDirectory->path().'/doks-kubeconfig';
-        file_put_contents($tmp, $rawYaml);
-
-        if (file_exists($local) && filesize($local) > 0) {
-            $merged = Process::run(Kubectl::forKubeconfig([$tmp, $local])->prefix().' config view --flatten')->output();
-            if ($merged !== '') {
-                file_put_contents($local, $merged);
-            } else {
-                $this->laraKubeError('Failed to merge kubeconfig — left local config untouched.');
-            }
-        } else {
-            copy($tmp, $local);
-        }
-        $temporaryDirectory->delete();
     }
 
     // --- prompts ------------------------------------------------------------

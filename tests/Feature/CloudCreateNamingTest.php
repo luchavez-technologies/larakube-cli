@@ -66,6 +66,11 @@ function cloudCreateRunner(): CloudCreateCommand
             return $this->stacksOfKind($kind);
         }
 
+        public function mergeConfig(string $rawYaml): void
+        {
+            $this->mergeKubeconfig($rawYaml);
+        }
+
         protected function getGlobalConfig(): GlobalConfigData
         {
             return $this->fakeGlobalConfig;
@@ -176,6 +181,44 @@ test('resolveEnvironment inside a project binds the environment and returns no s
             ->and($standaloneName)->toBeNull();
     } finally {
         chdir($originalDir);
+        $temporaryDirectory->delete();
+    }
+});
+
+test('mergeKubeconfig preserves existing local context and merges new cluster', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $fakeHome = $temporaryDirectory->path();
+
+    $originalHome = getenv('HOME');
+    putenv("HOME={$fakeHome}");
+    $_SERVER['HOME'] = $fakeHome;
+
+    try {
+        mkdir("{$fakeHome}/.kube", 0700, true);
+        file_put_contents("{$fakeHome}/.kube/config", "apiVersion: v1\ncurrent-context: my-local-cluster\ncontexts: []\n");
+
+        Process::fake([
+            '*config view --flatten*' => Process::result("apiVersion: v1\ncurrent-context: my-local-cluster\ncontexts:\n- name: new-cloud-cluster\n"),
+        ]);
+
+        $newYaml = "apiVersion: v1\ncurrent-context: new-cloud-cluster\ncontexts:\n- name: new-cloud-cluster\n";
+        cloudCreateRunner()->mergeConfig($newYaml);
+
+        Process::assertRan(function ($process) use ($fakeHome) {
+            $cmd = $process->command;
+            $local = escapeshellarg("{$fakeHome}/.kube/config");
+
+            // Local must precede temporary config so current-context is preserved
+            return str_contains($cmd, $local)
+                && str_contains($cmd, 'doks-kubeconfig')
+                && strpos($cmd, $local) < strpos($cmd, 'doks-kubeconfig')
+                && str_contains($cmd, 'config view --flatten');
+        });
+    } finally {
+        if ($originalHome !== false) {
+            putenv("HOME={$originalHome}");
+            $_SERVER['HOME'] = $originalHome;
+        }
         $temporaryDirectory->delete();
     }
 });
