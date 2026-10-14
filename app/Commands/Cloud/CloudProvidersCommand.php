@@ -108,6 +108,13 @@ class CloudProvidersCommand extends Command
                 'label' => $provider->label(),
                 'regions' => $regions,
                 'defaultRegion' => $defaultRegion,
+                'pricing' => [
+                    'source' => 'builtin',
+                    'asOf' => null,
+                    'currency' => null,
+                    'priceIsEstimated' => $provider->pricingUrl() !== null,
+                    'officialPricingUrl' => $provider->pricingUrl(),
+                ],
                 'credentials' => $credentials,
                 'accounts' => $accountData['accounts'],
                 'activeAccount' => $accountData['activeAccount'],
