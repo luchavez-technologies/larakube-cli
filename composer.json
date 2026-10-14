@@ -74,8 +74,8 @@
         ],
         "test": "pest --parallel",
         "build": [
-            "format",
-            "test",
+            "@format",
+            "@test",
             "./build"
         ]
     },
