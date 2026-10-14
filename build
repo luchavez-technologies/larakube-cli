@@ -94,6 +94,10 @@ case $BUILD_TYPE in
             echo "🚚 Installing local binary to /usr/local/bin/larakube (requires sudo)..."
             sudo mv builds/standalone/$OS/$OS-$ARCH /usr/local/bin/larakube
             sudo chmod +x /usr/local/bin/larakube
+            if [ -d "$HOME/.larakube/bin" ]; then
+                cp /usr/local/bin/larakube "$HOME/.larakube/bin/larakube"
+                echo "📋 Synced local binary to $HOME/.larakube/bin/larakube"
+            fi
             echo -e "✅ LaraKube ${BOLD}[$VERSION]${RESET} is now live on your system!"
             echo "👉 Verify by running: larakube --version"
         else
