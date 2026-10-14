@@ -22,7 +22,10 @@ During workshops and live demos, operators and students found the single-page "C
 - **Goal**: Configure instance identity, compute specs, and location.
 - **Components**:
   - Server Name input (with placeholder `workshop-demo` and naming rules).
-  - Server Type selector: Single server (VPS) vs. Managed Kubernetes (EKS/GKE/DOKS).
+  - Server Type selector: Single server (VPS) vs. Managed Kubernetes (EKS/GKE/DOKS) with student-friendly visual comparison cards:
+    - **Single Server (VPS)**: "Recommended for Learning" badge, lightweight k3s explanation, ~$5-$20/mo cost callout, all-in-one simplicity.
+    - **Managed Kubernetes**: Production badge, provider SLA & control plane offloading, multi-node scaling highlights, AWS EKS ~$73/mo fee warning.
+    - Contextual InfoTooltip explaining the division of responsibility (user-managed VM vs. cloud-managed master nodes).
   - Region & Size selectors with live/cached pricing estimate indicators.
   - Managed Kubernetes controls (Node count, High Availability control plane).
   - Provider-specific key overrides (e.g. AWS access keys or per-run tokens).
