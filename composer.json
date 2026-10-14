@@ -1,7 +1,13 @@
 {
     "name": "larakube/cli",
     "description": "The Professional Kubernetes Orchestrator for Laravel.",
-    "keywords": ["laravel", "kubernetes", "k3s", "cli", "orchestrator"],
+    "keywords": [
+        "laravel",
+        "kubernetes",
+        "k3s",
+        "cli",
+        "orchestrator"
+    ],
     "type": "project",
     "license": "MIT",
     "authors": [
@@ -66,9 +72,16 @@
             "rector process",
             "pint"
         ],
-        "test": "pest --parallel"
+        "test": "pest --parallel",
+        "build": [
+            "format",
+            "test",
+            "./build"
+        ]
     },
     "minimum-stability": "stable",
     "prefer-stable": true,
-    "bin": ["larakube"]
+    "bin": [
+        "larakube"
+    ]
 }
