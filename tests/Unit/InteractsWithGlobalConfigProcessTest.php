@@ -63,7 +63,7 @@ function globalConfigHelperOnDarwin(): object
     };
 }
 
-test('getGhCommand prefers a real command -v hit over the docker fallback', function (): void {
+test('getGhCommand resolves a real command -v hit', function (): void {
     $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
     $fakeGh = $temporaryDirectory->path().'/fake-gh';
     file_put_contents($fakeGh, "#!/bin/sh\necho fake-gh\n");
@@ -78,14 +78,14 @@ test('getGhCommand prefers a real command -v hit over the docker fallback', func
     }
 });
 
-test('getGhCommand falls back to the dockerized gh when nothing resolves to a real executable', function (): void {
+test('getGhCommand falls back to "gh" when no specific binary path resolves', function (): void {
     Process::fake(['command -v gh' => Process::result(output: '', exitCode: 1)]);
 
     if (collect(['/usr/local/bin/gh', '/opt/homebrew/bin/gh', '/home/linuxbrew/.linuxbrew/bin/gh'])->contains(fn ($p) => @is_executable($p))) {
         $this->markTestSkipped('gh is actually installed at a fallback path on this machine.');
     }
 
-    expect(globalConfigHelper()->gh())->toContain('docker run');
+    expect(globalConfigHelper()->gh())->toBe('gh');
 });
 
 test('acmeEmailError rejects syntactically invalid input without touching the network', function (): void {

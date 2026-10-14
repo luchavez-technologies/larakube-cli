@@ -2,6 +2,7 @@
 
 namespace App\Commands\Git;
 
+use App\Enums\CliTool;
 use App\Enums\ClusterTool;
 use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
@@ -26,6 +27,13 @@ class GitLoginCommand extends Command
     public function handle(): int
     {
         $this->renderHeader();
+
+        if (! CliTool::TEA->isInstalled()) {
+            $this->laraKubeError('Tea CLI (tea) is not installed.');
+            $this->line('  Install it by running: <fg=yellow>larakube setup --tools=tea</>');
+
+            return 1;
+        }
 
         $env = (string) $this->argument('environment');
         $host = $this->resolveForgejoHost($env);

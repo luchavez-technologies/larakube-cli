@@ -2,6 +2,7 @@
 
 namespace App\Commands\Github;
 
+use App\Enums\CliTool;
 use App\Traits\InteractsWithGlobalConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\StreamsProcessOutput;
@@ -13,10 +14,17 @@ class GhCommand extends Command
 
     protected $signature = 'gh {args?*}';
 
-    protected $description = 'Run any gh CLI command (uses your local gh if installed, Docker otherwise)';
+    protected $description = 'Run any gh CLI command';
 
     public function handle(): int
     {
+        if (! CliTool::GH->isInstalled()) {
+            $this->laraKubeError('GitHub CLI (gh) is not installed.');
+            $this->line('  Install it by running: <fg=yellow>larakube setup --tools=gh</>');
+
+            return 1;
+        }
+
         // {args?*} doesn't capture flags, so pull directly from argv.
         $argv = $_SERVER['argv'] ?? [];
         $ghIdx = array_search('gh', $argv);

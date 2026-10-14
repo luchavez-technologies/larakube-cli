@@ -21,93 +21,22 @@ trait InteractsWithGlobalConfig
         return GlobalConfigData::load();
     }
 
-    protected function getGhConfigPath(): string
-    {
-        return home_path('.larakube/gh-config');
-    }
-
+    /**
+     * Resolves the GitHub CLI binary (`gh`), falling back to 'gh' on PATH.
+     */
     protected function getGhCommand(?string $workDir = null, bool $interactive = false): string
     {
-        $resolved = CliTool::GH->resolveBinary();
-        if ($resolved !== null) {
-            return $resolved;
-        }
-
-        // Fall back to running gh inside a throw-away Docker container.
-        return $this->getGhDockerCommand($workDir, $interactive);
-    }
-
-    protected function getGhDockerCommand(?string $workDir = null, bool $interactive = false): string
-    {
-        $workDir = $workDir ?? getcwd();
-        $ghConfigPath = $this->getGhConfigPath();
-        $dockerConfigPath = home_path('.docker');
-
-        if (! is_dir($ghConfigPath)) {
-            @mkdir($ghConfigPath, 0700, true);
-        }
-
-        $mounts = [
-            "-v {$workDir}:/work",
-            "-v {$ghConfigPath}:/root/.config/gh",
-        ];
-
-        // Mount host docker config if it exists to share registry credentials (solves GHCR 403s)
-        if (is_dir($dockerConfigPath)) {
-            $mounts[] = "-v {$dockerConfigPath}:/root/.docker:ro";
-        }
-
-        $mountString = implode(' ', $mounts);
-        // We always include -i to support piping data (like secrets) into the container
-        $interactiveFlag = $interactive ? '-it' : '-i';
-
-        return $this->runContainerCommand("--rm {$interactiveFlag} {$mountString} -w /work alpine:latest sh -c 'apk add --no-cache github-cli >/dev/null && gh \"\$@\"' larakube-gh ");
-    }
-
-    protected function getTeaConfigPath(): string
-    {
-        return home_path('.larakube/tea-config');
+        return CliTool::GH->resolveBinary() ?? 'gh';
     }
 
     /**
-     * Gitea's official CLI, which also drives Forgejo. A host install wins;
-     * otherwise the official image runs through the resolved container
-     * runtime, so nothing needs installing. Arguments are appended by the
-     * caller, e.g. `{$tea} logins list`. $envNames are forwarded into the
-     * container by name only, so their values never appear in its arguments.
+     * Resolves the Tea CLI binary (`tea`), falling back to 'tea' on PATH.
      *
      * @param  list<string>  $envNames
      */
     protected function getTeaCommand(bool $interactive = false, array $envNames = []): string
     {
-        $resolved = CliTool::TEA->resolveBinary();
-        if ($resolved !== null) {
-            return $resolved;
-        }
-
-        $configPath = $this->getTeaConfigPath();
-        if (! is_dir($configPath)) {
-            @mkdir($configPath, 0700, true);
-        }
-
-        $interactiveFlag = $interactive ? '-it' : '-i';
-        $envFlags = implode('', array_map(fn (string $name) => '-e '.escapeshellarg($name).' ', $envNames));
-
-        // The image's entrypoint is `sh -c`, so the arguments reach tea through
-        // "$@". Root inside the container is the host user under rootless
-        // Podman, which keeps the mounted config writable.
-        //
-        // tea probes the working directory with `git rev-parse` even when
-        // --repo is given, and aborts if git is missing — which it is in the
-        // official image. No checkout is mounted, so a stub answering "not a
-        // git repository" is the truthful reply, and tea then uses --repo.
-        $script = 'printf \'#!/bin/sh\necho "fatal: not a git repository" >&2\nexit 128\n\' > /tmp/git'
-            .' && chmod +x /tmp/git && PATH=/tmp:$PATH tea "$@"';
-
-        return $this->runContainerCommand(
-            "--rm {$interactiveFlag} {$envFlags}--user 0 -v ".escapeshellarg($configPath).':/app/.config/tea '
-            .'docker.io/gitea/tea:0.16.0 '.escapeshellarg($script).' tea ',
-        );
+        return CliTool::TEA->resolveBinary() ?? 'tea';
     }
 
     protected function getEmail(): ?string

@@ -7,6 +7,7 @@ use App\Data\ConfigData;
 use App\Data\EnvironmentData;
 use App\Data\RegistryData;
 use App\Enums\AppFramework;
+use App\Enums\CliTool;
 use App\Enums\ClusterTool;
 use App\Enums\RegistryProvider;
 use App\Exceptions\MissingFlagException;
@@ -358,6 +359,13 @@ trait ConfiguresCloudEnvironment
                 return 1;
             }
 
+            if (! CliTool::TEA->isInstalled()) {
+                $this->laraKubeError('Tea CLI (tea) is required to configure Forgejo repository secrets.');
+                $this->line('  Install it by running: <fg=yellow>larakube setup --tools=tea</>');
+
+                return 1;
+            }
+
             $tea = $this->getTeaCommand();
             if (! $this->teaHasLogin($tea, $repository['host'])) {
                 $this->laraKubeError("tea is not logged in to {$repository['host']}.");
@@ -375,6 +383,13 @@ trait ConfiguresCloudEnvironment
                 $this->info("  🛰 Targeting repository: {$repository['slug']}");
             } else {
                 $this->laraKubeWarn("Could not parse GitHub repository from remote URL: {$remote}");
+            }
+
+            if (! CliTool::GH->isInstalled()) {
+                $this->laraKubeError('GitHub CLI (gh) is required to configure GitHub repository secrets.');
+                $this->line('  Install it by running: <fg=yellow>larakube setup --tools=gh</>');
+
+                return 1;
             }
 
             $gh = $this->getGhCommand();

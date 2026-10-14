@@ -2,6 +2,7 @@
 
 namespace App\Commands\Github;
 
+use App\Enums\CliTool;
 use App\Traits\InteractsWithGlobalConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\StreamsProcessOutput;
@@ -18,6 +19,13 @@ class GhaSwitchCommand extends Command
     public function handle()
     {
         $this->renderHeader();
+
+        if (! CliTool::GH->isInstalled()) {
+            $this->laraKubeError('GitHub CLI (gh) is not installed.');
+            $this->line('  Install it by running: <fg=yellow>larakube setup --tools=gh</>');
+
+            return 1;
+        }
 
         $this->laraKubeInfo('Switching GitHub accounts...');
 

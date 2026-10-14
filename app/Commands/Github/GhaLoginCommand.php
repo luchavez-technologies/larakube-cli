@@ -2,6 +2,7 @@
 
 namespace App\Commands\Github;
 
+use App\Enums\CliTool;
 use App\Traits\InteractsWithGlobalConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\StreamsProcessOutput;
@@ -19,12 +20,18 @@ class GhaLoginCommand extends Command
     {
         $this->renderHeader();
 
+        if (! CliTool::GH->isInstalled()) {
+            $this->laraKubeError('GitHub CLI (gh) is not installed.');
+            $this->line('  Install it by running: <fg=yellow>larakube setup --tools=gh</>');
+
+            return 1;
+        }
+
         $this->laraKubeInfo('Launching GitHub CLI authentication wizard...');
 
         // Request write:packages up front so the same login can PUSH images to
         // GHCR (cloud:deploy) — not just manage Actions secrets. write:packages
-        // also grants pull, so the GHCR pull secret works too. Zero local deps:
-        // getGhCommand runs the official CLI in Docker when gh isn't installed.
+        // also grants pull, so the GHCR pull secret works too.
         $gh = $this->getGhCommand(interactive: true);
         $this->runInteractive("{$gh} auth login --scopes write:packages");
 
