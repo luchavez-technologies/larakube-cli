@@ -187,3 +187,36 @@ test('AWS provider surfaces specific STS error code when authentication fails', 
         'hint' => 'AWS authentication failed (InvalidClientTokenId).',
     ]);
 });
+
+test('--status-only --json returns only provider metadata and credentials without live catalog discovery', function (): void {
+    cloudProvidersClearCredentialEnv();
+    Process::fake(['*' => Process::result(exitCode: 1)]);
+
+    expect(Artisan::call('cloud:providers', ['--json' => true, '--status-only' => true]))->toBe(0);
+
+    $decoded = json_decode(trim(Artisan::output()), true);
+    expect($decoded['success'])->toBeTrue();
+
+    $providers = collect($decoded['providers'])->keyBy('slug')->all();
+    expect(array_keys($providers))->toBe(array_keys(CloudProvider::activeProviders()));
+
+    $do = $providers['do'];
+    expect($do)->toHaveKeys(['slug', 'label', 'regions', 'defaultRegion', 'credentials', 'accounts', 'activeAccount'])
+        ->and($do)->not->toHaveKeys(['vpsSizes', 'managedSizes', 'pricing', 'defaultDevBoxSize']);
+});
+
+test('--provider option filters to a single provider', function (): void {
+    cloudProvidersClearCredentialEnv();
+    Process::fake(['*' => Process::result(exitCode: 1)]);
+
+    expect(Artisan::call('cloud:providers', ['--json' => true, '--status-only' => true, '--provider' => 'aws']))->toBe(0);
+
+    $decoded = json_decode(trim(Artisan::output()), true);
+    expect($decoded['success'])->toBeTrue()
+        ->and($decoded['providers'])->toHaveCount(1)
+        ->and($decoded['providers'][0]['slug'])->toBe('aws');
+});
+
+test('--provider with invalid name returns an error exit code', function (): void {
+    expect(Artisan::call('cloud:providers', ['--provider' => 'invalid-cloud']))->toBe(1);
+});

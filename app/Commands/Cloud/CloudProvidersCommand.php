@@ -29,6 +29,8 @@ class CloudProvidersCommand extends Command
     use EmitsJsonOutput, InteractsWithAws, InteractsWithGcp, InteractsWithHetzner, LaraKubeOutput, ReadsCommandOptions;
 
     protected $signature = 'cloud:providers
+        {--provider= : Only describe a single provider (do, hetzner, gcp, aws)}
+        {--status-only : Only return provider metadata, credential status, and accounts without live instance catalog discovery}
         {--refresh : Ask the providers for current regions, sizes and prices instead of using what was fetched recently}
         {--json : Emit one machine-readable JSON result on stdout}';
 
@@ -36,13 +38,42 @@ class CloudProvidersCommand extends Command
 
     public function handle(): int
     {
+        $statusOnly = (bool) $this->option('status-only');
+        $onlyProvider = $this->option('provider');
+
+        if ($onlyProvider !== null && $onlyProvider !== '') {
+            $providerEnum = CloudProvider::tryFrom((string) $onlyProvider);
+            if ($providerEnum === null || ! array_key_exists($providerEnum->value, CloudProvider::activeProviders())) {
+                $this->laraKubeError(sprintf('Unknown provider [%s]. Available: %s', $onlyProvider, implode(', ', array_keys(CloudProvider::activeProviders()))));
+
+                return 1;
+            }
+            $slugs = [$providerEnum->value];
+        } else {
+            $slugs = array_keys(CloudProvider::activeProviders());
+        }
+
         $providers = [];
-        foreach (array_keys(CloudProvider::activeProviders()) as $slug) {
-            $providers[] = $this->describe(CloudProvider::from($slug));
+        foreach ($slugs as $slug) {
+            $providers[] = $this->describe(CloudProvider::from($slug), $statusOnly);
         }
 
         if ($this->flag('json')) {
             $this->jsonOutput(['success' => true, 'providers' => $providers]);
+
+            return 0;
+        }
+
+        if ($statusOnly) {
+            table(
+                headers: ['Provider', 'Slug', 'Active Account', 'Credentials'],
+                rows: array_map(fn (array $p): array => [
+                    $p['label'],
+                    $p['slug'],
+                    $p['activeAccount'] ?? '-',
+                    $p['credentials']['ready'] ? 'ready' : $p['credentials']['hint'],
+                ], $providers),
+            );
 
             return 0;
         }
@@ -62,15 +93,29 @@ class CloudProvidersCommand extends Command
     }
 
     /**
-     * @return array{slug: string, label: string, regions: list<array{value: string, label: string}>, defaultRegion: string, vpsSizes: list<array{value: string, label: string}>, defaultVpsSize: string, defaultDevBoxSize: string, managedSizes: list<array{value: string, label: string}>, defaultManagedSize: string, managedProvider: string, haOption: string, haCost: ?string, pricing: array{source: string, asOf: ?string, currency: ?string, priceIsEstimated: bool, officialPricingUrl: ?string}, credentials: array{ready: bool, hint: ?string}}
+     * @return array<string, mixed>
      */
-    protected function describe(CloudProvider $provider): array
+    protected function describe(CloudProvider $provider, bool $statusOnly = false): array
     {
         $credentials = $this->credentialStatus($provider);
+        $accountData = $this->accountsFor($provider);
         $regions = $this->pickerOptions($provider->regions());
+        $defaultRegion = $provider->defaultRegion();
+
+        if ($statusOnly) {
+            return [
+                'slug' => $provider->value,
+                'label' => $provider->label(),
+                'regions' => $regions,
+                'defaultRegion' => $defaultRegion,
+                'credentials' => $credentials,
+                'accounts' => $accountData['accounts'],
+                'activeAccount' => $accountData['activeAccount'],
+            ];
+        }
+
         $sizes = $this->pickerOptions($provider->vpsSizes());
         $managedSizes = $this->pickerOptions($provider->managedSizes());
-        $defaultRegion = $provider->defaultRegion();
         $defaultSize = $provider->defaultVpsSize();
         $defaultManagedSize = $provider->defaultManagedSize();
         // Without a connected account, the prices are the ones written into the CLI.
@@ -102,8 +147,6 @@ class CloudProvidersCommand extends Command
                 }
             }
         }
-
-        $accountData = $this->accountsFor($provider);
 
         return [
             'slug' => $provider->value,
