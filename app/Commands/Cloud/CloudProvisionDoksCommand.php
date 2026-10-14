@@ -114,7 +114,7 @@ class CloudProvisionDoksCommand extends Command
             $this->laraKubeInfo('Saved email to your global LaraKube config.');
         }
 
-        if (! confirm('Install Traefik + Let\'s Encrypt (HTTP-01) on this cluster?', true)) {
+        if (! $this->option('no-interaction') && ! confirm('Install Traefik + Let\'s Encrypt (HTTP-01) on this cluster?', true)) {
             $this->laraKubeInfo('Cancelled.');
 
             return 0;
@@ -228,7 +228,10 @@ class CloudProvisionDoksCommand extends Command
     /** Is Traefik already installed on this cluster? Keeps provision reruns safe. */
     private function traefikInstalled(string $context): bool
     {
-        return Process::run(Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context).' get deployment -n traefik traefik')->successful();
+        $kubectl = Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context);
+        $ready = trim(Process::run("{$kubectl} get deployment -n traefik traefik -o jsonpath='{.status.readyReplicas}' 2>/dev/null")->output());
+
+        return (int) $ready > 0;
     }
 
     /**
@@ -248,6 +251,14 @@ class CloudProvisionDoksCommand extends Command
             return 0;
         }
 
+        $kubectl = Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context);
+
+        // If a previous attempt left an unbound Pending PVC, clean it up so apply succeeds.
+        $pvcStatus = trim(Process::run("{$kubectl} get pvc -n traefik traefik-acme -o jsonpath='{.status.phase}' 2>/dev/null")->output());
+        if ($pvcStatus === 'Pending') {
+            Process::run("{$kubectl} delete pvc -n traefik traefik-acme --wait=false 2>/dev/null");
+        }
+
         $manifest = view('k8s.traefik-managed', [
             'email' => $email,
             'loadBalancerName' => $this->loadBalancerNameFor($context),
@@ -256,7 +267,6 @@ class CloudProvisionDoksCommand extends Command
         $tmp = $temporaryDirectory->path('larakube-traefik-managed.yaml');
         file_put_contents($tmp, $manifest);
 
-        $kubectl = Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context);
         $ok = $this->applyAndVerifyRollout($kubectl, $tmp, 'traefik', 'traefik', extraApplyFlags: '--validate=false');
 
         $temporaryDirectory->delete();

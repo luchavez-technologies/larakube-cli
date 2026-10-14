@@ -59,8 +59,8 @@ test('a scripted run sets up Cloudflare DNS and SSL only when it opts in', funct
 
     expect($without->called)->toBe([])
         ->and($with->called)->toBe([
-            ['tool:init', ['--tool' => 'external-dns', 'environment' => 'production', '--context' => 'larakube-1.2.3.4']],
-            ['tls:init', ['environment' => 'production', '--context' => 'larakube-1.2.3.4']],
+            ['tool:init', ['--tool' => 'external-dns', 'environment' => 'production', '--context' => 'larakube-1.2.3.4', '--force' => true]],
+            ['tls:init', ['environment' => 'production', '--context' => 'larakube-1.2.3.4', '--force' => true]],
         ]);
 });
 
@@ -89,8 +89,8 @@ test('a scripted run sets up Route53 DNS and TLS with --dns-provider=route53', f
     $probe->finish('staging', 'managed-ctx');
 
     expect($probe->called)->toBe([
-        ['tool:init', ['--tool' => 'external-dns', 'environment' => 'staging', '--context' => 'managed-ctx', '--provider' => 'route53']],
-        ['tls:init', ['environment' => 'staging', '--context' => 'managed-ctx', '--provider' => 'route53']],
+        ['tool:init', ['--tool' => 'external-dns', 'environment' => 'staging', '--context' => 'managed-ctx', '--provider' => 'route53', '--force' => true]],
+        ['tls:init', ['environment' => 'staging', '--context' => 'managed-ctx', '--provider' => 'route53', '--force' => true]],
     ]);
 });
 
@@ -99,8 +99,8 @@ test('a scripted run sets up Google Cloud DNS with --dns-provider=google', funct
     $probe->finish('production', 'gke-ctx');
 
     expect($probe->called)->toBe([
-        ['tool:init', ['--tool' => 'external-dns', 'environment' => 'production', '--context' => 'gke-ctx', '--provider' => 'google']],
-        ['tls:init', ['environment' => 'production', '--context' => 'gke-ctx', '--provider' => 'google']],
+        ['tool:init', ['--tool' => 'external-dns', 'environment' => 'production', '--context' => 'gke-ctx', '--provider' => 'google', '--force' => true]],
+        ['tls:init', ['environment' => 'production', '--context' => 'gke-ctx', '--provider' => 'google', '--force' => true]],
     ]);
 });
 
@@ -109,7 +109,7 @@ test('--without-dns skips external-dns but runs tls:init', function (): void {
     $probe->finish('prod', 'ctx');
 
     expect($probe->called)->toBe([
-        ['tls:init', ['environment' => 'prod', '--context' => 'ctx', '--provider' => 'route53']],
+        ['tls:init', ['environment' => 'prod', '--context' => 'ctx', '--provider' => 'route53', '--force' => true]],
     ]);
 });
 
@@ -118,6 +118,6 @@ test('--without-tls skips tls:init but runs external-dns', function (): void {
     $probe->finish('prod', 'ctx');
 
     expect($probe->called)->toBe([
-        ['tool:init', ['--tool' => 'external-dns', 'environment' => 'prod', '--context' => 'ctx', '--provider' => 'google']],
+        ['tool:init', ['--tool' => 'external-dns', 'environment' => 'prod', '--context' => 'ctx', '--provider' => 'google', '--force' => true]],
     ]);
 });

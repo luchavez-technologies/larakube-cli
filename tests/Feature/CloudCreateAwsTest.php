@@ -270,6 +270,56 @@ test('cloud:init:managed delegates to cloud:init:eks when provider is aws', func
     expect(State::lastError())->toContain('Invalid --email');
 });
 
+test('cloud:init:eks skips installation if traefik deployment has ready replicas', function (): void {
+    Process::fake([
+        '*get deployment -n traefik traefik*' => Process::result('1'),
+        '*get svc -n traefik traefik*' => Process::result('a123.elb.amazonaws.com'),
+    ]);
+
+    $this->artisan('cloud:init:eks', [
+        '--context' => 'arn:aws:eks:us-east-1:123456789012:cluster/test-cluster',
+        '--email' => 'admin@example.com',
+        '--no-interaction' => true,
+    ])->assertExitCode(0);
+});
+
+test('cloud:init:eks installs traefik with resolved gp2 storage class and removes pending pvc when gp3 is unavailable', function (): void {
+    $appliedManifest = null;
+    Process::fake(function ($process) use (&$appliedManifest) {
+        $cmd = $process->command;
+
+        if (str_contains($cmd, 'apply -f')) {
+            preg_match('/apply -f (\'[^\']*\'|"[^"]*"|\S+)/', $cmd, $m);
+            $path = trim($m[1] ?? '', '\'"');
+            if ($path !== '' && file_exists($path)) {
+                $appliedManifest = file_get_contents($path);
+            }
+
+            return Process::result(output: 'customresourcedefinition.apiextensions.k8s.io/ingressroutes.traefik.io created', exitCode: 0);
+        }
+
+        return match (true) {
+            str_contains($cmd, 'get deployment -n traefik traefik') => Process::result(output: '0'),
+            str_contains($cmd, 'get pvc -n traefik traefik-acme') => Process::result(output: 'Pending'),
+            str_contains($cmd, 'delete pvc -n traefik traefik-acme') => Process::result(output: 'persistentvolumeclaim "traefik-acme" deleted'),
+            str_contains($cmd, 'get storageclass') => Process::result(output: 'gp2 standard'),
+            str_contains($cmd, 'rollout status') => Process::result(output: 'deployment "traefik" successfully rolled out'),
+            str_contains($cmd, 'get svc -n traefik traefik') => Process::result(output: 'a123.elb.amazonaws.com'),
+            default => Process::result(output: '', exitCode: 0),
+        };
+    });
+
+    $this->artisan('cloud:init:eks', [
+        '--context' => 'arn:aws:eks:us-east-1:123456789012:cluster/test-cluster',
+        '--email' => 'admin@example.com',
+        '--no-interaction' => true,
+    ])->assertExitCode(0);
+
+    expect($appliedManifest)->not->toBeNull()
+        ->and($appliedManifest)->toContain('storageClassName: gp2')
+        ->and($appliedManifest)->toContain('storage: 1Gi');
+});
+
 test('cloud:scale updates instance_type in main.tf for aws stack', function (): void {
     $tempDir = (new Spatie\TemporaryDirectory\TemporaryDirectory)->create();
     $tfPath = $tempDir->path('main.tf');

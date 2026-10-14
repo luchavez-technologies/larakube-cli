@@ -104,7 +104,7 @@ class CloudProvisionEksCommand extends Command
             $this->laraKubeInfo('Saved email to your global LaraKube config.');
         }
 
-        if (! confirm('Install Traefik + Let\'s Encrypt (HTTP-01) on this EKS cluster?', true)) {
+        if (! $this->option('no-interaction') && ! confirm('Install Traefik + Let\'s Encrypt (HTTP-01) on this EKS cluster?', true)) {
             $this->laraKubeInfo('Cancelled.');
 
             return 0;
@@ -202,7 +202,29 @@ class CloudProvisionEksCommand extends Command
 
     private function traefikInstalled(string $context): bool
     {
-        return Process::run(Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context).' get deployment -n traefik traefik')->successful();
+        $kubectl = Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context);
+        $ready = trim(Process::run("{$kubectl} get deployment -n traefik traefik -o jsonpath='{.status.readyReplicas}' 2>/dev/null")->output());
+
+        return (int) $ready > 0;
+    }
+
+    private function resolveStorageClass(string $context): ?string
+    {
+        $kubectl = Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context);
+        $classes = trim(Process::run("{$kubectl} get storageclass -o jsonpath='{.items[*].metadata.name}' 2>/dev/null")->output());
+        $list = array_values(array_filter(preg_split('/\s+/', $classes) ?: []));
+
+        if (in_array('gp3', $list, true)) {
+            return 'gp3';
+        }
+        if (in_array('gp2', $list, true)) {
+            return 'gp2';
+        }
+        if (! empty($list)) {
+            return $list[0];
+        }
+
+        return ManagedProvider::EKS->defaultStorageClass();
     }
 
     private function installTraefik(string $context, string $email): int
@@ -213,16 +235,23 @@ class CloudProvisionEksCommand extends Command
             return 0;
         }
 
+        $kubectl = Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context);
+
+        // If a previous attempt left an unbound Pending PVC with an invalid/mismatched storage class, clean it up so apply succeeds.
+        $pvcStatus = trim(Process::run("{$kubectl} get pvc -n traefik traefik-acme -o jsonpath='{.status.phase}' 2>/dev/null")->output());
+        if ($pvcStatus === 'Pending') {
+            Process::run("{$kubectl} delete pvc -n traefik traefik-acme --wait=false 2>/dev/null");
+        }
+
         $manifest = view('k8s.traefik-managed', [
             'email' => $email,
             'loadBalancerName' => $this->loadBalancerNameFor($context),
-            'storageClass' => ManagedProvider::EKS->defaultStorageClass(),
+            'storageClass' => $this->resolveStorageClass($context),
         ])->render();
         $temporaryDirectory = TemporaryDirectory::make();
         $tmp = $temporaryDirectory->path('larakube-traefik-managed.yaml');
         file_put_contents($tmp, $manifest);
 
-        $kubectl = Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context);
         $ok = $this->applyAndVerifyRollout($kubectl, $tmp, 'traefik', 'traefik', extraApplyFlags: '--validate=false');
 
         $temporaryDirectory->delete();

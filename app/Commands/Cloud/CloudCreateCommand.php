@@ -401,6 +401,11 @@ class CloudCreateCommand extends Command
             $tlsArgs['--provider'] = $provider->value;
         }
 
+        if (! $interactive || $this->option('force')) {
+            $dnsArgs['--force'] = true;
+            $tlsArgs['--force'] = true;
+        }
+
         $steps = [];
         if (! $skipDns) {
             $steps['dns'] = [
