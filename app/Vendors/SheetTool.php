@@ -29,7 +29,7 @@ final class SheetTool implements ClusterToolVendor, HasCommonsBuckets, HasCommon
     {
         $name = ($instance === null || $instance === '')
             ? 'teable-vpn-only'
-            : ToolInstance::forInstance(ClusterTool::SHEETS, $instance)->name('vpn-only');
+            : ToolInstance::forInstance(ClusterTool::TEABLE, $instance)->name('vpn-only');
 
         return [
             'name' => $name,
@@ -59,7 +59,7 @@ final class SheetTool implements ClusterToolVendor, HasCommonsBuckets, HasCommon
     public function smtpEnv(?string $instance = null): ?array
     {
         return [
-            'deployment' => ClusterTool::SHEETS->deploymentName($instance),
+            'deployment' => ClusterTool::TEABLE->deploymentName($instance),
             'secret' => $this->name($instance, SecretKind::SMTP->value),
             'static' => [
                 'BACKEND_MAIL_SECURE' => 'true',
@@ -77,7 +77,7 @@ final class SheetTool implements ClusterToolVendor, HasCommonsBuckets, HasCommon
     public function oidcEnv(?string $instance = null): ?array
     {
         return [
-            'deployment' => ClusterTool::SHEETS->deploymentName($instance),
+            'deployment' => ClusterTool::TEABLE->deploymentName($instance),
             'secret' => $this->name($instance, SecretKind::OIDC->value),
             'static' => [
                 'SOCIAL_AUTH_PROVIDERS' => 'oidc',
@@ -143,6 +143,6 @@ final class SheetTool implements ClusterToolVendor, HasCommonsBuckets, HasCommon
     {
         return ($instance === null || $instance === '')
             ? "teable-{$token}"
-            : ToolInstance::forInstance(ClusterTool::SHEETS, $instance)->name($token);
+            : ToolInstance::forInstance(ClusterTool::TEABLE, $instance)->name($token);
     }
 }

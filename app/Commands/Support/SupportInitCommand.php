@@ -41,17 +41,17 @@ abstract class SupportInitCommand extends AbstractToolInitCommand
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = Kubectl::forContext($context)->prefix();
-        $host = $this->resolveToolHost(SharedClusterService::SUPPORT, ClusterTool::SUPPORT, $env, $kubectl);
+        $host = $this->resolveToolHost(SharedClusterService::SUPPORT, ClusterTool::CHATWOOT, $env, $kubectl);
 
         $ns = $this->supportNamespace();
-        $names = ToolInstance::forHost(ClusterTool::SUPPORT, $host);
+        $names = ToolInstance::forHost(ClusterTool::CHATWOOT, $host);
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->assertVpnOnlySupported(ClusterTool::SUPPORT)) {
+        if ($vpnOnly && ! $this->assertVpnOnlySupported(ClusterTool::CHATWOOT)) {
             return 1;
         }
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::SUPPORT, $kubectl, $names->instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::CHATWOOT, $kubectl, $names->instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -65,7 +65,7 @@ abstract class SupportInitCommand extends AbstractToolInitCommand
         $adminEmail = $this->readSupportSecret($kubectl, $ns, $names->secret(), 'admin-email') ?? $this->resolveAdminEmail($host);
         $dbPassword = $this->readSupportSecret($kubectl, $ns, $names->secret(), 'db-password') ?? Str::random(24);
         // tool:init --tool=chatwoot doesn't know or care whether OpenBao is installed —
-        // only secrets:wire --tool=support may register this instance's database
+        // only secrets:wire --tool=chatwoot may register this instance's database
         // static role. This is a READ-only exception: it defers to OpenBao's
         // current password when a PAST secrets:wire run already made it the
         // owner, so a re-run here never clobbers it back to a fresh local one.
@@ -87,7 +87,7 @@ abstract class SupportInitCommand extends AbstractToolInitCommand
             Kubectl::fromPrefix($kubectl)->putSecret($ns, $names->secret(), ['db-password' => $dbPassword, 'secret-key-base' => $secretKeyBase, 'admin-email' => $adminEmail]);
         });
 
-        $branding = $this->resolveToolBranding($kubectl, ClusterTool::SUPPORT, ClusterTool::SUPPORT->instanceSlugFromHost($host));
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::CHATWOOT, ClusterTool::CHATWOOT->instanceSlugFromHost($host));
 
         $manifest = view('k8s.support.shared', [
             'host' => $host,
@@ -108,7 +108,7 @@ abstract class SupportInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Chatwoot manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180, tool: ClusterTool::SUPPORT),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180, tool: ClusterTool::CHATWOOT),
         );
         $temporaryDirectory->delete();
 
@@ -116,7 +116,7 @@ abstract class SupportInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::SUPPORT, $kubectl, $host, $names->instance, extra: ['adminEmail' => $adminEmail]);
+        $this->registerDeployedTool(ClusterTool::CHATWOOT, $kubectl, $host, $names->instance, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Chatwoot support stack is live.');
@@ -132,7 +132,7 @@ abstract class SupportInitCommand extends AbstractToolInitCommand
 
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::SUPPORT);
+        return $this->resolveToolEnvironment(ClusterTool::CHATWOOT);
     }
 
     /** Resolve the admin email for Chatwoot */

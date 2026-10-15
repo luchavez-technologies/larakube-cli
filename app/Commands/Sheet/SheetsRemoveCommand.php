@@ -12,13 +12,13 @@ abstract class SheetsRemoveCommand extends AbstractToolRemoveCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::SHEETS;
+        return ClusterTool::TEABLE;
     }
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
         $instance = (string) $this->resolveInstance($kubectl);
-        $names = ToolInstance::forInstance(ClusterTool::SHEETS, $instance);
+        $names = ToolInstance::forInstance(ClusterTool::TEABLE, $instance);
         $deployment = $names->deployment();
 
         $targets = [

@@ -1015,7 +1015,7 @@ test('sso:wire refuses webmail — Bulwark SSO is disabled (see docs/decisions/0
         '*-l larakube.io/tool=webmail --no-headers*' => Process::result(output: 'bulwark-webmail-example-com   1/1   1   1   10d'),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'webmail', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'bulwark', '--no-interaction' => true])
         ->assertExitCode(1)
         ->expectsOutputToContain("can't be wired to SSO");
 });

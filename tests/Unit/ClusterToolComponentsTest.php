@@ -39,9 +39,9 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
         'flow' => 'n8n', 'metabase' => 'metabase',
         'link' => 'kutt', 'mail' => 'stalwart', 'monitor' => 'grafana',
         'notes' => 'outline', 'passwords' => 'vaultwarden', 'sendrec' => 'sendrec',
-        'secrets' => 'openbao', 'sheets' => 'teable', 'sign' => 'documenso',
-        'sso' => 'zitadel', 'support' => 'chatwoot', 'tasks' => 'planka',
-        'uptime' => 'kuma', 'webmail' => 'bulwark',
+        'secrets' => 'openbao', 'teable' => 'teable', 'sign' => 'documenso',
+        'sso' => 'zitadel', 'chatwoot' => 'chatwoot', 'tasks' => 'planka',
+        'uptime' => 'kuma', 'bulwark' => 'bulwark',
         'external-dns' => 'external-dns', 'headlamp' => 'headlamp', 'meet' => 'livekit',
         'design' => 'penpot-backend',
     ];

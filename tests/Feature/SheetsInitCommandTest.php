@@ -20,7 +20,7 @@ test('sheets manifest carries canonical resource naming and identity labels', fu
 
     expect($manifest)
         ->toContain('name: teable-sheet-example-test')
-        ->toContain('larakube.io/tool: sheets')
+        ->toContain('larakube.io/tool: teable')
         ->toContain('larakube.io/component: teable')
         ->toContain('larakube.io/instance: sheet-example-test')
         ->toContain('name: teable-secrets-sheet-example-test')
@@ -48,7 +48,7 @@ test('sheets ingress carries canonical naming and proxy annotations', function (
 });
 
 test('sheets ToolInstance resolves canonical database, buckets, redis and secrets', function (): void {
-    $instance = ToolInstance::forHost(ClusterTool::SHEETS, 'sheet.example.test');
+    $instance = ToolInstance::forHost(ClusterTool::TEABLE, 'sheet.example.test');
 
     expect($instance->deployment())->toBe('teable-sheet-example-test')
         ->and($instance->secret())->toBe('teable-secrets-sheet-example-test')

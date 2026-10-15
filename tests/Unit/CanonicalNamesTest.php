@@ -12,7 +12,6 @@ dataset('tools on the canonical naming', [
     'paste' => [ClusterTool::PASTE, 'yopass'],
     'uptime' => [ClusterTool::UPTIME, 'kuma'],
     'errors' => [ClusterTool::ERRORS, 'glitchtip'],
-    'support' => [ClusterTool::SUPPORT, 'chatwoot'],
     'resume' => [ClusterTool::RESUME, 'reactive'],
     'design' => [ClusterTool::DESIGN, 'penpot'],
 ]);

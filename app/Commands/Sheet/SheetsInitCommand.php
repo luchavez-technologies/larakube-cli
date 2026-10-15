@@ -39,13 +39,13 @@ abstract class SheetsInitCommand extends AbstractToolInitCommand
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = Kubectl::forContext($context)->prefix();
-        $host = $this->resolveToolHost(SharedClusterService::SHEET, ClusterTool::SHEETS, $env, $kubectl);
-        $names = ToolInstance::forHost(ClusterTool::SHEETS, $host);
+        $host = $this->resolveToolHost(SharedClusterService::SHEET, ClusterTool::TEABLE, $env, $kubectl);
+        $names = ToolInstance::forHost(ClusterTool::TEABLE, $host);
 
         $ns = $this->sheetNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::SHEETS, $kubectl, $names->instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::TEABLE, $kubectl, $names->instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -111,7 +111,7 @@ abstract class SheetsInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Sheet (Teable) manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 300, tool: ClusterTool::SHEETS),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 300, tool: ClusterTool::TEABLE),
         );
         $temporaryDirectory->delete();
 
@@ -119,7 +119,7 @@ abstract class SheetsInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::SHEETS, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::TEABLE, $kubectl, $host);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Sheet (Teable) stack is live.');
@@ -211,6 +211,6 @@ abstract class SheetsInitCommand extends AbstractToolInitCommand
 
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::SHEETS);
+        return $this->resolveToolEnvironment(ClusterTool::TEABLE);
     }
 }

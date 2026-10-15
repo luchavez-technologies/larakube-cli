@@ -6,7 +6,7 @@ test('whiteLabel() returns non-null schemas for the 7 supported whitelabel tools
     $whitelabeledTools = [
         ClusterTool::CHAT,
         ClusterTool::GIT,
-        ClusterTool::SUPPORT,
+        ClusterTool::CHATWOOT,
         ClusterTool::ERRORS,
         ClusterTool::LINK,
         ClusterTool::METABASE,

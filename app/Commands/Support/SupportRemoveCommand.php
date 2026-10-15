@@ -12,12 +12,12 @@ abstract class SupportRemoveCommand extends AbstractToolRemoveCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::SUPPORT;
+        return ClusterTool::CHATWOOT;
     }
 
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
-        $names = ToolInstance::forInstance(ClusterTool::SUPPORT, (string) $this->resolveInstance($kubectl));
+        $names = ToolInstance::forInstance(ClusterTool::CHATWOOT, (string) $this->resolveInstance($kubectl));
 
         return trim(Process::run(
             "{$kubectl} get secret {$names->secret()} -n {$namespace} --ignore-not-found",
@@ -26,7 +26,7 @@ abstract class SupportRemoveCommand extends AbstractToolRemoveCommand
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
-        $names = ToolInstance::forInstance(ClusterTool::SUPPORT, (string) $this->resolveInstance($kubectl));
+        $names = ToolInstance::forInstance(ClusterTool::CHATWOOT, (string) $this->resolveInstance($kubectl));
         $web = $names->deployment();
 
         return $this->removeResources(

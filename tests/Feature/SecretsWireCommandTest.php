@@ -172,14 +172,14 @@ test('secrets:wire --tool=link registers a static role for kutt and restarts kut
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/kutt-link-kube'));
 });
 
-test('secrets:wire --tool=support registers a static role for chatwoot and restarts chatwoot', function (): void {
+test('secrets:wire --tool=chatwoot registers a static role for chatwoot and restarts chatwoot', function (): void {
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret chatwoot-secrets*' => Process::result(output: base64_encode('db-pw')),
         '*get deployment chatwoot*' => Process::result(output: 'chatwoot-support-kube'),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
             openBaoRegistryRow(),
-            ['tool' => 'support', 'instance' => 'support-kube', 'host' => 'support.kube'],
+            ['tool' => 'chatwoot', 'instance' => 'support-kube', 'host' => 'support.kube'],
         ]))),
         '*port-forward*' => Process::result(output: ''),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -194,9 +194,9 @@ test('secrets:wire --tool=support registers a static role for chatwoot and resta
         MockResponse::make([]),
     ]);
 
-    $this->artisan('secrets:wire local --tool=support --force')
+    $this->artisan('secrets:wire local --tool=chatwoot --force')
         ->assertExitCode(0)
-        ->expectsOutputToContain("Customer Support (Chatwoot)'s DB password is now rotated by OpenBao every 168h");
+        ->expectsOutputToContain("Chatwoot (Customer Support)'s DB password is now rotated by OpenBao every 168h");
 
     Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
         && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/chatwoot_support_kube')
@@ -592,7 +592,7 @@ test('secrets:wire --tool=passwords registers a static role for vaultwarden with
 
 test('secrets:wire supports git, notes, sheets, and chat tools', function (): void {
     openBaoRegistered();
-    foreach (['git' => 'forgejo', 'notes' => 'outline-secrets', 'sheets' => 'sheet-secrets', 'chat' => 'chat-secrets'] as $toolSlug => $secretName) {
+    foreach (['git' => 'forgejo', 'notes' => 'outline-secrets', 'teable' => 'sheet-secrets', 'chat' => 'chat-secrets'] as $toolSlug => $secretName) {
         expect(App\Enums\ClusterTool::from($toolSlug)->dbSecretRef())->not->toBeNull();
     }
 });

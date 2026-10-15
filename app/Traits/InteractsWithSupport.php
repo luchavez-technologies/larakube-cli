@@ -14,7 +14,7 @@ trait InteractsWithSupport
 
     protected function supportNamespace(): string
     {
-        return ClusterTool::SUPPORT->namespace();
+        return ClusterTool::CHATWOOT->namespace();
     }
 
     protected function isSupportInstalled(string $kubectl, string $ns): bool

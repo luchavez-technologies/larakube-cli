@@ -47,11 +47,11 @@ abstract class WebmailInitCommand extends AbstractToolInitCommand
         $context = $this->resolveToolContext($env, $this->option('context'));
         $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->bulwarkNamespace();
-        $host = $this->resolveToolHost(SharedClusterService::WEBMAIL, ClusterTool::WEBMAIL, $env, $kubectl);
+        $host = $this->resolveToolHost(SharedClusterService::WEBMAIL, ClusterTool::BULWARK, $env, $kubectl);
         // Every tool's instance identifier is a real, host-derived slug now
         // — Webmail included, even though it's 1:1 bound to the one Stalwart
         // and will never have a second instance.
-        $names = ToolInstance::forHost(ClusterTool::WEBMAIL, $host);
+        $names = ToolInstance::forHost(ClusterTool::BULWARK, $host);
         $instance = $names->instance;
         $vpnOnly = (bool) $this->option('vpn-only');
 
@@ -70,7 +70,7 @@ abstract class WebmailInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::WEBMAIL, $kubectl, $instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::BULWARK, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -131,7 +131,7 @@ abstract class WebmailInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Bulwark manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180, tool: ClusterTool::WEBMAIL),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180, tool: ClusterTool::BULWARK),
         );
         $temporaryDirectory->delete();
 
@@ -163,7 +163,7 @@ abstract class WebmailInitCommand extends AbstractToolInitCommand
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Bulwark webmail is live.');
-        $this->registerDeployedTool(ClusterTool::WEBMAIL, $kubectl, $host, $instance);
+        $this->registerDeployedTool(ClusterTool::BULWARK, $kubectl, $host, $instance);
         $this->newLine();
         $this->line("  <fg=gray>Webmail URL:</>        <fg=blue>https://{$host}</>");
         $this->line("  <fg=gray>Webmail Admin URL:</>  <fg=blue>https://{$host}/admin</>");
@@ -191,6 +191,6 @@ abstract class WebmailInitCommand extends AbstractToolInitCommand
 
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::WEBMAIL);
+        return $this->resolveToolEnvironment(ClusterTool::BULWARK);
     }
 }

@@ -54,9 +54,9 @@ trait SupportedDriversTrait
         return match ($subject) {
             ClusterTool::CHAT => [DatabaseDriver::POSTGRESQL],
             ClusterTool::TASKS, ClusterTool::NOTES,
-            ClusterTool::CRM, ClusterTool::SIGN, ClusterTool::SUPPORT,
+            ClusterTool::CRM, ClusterTool::SIGN, ClusterTool::CHATWOOT,
             ClusterTool::LINK, ClusterTool::DATA, ClusterTool::ANALYTICS,
-            ClusterTool::FLOW, ClusterTool::SHEETS, ClusterTool::ERRORS,
+            ClusterTool::FLOW, ClusterTool::TEABLE, ClusterTool::ERRORS,
             ClusterTool::GIT, ClusterTool::METABASE, ClusterTool::SSO => [DatabaseDriver::POSTGRESQL, DatabaseDriver::MYSQL],
             default => DatabaseDriver::cases(),
         };
@@ -83,7 +83,7 @@ trait SupportedDriversTrait
 
         return match ($subject) {
             ClusterTool::TASKS, ClusterTool::NOTES,
-            ClusterTool::SUPPORT, ClusterTool::LINK, ClusterTool::FLOW,
+            ClusterTool::CHATWOOT, ClusterTool::LINK, ClusterTool::FLOW,
             ClusterTool::GIT => [CacheDriver::REDIS],
             default => CacheDriver::cases(),
         };

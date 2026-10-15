@@ -1,5 +1,5 @@
 @php
-    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::SHEETS, $host);
+    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::TEABLE, $host);
     $deployment = $names->deployment();
     $service = $names->deployment();
     $secret = $names->secret();

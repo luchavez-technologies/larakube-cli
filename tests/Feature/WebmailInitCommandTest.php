@@ -107,7 +107,7 @@ test('tool:init --tool=bulwark --vpn-only creates the Traefik Middleware before 
 
     $this->artisan('tool:init --tool=bulwark local --vpn-only')
         ->assertExitCode(0)
-        ->expectsOutputToContain('Ensuring VPN-only Middleware for Webmail UI (Bulwark)...')
+        ->expectsOutputToContain('Ensuring VPN-only Middleware for Bulwark (Webmail Client)...')
         ->expectsOutputToContain('Bulwark webmail is live.');
 });
 

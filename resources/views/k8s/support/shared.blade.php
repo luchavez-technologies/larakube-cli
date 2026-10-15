@@ -2,8 +2,8 @@
     // Every name comes from ToolInstance (ADR 0021).
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::SUPPORT->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::SUPPORT, $instance);
+        : \App\Enums\ClusterTool::CHATWOOT->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::CHATWOOT, $instance);
     $dbName ??= $names->database();
     $webName = $names->deployment();
     $workerName = $names->deployment('worker');
@@ -124,7 +124,7 @@ spec:
             # mail:wire sets this as a plain literal (kubectl set env
             # NAME=value), never through the SMTP Secret —
             # must stay a literal here too, or a future kubectl apply
-            # conflicts with mail:wire's live value (see ClusterTool::SUPPORT's
+            # conflicts with mail:wire's live value (see ClusterTool::CHATWOOT's
             # smtpEnv()).
             - name: SMTP_ENABLE_STARTTLS_AUTO
               value: "true"
@@ -268,7 +268,7 @@ spec:
             # mail:wire sets this as a plain literal (kubectl set env
             # NAME=value), never through the SMTP Secret —
             # must stay a literal here too, or a future kubectl apply
-            # conflicts with mail:wire's live value (see ClusterTool::SUPPORT's
+            # conflicts with mail:wire's live value (see ClusterTool::CHATWOOT's
             # smtpEnv()).
             - name: SMTP_ENABLE_STARTTLS_AUTO
               value: "true"

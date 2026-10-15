@@ -80,7 +80,7 @@ test('engine-switchable tools drop every engine database, not just the active on
     // Switching engines between installs used to strand the previous engine's
     // Commons tenant, which then collided on the next init.
     expect(ClusterTool::FLOW->commonsDatabases())->toEqualCanonicalizing(['n8n', 'windmill'])
-        ->and(ClusterTool::SHEETS->commonsDatabases())->toEqualCanonicalizing(['teable']);
+        ->and(ClusterTool::TEABLE->commonsDatabases())->toEqualCanonicalizing(['teable']);
 });
 
 test('every tool with engines declares a default that is one of them', function (): void {
@@ -100,7 +100,7 @@ test('every tool with engines declares a default that is one of them', function 
 
 test('sheets no longer has selectable engines', function (): void {
     ssoRegistered();
-    expect(ClusterTool::SHEETS->defaultEngine())->toBeNull();
+    expect(ClusterTool::TEABLE->defaultEngine())->toBeNull();
 });
 
 test('only tools that can bundle their own storage advertise --no-plex', function (): void {
@@ -212,7 +212,7 @@ test('supportsMultipleInstances() pins the 2026-08 multi-instance capability aud
         ClusterTool::CHAT, ClusterTool::MATRIX, ClusterTool::MEET, ClusterTool::LIVEKIT, ClusterTool::GIT, ClusterTool::FORGEJO,
         ClusterTool::MAIL, ClusterTool::STALWART, ClusterTool::SSO, ClusterTool::ZITADEL, ClusterTool::SECRETS, ClusterTool::OPENBAO,
         ClusterTool::MONITOR, ClusterTool::GRAFANA, ClusterTool::VPN, ClusterTool::NETBIRD,
-        ClusterTool::WEBMAIL, ClusterTool::BULWARK, ClusterTool::HEADLAMP, ClusterTool::EXTERNAL_DNS,
+        ClusterTool::BULWARK, ClusterTool::HEADLAMP, ClusterTool::EXTERNAL_DNS,
     ];
 
     foreach (ClusterTool::cases() as $tool) {
@@ -243,12 +243,12 @@ test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance
         ClusterTool::FLOW, ClusterTool::N8N, ClusterTool::WINDMILL,
         ClusterTool::LINK, ClusterTool::KUTT,
         ClusterTool::ANALYTICS, ClusterTool::UMAMI, ClusterTool::PLAUSIBLE,
-        ClusterTool::SHEETS, ClusterTool::TEABLE,
+        ClusterTool::TEABLE,
         ClusterTool::TASKS, ClusterTool::PLANKA,
         ClusterTool::UPTIME, ClusterTool::KUMA,
         ClusterTool::METABASE,
         ClusterTool::ERRORS, ClusterTool::GLITCHTIP,
-        ClusterTool::SUPPORT, ClusterTool::CHATWOOT,
+        ClusterTool::CHATWOOT,
         ClusterTool::SENDREC,
         ClusterTool::RESUME,
     ];

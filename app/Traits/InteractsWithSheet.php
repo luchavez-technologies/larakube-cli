@@ -16,7 +16,7 @@ trait InteractsWithSheet
     /** The namespace the sheet stack lives in. */
     protected function sheetNamespace(): string
     {
-        return ClusterTool::SHEETS->namespace();
+        return ClusterTool::TEABLE->namespace();
     }
 
     /** Sheet Deployment present? */
@@ -25,7 +25,7 @@ trait InteractsWithSheet
         $k = Kubectl::fromPrefix($kubectl);
         $toolInstance = $instance instanceof ToolInstance
             ? $instance
-            : ($instance !== null && $instance !== '' ? ToolInstance::forInstance(ClusterTool::SHEETS, $instance) : null);
+            : ($instance !== null && $instance !== '' ? ToolInstance::forInstance(ClusterTool::TEABLE, $instance) : null);
 
         if ($toolInstance !== null) {
             return $k->hasDeployment($ns, $toolInstance->deployment());
@@ -45,7 +45,7 @@ trait InteractsWithSheet
     {
         $toolInstance = $instance instanceof ToolInstance
             ? $instance
-            : ($instance !== '' ? ToolInstance::forInstance(ClusterTool::SHEETS, $instance) : null);
+            : ($instance !== '' ? ToolInstance::forInstance(ClusterTool::TEABLE, $instance) : null);
 
         return $toolInstance !== null
             ? $this->readClusterSecretKey($kubectl, $ns, $toolInstance->secret(), $key)

@@ -2,8 +2,8 @@
     // Every name comes from ToolInstance (ADR 0021).
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::SUPPORT->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::SUPPORT, $instance);
+        : \App\Enums\ClusterTool::CHATWOOT->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::CHATWOOT, $instance);
     $deploymentName = $names->deployment();
     $ingressLabels = '';
     foreach ($names->labels() as $key => $value) {

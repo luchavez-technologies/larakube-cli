@@ -82,12 +82,12 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::SENDREC => new RecordTool,
             self::SSO, self::ZITADEL => new SsoTool,
             self::LINK, self::KUTT => new LinkTool,
-            self::WEBMAIL, self::BULWARK => new WebmailTool,
+            self::BULWARK => new WebmailTool,
             self::NOTES, self::OUTLINE => new NoteTool,
-            self::SHEETS, self::TEABLE => new SheetTool,
+            self::TEABLE => new SheetTool,
             self::MONITOR, self::GRAFANA => new MonitorTool,
             self::CRM, self::TWENTY => new CrmTool,
-            self::SUPPORT, self::CHATWOOT => new SupportTool,
+            self::CHATWOOT => new SupportTool,
             self::METABASE => new InsightTool,
             self::ERRORS, self::GLITCHTIP => new ErrorTool,
             self::ANALYTICS, self::UMAMI, self::PLAUSIBLE => new AnalyticsTool,
@@ -142,7 +142,6 @@ enum ClusterTool: string implements HasWorkloadComponents
 
             // Legacy Categories
             self::FLOW => 'Workflow Automation (N8N or Windmill)',
-            self::SHEETS => 'Spreadsheet Database (Teable)',
             self::PASSWORDS => 'Password Manager (Vaultwarden)',
             self::MONITOR => 'Monitoring Stack (Grafana + Loki + Prometheus)',
             self::SECRETS => 'Secrets Manager (OpenBao)',
@@ -153,13 +152,11 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::MAIL => 'Mail Server (Stalwart)',
             self::CHAT => 'Team Chat (Matrix)',
             self::SSO => 'Identity Provider / SSO (Zitadel)',
-            self::WEBMAIL => 'Webmail UI (Bulwark)',
             self::NOTES => 'Team Wiki & Knowledge Base (Outline)',
             self::DRIVE => 'Cloud Storage & Sync (oCIS)',
             self::ANALYTICS => 'Web Analytics (Umami)',
             self::TASKS => 'Project Management (Planka)',
             self::SIGN => 'Document Signing (Documenso)',
-            self::SUPPORT => 'Customer Support (Chatwoot)',
             self::LINK => 'Link Management (Kutt)',
             self::CRM => 'CRM (Twenty)',
             self::DATA => 'Headless CMS & Data API (PocketBase or Directus)',
@@ -231,14 +228,11 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::NOTES => '📝',
             self::PASSWORDS => '🔐',
             self::SECRETS => '🔒',
-            self::SHEETS => '📋',
             self::SIGN => '✍️',
             self::SSO => '🪪',
-            self::SUPPORT => '💬',
             self::TASKS => '✅',
             self::UPTIME => '🟢',
             self::VPN => '🔑',
-            self::WEBMAIL => '📬',
             self::MEET => '🎥',
             self::DESIGN => '🎨',
             self::PASTE => '🔥',
@@ -305,14 +299,11 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::NOTES => 'Notes',
             self::PASSWORDS => 'Passwords',
             self::SECRETS => 'Secrets',
-            self::SHEETS => 'Sheets',
             self::SIGN => 'Sign',
             self::SSO => 'SSO',
-            self::SUPPORT => 'Support',
             self::TASKS => 'Tasks',
             self::UPTIME => 'Uptime',
             self::VPN => 'VPN',
-            self::WEBMAIL => 'Webmail',
             self::MEET => 'Meet',
             self::DESIGN => 'Design',
             self::PASTE => 'Paste',
@@ -363,13 +354,13 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::GLITCHTIP, self::ERRORS => SharedClusterService::ERRORS,
             self::OCIS, self::DRIVE => SharedClusterService::DRIVE,
             self::OUTLINE, self::NOTES => SharedClusterService::NOTES,
-            self::TEABLE, self::SHEETS => SharedClusterService::SHEET,
+            self::TEABLE => SharedClusterService::SHEET,
             self::DOCUMENSO, self::SIGN => SharedClusterService::SIGN,
-            self::CHATWOOT, self::SUPPORT => SharedClusterService::SUPPORT,
+            self::CHATWOOT => SharedClusterService::SUPPORT,
             self::UMAMI, self::PLAUSIBLE, self::ANALYTICS => SharedClusterService::ANALYTICS,
             self::HEADLAMP => SharedClusterService::DASHBOARD,
             self::STALWART, self::MAIL => SharedClusterService::MAIL,
-            self::BULWARK, self::WEBMAIL => SharedClusterService::WEBMAIL,
+            self::BULWARK => SharedClusterService::WEBMAIL,
             self::PLANKA, self::TASKS => SharedClusterService::TASKS,
             self::KUTT, self::LINK => SharedClusterService::LINK,
             self::PENPOT, self::DESIGN => SharedClusterService::DESIGN,
@@ -748,14 +739,11 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::NOTES,
             self::PASSWORDS,
             self::SECRETS,
-            self::SHEETS,
             self::SIGN,
             self::SSO,
-            self::SUPPORT,
             self::TASKS,
             self::UPTIME,
             self::VPN,
-            self::WEBMAIL,
             self::DESIGN,
             self::PASTE => true,
             default => false,
@@ -775,7 +763,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             },
             self::FLOW => ($engine === 'windmill') ? self::WINDMILL : self::N8N,
             self::GIT => self::FORGEJO,
-            self::SHEETS => self::TEABLE,
             self::ANALYTICS => ($engine === 'plausible') ? self::PLAUSIBLE : self::UMAMI,
             self::CHAT => self::MATRIX,
             self::CRM => self::TWENTY,
@@ -789,11 +776,9 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::SECRETS => self::OPENBAO,
             self::SIGN => self::DOCUMENSO,
             self::SSO => self::ZITADEL,
-            self::SUPPORT => self::CHATWOOT,
             self::TASKS => self::PLANKA,
             self::UPTIME => self::KUMA,
             self::VPN => self::NETBIRD,
-            self::WEBMAIL => self::BULWARK,
             self::MEET => self::LIVEKIT,
             self::DESIGN => self::PENPOT,
             self::PASTE => self::YOPASS,
@@ -850,13 +835,13 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::GLITCHTIP, self::ERRORS => 'errors',
             self::OCIS, self::DRIVE => 'drive',
             self::OUTLINE, self::NOTES => 'notes',
-            self::TEABLE, self::SHEETS => 'sheets',
+            self::TEABLE => 'sheets',
             self::DOCUMENSO, self::SIGN => 'sign',
-            self::CHATWOOT, self::SUPPORT => 'support',
+            self::CHATWOOT => 'support',
             self::UMAMI, self::PLAUSIBLE, self::ANALYTICS => 'analytics',
             self::HEADLAMP => 'dashboard',
             self::STALWART, self::MAIL => 'mail',
-            self::BULWARK, self::WEBMAIL => 'webmail',
+            self::BULWARK => 'webmail',
             self::PLANKA, self::TASKS => 'tasks',
             self::KUTT, self::LINK => 'link',
             self::PENPOT, self::DESIGN => 'design',
@@ -1336,7 +1321,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function hasSsoWire(): bool
     {
         return match ($this) {
-            self::WEBMAIL => false,
+            self::BULWARK => false,
             default => $this->oidcEnv() !== null,
         };
     }
@@ -1435,7 +1420,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::LINK, self::KUTT => ['kutt-user' => 'Can log in to Kutt'],
             self::RESUME => ['reactive-resume-user' => 'Can log in to Reactive Resume'],
             self::SIGN, self::DOCUMENSO => ['documenso-user' => 'Can log in to Documenso'],
-            self::SHEETS, self::TEABLE => ['teable-user' => 'Can log in to Teable'],
+            self::TEABLE => ['teable-user' => 'Can log in to Teable'],
             // Confirmed live 2026-08-21: admin@ourfridays.com (a partner-org
             // identity, same one Outline's incident involved) hit Penpot's
             // auto-provision-on-first-login prompt via plain Zitadel SSO —
@@ -1619,7 +1604,7 @@ enum ClusterTool: string implements HasWorkloadComponents
         return match ($this) {
             self::CHAT, self::MATRIX, self::MEET, self::LIVEKIT, self::GIT, self::FORGEJO,
             self::MAIL, self::STALWART, self::SSO, self::ZITADEL, self::SECRETS, self::OPENBAO,
-            self::MONITOR, self::GRAFANA, self::VPN, self::NETBIRD, self::WEBMAIL, self::BULWARK,
+            self::MONITOR, self::GRAFANA, self::VPN, self::NETBIRD, self::BULWARK,
             self::HEADLAMP, self::EXTERNAL_DNS => false,
             default => true,
         };
@@ -1673,8 +1658,8 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::DATA, self::POCKETBASE, self::DIRECTUS, self::WORDPRESS, self::NOTES, self::OUTLINE, self::CRM, self::TWENTY,
             self::DESIGN, self::PENPOT, self::PASTE, self::YOPASS, self::SIGN, self::DOCUMENSO,
             self::FLOW, self::N8N, self::WINDMILL, self::LINK, self::KUTT, self::ANALYTICS, self::UMAMI, self::PLAUSIBLE,
-            self::SHEETS, self::TEABLE, self::TASKS, self::PLANKA, self::UPTIME, self::KUMA, self::METABASE,
-            self::ERRORS, self::GLITCHTIP, self::SUPPORT, self::CHATWOOT, self::SENDREC, self::RESUME, self::DESIGN, self::PENPOT => true,
+            self::TEABLE, self::TASKS, self::PLANKA, self::UPTIME, self::KUMA, self::METABASE,
+            self::ERRORS, self::GLITCHTIP, self::CHATWOOT, self::SENDREC, self::RESUME, self::DESIGN, self::PENPOT => true,
             default => false,
         };
     }
@@ -2006,15 +1991,15 @@ enum ClusterTool: string implements HasWorkloadComponents
         return match ($this) {
             self::MONITOR, self::GRAFANA, self::GIT, self::FORGEJO, self::NOTES, self::OUTLINE,
             self::FLOW, self::N8N, self::WINDMILL, self::SIGN, self::DOCUMENSO, self::DATA, self::POCKETBASE,
-            self::DIRECTUS, self::WORDPRESS, self::LINK, self::KUTT, self::ANALYTICS, self::UMAMI, self::PLAUSIBLE, self::SHEETS,
+            self::DIRECTUS, self::WORDPRESS, self::LINK, self::KUTT, self::ANALYTICS, self::UMAMI, self::PLAUSIBLE,
             self::TEABLE, self::TASKS, self::PLANKA, self::HEADLAMP, self::MEET,
-            self::LIVEKIT, self::WEBMAIL, self::BULWARK, self::DRIVE, self::OCIS, self::VPN, self::NETBIRD,
+            self::LIVEKIT, self::BULWARK, self::DRIVE, self::OCIS, self::VPN, self::NETBIRD,
             self::CRM, self::TWENTY, self::PASSWORDS, self::VAULTWARDEN, self::CHAT, self::MATRIX, self::MAIL, self::STALWART,
             self::SECRETS, self::OPENBAO, self::SSO, self::ZITADEL,
             self::PASTE, self::YOPASS, self::UPTIME, self::KUMA, self::METABASE,
             // ExternalDNS is keyed by a zone group, not a host: `external-dns-{group}` already is
             // {component}-{instance}, so listing it changes no name.
-            self::EXTERNAL_DNS, self::ERRORS, self::GLITCHTIP, self::SUPPORT, self::CHATWOOT, self::SENDREC, self::RESUME, self::DESIGN, self::PENPOT => ResourceNaming::CANONICAL,
+            self::EXTERNAL_DNS, self::ERRORS, self::GLITCHTIP, self::CHATWOOT, self::SENDREC, self::RESUME, self::DESIGN, self::PENPOT => ResourceNaming::CANONICAL,
             default => ResourceNaming::INSTANCE_SUFFIXED,
         };
     }
@@ -2258,14 +2243,11 @@ enum ClusterTool: string implements HasWorkloadComponents
     case NOTES = 'notes';
     case PASSWORDS = 'passwords';
     case SECRETS = 'secrets';
-    case SHEETS = 'sheets';
     case SIGN = 'sign';
     case SSO = 'sso';
-    case SUPPORT = 'support';
     case TASKS = 'tasks';
     case UPTIME = 'uptime';
     case VPN = 'vpn';
-    case WEBMAIL = 'webmail';
     case DESIGN = 'design';
     case PASTE = 'paste';
 

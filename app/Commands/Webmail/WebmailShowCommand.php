@@ -11,7 +11,7 @@ abstract class WebmailShowCommand extends AbstractToolShowCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::WEBMAIL;
+        return ClusterTool::BULWARK;
     }
 
     protected function rows(?string $host, string $env, string $kubectl, string $instance = ''): array
@@ -20,7 +20,7 @@ abstract class WebmailShowCommand extends AbstractToolShowCommand
             return [['Webmail UI (Bulwark)', "<fg=gray>not installed — run larakube tool:init --tool=bulwark {$env}</>"]];
         }
 
-        $names = ToolInstance::forInstance(ClusterTool::WEBMAIL, $instance);
+        $names = ToolInstance::forInstance(ClusterTool::BULWARK, $instance);
         $adminPassword = $this->secretValue($kubectl, $names->namespace(), $names->secret(), 'WEBMAIL_ADMIN_PASSWORD')
             ?? $this->secretValue($kubectl, $names->namespace(), $names->secret(), 'admin-password');
 
@@ -57,7 +57,7 @@ abstract class WebmailShowCommand extends AbstractToolShowCommand
         }
 
         $kubectl = Kubectl::forContext($this->resolveToolContext($env, (string) $this->option('context') ?: null))->prefix();
-        $names = ToolInstance::forInstance(ClusterTool::WEBMAIL, $instance);
+        $names = ToolInstance::forInstance(ClusterTool::BULWARK, $instance);
         $adminPassword = $this->secretValue($kubectl, $names->namespace(), $names->secret(), 'WEBMAIL_ADMIN_PASSWORD')
             ?? $this->secretValue($kubectl, $names->namespace(), $names->secret(), 'admin-password');
 

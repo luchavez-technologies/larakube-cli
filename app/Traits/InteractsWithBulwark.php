@@ -22,7 +22,7 @@ trait InteractsWithBulwark
     /** The namespace the webmail client lives in (next to Stalwart). */
     protected function bulwarkNamespace(): string
     {
-        return ClusterTool::WEBMAIL->namespace();
+        return ClusterTool::BULWARK->namespace();
     }
 
     /**
@@ -35,7 +35,7 @@ trait InteractsWithBulwark
     {
         return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=webmail')
             || $this->isToolRegistered($kubectl, ClusterTool::BULWARK)
-            || $this->isToolRegistered($kubectl, ClusterTool::WEBMAIL);
+            || $this->isToolRegistered($kubectl, ClusterTool::BULWARK);
     }
 
     /** Read a key from this instance's credentials Secret. */
@@ -44,7 +44,7 @@ trait InteractsWithBulwark
         return $this->readClusterSecretKey(
             $kubectl,
             $ns,
-            ToolInstance::forInstance(ClusterTool::WEBMAIL, $instance)->secret(),
+            ToolInstance::forInstance(ClusterTool::BULWARK, $instance)->secret(),
             $key,
         );
     }
@@ -56,7 +56,7 @@ trait InteractsWithBulwark
 
         if ($kubectl !== null) {
             $registered = $this->resolveLiveToolHost($kubectl, ClusterTool::BULWARK)
-                ?? $this->resolveLiveToolHost($kubectl, ClusterTool::WEBMAIL);
+                ?? $this->resolveLiveToolHost($kubectl, ClusterTool::BULWARK);
             if ($registered !== null && $registered !== '') {
                 return $registered;
             }

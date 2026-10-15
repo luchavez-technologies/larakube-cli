@@ -33,11 +33,11 @@ abstract class MailRemoveCommand extends AbstractToolRemoveCommand
         // Webmail's own credentials Secret is named per instance — a
         // best-effort lookup of its current one, so removing Stalwart doesn't
         // leave a real, live-named Secret orphaned behind it.
-        $webmailInstance = $this->getToolHost($kubectl, ClusterTool::WEBMAIL) !== null
-            ? (string) ($this->getToolInstanceData($kubectl, ClusterTool::WEBMAIL)?->instance ?? '')
+        $webmailInstance = $this->getToolHost($kubectl, ClusterTool::BULWARK) !== null
+            ? (string) ($this->getToolInstanceData($kubectl, ClusterTool::BULWARK)?->instance ?? '')
             : '';
         $webmailSecret = $webmailInstance !== ''
-            ? ToolInstance::forInstance(ClusterTool::WEBMAIL, $webmailInstance)->secret()
+            ? ToolInstance::forInstance(ClusterTool::BULWARK, $webmailInstance)->secret()
             : 'webmail-secrets';
 
         // Every resource Stalwart owns comes from the vendor's component list,

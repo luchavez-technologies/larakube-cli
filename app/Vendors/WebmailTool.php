@@ -23,11 +23,11 @@ final class WebmailTool implements ClusterToolVendor, HasDeploymentBaseName, Has
     {
         $name = ($instance === null || $instance === '')
             ? 'webmail-vpn-only'
-            : ToolInstance::forInstance(ClusterTool::WEBMAIL, $instance)->name('vpn-only');
+            : ToolInstance::forInstance(ClusterTool::BULWARK, $instance)->name('vpn-only');
 
         return [
             'name' => $name,
-            'namespace' => ClusterTool::WEBMAIL->namespace(),
+            'namespace' => ClusterTool::BULWARK->namespace(),
         ];
     }
 
@@ -54,7 +54,7 @@ final class WebmailTool implements ClusterToolVendor, HasDeploymentBaseName, Has
         // these nested resource names have to follow the same rule. Composed
         // here rather than read back from ToolInstance, which derives every
         // name FROM this list and would recurse.
-        $canonical = fn (string $n) => ClusterTool::WEBMAIL->withoutCategory($n);
+        $canonical = fn (string $n) => ClusterTool::BULWARK->withoutCategory($n);
         $deployment = $canonical($name('webmail-bulwark'));
 
         return [

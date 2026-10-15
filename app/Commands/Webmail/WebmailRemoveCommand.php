@@ -9,7 +9,7 @@ abstract class WebmailRemoveCommand extends AbstractToolRemoveCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::WEBMAIL;
+        return ClusterTool::BULWARK;
     }
 
     protected function teardown(string $kubectl, string $namespace): bool

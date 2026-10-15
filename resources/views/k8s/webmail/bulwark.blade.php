@@ -4,8 +4,8 @@
     // path (which passes only the host), so derive what is missing.
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::WEBMAIL->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::WEBMAIL, $instance);
+        : \App\Enums\ClusterTool::BULWARK->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::BULWARK, $instance);
     $deployment = $names->deployment();
     $secretName = $names->secret();
     $volume = $names->volume();
