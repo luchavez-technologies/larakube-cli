@@ -12,13 +12,13 @@ abstract class TasksRemoveCommand extends AbstractToolRemoveCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::TASKS;
+        return ClusterTool::PLANKA;
     }
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
         $instance = (string) $this->resolveInstance($kubectl);
-        $names = ToolInstance::forInstance(ClusterTool::TASKS, $instance, 'planka');
+        $names = ToolInstance::forInstance(ClusterTool::PLANKA, $instance, 'planka');
         $deployment = $names->deployment();
 
         $targets = [

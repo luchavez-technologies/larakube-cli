@@ -40,10 +40,10 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
         'link' => 'kutt', 'mail' => 'stalwart', 'monitor' => 'grafana',
         'notes' => 'outline', 'passwords' => 'vaultwarden', 'sendrec' => 'sendrec',
         'secrets' => 'openbao', 'teable' => 'teable', 'sign' => 'documenso',
-        'sso' => 'zitadel', 'chatwoot' => 'chatwoot', 'tasks' => 'planka',
-        'uptime' => 'kuma', 'bulwark' => 'bulwark',
+        'sso' => 'zitadel', 'chatwoot' => 'chatwoot', 'planka' => 'planka',
+        'kuma' => 'kuma', 'bulwark' => 'bulwark',
         'external-dns' => 'external-dns', 'headlamp' => 'headlamp', 'meet' => 'livekit',
-        'design' => 'penpot-backend',
+        'penpot' => 'penpot-backend',
     ];
 
     foreach ($expected as $value => $deployment) {
@@ -109,7 +109,7 @@ test('CHAT/GIT/DESIGN component lists match today\'s hand-written Blade/teardown
     $gitDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::GIT->components('git-luchtech-dev'));
     expect($gitDeployments)->toBe(['forgejo-git-luchtech-dev', 'forgejo-runner-git-luchtech-dev']);
 
-    $designDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::DESIGN->components());
+    $designDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::PENPOT->components());
     expect($designDeployments)->toBe(['penpot-backend', 'penpot-frontend', 'penpot-exporter']);
 });
 
@@ -118,7 +118,7 @@ test('only DESIGN\'s frontend, ERRORS\' worker, and CRM\'s worker components sha
     foreach (ClusterTool::cases() as $tool) {
         $shared = array_values(array_filter($tool->components(), fn ($c) => $c->sharesPrimarySecret));
 
-        if ($tool === ClusterTool::DESIGN || $tool === ClusterTool::PENPOT) {
+        if ($tool === ClusterTool::PENPOT) {
             expect($shared)->toHaveCount(1)
                 ->and($shared[0]->deployment)->toBe('penpot-frontend');
         } elseif ($tool === ClusterTool::ERRORS || $tool === ClusterTool::GLITCHTIP) {
@@ -132,7 +132,7 @@ test('only DESIGN\'s frontend, ERRORS\' worker, and CRM\'s worker components sha
         }
     }
 
-    expect(ClusterTool::DESIGN->alsoPatchDeployments())->toBe(['penpot-frontend'])
+    expect(ClusterTool::PENPOT->alsoPatchDeployments())->toBe(['penpot-frontend'])
         ->and(ClusterTool::PENPOT->alsoPatchDeployments())->toBe(['penpot-frontend'])
         ->and(ClusterTool::ERRORS->alsoPatchDeployments())->toBe(['glitchtip-worker'])
         ->and(ClusterTool::GLITCHTIP->alsoPatchDeployments())->toBe(['glitchtip-worker'])

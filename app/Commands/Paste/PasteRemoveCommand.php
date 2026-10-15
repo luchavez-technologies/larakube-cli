@@ -11,12 +11,12 @@ abstract class PasteRemoveCommand extends AbstractToolRemoveCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::PASTE;
+        return ClusterTool::YOPASS;
     }
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
-        $names = ToolInstance::forInstance(ClusterTool::PASTE, (string) $this->resolveInstance($kubectl));
+        $names = ToolInstance::forInstance(ClusterTool::YOPASS, (string) $this->resolveInstance($kubectl));
         $deployment = $names->deployment();
 
         return $this->deleteResources('Removing Yopass resources...', [

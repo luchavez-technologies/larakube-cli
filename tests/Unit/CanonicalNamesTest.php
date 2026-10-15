@@ -9,11 +9,8 @@ use App\Enums\SecretKind;
  * category (`design-`, `errors-`, `support-`...) never appears in a name.
  */
 dataset('tools on the canonical naming', [
-    'paste' => [ClusterTool::PASTE, 'yopass'],
-    'uptime' => [ClusterTool::UPTIME, 'kuma'],
     'errors' => [ClusterTool::ERRORS, 'glitchtip'],
     'resume' => [ClusterTool::RESUME, 'reactive'],
-    'design' => [ClusterTool::DESIGN, 'penpot'],
 ]);
 
 test('a migrated tool names its resources after the component, then the instance', function (ClusterTool $tool, string $component): void {

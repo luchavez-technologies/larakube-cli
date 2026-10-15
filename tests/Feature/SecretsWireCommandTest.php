@@ -208,7 +208,7 @@ test('secrets:wire --tool=chatwoot registers a static role for chatwoot and rest
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/chatwoot-support-kube'));
 });
 
-test('secrets:wire --tool=tasks registers a static role for planka and restarts planka', function (): void {
+test('secrets:wire --tool=planka registers a static role for planka and restarts planka', function (): void {
     openBaoRegistered();
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
@@ -227,9 +227,9 @@ test('secrets:wire --tool=tasks registers a static role for planka and restarts 
         MockResponse::make([]),
     ]);
 
-    $this->artisan('secrets:wire local --tool=tasks --force')
+    $this->artisan('secrets:wire local --tool=planka --force')
         ->assertExitCode(0)
-        ->expectsOutputToContain("Project Management (Planka)'s DB password is now rotated by OpenBao every 168h");
+        ->expectsOutputToContain("Planka (Kanban Project Management)'s DB password is now rotated by OpenBao every 168h");
 
     Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
         && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/planka')

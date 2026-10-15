@@ -1,5 +1,5 @@
 @php
-    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::TASKS, $host, 'planka');
+    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::PLANKA, $host, 'planka');
     $labels ??= $names->labels();
 @endphp
 apiVersion: networking.k8s.io/v1

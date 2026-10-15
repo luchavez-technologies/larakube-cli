@@ -134,8 +134,8 @@ test('tool:init --tool=penpot errors instead of guessing when multiple instances
     // Deployment/Ingress alongside the real one. Now it must refuse outright
     // rather than pick one — see ResolvesToolHost::resolveInstanceAwareHost().
     $registry = [
-        ['tool' => 'design', 'instance' => 'main', 'host' => 'design.example.com'],
-        ['tool' => 'design', 'instance' => 'team2-example-com', 'host' => 'team2.example.com'],
+        ['tool' => 'penpot', 'instance' => 'main', 'host' => 'design.example.com'],
+        ['tool' => 'penpot', 'instance' => 'team2-example-com', 'host' => 'team2.example.com'],
     ];
 
     Process::fake([

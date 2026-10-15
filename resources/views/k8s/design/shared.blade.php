@@ -2,8 +2,8 @@
     // Every name comes from ToolInstance (ADR 0021).
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::DESIGN->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::DESIGN, $instance);
+        : \App\Enums\ClusterTool::PENPOT->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::PENPOT, $instance);
     $backendName = $names->deployment('backend');
     $frontendName = $names->deployment('frontend');
     $exporterName = $names->deployment('exporter');

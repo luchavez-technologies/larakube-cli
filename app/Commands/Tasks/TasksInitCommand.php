@@ -40,7 +40,7 @@ abstract class TasksInitCommand extends AbstractToolInitCommand
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = Kubectl::forContext($context)->prefix();
-        $host = $this->resolveToolHost(SharedClusterService::TASKS, ClusterTool::TASKS, $env, $kubectl);
+        $host = $this->resolveToolHost(SharedClusterService::TASKS, ClusterTool::PLANKA, $env, $kubectl);
 
         $ns = $this->tasksNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
@@ -49,9 +49,9 @@ abstract class TasksInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $names = ToolInstance::forHost(ClusterTool::TASKS, $host, 'planka');
+        $names = ToolInstance::forHost(ClusterTool::PLANKA, $host, 'planka');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::TASKS, $kubectl, $names->instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::PLANKA, $kubectl, $names->instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -95,7 +95,7 @@ abstract class TasksInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Planka tasks manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180, tool: ClusterTool::TASKS),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180, tool: ClusterTool::PLANKA),
         );
         $temporaryDirectory->delete();
 
@@ -103,7 +103,7 @@ abstract class TasksInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::TASKS, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::PLANKA, $kubectl, $host);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Planka tasks stack is live.');
@@ -117,6 +117,6 @@ abstract class TasksInitCommand extends AbstractToolInitCommand
 
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::TASKS);
+        return $this->resolveToolEnvironment(ClusterTool::PLANKA);
     }
 }

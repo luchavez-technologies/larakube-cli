@@ -10,11 +10,11 @@ test('kuma:show refuses because Uptime Kuma is not yet shipped', function (): vo
 
     $this->artisan('kuma:show local')
         ->assertExitCode(1)
-        ->expectsOutputToContain('Status Pages (Uptime Kuma) is not yet shipped');
+        ->expectsOutputToContain('Uptime Kuma (Status Pages) is not yet shipped');
 
     Process::assertNotRan(fn ($process) => true);
 });
 
 test('uptime stays hidden from tool:list until shipped', function (): void {
-    expect(ClusterTool::UPTIME->isShipped())->toBeFalse();
+    expect(ClusterTool::KUMA->isShipped())->toBeFalse();
 });

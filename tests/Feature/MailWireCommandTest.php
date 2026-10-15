@@ -87,7 +87,7 @@ test('mail:wire local --tool=data configures PocketBase SMTP, not Directus, on a
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'deployment/directus'));
 });
 
-test('mail:wire local --tool=design configures Penpot SMTP via deployment secret', function (): void {
+test('mail:wire local --tool=penpot configures Penpot SMTP via deployment secret', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'penpot', 'instance' => 'design-example-com', 'host' => 'design.example.com'],
@@ -103,8 +103,8 @@ test('mail:wire local --tool=design configures Penpot SMTP via deployment secret
         '*rollout restart deployment/penpot-frontend-design-example-com*' => Process::result(output: 'restarted'),
     ]);
 
-    $this->artisan('mail:wire local --tool=design')
-        ->expectsOutputToContain('Wired to Stalwart: Design & Prototyping (Penpot)');
+    $this->artisan('mail:wire local --tool=penpot')
+        ->expectsOutputToContain('Wired to Stalwart: Penpot (Design & Prototyping)');
 
     Process::assertRan(fn ($process) => isset(appliedSecret($process)['data']['PENPOT_SMTP_HOST']));
 });

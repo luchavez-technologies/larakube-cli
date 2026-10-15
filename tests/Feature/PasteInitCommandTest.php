@@ -99,8 +99,8 @@ test('tool:init --tool=yopass gives each instance its own Commons Redis tenant a
     $tenants = end($saved)['tenants'] ?? [];
 
     // The same names `yopass:remove --purge` derives, so a purge frees them.
-    expect($tenants)->toHaveKey(App\Enums\ClusterTool::PASTE->commonsRedisTenants('paste-check-example-com')[0])
-        ->and($tenants)->toHaveKey(App\Enums\ClusterTool::PASTE->commonsBuckets('paste-check-example-com')[0])
+    expect($tenants)->toHaveKey(App\Enums\ClusterTool::YOPASS->commonsRedisTenants('paste-check-example-com')[0])
+        ->and($tenants)->toHaveKey(App\Enums\ClusterTool::YOPASS->commonsBuckets('paste-check-example-com')[0])
         ->and($tenants)->not->toHaveKey('paste_yopass')
         ->and($tenants)->not->toHaveKey('paste-yopass');
 });

@@ -36,7 +36,7 @@ test('resolveCommonsResource names the tool and the instance an instanced tenant
     $cases = [
         'sendrec_record_example_com' => [ClusterTool::SENDREC, 'record-example-com'],
         'forgejo_git_luchtech_dev' => [ClusterTool::GIT, 'git-luchtech-dev'],
-        'yopass-storage-paste-example-com' => [ClusterTool::PASTE, 'paste-example-com'],
+        'yopass-storage-paste-example-com' => [ClusterTool::YOPASS, 'paste-example-com'],
         'forgejo-lfs-git-luchtech-dev' => [ClusterTool::GIT, 'git-luchtech-dev'],
         'stalwart-storage-send-luchtech-dev' => [ClusterTool::MAIL, 'send-luchtech-dev'],
     ];

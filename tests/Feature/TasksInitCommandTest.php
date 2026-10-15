@@ -15,7 +15,7 @@ test('tasks manifest carries canonical resource naming and identity labels', fun
 
     expect($manifest)
         ->toContain('name: planka-tasks-example-test')
-        ->toContain('larakube.io/tool: tasks')
+        ->toContain('larakube.io/tool: planka')
         ->toContain('larakube.io/component: planka')
         ->toContain('larakube.io/instance: tasks-example-test')
         ->toContain('name: planka-secrets-tasks-example-test')
@@ -37,7 +37,7 @@ test('tasks ingress carries canonical naming and proxy annotations', function ()
 });
 
 test('tasks ToolInstance resolves canonical database, secrets, and deployment', function (): void {
-    $instance = ToolInstance::forHost(ClusterTool::TASKS, 'tasks.example.test', 'planka');
+    $instance = ToolInstance::forHost(ClusterTool::PLANKA, 'tasks.example.test', 'planka');
 
     expect($instance->deployment())->toBe('planka-tasks-example-test')
         ->and($instance->secret())->toBe('planka-secrets-tasks-example-test')

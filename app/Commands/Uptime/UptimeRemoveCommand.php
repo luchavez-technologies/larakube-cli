@@ -10,12 +10,12 @@ abstract class UptimeRemoveCommand extends AbstractToolRemoveCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::UPTIME;
+        return ClusterTool::KUMA;
     }
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
-        $names = ToolInstance::forInstance(ClusterTool::UPTIME, (string) $this->resolveInstance($kubectl));
+        $names = ToolInstance::forInstance(ClusterTool::KUMA, (string) $this->resolveInstance($kubectl));
 
         return $this->removeResources(
             'Removing Uptime Kuma resources...',

@@ -24,7 +24,7 @@ test('whiteLabel() returns null for unsupported tools like DNS, VPN, SECRETS', f
         ClusterTool::VPN,
         ClusterTool::SECRETS,
         ClusterTool::PASSWORDS,
-        ClusterTool::UPTIME,
+        ClusterTool::KUMA,
     ];
 
     foreach ($unsupportedTools as $tool) {

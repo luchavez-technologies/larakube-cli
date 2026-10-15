@@ -34,7 +34,7 @@ abstract class UptimeInitCommand extends AbstractToolInitCommand
 
     protected function deployUptime(): int
     {
-        if ($this->refuseUnshippedTool(ClusterTool::UPTIME)) {
+        if ($this->refuseUnshippedTool(ClusterTool::KUMA)) {
             return 1;
         }
 
@@ -43,8 +43,8 @@ abstract class UptimeInitCommand extends AbstractToolInitCommand
         $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->uptimeNamespace();
 
-        $host = $this->resolveToolHost(SharedClusterService::UPTIME_KUMA, ClusterTool::UPTIME, $env, $kubectl);
-        $names = ToolInstance::forHost(ClusterTool::UPTIME, $host);
+        $host = $this->resolveToolHost(SharedClusterService::UPTIME_KUMA, ClusterTool::KUMA, $env, $kubectl);
+        $names = ToolInstance::forHost(ClusterTool::KUMA, $host);
 
         // The local certificate is issued by registerDeployedTool() from this
         // tool's OWN host. It used to be done here from getProjectConfig(),
@@ -57,7 +57,7 @@ abstract class UptimeInitCommand extends AbstractToolInitCommand
 
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::UPTIME, $kubectl, $names->instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::KUMA, $kubectl, $names->instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -78,7 +78,7 @@ abstract class UptimeInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Uptime Kuma manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 120, tool: ClusterTool::UPTIME),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 120, tool: ClusterTool::KUMA),
         );
         $temporaryDirectory->delete();
 
@@ -86,7 +86,7 @@ abstract class UptimeInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::UPTIME, $kubectl, $host, $names->instance);
+        $this->registerDeployedTool(ClusterTool::KUMA, $kubectl, $host, $names->instance);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Uptime Kuma stack is live.');
@@ -104,6 +104,6 @@ abstract class UptimeInitCommand extends AbstractToolInitCommand
      */
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::UPTIME);
+        return $this->resolveToolEnvironment(ClusterTool::KUMA);
     }
 }

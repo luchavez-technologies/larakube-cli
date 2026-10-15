@@ -12,7 +12,7 @@ trait InteractsWithPaste
 {
     protected function pasteNamespace(): string
     {
-        return ClusterTool::PASTE->namespace();
+        return ClusterTool::YOPASS->namespace();
     }
 
     /**

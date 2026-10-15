@@ -11,12 +11,12 @@ abstract class DesignRemoveCommand extends AbstractToolRemoveCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::DESIGN;
+        return ClusterTool::PENPOT;
     }
 
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
-        $secret = ToolInstance::forInstance(ClusterTool::DESIGN, (string) $this->resolveInstance($kubectl))->secret();
+        $secret = ToolInstance::forInstance(ClusterTool::PENPOT, (string) $this->resolveInstance($kubectl))->secret();
 
         return trim(Process::run(
             "{$kubectl} get secret {$secret} -n {$namespace} --ignore-not-found",

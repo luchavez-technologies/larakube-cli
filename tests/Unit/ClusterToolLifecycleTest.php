@@ -167,7 +167,7 @@ test('tasks (Planka) does not claim OIDC wiring — it was removed from the OSS 
     // If TaskTool ever re-implements HasOidcWiring, it means either Planka
     // brought OIDC back to Community, or PLANKA Pro is intentionally in use
     // — verify against the real pinned version's source before trusting it.
-    expect(ClusterTool::TASKS->vendor())->not->toBeInstanceOf(App\Contracts\HasOidcWiring::class);
+    expect(ClusterTool::PLANKA->vendor())->not->toBeInstanceOf(App\Contracts\HasOidcWiring::class);
 });
 
 test('directus SSO carries a license caveat, pocketbase does not', function (): void {
@@ -226,7 +226,7 @@ test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance
     ssoRegistered();
     // Deliberately narrower than supportsMultipleInstances() above: that
     // method's `true` default means "no known architectural blocker", not
-    // "already built". Only DATA, NOTES, CRM, DESIGN, PASTE, SIGN and FLOW actually resolve
+    // "already built". Only DATA, NOTES, CRM, PENPOT, YOPASS, SIGN and FLOW actually resolve
     // --domain to a specific registered instance before tearing it down
     // today — every other tool's teardown() hardcodes fixed resource names
     // and would silently ignore --domain, deleting the one real installation
@@ -237,15 +237,15 @@ test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance
         ClusterTool::DATA, ClusterTool::POCKETBASE, ClusterTool::DIRECTUS, ClusterTool::WORDPRESS,
         ClusterTool::NOTES, ClusterTool::OUTLINE,
         ClusterTool::CRM, ClusterTool::TWENTY,
-        ClusterTool::DESIGN, ClusterTool::PENPOT,
-        ClusterTool::PASTE, ClusterTool::YOPASS,
+        ClusterTool::PENPOT,
+        ClusterTool::YOPASS,
         ClusterTool::SIGN, ClusterTool::DOCUMENSO,
         ClusterTool::FLOW, ClusterTool::N8N, ClusterTool::WINDMILL,
         ClusterTool::LINK, ClusterTool::KUTT,
         ClusterTool::ANALYTICS, ClusterTool::UMAMI, ClusterTool::PLAUSIBLE,
         ClusterTool::TEABLE,
-        ClusterTool::TASKS, ClusterTool::PLANKA,
-        ClusterTool::UPTIME, ClusterTool::KUMA,
+        ClusterTool::PLANKA,
+        ClusterTool::KUMA,
         ClusterTool::METABASE,
         ClusterTool::ERRORS, ClusterTool::GLITCHTIP,
         ClusterTool::CHATWOOT,
@@ -430,7 +430,7 @@ test('a migrated tool never keeps its category on any resource name', function (
 });
 
 test('remove and show commands name the tool, and the engine when there is more than one', function (): void {
-    expect(ClusterTool::PASTE->removeCommand())->toBe('yopass:remove')
+    expect(ClusterTool::YOPASS->removeCommand())->toBe('yopass:remove')
         ->and(ClusterTool::DATA->removeCommand())->toBe('directus:remove')
         ->and(ClusterTool::DATA->removeCommand('pocketbase'))->toBe('pocketbase:remove')
         ->and(ClusterTool::NOTES->showCommand())->toBe('outline:show');

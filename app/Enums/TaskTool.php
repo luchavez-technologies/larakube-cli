@@ -11,7 +11,7 @@ use App\Contracts\HasVpnWiring;
 use App\Data\ToolInstance;
 
 /**
- * The vendor enum backing ClusterTool::TASKS — 'Project Management'.
+ * The vendor enum backing ClusterTool::PLANKA — 'Project Management'.
  * Plane is dead (zero references anywhere outside the legacy engines()
  * list) and is deliberately dropped here — only Planka ships.
  *
@@ -40,7 +40,7 @@ enum TaskTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDepl
     {
         $name = ($instance === null || $instance === '')
             ? 'planka-vpn-only'
-            : ToolInstance::forInstance(ClusterTool::TASKS, $instance, $this->value)->name('vpn-only');
+            : ToolInstance::forInstance(ClusterTool::PLANKA, $instance, $this->value)->name('vpn-only');
 
         return [
             'name' => $name,
@@ -61,7 +61,7 @@ enum TaskTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDepl
     public function smtpEnv(?string $instance = null): ?array
     {
         return [
-            'deployment' => ClusterTool::TASKS->deploymentName($instance, $this->value),
+            'deployment' => ClusterTool::PLANKA->deploymentName($instance, $this->value),
             'secret' => $this->name($instance, SecretKind::SMTP->value),
             'static' => [
                 'SMTP_SECURE' => 'true',
@@ -90,7 +90,7 @@ enum TaskTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDepl
     {
         return ($instance === null || $instance === '')
             ? "planka-{$token}"
-            : ToolInstance::forInstance(ClusterTool::TASKS, $instance, $this->value)->name($token);
+            : ToolInstance::forInstance(ClusterTool::PLANKA, $instance, $this->value)->name($token);
     }
 
     case PLANKA = 'planka';

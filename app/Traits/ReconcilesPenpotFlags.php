@@ -43,7 +43,7 @@ trait ReconcilesPenpotFlags
         ?bool $ssoOnly,
         string $backendDeployment,
     ): string {
-        $flags = ClusterTool::DESIGN->baselineFlags();
+        $flags = ClusterTool::PENPOT->baselineFlags();
 
         $oidcWired = trim((string) ($this->readClusterSecretKey($kubectl, $ns, $oidcSecretName, 'PENPOT_OIDC_CLIENT_ID') ?? '')) !== '';
         if ($oidcWired) {

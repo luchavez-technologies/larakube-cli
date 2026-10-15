@@ -44,13 +44,13 @@ abstract class DesignInitCommand extends AbstractToolInitCommand
         $this->plexContext = $context;
         $kubectl = Kubectl::forContext($context)->prefix();
 
-        [$host, $instance] = $this->resolveInstanceAwareHost(SharedClusterService::DESIGN, ClusterTool::DESIGN, $env, $kubectl);
+        [$host, $instance] = $this->resolveInstanceAwareHost(SharedClusterService::DESIGN, ClusterTool::PENPOT, $env, $kubectl);
 
         $ns = $this->designNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
         $withExporter = (bool) $this->option('with-exporter');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::DESIGN, $kubectl, $instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::PENPOT, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -83,20 +83,20 @@ abstract class DesignInitCommand extends AbstractToolInitCommand
         }
 
         $s3Driver = StorageDriver::from($s3Service);
-        $s3Bucket = ClusterTool::DESIGN->commonsBuckets($instance)[0];
+        $s3Bucket = ClusterTool::PENPOT->commonsBuckets($instance)[0];
         if (! $this->allocateStorageBucket($s3Driver, $s3Bucket)) {
             return 1;
         }
 
         $s3Endpoint = $this->resolveCommonsS3Endpoints($s3Driver, 'Penpot')['public'];
 
-        $names = ToolInstance::forInstance(ClusterTool::DESIGN, $instance);
+        $names = ToolInstance::forInstance(ClusterTool::PENPOT, $instance);
         $backendName = $names->deployment('backend');
         $frontendName = $names->deployment('frontend');
         $dbSecretName = $names->secret();
         $smtpSecretName = $names->secret(SecretKind::SMTP);
         $oidcSecretName = $names->secret(SecretKind::OIDC);
-        $dbName = ClusterTool::DESIGN->commonsDatabases($instance)[0];
+        $dbName = ClusterTool::PENPOT->commonsDatabases($instance)[0];
         $dbUser = $dbName;
 
         $adminEmail = $this->readDesignSecret($kubectl, $ns, 'admin-email', $dbSecretName) ?? $this->resolveAdminEmail($host);
@@ -165,7 +165,7 @@ abstract class DesignInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Penpot manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $backendName, 180, tool: ClusterTool::DESIGN),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $backendName, 180, tool: ClusterTool::PENPOT),
         );
         $temporaryDirectory->delete();
 
@@ -173,7 +173,7 @@ abstract class DesignInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::DESIGN, $kubectl, $host, instance: $instance, extra: ['adminEmail' => $adminEmail]);
+        $this->registerDeployedTool(ClusterTool::PENPOT, $kubectl, $host, instance: $instance, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Penpot design & prototyping suite is live.');
@@ -188,7 +188,7 @@ abstract class DesignInitCommand extends AbstractToolInitCommand
     }
 
     /**
-     * Reconcile design-oidc's PENPOT_FLAGS to ClusterTool::DESIGN's
+     * Reconcile design-oidc's PENPOT_FLAGS to ClusterTool::PENPOT's
      * current baselineFlags() plus whatever integrations are verifiably
      * still wired — recomputed from scratch every run via
      * ReconcilesPenpotFlags, not unioned with whatever string happened to
@@ -203,7 +203,7 @@ abstract class DesignInitCommand extends AbstractToolInitCommand
 
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::DESIGN);
+        return $this->resolveToolEnvironment(ClusterTool::PENPOT);
     }
 
     /** Resolve the admin email for Penpot */

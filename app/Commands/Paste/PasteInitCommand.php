@@ -42,27 +42,27 @@ abstract class PasteInitCommand extends AbstractToolInitCommand
 
     protected function deployPaste(): int
     {
-        if ($this->refuseUnshippedTool(ClusterTool::PASTE)) {
+        if ($this->refuseUnshippedTool(ClusterTool::YOPASS)) {
             return 1;
         }
 
-        $env = $this->resolveToolEnvironment(ClusterTool::PASTE);
+        $env = $this->resolveToolEnvironment(ClusterTool::YOPASS);
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = Kubectl::forContext($context)->prefix();
-        $host = $this->resolveToolHost(SharedClusterService::PASTE, ClusterTool::PASTE, $env, $kubectl);
+        $host = $this->resolveToolHost(SharedClusterService::PASTE, ClusterTool::YOPASS, $env, $kubectl);
         // Every Commons resource is named per instance (see
         // ClusterTool::commonsRedisTenants()/commonsBuckets()), so instances
         // never share a Redis index or bucket and `--purge` frees exactly these.
-        $instance = ClusterTool::PASTE->instanceSlugFromHost($host);
+        $instance = ClusterTool::YOPASS->instanceSlugFromHost($host);
         $ns = $this->pasteNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->assertVpnOnlySupported(ClusterTool::PASTE)) {
+        if ($vpnOnly && ! $this->assertVpnOnlySupported(ClusterTool::YOPASS)) {
             return 1;
         }
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::PASTE, $kubectl, $instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::YOPASS, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -76,7 +76,7 @@ abstract class PasteInitCommand extends AbstractToolInitCommand
         }
 
         $plexNs = $this->plexNamespace();
-        $redisIndex = $this->allocateCommonsRedisIndex(ClusterTool::PASTE->commonsRedisTenants($instance)[0]);
+        $redisIndex = $this->allocateCommonsRedisIndex(ClusterTool::YOPASS->commonsRedisTenants($instance)[0]);
 
         if ($redisIndex === null) {
             $this->laraKubeError('Every Commons Redis index (0-15) is already allocated — free one up (larakube <tool>:remove --purge) and retry.');
@@ -105,11 +105,11 @@ abstract class PasteInitCommand extends AbstractToolInitCommand
         $tmp = $temporaryDirectory->path('larakube-yopass.yaml');
         file_put_contents($tmp, $manifest);
 
-        $deploymentName = ClusterTool::PASTE->deploymentName($instance);
+        $deploymentName = ClusterTool::YOPASS->deploymentName($instance);
 
         $rolledOut = $this->withSpin(
             'Applying Yopass manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 120, tool: ClusterTool::PASTE),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 120, tool: ClusterTool::YOPASS),
         );
         $temporaryDirectory->delete();
 
@@ -117,7 +117,7 @@ abstract class PasteInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::PASTE, $kubectl, $host, $instance);
+        $this->registerDeployedTool(ClusterTool::YOPASS, $kubectl, $host, $instance);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Yopass is live.');
@@ -149,7 +149,7 @@ abstract class PasteInitCommand extends AbstractToolInitCommand
         }
 
         $services = $this->enabledCommonsServices($spec);
-        $bucket = ClusterTool::PASTE->commonsBuckets($instance)[0];
+        $bucket = ClusterTool::YOPASS->commonsBuckets($instance)[0];
 
         foreach (['seaweedfs', 'minio', 'garage'] as $candidate) {
             if (! in_array($candidate, $services, true)) {
@@ -163,7 +163,7 @@ abstract class PasteInitCommand extends AbstractToolInitCommand
             }
 
             $this->withSpin('Syncing S3 file-storage credentials...', function () use ($kubectl, $ns, $instance, $s3Creds): void {
-                Kubectl::fromPrefix($kubectl)->putSecret($ns, ToolInstance::forInstance(ClusterTool::PASTE, $instance)->secret(), ['s3-access-key' => $s3Creds['access'], 's3-secret-key' => $s3Creds['secret']]);
+                Kubectl::fromPrefix($kubectl)->putSecret($ns, ToolInstance::forInstance(ClusterTool::YOPASS, $instance)->secret(), ['s3-access-key' => $s3Creds['access'], 's3-secret-key' => $s3Creds['secret']]);
             });
 
             return [

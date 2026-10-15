@@ -15,7 +15,7 @@ trait InteractsWithTasks
 
     protected function tasksNamespace(): string
     {
-        return ClusterTool::TASKS->namespace();
+        return ClusterTool::PLANKA->namespace();
     }
 
     protected function isTasksInstalled(string $kubectl, string $ns, string|ToolInstance|null $instance = null): bool
@@ -23,7 +23,7 @@ trait InteractsWithTasks
         $k = Kubectl::fromPrefix($kubectl);
         $toolInstance = $instance instanceof ToolInstance
             ? $instance
-            : ($instance !== null && $instance !== '' ? ToolInstance::forInstance(ClusterTool::TASKS, $instance, 'planka') : null);
+            : ($instance !== null && $instance !== '' ? ToolInstance::forInstance(ClusterTool::PLANKA, $instance, 'planka') : null);
 
         if ($toolInstance !== null) {
             return $k->hasDeployment($ns, $toolInstance->deployment());
@@ -36,7 +36,7 @@ trait InteractsWithTasks
     {
         $toolInstance = $instance instanceof ToolInstance
             ? $instance
-            : ($instance !== '' ? ToolInstance::forInstance(ClusterTool::TASKS, $instance, 'planka') : null);
+            : ($instance !== '' ? ToolInstance::forInstance(ClusterTool::PLANKA, $instance, 'planka') : null);
 
         return $toolInstance !== null
             ? $this->readClusterSecretKey($kubectl, $ns, $toolInstance->secret(), $key)

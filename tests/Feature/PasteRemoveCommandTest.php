@@ -17,8 +17,8 @@ test('yopass:remove deletes Yopass resources', function (): void {
 test('yopass:remove --domain removes only that instance, never the other one', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'paste', 'instance' => 'paste-example-com', 'host' => 'paste.example.com'],
-            ['tool' => 'paste', 'instance' => 'paste-check-example-com', 'host' => 'paste.check.example.com'],
+            ['tool' => 'yopass', 'instance' => 'paste-example-com', 'host' => 'paste.example.com'],
+            ['tool' => 'yopass', 'instance' => 'paste-check-example-com', 'host' => 'paste.check.example.com'],
         ]))),
         '*' => Process::result(output: ''),
     ]);
@@ -39,8 +39,8 @@ test('yopass:remove --purge flushes and frees only that instance\'s Commons Redi
 
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'paste', 'instance' => 'paste-example-com', 'host' => 'paste.example.com'],
-            ['tool' => 'paste', 'instance' => 'paste-check-example-com', 'host' => 'paste.check.example.com'],
+            ['tool' => 'yopass', 'instance' => 'paste-example-com', 'host' => 'paste.example.com'],
+            ['tool' => 'yopass', 'instance' => 'paste-check-example-com', 'host' => 'paste.check.example.com'],
         ]))),
         '*get configmap plex-registry*' => function () use (&$current) {
             return Process::result(output: (string) json_encode($current));

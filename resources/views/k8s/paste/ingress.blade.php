@@ -2,8 +2,8 @@
     // Rendered by shared.blade.php and on its own by the local-dev re-point path, so derive every name here.
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::PASTE->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::PASTE, $instance);
+        : \App\Enums\ClusterTool::YOPASS->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::YOPASS, $instance);
     $deploymentName = $names->deployment();
     $ingressLabels = '';
     foreach ($names->labels() as $key => $value) {

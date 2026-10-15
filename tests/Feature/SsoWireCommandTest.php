@@ -1273,7 +1273,7 @@ test('sso:wire also patches Penpot\'s frontend deployment with the same OIDC sec
         CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'design', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'penpot', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('Penpot (Design & Prototyping) is wired to Zitadel SSO');
 

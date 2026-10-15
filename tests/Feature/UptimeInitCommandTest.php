@@ -9,7 +9,7 @@ test('tool:init --tool=kuma refuses because Uptime Kuma is not yet shipped', fun
 
     $this->artisan('tool:init --tool=kuma local')
         ->assertExitCode(1)
-        ->expectsOutputToContain('Status Pages (Uptime Kuma) is not yet shipped');
+        ->expectsOutputToContain('Uptime Kuma (Status Pages) is not yet shipped');
 
     Process::assertNotRan(fn ($process) => true);
 });

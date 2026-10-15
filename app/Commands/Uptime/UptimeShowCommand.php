@@ -25,7 +25,7 @@ abstract class UptimeShowCommand extends Command
 
     public function handle(): int
     {
-        if ($this->refuseUnshippedTool(ClusterTool::UPTIME)) {
+        if ($this->refuseUnshippedTool(ClusterTool::KUMA)) {
             return 1;
         }
 

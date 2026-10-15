@@ -14,7 +14,7 @@ trait InteractsWithDesign
 
     protected function designNamespace(): string
     {
-        return ClusterTool::DESIGN->namespace();
+        return ClusterTool::PENPOT->namespace();
     }
 
     protected function isDesignInstalled(string $kubectl, string $ns): bool

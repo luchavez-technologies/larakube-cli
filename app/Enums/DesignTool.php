@@ -16,7 +16,7 @@ use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 
-/** The vendor enum backing ClusterTool::DESIGN — 'Design & Prototyping'. Only Penpot today. */
+/** The vendor enum backing ClusterTool::PENPOT — 'Design & Prototyping'. Only Penpot today. */
 enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring, HasWorkloadComponents
 {
     public function getLabel(): string
