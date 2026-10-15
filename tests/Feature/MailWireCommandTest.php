@@ -141,16 +141,16 @@ test('mail:wire local --tool=glitchtip composes GlitchTip EMAIL_URL and patches 
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/glitchtip-worker-errors-example-com'));
 })->with(['glitchtip']);
 
-test('mail:wire local --tool=crm resolves the real host-derived instance from the registry and patches the worker too', function (): void {
+test('mail:wire local --tool=twenty resolves the real host-derived instance from the registry and patches the worker too', function (): void {
     // Regression: CRM has no 'main' deployment at all (pure host-derived
-    // instance naming, see ClusterTool::CRM->instanceSlugFromHost()) — this
+    // instance naming, see ClusterTool::TWENTY->instanceSlugFromHost()) — this
     // pins that mail:wire finds it via the tool registry instead of probing
     // the never-existing unsuffixed 'twenty' deployment.
     Process::fake([
         '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ssoRegistryRow(),
-            ['tool' => 'crm', 'instance' => 'crm-luchtech-dev', 'host' => 'crm.luchtech.dev'],
+            ['tool' => 'twenty', 'instance' => 'crm-luchtech-dev', 'host' => 'crm.luchtech.dev'],
         ]))),
         '*get deployment twenty-crm-luchtech-dev*' => Process::result(output: 'twenty-crm-luchtech-dev   1/1   1   1   10d'),
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -162,8 +162,8 @@ test('mail:wire local --tool=crm resolves the real host-derived instance from th
         '*rollout restart deployment/twenty-worker-crm-luchtech-dev*' => Process::result(output: 'restarted'),
     ]);
 
-    $this->artisan('mail:wire local --tool=crm')
-        ->expectsOutputToContain('Wired to Stalwart: CRM (Twenty)');
+    $this->artisan('mail:wire local --tool=twenty')
+        ->expectsOutputToContain('Wired to Stalwart: Twenty (CRM)');
 
     Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'twenty-smtp-crm-luchtech-dev')
         && isset(appliedSecret($process)['data']['EMAIL_SMTP_HOST']));

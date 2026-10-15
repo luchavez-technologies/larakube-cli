@@ -6,7 +6,7 @@ use App\Enums\ResourceNaming;
 use App\Enums\SecretKind;
 
 test('CRM resolves every resource name from ToolInstance with the category gone', function (): void {
-    $names = ToolInstance::forInstance(ClusterTool::CRM, 'crm-luchtech-dev');
+    $names = ToolInstance::forInstance(ClusterTool::TWENTY, 'crm-luchtech-dev');
 
     expect($names->deployment('server'))->toBe('twenty-crm-luchtech-dev')
         ->and($names->deployment('worker'))->toBe('twenty-worker-crm-luchtech-dev')
@@ -18,20 +18,18 @@ test('CRM resolves every resource name from ToolInstance with the category gone'
         ->and($names->vpnMiddleware()->name)->toBe('twenty-vpn-only-crm-luchtech-dev');
 });
 
-test('the same name serves CRM and its Twenty alias', function (): void {
-    expect(ClusterTool::TWENTY->resourceNaming())->toBe(ResourceNaming::CANONICAL)
-        ->and(ClusterTool::CRM->resourceNaming())->toBe(ResourceNaming::CANONICAL)
-        ->and(ClusterTool::TWENTY->deploymentName('crm-luchtech-dev'))->toBe(ClusterTool::CRM->deploymentName('crm-luchtech-dev'));
+test('Twenty is on the canonical naming generation', function (): void {
+    expect(ClusterTool::TWENTY->resourceNaming())->toBe(ResourceNaming::CANONICAL);
 });
 
 test('CRM\'s Redis tenant is its database name, so one install owns one registry row', function (): void {
-    $names = ToolInstance::forInstance(ClusterTool::CRM, 'crm-luchtech-dev');
+    $names = ToolInstance::forInstance(ClusterTool::TWENTY, 'crm-luchtech-dev');
 
     expect($names->redisTenant())->toBe($names->database())->toBe('twenty_crm_luchtech_dev');
 });
 
 test('teardown names every resource the manifest declares for the server and both Deployments', function (): void {
-    $components = collect(ClusterTool::CRM->components('crm-luchtech-dev'));
+    $components = collect(ClusterTool::TWENTY->components('crm-luchtech-dev'));
     $refs = $components->flatMap(fn ($c) => collect($c->resources)->map(fn ($r) => "{$r['kind']}/{$r['name']}"))->all();
 
     expect($components->pluck('deployment')->all())->toBe(['twenty-crm-luchtech-dev', 'twenty-worker-crm-luchtech-dev'])

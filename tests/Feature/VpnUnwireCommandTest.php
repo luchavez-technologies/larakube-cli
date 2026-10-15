@@ -80,8 +80,8 @@ test('the shared Middleware survives while another instance still references it'
     $subject = vpnUnwireSubject(vpnUnwireIngressJson('notes.example.com', 'team.notes.example.com'));
     vpnUnwireBoot($subject);
 
-    $target = ClusterTool::NOTES->vpnMiddlewareTarget();
-    $subject->testUnwire(ClusterTool::NOTES, $target, 'kubectl', 'production', 'notes.example.com');
+    $target = ClusterTool::OUTLINE->vpnMiddlewareTarget();
+    $subject->testUnwire(ClusterTool::OUTLINE, $target, 'kubectl', 'production', 'notes.example.com');
 
     Process::assertNotRan(fn ($p) => str_contains($p->command, 'delete middleware'));
 });
@@ -90,8 +90,8 @@ test('the shared Middleware is removed once nothing references it', function ():
     $subject = vpnUnwireSubject(vpnUnwireIngressJson());
     vpnUnwireBoot($subject);
 
-    $target = ClusterTool::NOTES->vpnMiddlewareTarget();
-    $subject->testUnwire(ClusterTool::NOTES, $target, 'kubectl', 'production');
+    $target = ClusterTool::OUTLINE->vpnMiddlewareTarget();
+    $subject->testUnwire(ClusterTool::OUTLINE, $target, 'kubectl', 'production');
 
     Process::assertRan(fn ($p) => str_contains($p->command, 'delete middleware/'.$target['name']));
 });
@@ -123,6 +123,6 @@ test('secrets:wire capability is DB rotation, not the similarly-named OpenBao sy
     // HasRotatableDatabasePassword (17) is what secrets:wire acts on. Wiring
     // the predicate to the wrong one broke every --tool= that is rotatable but
     // not sync-capable, e.g. sign.
-    expect(ClusterTool::SIGN->hasSecretsWire())->toBeTrue()
-        ->and(ClusterTool::SIGN->vendor() instanceof App\Contracts\HasOpenbaoSync)->toBeFalse();
+    expect(ClusterTool::DOCUMENSO->hasSecretsWire())->toBeTrue()
+        ->and(ClusterTool::DOCUMENSO->vendor() instanceof App\Contracts\HasOpenbaoSync)->toBeFalse();
 });

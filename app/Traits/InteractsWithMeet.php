@@ -37,7 +37,7 @@ trait InteractsWithMeet
     /** The namespace the meet stack lives in. */
     protected function meetNamespace(): string
     {
-        return ClusterTool::MEET->namespace();
+        return ClusterTool::LIVEKIT->namespace();
     }
 
     /**
@@ -48,7 +48,7 @@ trait InteractsWithMeet
      */
     protected function meetInstance(string $kubectl): ?ToolInstance
     {
-        return ToolInstance::registered($kubectl, ClusterTool::MEET)[0] ?? null;
+        return ToolInstance::registered($kubectl, ClusterTool::LIVEKIT)[0] ?? null;
     }
 
     /**

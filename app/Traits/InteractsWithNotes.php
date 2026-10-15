@@ -14,7 +14,7 @@ trait InteractsWithNotes
 
     protected function notesNamespace(): string
     {
-        return ClusterTool::NOTES->namespace();
+        return ClusterTool::OUTLINE->namespace();
     }
 
     protected function isNotesInstalled(string $kubectl, string $ns): bool

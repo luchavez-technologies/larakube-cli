@@ -387,7 +387,7 @@ test('tool:list maps legacy registered tools to canonical tools with multi-categ
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
-                ['tool' => 'crm', 'instance' => 'crm-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'crm.luchtech.dev'],
+                ['tool' => 'twenty', 'instance' => 'crm-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'crm.luchtech.dev'],
             ])),
         ),
         '*' => Process::result(output: ''),

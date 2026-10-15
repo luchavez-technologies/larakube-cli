@@ -58,7 +58,7 @@ class MeetWireCommand extends Command
             return 1;
         }
 
-        $meetHost = $this->getToolHost($kubectl, ClusterTool::MEET);
+        $meetHost = $this->getToolHost($kubectl, ClusterTool::LIVEKIT);
         $chatHost = $this->getToolHost($kubectl, ClusterTool::CHAT);
 
         if ($meetHost === null || $chatHost === null) {

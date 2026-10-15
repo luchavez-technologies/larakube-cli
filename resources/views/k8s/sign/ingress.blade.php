@@ -1,5 +1,5 @@
 @php
-    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::SIGN, $host);
+    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::DOCUMENSO, $host);
     $labels ??= $names->labels();
 @endphp
 apiVersion: networking.k8s.io/v1

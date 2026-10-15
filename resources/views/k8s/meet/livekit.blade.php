@@ -9,8 +9,8 @@
     // reconcile path (which passes only the host), so derive what is missing.
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::MEET->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::MEET, $instance);
+        : \App\Enums\ClusterTool::LIVEKIT->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::LIVEKIT, $instance);
     $deployment = $names->deployment();
     $configSecret = $names->secret(\App\Enums\SecretKind::CONFIG);
     $labels = $names->labels();

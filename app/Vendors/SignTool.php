@@ -45,7 +45,7 @@ final class SignTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCom
     public function smtpEnv(?string $instance = null): ?array
     {
         return [
-            'deployment' => ClusterTool::SIGN->deploymentName($instance),
+            'deployment' => ClusterTool::DOCUMENSO->deploymentName($instance),
             'secret' => $this->name($instance, SecretKind::SMTP->value),
             'static' => [
                 'NEXT_PRIVATE_SMTP_TRANSPORT' => 'smtp-auth',
@@ -67,7 +67,7 @@ final class SignTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCom
     public function oidcEnv(?string $instance = null): ?array
     {
         return [
-            'deployment' => ClusterTool::SIGN->deploymentName($instance),
+            'deployment' => ClusterTool::DOCUMENSO->deploymentName($instance),
             'secret' => $this->name($instance, SecretKind::OIDC->value),
             'static' => [
                 'NEXT_PUBLIC_DISABLE_OIDC_SIGNIN' => 'false',
@@ -130,6 +130,6 @@ final class SignTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCom
     {
         return ($instance === null || $instance === '')
             ? "sign-documenso-{$token}"
-            : ToolInstance::forInstance(ClusterTool::SIGN, $instance)->name($token);
+            : ToolInstance::forInstance(ClusterTool::DOCUMENSO, $instance)->name($token);
     }
 }

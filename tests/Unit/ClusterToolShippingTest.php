@@ -2,13 +2,12 @@
 
 use App\Enums\ClusterTool;
 
-test('only ANALYTICS, KUMA and their engines are unshipped', function (): void {
-    expect(ClusterTool::ANALYTICS->isShipped())->toBeFalse()
-        ->and(ClusterTool::KUMA->isShipped())->toBeFalse()
+test('only KUMA and the analytics engines are unshipped', function (): void {
+    expect(ClusterTool::KUMA->isShipped())->toBeFalse()
         ->and(ClusterTool::UMAMI->isShipped())->toBeFalse()
         ->and(ClusterTool::PLAUSIBLE->isShipped())->toBeFalse();
 
-    $unshipped = [ClusterTool::ANALYTICS, ClusterTool::KUMA, ClusterTool::UMAMI, ClusterTool::PLAUSIBLE];
+    $unshipped = [ClusterTool::KUMA, ClusterTool::UMAMI, ClusterTool::PLAUSIBLE];
 
     foreach (ClusterTool::cases() as $tool) {
         if (! in_array($tool, $unshipped, true)) {
@@ -21,8 +20,7 @@ test('only ANALYTICS, KUMA and their engines are unshipped', function (): void {
 test('shippedCases() excludes the unshipped tools and keeps every canonical shipped case', function (): void {
     $shipped = ClusterTool::shippedCases();
 
-    expect($shipped)->not->toContain(ClusterTool::ANALYTICS)
-        ->not->toContain(ClusterTool::KUMA)
+    expect($shipped)->not->toContain(ClusterTool::KUMA)
         ->not->toContain(ClusterTool::UMAMI)
         ->not->toContain(ClusterTool::PLAUSIBLE);
 
@@ -33,7 +31,7 @@ test('shippedCases() excludes the unshipped tools and keeps every canonical ship
 });
 
 test('options() no longer advertises unshipped tools', function (): void {
-    expect(ClusterTool::options())->not->toHaveKeys(['analytics', 'kuma', 'umami', 'plausible']);
+    expect(ClusterTool::options())->not->toHaveKeys(['kuma', 'umami', 'plausible']);
 });
 
 test('reverse lookups still recognise unshipped tools so live installs stay manageable', function (): void {

@@ -36,21 +36,21 @@ abstract class MeetInitCommand extends AbstractToolInitCommand
         $env = $this->resolveEnvironment();
         $context = $this->resolveToolContext($env, $this->option('context'));
         $kubectl = Kubectl::forContext($context)->prefix();
-        $host = $this->resolveToolHost(SharedClusterService::MEET, ClusterTool::MEET, $env, $kubectl);
+        $host = $this->resolveToolHost(SharedClusterService::MEET, ClusterTool::LIVEKIT, $env, $kubectl);
         // Every tool's instance identifier is a real, host-derived slug now —
         // Meet included, even though its hostPort-bound RTC ports make a
         // genuine second instance impossible on one node regardless of
         // naming (see ClusterTool::supportsMultipleInstances()'s docblock).
-        $names = ToolInstance::forHost(ClusterTool::MEET, $host);
+        $names = ToolInstance::forHost(ClusterTool::LIVEKIT, $host);
         $instance = $names->instance;
         $ns = $names->namespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->assertVpnOnlySupported(ClusterTool::MEET)) {
+        if ($vpnOnly && ! $this->assertVpnOnlySupported(ClusterTool::LIVEKIT)) {
             return 1;
         }
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::MEET, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::LIVEKIT, $kubectl)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -97,7 +97,7 @@ abstract class MeetInitCommand extends AbstractToolInitCommand
         // is the one thing that must not happen.
         $rolledOut = $this->withSpin(
             'Applying LiveKit (Meet) manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180, tool: ClusterTool::MEET),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180, tool: ClusterTool::LIVEKIT),
         );
         $temporaryDirectory->delete();
 
@@ -110,7 +110,7 @@ abstract class MeetInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::MEET, $kubectl, $host, $instance);
+        $this->registerDeployedTool(ClusterTool::LIVEKIT, $kubectl, $host, $instance);
 
         // On a cloud VPS, punch LiveKit's raw UDP/TCP ports through both
         // firewall layers (DO cloud edge + host UFW) — klipper binds them via
@@ -139,6 +139,6 @@ abstract class MeetInitCommand extends AbstractToolInitCommand
 
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::MEET);
+        return $this->resolveToolEnvironment(ClusterTool::LIVEKIT);
     }
 }

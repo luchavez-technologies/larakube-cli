@@ -374,7 +374,7 @@ class MailWireCommand extends Command
         ];
 
         // Grafana combines host & port into a single GF_SMTP_HOST=host:port
-        if ($tool->category() === ClusterTool::MONITOR) {
+        if ($tool === ClusterTool::GRAFANA) {
             $logical['host'] = $endpoint['host'].':'.$endpoint['port'];
         }
 

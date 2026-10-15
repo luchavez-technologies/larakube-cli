@@ -3,8 +3,8 @@
     // as included from shared.blade.php, so derive every name here.
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::CRM->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::CRM, $instance);
+        : \App\Enums\ClusterTool::TWENTY->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::TWENTY, $instance);
     $serviceName = $ingressName = $names->deployment('server');
     $ingressLabels = '';
     foreach ($names->labels('server') as $key => $value) {

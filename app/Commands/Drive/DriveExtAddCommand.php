@@ -33,7 +33,7 @@ class DriveExtAddCommand extends Command
         $env = (string) $this->argument('environment');
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
         $kubectl = Kubectl::forContext($context)->prefix();
-        $ns = ClusterTool::DRIVE->namespace();
+        $ns = ClusterTool::OCIS->namespace();
 
         $this->ensureOcisWebAssetAppsPath($kubectl, $ns);
 

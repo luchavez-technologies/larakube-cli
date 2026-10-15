@@ -25,7 +25,7 @@ function monitoringExporters(): object
 
 function monitoringExportersRegistry(string $instance = 'monitor-example-com'): string
 {
-    return base64_encode((string) json_encode([['tool' => 'monitor', 'instance' => $instance, 'host' => 'monitor.example.com']]));
+    return base64_encode((string) json_encode([['tool' => 'grafana', 'instance' => $instance, 'host' => 'monitor.example.com']]));
 }
 
 test('isMonitoringActive finds the registered instance\'s Prometheus by its ToolInstance name', function (): void {

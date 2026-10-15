@@ -633,7 +633,7 @@ final class PlexService
             'isLocal' => $isLocal,
             // Rendering without the exporters while monitoring IS installed
             // removes them from the live Postgres/Redis, restarting both.
-            'withMonitoring' => ToolInstance::componentDeployed($this->kubectl(), ClusterTool::MONITOR, 'prometheus'),
+            'withMonitoring' => ToolInstance::componentDeployed($this->kubectl(), ClusterTool::GRAFANA, 'prometheus'),
         ])->render();
     }
 

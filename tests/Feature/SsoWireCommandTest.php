@@ -65,7 +65,7 @@ test('sso:wire errors when Zitadel is not installed', function (): void {
         '*get deployment zitadel-sso-example-com*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true, '--context' => 'ctx'])
+    $this->artisan('sso:wire', ['--tool' => 'grafana', '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(1)
         ->expectsOutputToContain('Zitadel is not installed');
 });
@@ -171,9 +171,9 @@ test('sso:wire registers a new OIDC client and wires it to Grafana', function ()
         CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true, '--context' => 'ctx'])
+    $this->artisan('sso:wire', ['--tool' => 'grafana', '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(0)
-        ->expectsOutputToContain('Registering Monitoring Stack (Grafana + Loki + Prometheus) as an OIDC client in Zitadel')
+        ->expectsOutputToContain('Registering Grafana (Metrics & Dashboards) as an OIDC client in Zitadel')
         ->expectsOutputToContain('wired to Zitadel SSO');
 
     Saloon::assertSent(fn ($request) => $request instanceof CreateOidcAppRequest
@@ -221,7 +221,7 @@ test('sso:wire --sso-only writes sso_only_vars into the Secret declaratively, ne
         CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'monitor', '--sso-only' => true, '--no-interaction' => true, '--context' => 'ctx'])
+    $this->artisan('sso:wire', ['--tool' => 'grafana', '--sso-only' => true, '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_starts_with(appliedSecret($process)['name'] ?? '', 'grafana-oidc')
@@ -266,7 +266,7 @@ test('sso:wire without --sso-only unsets a previously-written sso_only_var inste
         CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true, '--context' => 'ctx'])
+    $this->artisan('sso:wire', ['--tool' => 'grafana', '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(0);
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/')
@@ -321,7 +321,7 @@ test('sso:wire registers oCIS Drive as a public PKCE client with its real callba
 
     $tld = GlobalConfigData::load()->getLocalTld();
 
-    $this->artisan('sso:wire', ['--tool' => 'drive', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'ocis', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('wired to Zitadel SSO');
 
@@ -390,7 +390,7 @@ test('sso:wire re-registers a Drive app whose Zitadel registration is stale (con
         },
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'drive', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'ocis', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('wired to Zitadel SSO');
 
@@ -454,7 +454,7 @@ test('sso:wire re-registers a Drive app whose redirect URIs match but post-logou
         },
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'drive', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'ocis', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('wired to Zitadel SSO');
 
@@ -516,7 +516,7 @@ test('sso:wire for Drive installs the ocisRoles claim Action, gates login via rb
         CreateUserGrantRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'drive', '--admin-email' => 'admin@luchtech.dev', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'ocis', '--admin-email' => 'admin@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('wired to Zitadel SSO')
         // rbacRoles() now gates Drive's login itself — the same warning
@@ -599,7 +599,7 @@ test('sso:wire refreshes a stale flattenOcisRoles script instead of skipping the
         },
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'drive', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'ocis', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('wired to Zitadel SSO');
 
@@ -696,9 +696,9 @@ test('sso:wire turns projectRoleCheck on immediately, not just projectRoleAssert
         CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true, '--context' => 'ctx'])
+    $this->artisan('sso:wire', ['--tool' => 'grafana', '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(0)
-        ->expectsOutputToContain('Nobody, including you, can SSO into Monitoring Stack (Grafana + Loki + Prometheus) until then');
+        ->expectsOutputToContain('Nobody, including you, can SSO into Grafana (Metrics & Dashboards) until then');
 
     Saloon::assertSent(fn ($request) => $request instanceof UpdateProjectRequest
         && $request->body()->get('projectRoleAssertion') === true
@@ -726,7 +726,7 @@ test('sso:wire aborts before registering an OIDC client if role-gating setup fai
         GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true, '--context' => 'ctx'])
+    $this->artisan('sso:wire', ['--tool' => 'grafana', '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(1)
         ->expectsOutputToContain('Could not set up role-gated access');
 
@@ -848,7 +848,7 @@ test('sso:wire gates Outline behind Zitadel roles — the actual tool from the l
         CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'notes', '--no-interaction' => true, '--context' => 'ctx'])
+    $this->artisan('sso:wire', ['--tool' => 'outline', '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(0)
         ->expectsOutputToContain('wired to Zitadel SSO');
 
@@ -900,9 +900,9 @@ test('sso:wire reuses an already-registered OIDC client', function (): void {
         CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'monitor', '--no-interaction' => true, '--context' => 'ctx'])
+    $this->artisan('sso:wire', ['--tool' => 'grafana', '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(0)
-        ->expectsOutputToContain("Reusing Monitoring Stack (Grafana + Loki + Prometheus)'s existing Zitadel OIDC client")
+        ->expectsOutputToContain("Reusing Grafana (Metrics & Dashboards)'s existing Zitadel OIDC client")
         ->expectsOutputToContain('wired to Zitadel SSO');
 
     // Reuse means reuse: no re-registration, so the client secret is not rotated.
@@ -1185,7 +1185,7 @@ test('sso:wire --remove deregisters the app and unsets the tool\'s env vars', fu
 
     Saloon::fake([DeleteProjectAppRequest::class => MockResponse::make([], 200)]);
 
-    $this->artisan('sso:unwire', ['--tool' => 'monitor', '--no-interaction' => true, '--context' => 'ctx'])
+    $this->artisan('sso:unwire', ['--tool' => 'grafana', '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(0)
         ->expectsOutputToContain('no longer uses Zitadel SSO');
 
@@ -1609,17 +1609,17 @@ test('a tool installed twice is selectable per instance', function (): void {
     Process::fake([
         '*larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
             ssoRegistryRow(),
-            ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'host' => 'notes.luchtech.dev'],
-            ['tool' => 'notes', 'instance' => 'wiki-luchtech-dev', 'host' => 'wiki.luchtech.dev'],
+            ['tool' => 'outline', 'instance' => 'notes-luchtech-dev', 'host' => 'notes.luchtech.dev'],
+            ['tool' => 'outline', 'instance' => 'wiki-luchtech-dev', 'host' => 'wiki.luchtech.dev'],
         ]))),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*' => Process::result(output: ''),
     ]);
 
     $this->artisan('sso:wire', ['--no-interaction' => false])
-        ->expectsChoice('Wire which tool to Zitadel SSO?', 'notes|wiki.luchtech.dev', [
-            'notes|notes.luchtech.dev' => 'Team Wiki & Knowledge Base (Outline) (notes.luchtech.dev)',
-            'notes|wiki.luchtech.dev' => 'Team Wiki & Knowledge Base (Outline) (wiki.luchtech.dev)',
+        ->expectsChoice('Wire which tool to Zitadel SSO?', 'outline|wiki.luchtech.dev', [
+            'outline|notes.luchtech.dev' => 'Outline (Team Knowledge Base) (notes.luchtech.dev)',
+            'outline|wiki.luchtech.dev' => 'Outline (Team Knowledge Base) (wiki.luchtech.dev)',
         ]);
 });
 
@@ -1649,7 +1649,7 @@ test('sso:wire keeps the project it already owns, renaming it rather than creati
         '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
             ssoRegistryRow(),
-            ['tool' => 'monitor', 'instance' => 'monitor-example-com', 'host' => 'monitor.example.com'],
+            ['tool' => 'grafana', 'instance' => 'monitor-example-com', 'host' => 'monitor.example.com'],
         ]))),
         '*grafana-sso-monitor-example-com*project-id*' => Process::result(output: base64_encode('proj-owned')),
         '*' => Process::result(output: ''),

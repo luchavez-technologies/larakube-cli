@@ -4,14 +4,14 @@ use App\Enums\ClusterTool;
 
 test('forCommonsResource resolves a tool from its Commons DB name', function (): void {
     expect(ClusterTool::forCommonsResource('sendrec'))->toBe(ClusterTool::SENDREC)
-        ->and(ClusterTool::forCommonsResource('documenso'))->toBe(ClusterTool::SIGN)
+        ->and(ClusterTool::forCommonsResource('documenso'))->toBe(ClusterTool::DOCUMENSO)
         ->and(ClusterTool::forCommonsResource('zitadel'))->toBe(ClusterTool::SSO);
 });
 
 test('forCommonsResource resolves a tool from its Commons bucket name', function (): void {
-    expect(ClusterTool::forCommonsResource('documenso-storage'))->toBe(ClusterTool::SIGN)
+    expect(ClusterTool::forCommonsResource('documenso-storage'))->toBe(ClusterTool::DOCUMENSO)
         ->and(ClusterTool::forCommonsResource('forgejo-lfs'))->toBe(ClusterTool::GIT)
-        ->and(ClusterTool::forCommonsResource('ocis-storage'))->toBe(ClusterTool::DRIVE);
+        ->and(ClusterTool::forCommonsResource('ocis-storage'))->toBe(ClusterTool::OCIS);
 });
 
 test('forCommonsResource returns null for a genuine Application Tenant', function (): void {

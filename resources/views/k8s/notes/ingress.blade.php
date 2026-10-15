@@ -1,8 +1,8 @@
 @php
     // Rendered both by tool:init --tool=outline (which passes these) and by the shared
     // ingress path (which passes only the host), so derive what is missing.
-    $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::NOTES->instanceSlugFromHost($host) : null);
-    $names = $instance ? \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::NOTES, $instance) : null;
+    $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::OUTLINE->instanceSlugFromHost($host) : null);
+    $names = $instance ? \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::OUTLINE, $instance) : null;
     $serviceName = $serviceName ?? ($names?->deployment() ?? 'notes');
     $labels = $labels ?? ($names?->labels() ?? []);
 @endphp

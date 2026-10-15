@@ -6,7 +6,7 @@ use App\Enums\ClusterTool;
 test('tool:init --tool=umami refuses because Umami is unshipped', function (): void {
     $this->artisan('tool:init --tool=umami local --no-interaction')
         ->assertExitCode(1)
-        ->expectsOutputToContain('Web Analytics (Umami) is not yet shipped');
+        ->expectsOutputToContain('Umami (Web Analytics) is not yet shipped');
 });
 
 test('analytics manifest carries canonical resource naming and identity labels', function (): void {
@@ -19,7 +19,7 @@ test('analytics manifest carries canonical resource naming and identity labels',
 
     expect($manifest)
         ->toContain('name: umami-analytics-example-test')
-        ->toContain('larakube.io/tool: analytics')
+        ->toContain('larakube.io/tool: umami')
         ->toContain('larakube.io/component: umami')
         ->toContain('larakube.io/instance: analytics-example-test')
         ->toContain('name: umami-secrets-analytics-example-test')
@@ -41,7 +41,7 @@ test('analytics ingress carries canonical naming and proxy annotations', functio
 });
 
 test('analytics ToolInstance resolves canonical database and secrets', function (): void {
-    $instance = ToolInstance::forHost(ClusterTool::ANALYTICS, 'analytics.example.test');
+    $instance = ToolInstance::forHost(ClusterTool::UMAMI, 'analytics.example.test');
 
     expect($instance->deployment())->toBe('umami-analytics-example-test')
         ->and($instance->secret())->toBe('umami-secrets-analytics-example-test')

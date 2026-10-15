@@ -18,8 +18,8 @@ afterEach(function (): void {
 
 test('ClusterTool deploymentName, commonsDatabases, and dbSecretRef support named instances', function (): void {
     ssoRegistered();
-    expect(ClusterTool::NOTES->deploymentName('sister'))->toBe('outline-sister')
-        ->and(ClusterTool::NOTES->commonsDatabases('sister'))->toBe(['outline_sister'])
+    expect(ClusterTool::OUTLINE->deploymentName('sister'))->toBe('outline-sister')
+        ->and(ClusterTool::OUTLINE->commonsDatabases('sister'))->toBe(['outline_sister'])
         ->and(ClusterTool::DATA->dbSecretRef('sister'))->toBe([
             'namespace' => 'larakube-shared',
             'secret' => 'directus-secrets-sister',

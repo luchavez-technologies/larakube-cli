@@ -93,7 +93,7 @@ test('when Meet is installed the project gets its own consumer key', function ()
         '*create secret*' => Process::result(output: 'applied'),
         '*apply -f *' => Process::result(output: 'applied'),
     ]);
-    Tests\Support\FakeToolRegistry::install([['tool' => 'meet', 'instance' => 'meet-example-com', 'host' => 'meet.example.com']]);
+    Tests\Support\FakeToolRegistry::install([['tool' => 'livekit', 'instance' => 'meet-example-com', 'host' => 'meet.example.com']]);
 
     $method = new ReflectionMethod(LaravelFeature::MEET, 'resolveMeetCredentials');
     $method->setAccessible(true);
@@ -112,7 +112,7 @@ test('the deployed Meet host is found under its real, host-derived instance', fu
         '*create secret*' => Process::result(output: 'applied'),
         '*apply -f *' => Process::result(output: 'applied'),
     ]);
-    Tests\Support\FakeToolRegistry::install([['tool' => 'meet', 'instance' => 'meet-example-com', 'host' => 'meet.example.com']]);
+    Tests\Support\FakeToolRegistry::install([['tool' => 'livekit', 'instance' => 'meet-example-com', 'host' => 'meet.example.com']]);
 
     $values = (new ReflectionMethod(LaravelFeature::MEET, 'resolveMeetCredentials'))->invoke(LaravelFeature::MEET, meetFeatureConfig());
 

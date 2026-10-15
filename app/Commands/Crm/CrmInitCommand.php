@@ -48,12 +48,12 @@ abstract class CrmInitCommand extends AbstractToolInitCommand
         // confirmed live 2026-08-14 duplicate-registration bug, where a
         // no-flag re-run's registry lookup under the default 'main' instance
         // never matched CRM's always-derived-slug entries).
-        [$host, $instance] = $this->resolveInstanceAwareHost(SharedClusterService::CRM, ClusterTool::CRM, $env, $kubectl);
+        [$host, $instance] = $this->resolveInstanceAwareHost(SharedClusterService::CRM, ClusterTool::TWENTY, $env, $kubectl);
 
         $ns = $this->crmNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::CRM, $kubectl, $instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::TWENTY, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -87,7 +87,7 @@ abstract class CrmInitCommand extends AbstractToolInitCommand
         $s3Driver = StorageDriver::from($s3Service);
 
         // Every name comes from ToolInstance (ADR 0021).
-        $names = ToolInstance::forInstance(ClusterTool::CRM, $instance);
+        $names = ToolInstance::forInstance(ClusterTool::TWENTY, $instance);
         $secretName = $names->secret();
         $deploymentName = $names->deployment('server');
         $workerDeploymentName = $names->deployment('worker');
@@ -164,7 +164,7 @@ abstract class CrmInitCommand extends AbstractToolInitCommand
         // successfully on its own a few minutes later.
         $rolledOut = $this->withSpin(
             'Applying Twenty CRM manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 420, tool: ClusterTool::CRM),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 420, tool: ClusterTool::TWENTY),
         );
         $temporaryDirectory->delete();
 
@@ -186,7 +186,7 @@ abstract class CrmInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::CRM, $kubectl, $host, instance: $instance);
+        $this->registerDeployedTool(ClusterTool::TWENTY, $kubectl, $host, instance: $instance);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Twenty CRM stack is live.');
@@ -204,6 +204,6 @@ abstract class CrmInitCommand extends AbstractToolInitCommand
 
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::CRM);
+        return $this->resolveToolEnvironment(ClusterTool::TWENTY);
     }
 }

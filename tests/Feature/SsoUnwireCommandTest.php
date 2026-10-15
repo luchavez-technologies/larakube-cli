@@ -67,7 +67,7 @@ test('sso:unwire delegates to sso:wire --remove', function (): void {
 
     Saloon::fake([DeleteProjectAppRequest::class => MockResponse::make([], 200)]);
 
-    $this->artisan('sso:unwire', ['--tool' => 'monitor'])
+    $this->artisan('sso:unwire', ['--tool' => 'grafana'])
         ->assertExitCode(0)
         ->expectsOutputToContain('no longer uses Zitadel SSO');
 });
@@ -174,7 +174,7 @@ test('sso:unwire lists only tools that are actually wired, by host', function ()
         '*larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
             ssoRegistryRow(),
             ['tool' => 'vpn', 'instance' => 'vpn-luchtech-dev', 'host' => 'vpn.luchtech.dev'],
-            ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'host' => 'notes.luchtech.dev'],
+            ['tool' => 'outline', 'instance' => 'notes-luchtech-dev', 'host' => 'notes.luchtech.dev'],
         ]))),
         // Only VPN's marker exists, so only VPN is offered.
         '*get secret netbird-oidc-vpn-luchtech-dev*' => Process::result(output: 'netbird-oidc-vpn-luchtech-dev  Opaque  2  1d'),

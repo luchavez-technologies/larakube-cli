@@ -44,7 +44,7 @@ final class MeetTool implements ClusterToolVendor, HasDeploymentBaseName, HasWor
         // these nested resource names have to follow the same rule. Composed
         // here rather than read back from ToolInstance, which derives every
         // name FROM this list and would recurse.
-        $canonical = fn (string $n) => ClusterTool::MEET->withoutCategory($n);
+        $canonical = fn (string $n) => ClusterTool::LIVEKIT->withoutCategory($n);
         $livekit = $canonical($name('meet-livekit'));
         $bridge = $canonical($name('meet-lk-jwt'));
 

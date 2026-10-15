@@ -6,8 +6,8 @@
     // (which passes only the host), so derive what is missing.
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::DRIVE->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::DRIVE, $instance);
+        : \App\Enums\ClusterTool::OCIS->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::OCIS, $instance);
     $deployment = $names->deployment();
     $secretName = $names->secret();
     $codeSecret = $names->secret(\App\Enums\SecretKind::CREDENTIALS, 'code');

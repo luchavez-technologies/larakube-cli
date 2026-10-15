@@ -99,16 +99,16 @@ test('a host the tool already serves is used as-is, whatever its prefix looks li
     // into grafana.monitor.luchtech.dev and built a second, parallel instance
     // with its own Deployments, Ingress and Commons database.
     expect(domainResolverRegisteredAt('monitor.luchtech.dev')
-        ->host(SharedClusterService::GRAFANA, ClusterTool::MONITOR, 'monitor.luchtech.dev'))
+        ->host(SharedClusterService::GRAFANA, ClusterTool::GRAFANA, 'monitor.luchtech.dev'))
         ->toBe('monitor.luchtech.dev');
 });
 
 test('an unregistered domain is still treated as a base domain', function (): void {
     // The registry check must not swallow the normal reading.
     expect(domainResolverRegisteredAt('monitor.luchtech.dev')
-        ->host(SharedClusterService::GRAFANA, ClusterTool::MONITOR, 'example.com'))
+        ->host(SharedClusterService::GRAFANA, ClusterTool::GRAFANA, 'example.com'))
         ->toBe('grafana.example.com')
         ->and(domainResolverRegisteredAt(null)
-            ->host(SharedClusterService::GRAFANA, ClusterTool::MONITOR, 'luchtech.dev'))
+            ->host(SharedClusterService::GRAFANA, ClusterTool::GRAFANA, 'luchtech.dev'))
         ->toBe('grafana.luchtech.dev');
 });

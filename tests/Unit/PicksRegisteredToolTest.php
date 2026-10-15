@@ -56,8 +56,8 @@ function picksSubject(string $registryJson): object
 
 test('each registered instance is its own row, labelled by the host that identifies it', function (): void {
     $subject = picksSubject((string) json_encode([
-        ['tool' => 'notes', 'host' => 'notes.example.com'],
-        ['tool' => 'notes', 'host' => 'team.notes.example.com'],
+        ['tool' => 'outline', 'host' => 'notes.example.com'],
+        ['tool' => 'outline', 'host' => 'team.notes.example.com'],
         ['tool' => 'chat', 'host' => 'chat.example.com'],
     ]));
 
@@ -66,8 +66,8 @@ test('each registered instance is its own row, labelled by the host that identif
     // Two notes rows, distinguishable. The old bare-label list collapsed these
     // into a single "Team Wiki & Knowledge Base" entry.
     expect($choices)->toHaveCount(3)
-        ->and($choices['notes|notes.example.com'])->toContain('notes.example.com')
-        ->and($choices['notes|team.notes.example.com'])->toContain('team.notes.example.com');
+        ->and($choices['outline|notes.example.com'])->toContain('notes.example.com')
+        ->and($choices['outline|team.notes.example.com'])->toContain('team.notes.example.com');
 });
 
 test('keys are strings, never integers', function (): void {
@@ -98,8 +98,8 @@ test('the capability predicate keeps out tools the pair cannot act on', function
 
 test('the wired gate narrows unwire to instances that are actually wired', function (): void {
     $subject = picksSubject((string) json_encode([
-        ['tool' => 'notes', 'host' => 'notes.example.com'],
-        ['tool' => 'notes', 'host' => 'team.notes.example.com'],
+        ['tool' => 'outline', 'host' => 'notes.example.com'],
+        ['tool' => 'outline', 'host' => 'team.notes.example.com'],
     ]));
 
     $choices = $subject->choicesFor(
@@ -108,23 +108,23 @@ test('the wired gate narrows unwire to instances that are actually wired', funct
         fn (ClusterTool $t, string $host): bool => $host === 'team.notes.example.com',
     );
 
-    expect($choices)->toBe(['notes|team.notes.example.com' => 'Team Wiki & Knowledge Base (Outline) (team.notes.example.com)']);
+    expect($choices)->toBe(['outline|team.notes.example.com' => 'Outline (Team Knowledge Base) (team.notes.example.com)']);
 });
 
 test('--tool narrows the list to that tool\'s instances instead of skipping the choice', function (): void {
     // Naming a tool used to mean "and take its default instance", so on a
     // multi-instance tool it silently acted on the wrong one.
     $subject = picksSubject((string) json_encode([
-        ['tool' => 'notes', 'host' => 'notes.example.com'],
-        ['tool' => 'notes', 'host' => 'team.notes.example.com'],
+        ['tool' => 'outline', 'host' => 'notes.example.com'],
+        ['tool' => 'outline', 'host' => 'team.notes.example.com'],
         ['tool' => 'chat', 'host' => 'chat.example.com'],
     ]));
 
     $choices = $subject->choicesFor(
         'kubectl',
-        fn (ClusterTool $t): bool => $t->hasVpnWire() && $t === ClusterTool::NOTES,
+        fn (ClusterTool $t): bool => $t->hasVpnWire() && $t === ClusterTool::OUTLINE,
     );
 
     expect($choices)->toHaveCount(2)
-        ->and(array_keys($choices))->each->toStartWith('notes|');
+        ->and(array_keys($choices))->each->toStartWith('outline|');
 });

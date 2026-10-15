@@ -42,18 +42,18 @@ abstract class DriveInitCommand extends AbstractToolInitCommand
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = Kubectl::forContext($context)->prefix();
-        $host = $this->resolveToolHost(SharedClusterService::DRIVE, ClusterTool::DRIVE, $env, $kubectl);
+        $host = $this->resolveToolHost(SharedClusterService::DRIVE, ClusterTool::OCIS, $env, $kubectl);
         // Every tool's instance identifier is a real, host-derived slug —
         // Drive included, even though oCIS's metadata PVC is ReadWriteOnce so
         // a genuine second instance needs its own node regardless of naming.
-        $names = ToolInstance::forHost(ClusterTool::DRIVE, $host);
+        $names = ToolInstance::forHost(ClusterTool::OCIS, $host);
         $instance = $names->instance;
 
         $ns = $names->namespace();
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::DRIVE, $kubectl, $instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::OCIS, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -135,7 +135,7 @@ abstract class DriveInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             "Applying Drive ({$engineName}) manifests...",
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 120, tool: ClusterTool::DRIVE),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 120, tool: ClusterTool::OCIS),
         );
         $temporaryDirectory->delete();
 
@@ -143,7 +143,7 @@ abstract class DriveInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::DRIVE, $kubectl, $host, $instance);
+        $this->registerDeployedTool(ClusterTool::OCIS, $kubectl, $host, $instance);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo("✅ Drive ({$engineName}) stack is live.");
@@ -158,7 +158,7 @@ abstract class DriveInitCommand extends AbstractToolInitCommand
 
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::DRIVE);
+        return $this->resolveToolEnvironment(ClusterTool::OCIS);
     }
 
     protected function resolveEngine(): string
@@ -198,7 +198,7 @@ abstract class DriveInitCommand extends AbstractToolInitCommand
 
     protected function driveOfficeInstalled(string $kubectl, string $ns): bool
     {
-        return ToolInstance::componentDeployed($kubectl, ClusterTool::DRIVE, 'code');
+        return ToolInstance::componentDeployed($kubectl, ClusterTool::OCIS, 'code');
     }
 
     protected function readDriveSecret(string $kubectl, ToolInstance $names, string $key): ?string

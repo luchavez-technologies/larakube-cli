@@ -15,12 +15,12 @@ trait InteractsWithCrm
 
     protected function crmNamespace(): string
     {
-        return ClusterTool::CRM->namespace();
+        return ClusterTool::TWENTY->namespace();
     }
 
     protected function isCrmInstalled(string $kubectl, string $ns, ?string $instance = null): bool
     {
-        $dep = ClusterTool::CRM->deploymentName($instance);
+        $dep = ClusterTool::TWENTY->deploymentName($instance);
 
         return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, $dep);
     }
@@ -28,7 +28,7 @@ trait InteractsWithCrm
     protected function readCrmSecret(string $kubectl, string $ns, string $key, ?string $instance = null): ?string
     {
         $secretName = $instance !== null && $instance !== ''
-            ? ToolInstance::forInstance(ClusterTool::CRM, $instance)->secret()
+            ? ToolInstance::forInstance(ClusterTool::TWENTY, $instance)->secret()
             : 'crm-secrets';
 
         return $this->readClusterSecretKey($kubectl, $ns, $secretName, $key);

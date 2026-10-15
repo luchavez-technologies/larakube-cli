@@ -12,7 +12,7 @@ abstract class SignRemoveCommand extends AbstractToolRemoveCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::SIGN;
+        return ClusterTool::DOCUMENSO;
     }
 
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
@@ -38,6 +38,6 @@ abstract class SignRemoveCommand extends AbstractToolRemoveCommand
 
     private function names(string $kubectl): ToolInstance
     {
-        return ToolInstance::forInstance(ClusterTool::SIGN, (string) $this->resolveInstance($kubectl));
+        return ToolInstance::forInstance(ClusterTool::DOCUMENSO, (string) $this->resolveInstance($kubectl));
     }
 }

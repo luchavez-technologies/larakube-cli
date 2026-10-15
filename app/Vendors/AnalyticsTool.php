@@ -23,7 +23,7 @@ final class AnalyticsTool implements ClusterToolVendor, HasCommonsDatabases, Has
     {
         $name = ($instance === null || $instance === '')
             ? 'umami-vpn-only'
-            : ToolInstance::forInstance(ClusterTool::ANALYTICS, $instance)->name('vpn-only');
+            : ToolInstance::forInstance(ClusterTool::UMAMI, $instance)->name('vpn-only');
 
         return [
             'name' => $name,

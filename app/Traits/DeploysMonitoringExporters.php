@@ -12,7 +12,7 @@ trait DeploysMonitoringExporters
 {
     protected function isMonitoringActive(string $kubectl = 'kubectl'): bool
     {
-        return ToolInstance::componentDeployed($kubectl, ClusterTool::MONITOR, 'prometheus');
+        return ToolInstance::componentDeployed($kubectl, ClusterTool::GRAFANA, 'prometheus');
     }
 
     protected function ensureMonitoringExporters(

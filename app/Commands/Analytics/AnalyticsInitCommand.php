@@ -35,7 +35,7 @@ abstract class AnalyticsInitCommand extends AbstractToolInitCommand
 
     protected function deployAnalytics(): int
     {
-        if ($this->refuseUnshippedTool(ClusterTool::ANALYTICS)) {
+        if ($this->refuseUnshippedTool(ClusterTool::UMAMI)) {
             return 1;
         }
 
@@ -44,14 +44,14 @@ abstract class AnalyticsInitCommand extends AbstractToolInitCommand
         $this->plexContext = $context;
         $cluster = Kubectl::forContext(($context ?? '') !== '' ? $context : null);
         $kubectl = $cluster->prefix();
-        $host = $this->resolveToolHost(SharedClusterService::ANALYTICS, ClusterTool::ANALYTICS, $env, $kubectl);
-        $names = ToolInstance::forHost(ClusterTool::ANALYTICS, $host);
+        $host = $this->resolveToolHost(SharedClusterService::ANALYTICS, ClusterTool::UMAMI, $env, $kubectl);
+        $names = ToolInstance::forHost(ClusterTool::UMAMI, $host);
         $ns = $names->namespace();
         $instance = $names->instance;
         $dbName = $names->database();
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::ANALYTICS, $kubectl, $instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::UMAMI, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -95,7 +95,7 @@ abstract class AnalyticsInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Umami analytics manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 300, tool: ClusterTool::ANALYTICS),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 300, tool: ClusterTool::UMAMI),
         );
         $temporaryDirectory->delete();
 
@@ -103,7 +103,7 @@ abstract class AnalyticsInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::ANALYTICS, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::UMAMI, $kubectl, $host);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Umami analytics stack is live.');
@@ -117,6 +117,6 @@ abstract class AnalyticsInitCommand extends AbstractToolInitCommand
 
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::ANALYTICS);
+        return $this->resolveToolEnvironment(ClusterTool::UMAMI);
     }
 }

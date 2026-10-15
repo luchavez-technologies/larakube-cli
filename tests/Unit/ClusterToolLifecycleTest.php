@@ -111,16 +111,16 @@ test('only tools that can bundle their own storage advertise --no-plex', functio
     );
 
     expect($noPlex)->toEqualCanonicalizing([
-        'chat', 'drive', 'flow', 'git', 'sso',
+        'chat', 'flow', 'git', 'sso',
         'matrix', 'ocis', 'glitchtip', 'n8n', 'windmill', 'forgejo', 'metabase', 'zitadel',
-        'monitor', 'grafana', 'vpn', 'netbird',
+        'grafana', 'vpn', 'netbird',
     ]);
 
     // A tool that leases no Commons tenant has nothing to bypass. Drive and OCIS are the
     // exceptions: their `--no-plex` bundles their own storage, and their Commons
     // lease is the SeaweedFS S3 bucket — never a Postgres tenant — so they have no
     // commonsDatabases to assert.
-    $storageLeaseOnly = [ClusterTool::DRIVE, ClusterTool::OCIS];
+    $storageLeaseOnly = [ClusterTool::OCIS];
     foreach (ClusterTool::cases() as $tool) {
         if ($tool->supportsNoPlex() && ! in_array($tool, $storageLeaseOnly, true)) {
             expect($tool->commonsDatabases())->not->toBeEmpty();
@@ -209,9 +209,9 @@ test('supportsMultipleInstances() pins the 2026-08 multi-instance capability aud
     // this list is a deliberate capability change, not drift — this test
     // exists so that change has to touch this file too.
     $expectedFalse = [
-        ClusterTool::CHAT, ClusterTool::MATRIX, ClusterTool::MEET, ClusterTool::LIVEKIT, ClusterTool::GIT, ClusterTool::FORGEJO,
+        ClusterTool::CHAT, ClusterTool::MATRIX, ClusterTool::LIVEKIT, ClusterTool::GIT, ClusterTool::FORGEJO,
         ClusterTool::MAIL, ClusterTool::STALWART, ClusterTool::SSO, ClusterTool::ZITADEL, ClusterTool::SECRETS, ClusterTool::OPENBAO,
-        ClusterTool::MONITOR, ClusterTool::GRAFANA, ClusterTool::VPN, ClusterTool::NETBIRD,
+        ClusterTool::GRAFANA, ClusterTool::VPN, ClusterTool::NETBIRD,
         ClusterTool::BULWARK, ClusterTool::HEADLAMP, ClusterTool::EXTERNAL_DNS,
     ];
 
@@ -235,14 +235,14 @@ test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance
     // teardown — a deliberate capability change, not drift.
     $expectedTrue = [
         ClusterTool::DATA, ClusterTool::POCKETBASE, ClusterTool::DIRECTUS, ClusterTool::WORDPRESS,
-        ClusterTool::NOTES, ClusterTool::OUTLINE,
-        ClusterTool::CRM, ClusterTool::TWENTY,
+        ClusterTool::OUTLINE,
+        ClusterTool::TWENTY,
         ClusterTool::PENPOT,
         ClusterTool::YOPASS,
-        ClusterTool::SIGN, ClusterTool::DOCUMENSO,
+        ClusterTool::DOCUMENSO,
         ClusterTool::FLOW, ClusterTool::N8N, ClusterTool::WINDMILL,
         ClusterTool::KUTT,
-        ClusterTool::ANALYTICS, ClusterTool::UMAMI, ClusterTool::PLAUSIBLE,
+        ClusterTool::UMAMI, ClusterTool::PLAUSIBLE,
         ClusterTool::TEABLE,
         ClusterTool::PLANKA,
         ClusterTool::KUMA,
@@ -325,7 +325,7 @@ test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifest
     // cannot create its target, so a suffix the tool's templates don't use
     // leaves the synced values reaching nothing. Live names as deployed.
     $names = [];
-    foreach ([ClusterTool::CHAT, ClusterTool::MONITOR, ClusterTool::VAULTWARDEN, ClusterTool::SSO, ClusterTool::GIT, ClusterTool::NOTES, ClusterTool::MAIL, ClusterTool::SIGN, ClusterTool::DATA, ClusterTool::VPN] as $tool) {
+    foreach ([ClusterTool::CHAT, ClusterTool::GRAFANA, ClusterTool::VAULTWARDEN, ClusterTool::SSO, ClusterTool::GIT, ClusterTool::OUTLINE, ClusterTool::MAIL, ClusterTool::DOCUMENSO, ClusterTool::DATA, ClusterTool::VPN] as $tool) {
         $names[$tool->value] = [
             $tool->openbaoSyncConfig('inst')['secret'] ?? null,
             $tool->dbSecretRef('inst')['secret'] ?? null,
@@ -334,15 +334,15 @@ test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifest
 
     expect($names)->toBe([
         'chat' => ['synapse-secrets-inst', 'synapse-secrets-inst'],
-        'monitor' => ['grafana-secrets-inst', 'grafana-secrets-inst'],
+        'grafana' => ['grafana-secrets-inst', 'grafana-secrets-inst'],
         'vaultwarden' => ['vaultwarden-secrets-inst', 'vaultwarden-secrets-inst'],
         'sso' => [null, 'zitadel-secrets-inst'],
         // Canonical ({component}-{token}-{instance}) once a tool has migrated,
         // otherwise the shape its manifests still write.
         'git' => ['forgejo-secrets-inst', 'forgejo-secrets-inst'],
-        'notes' => ['outline-secrets-inst', 'outline-secrets-inst'],
+        'outline' => ['outline-secrets-inst', 'outline-secrets-inst'],
         'mail' => ['stalwart-store-inst', 'stalwart-store-inst'],
-        'sign' => [null, 'documenso-secrets-inst'],
+        'documenso' => [null, 'documenso-secrets-inst'],
         'data' => [null, 'directus-secrets-inst'],
         'vpn' => ['netbird-secrets-inst', 'netbird-store-inst'],
     ]);
@@ -433,7 +433,7 @@ test('remove and show commands name the tool, and the engine when there is more 
     expect(ClusterTool::YOPASS->removeCommand())->toBe('yopass:remove')
         ->and(ClusterTool::DATA->removeCommand())->toBe('directus:remove')
         ->and(ClusterTool::DATA->removeCommand('pocketbase'))->toBe('pocketbase:remove')
-        ->and(ClusterTool::NOTES->showCommand())->toBe('outline:show');
+        ->and(ClusterTool::OUTLINE->showCommand())->toBe('outline:show');
 });
 
 test('every shipped tool describes itself for its card', function (): void {

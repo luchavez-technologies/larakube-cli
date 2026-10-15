@@ -10,7 +10,7 @@ abstract class DriveRemoveCommand extends AbstractToolRemoveCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::DRIVE;
+        return ClusterTool::OCIS;
     }
 
     protected function teardownWarning(string $env): array

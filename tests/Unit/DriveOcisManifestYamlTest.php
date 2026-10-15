@@ -221,7 +221,7 @@ test('ocis proxy verifies opaque access tokens against the IdP userinfo endpoint
     // 'none' and 'jwt' for PROXY_OIDC_ACCESS_TOKEN_VERIFY_METHOD; 'none' is the
     // documented method for opaque tokens (validated at the IdP's userinfo
     // endpoint server-side) and forbids PROXY_OIDC_SKIP_USER_INFO.
-    $static = ClusterTool::DRIVE->oidcEnv()['static'];
+    $static = ClusterTool::OCIS->oidcEnv()['static'];
 
     expect($static['PROXY_OIDC_ACCESS_TOKEN_VERIFY_METHOD'] ?? null)->toBe('none')
         // The token-verification method relies on a userinfo lookup; skipping

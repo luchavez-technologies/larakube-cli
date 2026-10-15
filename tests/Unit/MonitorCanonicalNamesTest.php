@@ -39,7 +39,7 @@ test('every object the monitoring stack deploys carries the instance in its name
 });
 
 test('the stack names its ServiceAccounts, RBAC and ConfigMaps from ToolInstance', function (): void {
-    $names = ToolInstance::forInstance(ClusterTool::MONITOR, 'monitor-example-com');
+    $names = ToolInstance::forInstance(ClusterTool::GRAFANA, 'monitor-example-com');
     $byKind = fn (string $kind) => monitorDocuments()->where('kind', $kind)->pluck('metadata.name')->all();
 
     expect($byKind('ServiceAccount'))->toEqualCanonicalizing([

@@ -123,13 +123,13 @@ test('findToolInstanceEntry with no instance refuses to guess when 2+ entries ex
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             base64_encode(json_encode([
-                ['tool' => 'notes', 'host' => 'notes.example.com', 'instance' => 'notes-example-com'],
-                ['tool' => 'notes', 'host' => 'blog.example.com', 'instance' => 'blog-example-com'],
+                ['tool' => 'outline', 'host' => 'notes.example.com', 'instance' => 'notes-example-com'],
+                ['tool' => 'outline', 'host' => 'blog.example.com', 'instance' => 'blog-example-com'],
             ])),
         ),
     ]);
 
-    expect($trait->find('kubectl', ClusterTool::NOTES))->toBeNull();
+    expect($trait->find('kubectl', ClusterTool::OUTLINE))->toBeNull();
 });
 
 test('registerTool appends a new tool entry to the flat list and saves it via a temp file', function (): void {

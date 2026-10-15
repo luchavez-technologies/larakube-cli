@@ -63,15 +63,15 @@ class OfficeInitCommand extends Command
     {
         $this->renderHeader();
 
-        $env = $this->resolveToolEnvironment(ClusterTool::DRIVE);
+        $env = $this->resolveToolEnvironment(ClusterTool::OCIS);
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
         $kubectl = Kubectl::forContext($context)->prefix();
-        $ns = ClusterTool::DRIVE->namespace();
+        $ns = ClusterTool::OCIS->namespace();
 
-        $host = $this->resolveToolHost(SharedClusterService::DRIVE, ClusterTool::DRIVE, $env, $kubectl);
+        $host = $this->resolveToolHost(SharedClusterService::DRIVE, ClusterTool::OCIS, $env, $kubectl);
         // Collabora is a component of the Drive instance serving $host, so
         // every name it writes comes from that instance (ADR 0021).
-        $names = ToolInstance::forHost(ClusterTool::DRIVE, $host);
+        $names = ToolInstance::forHost(ClusterTool::OCIS, $host);
 
         if (! $this->driveIsInstalled($kubectl, $ns, $names)) {
             $this->laraKubeError('Drive is not installed on this cluster — run `larakube tool:init --tool=ocis` first.');

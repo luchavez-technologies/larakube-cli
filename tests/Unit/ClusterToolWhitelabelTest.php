@@ -10,7 +10,7 @@ test('whiteLabel() returns non-null schemas for the 7 supported whitelabel tools
         ClusterTool::GLITCHTIP,
         ClusterTool::KUTT,
         ClusterTool::METABASE,
-        ClusterTool::MONITOR,
+        ClusterTool::GRAFANA,
     ];
 
     foreach ($whitelabeledTools as $tool) {

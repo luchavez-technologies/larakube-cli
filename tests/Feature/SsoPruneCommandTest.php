@@ -35,7 +35,7 @@ function ssoPruneRegistryJson(): string
 {
     return (string) json_encode([
         ssoRegistryRow(),
-        ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
+        ['tool' => 'outline', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
     ]);
 }
 

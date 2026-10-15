@@ -18,7 +18,7 @@ test('vpn:wire rejects the public infrastructure tools per the VPN standardizati
     $this->artisan('vpn:wire', ['--tool' => $slug])
         ->assertExitCode(1)
         ->expectsOutputToContain("doesn't have a --vpn-only ingress mode");
-})->with(['sso', 'kutt', 'chatwoot', 'data', 'mail', 'meet', 'vpn']);
+})->with(['sso', 'kutt', 'chatwoot', 'data', 'mail', 'livekit', 'vpn']);
 
 test('vpn:wire rejects an unknown tool', function (): void {
     $this->artisan('vpn:wire', ['--tool' => 'not-a-real-tool'])
@@ -57,7 +57,7 @@ test('vpn:wire creates the Middleware and re-applies the ingress with --vpn-only
         '*apply -f *' => Process::result(output: 'applied'),
     ]);
 
-    $exit = $command->testWire(App\Enums\ClusterTool::NOTES, 'kubectl', 'local');
+    $exit = $command->testWire(App\Enums\ClusterTool::OUTLINE, 'kubectl', 'local');
 
     expect($exit)->toBe(0)
         ->and($command->calledWith['command'])->toBe('tool:init')
@@ -101,7 +101,7 @@ test('vpn:wire --domain= passes the domain through to the re-applied {tool}:init
         '*get ingress *' => Process::result(output: ''),
     ]);
 
-    $command->testWire(App\Enums\ClusterTool::NOTES, 'kubectl', 'local', 'blog.example.com');
+    $command->testWire(App\Enums\ClusterTool::OUTLINE, 'kubectl', 'local', 'blog.example.com');
 
     expect($command->calledWith['command'])->toBe('tool:init')
         ->and($command->calledWith['arguments']['--tool'])->toBe('outline')
@@ -142,7 +142,7 @@ test('vpn:wire --remove re-applies the ingress without the annotation, then dele
     ]);
 
     $exit = $command->testUnwire(
-        App\Enums\ClusterTool::NOTES,
+        App\Enums\ClusterTool::OUTLINE,
         ['name' => 'notes-vpn-only', 'namespace' => 'larakube-shared'],
         'kubectl',
         'local',

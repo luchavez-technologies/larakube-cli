@@ -11,7 +11,7 @@ abstract class MonitorRemoveCommand extends AbstractToolRemoveCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::MONITOR;
+        return ClusterTool::GRAFANA;
     }
 
     /**
@@ -22,7 +22,7 @@ abstract class MonitorRemoveCommand extends AbstractToolRemoveCommand
      */
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
-        $volume = ToolInstance::forInstance(ClusterTool::MONITOR, $this->resolveInstance($kubectl) ?? 'monitor')->volume('storage', 'grafana');
+        $volume = ToolInstance::forInstance(ClusterTool::GRAFANA, $this->resolveInstance($kubectl) ?? 'monitor')->volume('storage', 'grafana');
 
         return trim(Process::run(
             "{$kubectl} get pvc {$volume} -n {$namespace} --ignore-not-found",
@@ -39,7 +39,7 @@ abstract class MonitorRemoveCommand extends AbstractToolRemoveCommand
     {
         $instance = $this->resolveInstance($kubectl) ?? 'monitor';
         $grafanaName = "grafana-{$instance}";
-        $names = ToolInstance::forInstance(ClusterTool::MONITOR, $instance);
+        $names = ToolInstance::forInstance(ClusterTool::GRAFANA, $instance);
         $secretName = $names->secret();
         $prometheusVolume = $names->volume('storage', 'prometheus');
         $lokiVolume = $names->volume('storage', 'loki');

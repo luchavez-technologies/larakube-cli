@@ -9,7 +9,7 @@ use Symfony\Component\Yaml\Yaml;
 /** Every name the manifest renders, for the host the fixtures deploy at. */
 function meetNames(): ToolInstance
 {
-    return ToolInstance::forHost(ClusterTool::MEET, 'meet.example.com');
+    return ToolInstance::forHost(ClusterTool::LIVEKIT, 'meet.example.com');
 }
 
 /** @param array<string, array<string, mixed>> $consumers */

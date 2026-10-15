@@ -3,8 +3,8 @@
     // (which passes the instance) and by anything that passes only the host.
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::CRM->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::CRM, $instance);
+        : \App\Enums\ClusterTool::TWENTY->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::TWENTY, $instance);
     $deploymentName = $names->deployment('server');
     $workerDeploymentName = $names->deployment('worker');
     $serviceName = $deploymentName;

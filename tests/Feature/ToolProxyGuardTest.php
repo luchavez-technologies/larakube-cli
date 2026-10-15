@@ -68,7 +68,7 @@ test('tools that can\'t sit behind Cloudflare refuse --proxied', function (Clust
     proxyGuardCluster();
 
     guardProxy(proxyGuardCommand(['--proxied' => true]), 'x.example.com', $tool);
-})->with([ClusterTool::GIT, ClusterTool::MAIL, ClusterTool::VPN, ClusterTool::MEET])
+})->with([ClusterTool::GIT, ClusterTool::MAIL, ClusterTool::VPN, ClusterTool::LIVEKIT])
     ->throws(RuntimeException::class, 'Not proxying x.example.com');
 
 test('--vpn-only with --proxied is refused', function (): void {

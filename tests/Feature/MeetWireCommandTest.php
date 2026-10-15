@@ -18,7 +18,7 @@ function meetWireFakes(array $overrides = []): array
         '*larakube.io/component=lk-jwt*' => Process::result(output: ''),
         '*get secret livekit-secrets-meet-example-com*' => Process::result(output: base64_encode($registry)),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'meet', 'host' => 'meet.example.com', 'instance' => 'meet-example-com'],
+            ['tool' => 'livekit', 'host' => 'meet.example.com', 'instance' => 'meet-example-com'],
             ['tool' => 'chat', 'host' => 'chat.example.com', 'instance' => 'chat-example-com'],
         ]))),
         '*get secret synapse-config-chat-example-com*' => Process::result(output: $homeserver),
@@ -51,7 +51,7 @@ test('meet:wire refuses when Team Chat is not installed', function (): void {
 test('meet:wire rejects a tool that cannot be wired to Meet', function (): void {
     Process::fake(meetWireFakes());
 
-    $this->artisan('meet:wire local --tool=notes --no-interaction')
+    $this->artisan('meet:wire local --tool=outline --no-interaction')
         ->assertExitCode(1)
         ->expectsOutputToContain('cannot be wired to Meet');
 });
@@ -101,6 +101,6 @@ test('meet:unwire removes the bridge and revokes the key', function (): void {
         ->assertExitCode(0)
         ->expectsOutputToContain('disconnected from Meet');
 
-    Process::assertRan(fn ($job) => str_contains($job->command, 'deployment,service -l larakube.io/tool=meet,larakube.io/component=lk-jwt,larakube.io/instance=meet-example-com'));
+    Process::assertRan(fn ($job) => str_contains($job->command, 'deployment,service -l larakube.io/tool=livekit,larakube.io/component=lk-jwt,larakube.io/instance=meet-example-com'));
     Process::assertRan(fn ($job) => str_contains($job->command, 'delete secret synapse-meet-chat-example-com'));
 });

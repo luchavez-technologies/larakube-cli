@@ -5,8 +5,8 @@
     // and that derivation uses the TOOL's host, never the office one.
     $component = $component ?? null;
     $names ??= \App\Data\ToolInstance::forInstance(
-        \App\Enums\ClusterTool::DRIVE,
-        \App\Enums\ClusterTool::DRIVE->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host)),
+        \App\Enums\ClusterTool::OCIS,
+        \App\Enums\ClusterTool::OCIS->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host)),
     );
     $labels = $names->labels($component);
     $backend = $names->deployment($component);

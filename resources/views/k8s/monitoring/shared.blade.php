@@ -1,5 +1,5 @@
 @php
-    $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::MONITOR->instanceSlugFromHost($host) : 'monitor');
+    $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::GRAFANA->instanceSlugFromHost($host) : 'monitor');
     $grafanaName = "grafana-{$instance}";
     $prometheusName = "prometheus-{$instance}";
     $prometheusConfigMapName = "prometheus-config-{$instance}";
@@ -7,7 +7,7 @@
     $lokiConfigMapName = "loki-config-{$instance}";
     $promtailName = "promtail-{$instance}";
     $promtailConfigMapName = "promtail-config-{$instance}";
-    $tool = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::MONITOR, $instance);
+    $tool = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::GRAFANA, $instance);
     $secretName = $tool->secret();
     $dbName = $tool->database();
     $prometheusVolume = $tool->volume('storage', 'prometheus');

@@ -32,11 +32,11 @@ final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
     {
         $name = ($instance === null || $instance === '')
             ? 'crm-vpn-only'
-            : ToolInstance::forInstance(ClusterTool::CRM, $instance)->name('vpn-only');
+            : ToolInstance::forInstance(ClusterTool::TWENTY, $instance)->name('vpn-only');
 
         return [
             'name' => $name,
-            'namespace' => ClusterTool::CRM->namespace(),
+            'namespace' => ClusterTool::TWENTY->namespace(),
         ];
     }
 
@@ -53,7 +53,7 @@ final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
         // names; the nested resource names have to follow the same rule.
         // Composed here rather than read back from ToolInstance, which
         // derives every name FROM this list and would recurse.
-        $canonical = fn (string $n) => ClusterTool::CRM->withoutCategory($n);
+        $canonical = fn (string $n) => ClusterTool::TWENTY->withoutCategory($n);
         $server = $canonical($name('crm-twenty'));
 
         return [
@@ -84,7 +84,7 @@ final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
 
     public function smtpEnv(?string $instance = null): ?array
     {
-        $canonical = fn (string $n) => ClusterTool::CRM->withoutCategory($n);
+        $canonical = fn (string $n) => ClusterTool::TWENTY->withoutCategory($n);
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
         $dep = $canonical($name('crm-twenty'));
         $sec = $canonical($name('crm-twenty-smtp'));

@@ -11,7 +11,7 @@ abstract class NotesRemoveCommand extends AbstractToolRemoveCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::NOTES;
+        return ClusterTool::OUTLINE;
     }
 
     /**
@@ -31,7 +31,7 @@ abstract class NotesRemoveCommand extends AbstractToolRemoveCommand
         // exactly what init wrote (Service and Ingress share the Deployment's
         // name). The instance-less form is the pre-instance shape older
         // clusters still carry, and keeps the names they were given.
-        $names = $isDefault ? null : ToolInstance::forInstance(ClusterTool::NOTES, $instance);
+        $names = $isDefault ? null : ToolInstance::forInstance(ClusterTool::OUTLINE, $instance);
         $deploymentName = $names?->deployment() ?? 'notes-outline';
         $serviceName = $names?->deployment() ?? 'notes';
         $secretName = $names?->secret() ?? 'notes-secrets';

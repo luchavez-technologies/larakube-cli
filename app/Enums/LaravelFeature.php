@@ -596,7 +596,7 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
         ];
 
         // Prefer the host Meet is actually serving over the local-dev guess.
-        $meetHost = ToolRegistry::on($kubectl)->host(ClusterTool::MEET);
+        $meetHost = ToolRegistry::on($kubectl)->host(ClusterTool::LIVEKIT);
         if ($meetHost !== null && $meetHost !== '') {
             $values['LIVEKIT_URL'] = "wss://{$meetHost}";
         }

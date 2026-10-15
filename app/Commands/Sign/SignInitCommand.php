@@ -42,13 +42,13 @@ abstract class SignInitCommand extends AbstractToolInitCommand
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = Kubectl::forContext($context)->prefix();
-        $host = $this->resolveToolHost(SharedClusterService::SIGN, ClusterTool::SIGN, $env, $kubectl);
-        $names = ToolInstance::forHost(ClusterTool::SIGN, $host);
+        $host = $this->resolveToolHost(SharedClusterService::SIGN, ClusterTool::DOCUMENSO, $env, $kubectl);
+        $names = ToolInstance::forHost(ClusterTool::DOCUMENSO, $host);
 
         $ns = $names->namespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::SIGN, $kubectl, $names->instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::DOCUMENSO, $kubectl, $names->instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -164,7 +164,7 @@ abstract class SignInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Documenso manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180, tool: ClusterTool::SIGN),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180, tool: ClusterTool::DOCUMENSO),
         );
         $temporaryDirectory->delete();
 
@@ -172,7 +172,7 @@ abstract class SignInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::SIGN, $kubectl, $host, $names->instance);
+        $this->registerDeployedTool(ClusterTool::DOCUMENSO, $kubectl, $host, $names->instance);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Documenso signature stack is live.');
@@ -186,6 +186,6 @@ abstract class SignInitCommand extends AbstractToolInitCommand
 
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::SIGN);
+        return $this->resolveToolEnvironment(ClusterTool::DOCUMENSO);
     }
 }

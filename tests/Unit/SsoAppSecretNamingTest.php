@@ -29,7 +29,7 @@ test('the Zitadel app Secret carries the instance so two instances cannot collid
     $namer = ssoAppNamer();
 
     // {component}-sso-{instance}, the same shape as the tool's other Secrets.
-    expect($namer->name(ClusterTool::NOTES, 'notes-luchtech-dev'))->toBe('outline-sso-notes-luchtech-dev')
+    expect($namer->name(ClusterTool::OUTLINE, 'notes-luchtech-dev'))->toBe('outline-sso-notes-luchtech-dev')
         ->and($namer->name(ClusterTool::GIT, 'git-luchtech-dev'))->toBe('forgejo-sso-git-luchtech-dev');
 
     // Two instances of one tool must not resolve to the same Secret.

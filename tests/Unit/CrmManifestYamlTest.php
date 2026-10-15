@@ -89,7 +89,7 @@ test('every name comes from ToolInstance and carries the identity labels', funct
     $service = $byKind('Service')->first();
     $env = collect($server['spec']['template']['spec']['containers'][0]['env'])->keyBy('name');
 
-    expect($server['metadata']['labels']['larakube.io/tool'])->toBe('crm')
+    expect($server['metadata']['labels']['larakube.io/tool'])->toBe('twenty')
         ->and($server['metadata']['labels']['larakube.io/component'])->toBe('twenty')
         ->and($server['metadata']['labels']['larakube.io/instance'])->toBe('crm-example-com')
         ->and($server['metadata']['labels']['larakube-tool'])->toBe('crm')

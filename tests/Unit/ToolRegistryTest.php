@@ -45,7 +45,7 @@ test('a host resolves to its registered instance, or derives one when unregister
     expect($registry->instanceForHost(ClusterTool::DATA, 'https://CMS.example.com/'))->toBe('cms-example-com')
         ->and($registry->instanceForHost(ClusterTool::DATA, 'new.example.com'))->toBe('new-example-com')
         ->and($registry->targetsForHost(ClusterTool::DATA, ''))->toBe(['data-example-com', 'cms-example-com'])
-        ->and($registry->targetsForHost(ClusterTool::SIGN, ''))->toBe(['']);
+        ->and($registry->targetsForHost(ClusterTool::DOCUMENSO, ''))->toBe(['']);
 });
 
 test('register heals a legacy row but never overwrites a different instance', function (): void {

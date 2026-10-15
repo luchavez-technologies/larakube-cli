@@ -25,11 +25,11 @@ final class DriveTool implements ClusterToolVendor, HasCommonsBuckets, HasOidcWi
     {
         $name = ($instance === null || $instance === '')
             ? 'drive-vpn-only'
-            : ToolInstance::forInstance(ClusterTool::DRIVE, $instance)->name('vpn-only');
+            : ToolInstance::forInstance(ClusterTool::OCIS, $instance)->name('vpn-only');
 
         return [
             'name' => $name,
-            'namespace' => ClusterTool::DRIVE->namespace(),
+            'namespace' => ClusterTool::OCIS->namespace(),
         ];
     }
 
@@ -50,7 +50,7 @@ final class DriveTool implements ClusterToolVendor, HasCommonsBuckets, HasOidcWi
         // these nested resource names have to follow the same rule. Composed
         // here rather than read back from ToolInstance, which derives every
         // name FROM this list and would recurse.
-        $canonical = fn (string $n) => ClusterTool::DRIVE->withoutCategory($n);
+        $canonical = fn (string $n) => ClusterTool::OCIS->withoutCategory($n);
         $ocis = $canonical($name('drive-ocis'));
         $code = $canonical($name('drive-code'));
 

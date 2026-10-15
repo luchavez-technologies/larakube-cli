@@ -36,7 +36,7 @@ test('secrets:wire fails when OpenBao is not deployed', function (): void {
         '*' => Process::result(),
     ]);
 
-    $this->artisan('secrets:wire local --tool=sign --force')
+    $this->artisan('secrets:wire local --tool=documenso --force')
         ->assertExitCode(1)
         ->expectsOutputToContain('OpenBao is not deployed.');
 });
@@ -53,7 +53,7 @@ test('secrets:wire fails when the database engine is not mounted', function (): 
         MockResponse::make(['data' => ['secret/' => ['type' => 'kv']]]),
     ]);
 
-    $this->artisan('secrets:wire local --tool=sign --force')
+    $this->artisan('secrets:wire local --tool=documenso --force')
         ->assertExitCode(1)
         ->expectsOutputToContain('database secrets engine is not mounted');
 });
@@ -73,12 +73,12 @@ test('secrets:wire fails when Vault Kubernetes auth is not configured', function
         MockResponse::make(['data' => ['token/' => ['type' => 'token']]]),
     ]);
 
-    $this->artisan('secrets:wire local --tool=sign --force')
+    $this->artisan('secrets:wire local --tool=documenso --force')
         ->assertExitCode(1)
         ->expectsOutputToContain('Vault Kubernetes auth is not configured');
 });
 
-test('secrets:wire --tool=sign registers a static role, wires the ExternalSecret, waits for sync, and restarts the deployment', function (): void {
+test('secrets:wire --tool=documenso registers a static role, wires the ExternalSecret, waits for sync, and restarts the deployment', function (): void {
     // fakeSyncedExternalSecret()'s patterns must come BEFORE the catch-all
     // '*' below — Process::fake() matches in array declaration order, and a
     // '*' listed first would swallow the more specific refreshTime/status/
@@ -89,7 +89,7 @@ test('secrets:wire --tool=sign registers a static role, wires the ExternalSecret
         '*get deployment documenso*' => Process::result(output: 'documenso-sign-kube'),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
             openBaoRegistryRow(),
-            ['tool' => 'sign', 'instance' => 'sign-kube', 'host' => 'sign.kube'],
+            ['tool' => 'documenso', 'instance' => 'sign-kube', 'host' => 'sign.kube'],
         ]))),
         '*port-forward*' => Process::result(output: ''),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -108,9 +108,9 @@ test('secrets:wire --tool=sign registers a static role, wires the ExternalSecret
         MockResponse::make([]),
     ]);
 
-    $this->artisan('secrets:wire local --tool=sign --force')
+    $this->artisan('secrets:wire local --tool=documenso --force')
         ->assertExitCode(0)
-        ->expectsOutputToContain("Document Signing (Documenso)'s DB password is now rotated by OpenBao every 168h");
+        ->expectsOutputToContain("Documenso (Document Signing)'s DB password is now rotated by OpenBao every 168h");
 
     Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
         && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/documenso_sign_kube')
@@ -241,7 +241,7 @@ test('secrets:wire --tool=planka registers a static role for planka and restarts
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/planka'));
 });
 
-test('secrets:wire --tool=analytics refuses because Umami is not yet shipped', function (): void {
+test('secrets:wire --tool=umami refuses because Umami is not yet shipped', function (): void {
     openBaoRegistered();
     Process::fake([
         '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
@@ -256,9 +256,9 @@ test('secrets:wire --tool=analytics refuses because Umami is not yet shipped', f
         MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
     ]);
 
-    $this->artisan('secrets:wire local --tool=analytics --force')
+    $this->artisan('secrets:wire local --tool=umami --force')
         ->assertExitCode(1)
-        ->expectsOutputToContain('Web Analytics (Umami) is not yet shipped');
+        ->expectsOutputToContain('Umami (Web Analytics) is not yet shipped');
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'apply -f'));
 });
@@ -339,7 +339,7 @@ test('secrets:wire rejects a tool that is not installed', function (): void {
         MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
     ]);
 
-    $this->artisan('secrets:wire local --tool=sign --force')
+    $this->artisan('secrets:wire local --tool=documenso --force')
         ->assertExitCode(1)
         ->expectsOutputToContain('is not installed');
 });
@@ -355,7 +355,7 @@ test('secrets:wire --all wires every installed DB-rotatable tool and skips unins
         '*get deployment documenso*' => Process::result(output: 'documenso-sign-kube'),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
             openBaoRegistryRow(),
-            ['tool' => 'sign', 'instance' => 'sign-kube', 'host' => 'sign.kube'],
+            ['tool' => 'documenso', 'instance' => 'sign-kube', 'host' => 'sign.kube'],
         ]))),
         '*get deployment record-sendrec*' => Process::result(output: '', exitCode: 1),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: '', exitCode: 1),
@@ -395,9 +395,9 @@ test('secrets:wire rejects Drive (oCIS has no Commons database password to rotat
         MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
     ]);
 
-    $this->artisan('secrets:wire local --tool=drive --force')
+    $this->artisan('secrets:wire local --tool=ocis --force')
         ->assertExitCode(1)
-        ->expectsOutputToContain("'drive' does not have a Commons database password OpenBao can rotate.");
+        ->expectsOutputToContain("'ocis' does not have a Commons database password OpenBao can rotate.");
 
     Saloon::assertNotSent(fn ($request) => str_contains($request->resolveEndpoint(), '/v1/database/static-roles/drive'));
 });
@@ -592,7 +592,7 @@ test('secrets:wire --tool=vaultwarden registers a static role for vaultwarden wi
 
 test('secrets:wire supports git, notes, sheets, and chat tools', function (): void {
     openBaoRegistered();
-    foreach (['git' => 'forgejo', 'notes' => 'outline-secrets', 'teable' => 'sheet-secrets', 'chat' => 'chat-secrets'] as $toolSlug => $secretName) {
+    foreach (['git' => 'forgejo', 'outline' => 'outline-secrets', 'teable' => 'sheet-secrets', 'chat' => 'chat-secrets'] as $toolSlug => $secretName) {
         expect(App\Enums\ClusterTool::from($toolSlug)->dbSecretRef())->not->toBeNull();
     }
 });

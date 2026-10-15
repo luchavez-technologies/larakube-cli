@@ -80,7 +80,7 @@ test('twenty:show displays status table for Twenty CRM', function (): void {
 test('twenty:remove cleans up Twenty CRM resources', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => json_encode([
-            ['tool' => 'crm', 'instance' => 'crm-dev-test', 'host' => 'crm.dev.test'],
+            ['tool' => 'twenty', 'instance' => 'crm-dev-test', 'host' => 'crm.dev.test'],
         ]),
         '*delete deployment/twenty-crm-dev-test*' => Process::result(output: 'deleted'),
         '*' => Process::result(output: 'deleted'),
@@ -94,7 +94,7 @@ test('twenty:remove cleans up Twenty CRM resources', function (): void {
 });
 
 test('mail:wire correctly targets Twenty CRM for SMTP email delivery', function (): void {
-    expect(ClusterTool::CRM->smtpEnv())->toBe([
+    expect(ClusterTool::TWENTY->smtpEnv())->toBe([
         'namespace' => 'larakube-shared',
         'also_patch' => ['twenty-worker'],
         'deployment' => 'twenty',
@@ -123,7 +123,7 @@ test('mail:wire correctly targets Twenty CRM for SMTP email delivery', function 
  * instance through the real wrapper call, the way mail:wire does.
  */
 test('smtpEnv() actually suffixes CRM deployment names for a real instance', function (): void {
-    expect(ClusterTool::CRM->smtpEnv(instance: 'crm-luchtech-dev'))->toBe([
+    expect(ClusterTool::TWENTY->smtpEnv(instance: 'crm-luchtech-dev'))->toBe([
         'namespace' => 'larakube-shared',
         'also_patch' => ['twenty-worker-crm-luchtech-dev'],
         'deployment' => 'twenty-crm-luchtech-dev',
@@ -140,7 +140,7 @@ test('smtpEnv() actually suffixes CRM deployment names for a real instance', fun
         ],
         'labels' => [
             'larakube.io/managed-by' => 'larakube',
-            'larakube.io/tool' => 'crm',
+            'larakube.io/tool' => 'twenty',
             'larakube.io/component' => 'twenty',
             'larakube.io/instance' => 'crm-luchtech-dev',
         ],
@@ -148,7 +148,7 @@ test('smtpEnv() actually suffixes CRM deployment names for a real instance', fun
 });
 
 test('crm does not claim OIDC wiring — Twenty paywalls SSO behind its paid Organization tier', function (): void {
-    // Confirmed live 2026-08-18: sso:wire --tool=crm crashed on a missing
+    // Confirmed live 2026-08-18: sso:wire --tool=twenty crashed on a missing
     // 'redirect_path' key CrmTool::oidcEnv() never declared. Rather than
     // guess at Twenty's real OIDC callback shape (its login route embeds a
     // dynamic identity-provider id: /auth/oidc/login/:identityProviderId,
@@ -157,8 +157,8 @@ test('crm does not claim OIDC wiring — Twenty paywalls SSO behind its paid Org
     // pattern as Planka/Tasks (see ClusterToolLifecycleTest). sso:wire now
     // refuses cleanly via hasSsoWire() instead of registering a Zitadel
     // client Twenty could never honor.
-    expect(ClusterTool::CRM->vendor())->not->toBeInstanceOf(App\Contracts\HasOidcWiring::class)
-        ->and(ClusterTool::CRM->hasSsoWire())->toBeFalse();
+    expect(ClusterTool::TWENTY->vendor())->not->toBeInstanceOf(App\Contracts\HasOidcWiring::class)
+        ->and(ClusterTool::TWENTY->hasSsoWire())->toBeFalse();
 });
 
 test('tool:init --tool=twenty errors instead of guessing when multiple instances are already registered and --domain is omitted', function (): void {
@@ -168,8 +168,8 @@ test('tool:init --tool=twenty errors instead of guessing when multiple instances
     // a fresh host/instance and created a second, duplicate CRM deployment.
     Process::fake([
         '*larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'crm', 'instance' => 'crm-luchtech-dev', 'host' => 'crm.luchtech.dev'],
-            ['tool' => 'crm', 'instance' => 'crm2-luchtech-dev', 'host' => 'crm2.luchtech.dev'],
+            ['tool' => 'twenty', 'instance' => 'crm-luchtech-dev', 'host' => 'crm.luchtech.dev'],
+            ['tool' => 'twenty', 'instance' => 'crm2-luchtech-dev', 'host' => 'crm2.luchtech.dev'],
         ]))),
         '*' => Process::result(output: ''),
     ]);

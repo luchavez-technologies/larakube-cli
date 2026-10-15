@@ -13,7 +13,7 @@ abstract class MeetRemoveCommand extends AbstractToolRemoveCommand
 
     protected function tool(): ClusterTool
     {
-        return ClusterTool::MEET;
+        return ClusterTool::LIVEKIT;
     }
 
     /**

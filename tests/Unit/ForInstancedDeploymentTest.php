@@ -58,7 +58,7 @@ test('a headless tool is identified by a null service(), not a parallel contract
     // could disagree.
     expect(ClusterTool::EXTERNAL_DNS->service())->toBeNull();
 
-    foreach ([ClusterTool::NOTES, ClusterTool::MAIL, ClusterTool::MONITOR] as $tool) {
+    foreach ([ClusterTool::OUTLINE, ClusterTool::MAIL, ClusterTool::GRAFANA] as $tool) {
         expect($tool->service())->not->toBeNull();
     }
 });

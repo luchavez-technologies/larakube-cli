@@ -42,7 +42,7 @@ test('secrets:unwire is registered and unwires OpenBao DB rotation for a tool', 
         '*bao delete database/static-roles*' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan('secrets:unwire local --tool=sign --force')
+    $this->artisan('secrets:unwire local --tool=documenso --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('DB password is now static');
 });
@@ -53,14 +53,14 @@ test('secrets:unwire errors when OpenBao is not deployed', function (): void {
         '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
     ]);
 
-    $this->artisan('secrets:unwire local --tool=sign --force')
+    $this->artisan('secrets:unwire local --tool=documenso --force')
         ->assertExitCode(1)
         ->expectsOutputToContain('OpenBao is not deployed on this cluster');
 });
 
 test('secrets:unwire supports unwiring git, notes, sheets, and chat tools', function (): void {
     openBaoRegistered();
-    foreach (['git' => 'forgejo', 'notes' => 'outline-secrets', 'teable' => 'sheet-secrets', 'chat' => 'chat-secrets'] as $toolSlug => $secretName) {
+    foreach (['git' => 'forgejo', 'outline' => 'outline-secrets', 'teable' => 'sheet-secrets', 'chat' => 'chat-secrets'] as $toolSlug => $secretName) {
         fakeOpenBaoUnwireHttp();
         Process::fake([
             '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('root-token')),
@@ -89,7 +89,7 @@ test('secrets:unwire resolves environment context correctly for non-local enviro
         '*bao delete database/static-roles*' => Process::result(output: 'deleted'),
     ]);
 
-    $this->artisan('secrets:unwire production --tool=sign --force')
+    $this->artisan('secrets:unwire production --tool=documenso --force')
         ->assertExitCode(0)
         ->expectsOutputToContain('DB password is now static');
 });

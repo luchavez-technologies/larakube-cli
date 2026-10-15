@@ -9,8 +9,8 @@
     // host, which is what identifies that instance; $officeHost is only ever
     // the address this editor is served at.
     $names = \App\Data\ToolInstance::forInstance(
-        \App\Enums\ClusterTool::DRIVE,
-        ($instance ?? '') !== '' ? $instance : \App\Enums\ClusterTool::DRIVE->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host)),
+        \App\Enums\ClusterTool::OCIS,
+        ($instance ?? '') !== '' ? $instance : \App\Enums\ClusterTool::OCIS->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host)),
     );
     $code = $names->deployment('code');
     $labels = $names->labels('code');

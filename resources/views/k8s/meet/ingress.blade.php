@@ -3,8 +3,8 @@
     // ingress path (which passes only the host), so derive what is missing.
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::MEET->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::MEET, $instance);
+        : \App\Enums\ClusterTool::LIVEKIT->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::LIVEKIT, $instance);
     $labels = $names->labels();
 
     // Middlewares compose — vpn-only used to write this annotation outright, so

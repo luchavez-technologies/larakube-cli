@@ -15,7 +15,7 @@ trait InteractsWithAnalytics
 
     protected function analyticsNamespace(): string
     {
-        return ClusterTool::ANALYTICS->namespace();
+        return ClusterTool::UMAMI->namespace();
     }
 
     protected function isAnalyticsInstalled(string $kubectl, string $ns, string|ToolInstance|null $instance = null): bool
@@ -23,7 +23,7 @@ trait InteractsWithAnalytics
         $k = Kubectl::fromPrefix($kubectl);
         $toolInstance = $instance instanceof ToolInstance
             ? $instance
-            : ($instance !== null && $instance !== '' ? ToolInstance::forInstance(ClusterTool::ANALYTICS, $instance) : null);
+            : ($instance !== null && $instance !== '' ? ToolInstance::forInstance(ClusterTool::UMAMI, $instance) : null);
 
         if ($toolInstance !== null) {
             return $k->hasDeployment($ns, $toolInstance->deployment());
@@ -36,7 +36,7 @@ trait InteractsWithAnalytics
     {
         $toolInstance = $instance instanceof ToolInstance
             ? $instance
-            : ($instance !== '' ? ToolInstance::forInstance(ClusterTool::ANALYTICS, $instance) : null);
+            : ($instance !== '' ? ToolInstance::forInstance(ClusterTool::UMAMI, $instance) : null);
 
         return $toolInstance !== null
             ? $this->readClusterSecretKey($kubectl, $ns, $toolInstance->secret(), $key)

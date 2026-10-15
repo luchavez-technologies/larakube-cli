@@ -199,7 +199,7 @@ trait InteractsWithToolRegistry
         // false positives where one installed engine makes the other engine appear installed.
         $multiEngineTools = [
             ClusterTool::FLOW, ClusterTool::N8N, ClusterTool::WINDMILL,
-            ClusterTool::ANALYTICS, ClusterTool::UMAMI, ClusterTool::PLAUSIBLE,
+            ClusterTool::UMAMI, ClusterTool::PLAUSIBLE,
             ClusterTool::DATA, ClusterTool::POCKETBASE, ClusterTool::DIRECTUS,
         ];
 

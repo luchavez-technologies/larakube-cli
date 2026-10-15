@@ -118,7 +118,7 @@ spec:
             # mail:wire sets these two as plain literals (kubectl set env
             # NAME=value), never through the SMTP Secret — must
             # stay literals here too, or a future kubectl apply conflicts with
-            # mail:wire's live value (see ClusterTool::SIGN's smtpEnv()).
+            # mail:wire's live value (see ClusterTool::DOCUMENSO's smtpEnv()).
             - name: NEXT_PRIVATE_SMTP_TRANSPORT
               value: "smtp-auth"
             - name: NEXT_PRIVATE_SMTP_SECURE
@@ -154,7 +154,7 @@ spec:
                   key: NEXT_PRIVATE_SMTP_FROM_ADDRESS
                   optional: true
             # sso:wire sets these two as plain literals too — same reasoning
-            # as the SMTP pair above (see ClusterTool::SIGN's oidcEnv()).
+            # as the SMTP pair above (see ClusterTool::DOCUMENSO's oidcEnv()).
             - name: NEXT_PUBLIC_DISABLE_OIDC_SIGNIN
               value: "false"
             - name: NEXT_PUBLIC_DISABLE_OIDC_SIGNUP

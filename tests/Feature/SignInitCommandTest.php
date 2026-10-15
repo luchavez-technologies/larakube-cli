@@ -181,7 +181,7 @@ test('tool:init --tool=documenso --vpn-only names the Traefik Middleware for its
 
     // Named for this instance (ADR 0021), never the removed 'main' sentinel,
     // and the same name the Ingress references.
-    $name = App\Data\ToolInstance::forHost(App\Enums\ClusterTool::SIGN, 'sign.kube')->vpnMiddleware()->name;
+    $name = App\Data\ToolInstance::forHost(App\Enums\ClusterTool::DOCUMENSO, 'sign.kube')->vpnMiddleware()->name;
 
     expect($name)->toBe('documenso-vpn-only-sign-kube')
         ->and($appliedVpnMiddlewareManifest)->not->toBeNull()
@@ -195,7 +195,7 @@ test('tool:init --tool=documenso wires Documenso to the Commons headless Chrome 
 
     $this->artisan('tool:init', ['--tool' => 'documenso', 'environment' => 'local', '--no-interaction' => true])->assertExitCode(0);
 
-    $names = App\Data\ToolInstance::forHost(App\Enums\ClusterTool::SIGN, 'sign.kube');
+    $names = App\Data\ToolInstance::forHost(App\Enums\ClusterTool::DOCUMENSO, 'sign.kube');
 
     // Without a browser every document stays pending; by IP because Chrome's
     // DevTools server rejects any other Host header.
@@ -218,7 +218,7 @@ test('tool:init --tool=documenso wires Documenso to the Commons headless Chrome 
 
 test('tool:init --tool=documenso keeps an existing signing certificate, so signed documents keep verifying', function (): void {
     $appliedManifest = null;
-    $names = App\Data\ToolInstance::forHost(App\Enums\ClusterTool::SIGN, 'sign.kube');
+    $names = App\Data\ToolInstance::forHost(App\Enums\ClusterTool::DOCUMENSO, 'sign.kube');
 
     Process::fake(function ($process) use ($names, &$appliedManifest) {
         $cmd = $process->command;

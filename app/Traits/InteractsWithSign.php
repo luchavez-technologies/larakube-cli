@@ -17,7 +17,7 @@ trait InteractsWithSign
 
     protected function signNamespace(): string
     {
-        return ClusterTool::SIGN->namespace();
+        return ClusterTool::DOCUMENSO->namespace();
     }
 
     protected function isSignInstalled(string $kubectl, string $ns): bool

@@ -34,15 +34,15 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
     // is excluded for the OPPOSITE reason — see its own dedicated test:
     // chat-synapse never gains an instance suffix, even when one is given.
     $expected = [
-        'analytics' => 'umami', 'crm' => 'twenty',
-        'drive' => 'ocis', 'glitchtip' => 'glitchtip',
+        'umami' => 'umami', 'twenty' => 'twenty',
+        'ocis' => 'ocis', 'glitchtip' => 'glitchtip',
         'flow' => 'n8n', 'metabase' => 'metabase',
-        'kutt' => 'kutt', 'mail' => 'stalwart', 'monitor' => 'grafana',
-        'notes' => 'outline', 'vaultwarden' => 'vaultwarden', 'sendrec' => 'sendrec',
-        'secrets' => 'openbao', 'teable' => 'teable', 'sign' => 'documenso',
+        'kutt' => 'kutt', 'mail' => 'stalwart', 'grafana' => 'grafana',
+        'outline' => 'outline', 'vaultwarden' => 'vaultwarden', 'sendrec' => 'sendrec',
+        'secrets' => 'openbao', 'teable' => 'teable', 'documenso' => 'documenso',
         'sso' => 'zitadel', 'chatwoot' => 'chatwoot', 'planka' => 'planka',
         'kuma' => 'kuma', 'bulwark' => 'bulwark',
-        'external-dns' => 'external-dns', 'headlamp' => 'headlamp', 'meet' => 'livekit',
+        'external-dns' => 'external-dns', 'headlamp' => 'headlamp', 'livekit' => 'livekit',
         'penpot' => 'penpot-backend',
     ];
 
@@ -124,7 +124,7 @@ test('only DESIGN\'s frontend, ERRORS\' worker, and CRM\'s worker components sha
         } elseif ($tool === ClusterTool::GLITCHTIP) {
             expect($shared)->toHaveCount(1)
                 ->and($shared[0]->deployment)->toBe('glitchtip-worker');
-        } elseif ($tool === ClusterTool::CRM || $tool === ClusterTool::TWENTY) {
+        } elseif ($tool === ClusterTool::TWENTY || $tool === ClusterTool::TWENTY) {
             expect($shared)->toHaveCount(1)
                 ->and($shared[0]->deployment)->toBe('twenty-worker');
         } else {
@@ -136,7 +136,7 @@ test('only DESIGN\'s frontend, ERRORS\' worker, and CRM\'s worker components sha
         ->and(ClusterTool::PENPOT->alsoPatchDeployments())->toBe(['penpot-frontend'])
         ->and(ClusterTool::GLITCHTIP->alsoPatchDeployments())->toBe(['glitchtip-worker'])
         ->and(ClusterTool::GLITCHTIP->alsoPatchDeployments())->toBe(['glitchtip-worker'])
-        ->and(ClusterTool::CRM->alsoPatchDeployments())->toBe(['twenty-worker'])
+        ->and(ClusterTool::TWENTY->alsoPatchDeployments())->toBe(['twenty-worker'])
         ->and(ClusterTool::TWENTY->alsoPatchDeployments())->toBe(['twenty-worker']);
 });
 
@@ -150,7 +150,7 @@ test('backupVolume is only true for the components InteractsWithBackup already c
         'openbao' => ['app' => ['/openbao']],
         'git' => ['server' => ['/data']],
         'forgejo' => ['server' => ['/data']],
-        'drive' => ['app' => ['/var/lib/ocis']],
+        'ocis' => ['app' => ['/var/lib/ocis']],
         'ocis' => ['app' => ['/var/lib/ocis']],
         'vaultwarden' => ['app' => ['/data']],
         'mail' => ['app' => ['/var/lib/stalwart']],

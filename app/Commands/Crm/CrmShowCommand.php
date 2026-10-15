@@ -9,6 +9,6 @@ abstract class CrmShowCommand extends AbstractToolShowCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::CRM;
+        return ClusterTool::TWENTY;
     }
 }

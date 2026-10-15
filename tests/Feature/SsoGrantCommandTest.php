@@ -56,7 +56,7 @@ test('sso:grant auto-resolves --domain= when a multi-instance tool has exactly o
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
                 ssoRegistryRow(),
-                ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
+                ['tool' => 'outline', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
             ])),
         ),
     ]);
@@ -69,7 +69,7 @@ test('sso:grant auto-resolves --domain= when a multi-instance tool has exactly o
         CreateUserGrantRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:grant', ['--tool' => 'notes', '--role' => 'outline-user', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
+    $this->artisan('sso:grant', ['--tool' => 'outline', '--role' => 'outline-user', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0);
 
     Saloon::assertSent(fn ($request) => $request instanceof CreateProjectRequest
@@ -83,13 +83,13 @@ test('sso:grant refuses to guess when a multi-instance tool has more than one re
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
                 ssoRegistryRow(),
-                ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
-                ['tool' => 'notes', 'instance' => 'blog-example-com', 'installedAt' => '2026-08-02T00:00:00+00:00', 'host' => 'blog.example.com'],
+                ['tool' => 'outline', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
+                ['tool' => 'outline', 'instance' => 'blog-example-com', 'installedAt' => '2026-08-02T00:00:00+00:00', 'host' => 'blog.example.com'],
             ])),
         ),
     ]);
 
-    $this->artisan('sso:grant', ['--tool' => 'notes', '--role' => 'outline-user', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
+    $this->artisan('sso:grant', ['--tool' => 'outline', '--role' => 'outline-user', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(1)
         ->expectsOutputToContain('has multiple instances — pass --domain=');
 });
@@ -101,8 +101,8 @@ test('sso:grant --domain= resolves the exact named instance\'s project', functio
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
                 ssoRegistryRow(),
-                ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
-                ['tool' => 'notes', 'instance' => 'blog-example-com', 'installedAt' => '2026-08-02T00:00:00+00:00', 'host' => 'blog.example.com'],
+                ['tool' => 'outline', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
+                ['tool' => 'outline', 'instance' => 'blog-example-com', 'installedAt' => '2026-08-02T00:00:00+00:00', 'host' => 'blog.example.com'],
             ])),
         ),
     ]);
@@ -115,7 +115,7 @@ test('sso:grant --domain= resolves the exact named instance\'s project', functio
         CreateUserGrantRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:grant', ['--tool' => 'notes', '--domain' => 'blog.example.com', '--role' => 'outline-user', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
+    $this->artisan('sso:grant', ['--tool' => 'outline', '--domain' => 'blog.example.com', '--role' => 'outline-user', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0);
 
     Saloon::assertSent(fn ($request) => $request instanceof CreateProjectRequest
@@ -278,7 +278,7 @@ test('sso:grant merges a new role into an existing UserGrant instead of clobberi
         UpdateUserGrantRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:grant', ['--tool' => 'monitor', '--role' => 'grafana-user', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
+    $this->artisan('sso:grant', ['--tool' => 'grafana', '--role' => 'grafana-user', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain("Granted 'grafana-user' to james@luchtech.dev");
 
@@ -314,7 +314,7 @@ test('sso:grant grants Drive\'s ocisAdmin on Drive\'s own project, found by name
         CreateUserGrantRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:grant', ['--tool' => 'drive', '--role' => 'ocisAdmin', '--email' => 'admin@luchtech.dev', '--no-interaction' => true])
+    $this->artisan('sso:grant', ['--tool' => 'ocis', '--role' => 'ocisAdmin', '--email' => 'admin@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain("Granted 'ocisAdmin' to admin@luchtech.dev")
         ->expectsOutputToContain('ocis');
@@ -348,7 +348,7 @@ test('sso:grant for Drive creates its own project when none exists yet', functio
         CreateUserGrantRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:grant', ['--tool' => 'drive', '--role' => 'ocisAdmin', '--email' => 'admin@luchtech.dev', '--no-interaction' => true])
+    $this->artisan('sso:grant', ['--tool' => 'ocis', '--role' => 'ocisAdmin', '--email' => 'admin@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain("Granted 'ocisAdmin' to admin@luchtech.dev");
 

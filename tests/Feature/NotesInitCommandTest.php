@@ -142,7 +142,7 @@ test('tool:init --tool=outline registers itself in the cluster tool registry, in
     ])->assertExitCode(0);
 
     expect($captured)->not->toBeNull();
-    $notesEntry = collect($captured)->firstWhere('tool', 'notes');
+    $notesEntry = collect($captured)->firstWhere('tool', 'outline');
     expect($notesEntry)->not->toBeNull()
         ->and($notesEntry['host'])->not->toBeNull()
         ->and($notesEntry['adminEmail'])->toBe('admin@example.com')
@@ -208,8 +208,8 @@ test('tool:init --tool=outline errors instead of guessing when multiple instance
     // instead of recognizing an already-registered instance.
     Process::fake([
         '*larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'notes', 'instance' => 'main', 'host' => 'notes.example.com'],
-            ['tool' => 'notes', 'instance' => 'blog-example-com', 'host' => 'blog.example.com'],
+            ['tool' => 'outline', 'instance' => 'main', 'host' => 'notes.example.com'],
+            ['tool' => 'outline', 'instance' => 'blog-example-com', 'host' => 'blog.example.com'],
         ]))),
         '*' => Process::result(output: ''),
     ]);

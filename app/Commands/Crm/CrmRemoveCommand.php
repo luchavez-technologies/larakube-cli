@@ -9,7 +9,7 @@ abstract class CrmRemoveCommand extends AbstractToolRemoveCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::CRM;
+        return ClusterTool::TWENTY;
     }
 
     // CRM has no bundled-storage mode (no --no-plex in tool:init --tool=twenty — it always

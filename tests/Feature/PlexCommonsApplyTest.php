@@ -101,7 +101,7 @@ test('an apply that restarts nothing goes ahead', function (): void {
 test('with monitoring installed, the Commons keeps the Postgres and Redis exporters', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
-            ['tool' => 'monitor', 'instance' => 'monitor-example-com', 'host' => 'monitor.example.com'],
+            ['tool' => 'grafana', 'instance' => 'monitor-example-com', 'host' => 'monitor.example.com'],
         ]))),
         '*get deployment prometheus-monitor-example-com *' => Process::result(output: 'deployment.apps/prometheus-monitor-example-com'),
         '*' => Process::result(output: ''),

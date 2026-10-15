@@ -16,7 +16,7 @@ function categoryParityPairs(): array
 {
     $pairs = [];
     foreach (ClusterTool::cases() as $category) {
-        if (! $category->isLegacy() || in_array($category, [ClusterTool::DATA, ClusterTool::FLOW, ClusterTool::ANALYTICS], true)) {
+        if (! $category->isLegacy() || in_array($category, [ClusterTool::DATA, ClusterTool::FLOW], true)) {
             continue;
         }
 
@@ -56,12 +56,11 @@ test('category() maps every tool-named case to its category and every other case
     expect(ClusterTool::ZITADEL->category())->toBe(ClusterTool::SSO)
         ->and(ClusterTool::SSO->category())->toBe(ClusterTool::SSO)
         ->and(ClusterTool::OPENBAO->category())->toBe(ClusterTool::SECRETS)
-        ->and(ClusterTool::GRAFANA->category())->toBe(ClusterTool::MONITOR)
         ->and(ClusterTool::NETBIRD->category())->toBe(ClusterTool::VPN)
         ->and(ClusterTool::MATRIX->category())->toBe(ClusterTool::CHAT)
         ->and(ClusterTool::WINDMILL->category())->toBe(ClusterTool::FLOW)
         ->and(ClusterTool::POCKETBASE->category())->toBe(ClusterTool::DATA)
-        ->and(ClusterTool::PLAUSIBLE->category())->toBe(ClusterTool::ANALYTICS);
+        ->and(ClusterTool::PLAUSIBLE->category())->toBe(ClusterTool::PLAUSIBLE);
 
     foreach (ClusterTool::cases() as $case) {
         expect($case->category()->category())->toBe($case->category());

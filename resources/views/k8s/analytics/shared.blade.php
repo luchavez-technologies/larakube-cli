@@ -1,5 +1,5 @@
 @php
-    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::ANALYTICS, $host);
+    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::UMAMI, $host);
     $deployment = $names->deployment();
     $service = $names->deployment();
     $secret = $names->secret();

@@ -126,9 +126,9 @@ trait InteractsWithOcisExtensions
      */
     protected function driveDeployment(string $kubectl): string
     {
-        $names = ToolInstance::registered($kubectl, ClusterTool::DRIVE)[0] ?? null;
+        $names = ToolInstance::registered($kubectl, ClusterTool::OCIS)[0] ?? null;
 
-        return $names?->deployment() ?? ClusterTool::DRIVE->deploymentName();
+        return $names?->deployment() ?? ClusterTool::OCIS->deploymentName();
     }
 
     /**

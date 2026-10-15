@@ -121,14 +121,14 @@ test('sso:org-grant --tool= on a multi-instance tool without --domain= refuses t
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
                 ssoRegistryRow(),
-                ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
-                ['tool' => 'notes', 'instance' => 'blog-example-com', 'installedAt' => '2026-08-02T00:00:00+00:00', 'host' => 'blog.example.com'],
+                ['tool' => 'outline', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
+                ['tool' => 'outline', 'instance' => 'blog-example-com', 'installedAt' => '2026-08-02T00:00:00+00:00', 'host' => 'blog.example.com'],
             ])),
         ),
     ]));
     Saloon::fake([SearchOrganizationsRequest::class => MockResponse::make(['result' => [['id' => 'org-1']]])]);
 
-    $this->artisan('sso:org-grant', ['--org' => 'partner.example', '--tool' => 'notes', '--no-interaction' => true])
+    $this->artisan('sso:org-grant', ['--org' => 'partner.example', '--tool' => 'outline', '--no-interaction' => true])
         ->assertExitCode(1)
         ->expectsOutputToContain('has multiple instances — pass --domain= to pick one');
 });
@@ -158,7 +158,7 @@ test('sso:org-grant prompts for an org when --org is omitted and orgs exist', fu
         && $request->body()->get('grantedOrgId') === 'org-1');
 });
 
-test('sso:org-grant --tool=drive installs the flattenOcisRoles Action into the GRANTED org, not the default one', function (): void {
+test('sso:org-grant --tool=ocis installs the flattenOcisRoles Action into the GRANTED org, not the default one', function (): void {
     ssoRegistered();
     // sso:wire only ever installs this Action in its own (default) org —
     // the project/roles it configures are shared across every org with a
@@ -179,7 +179,7 @@ test('sso:org-grant --tool=drive installs the flattenOcisRoles Action into the G
         CreateProjectGrantRequest::class => MockResponse::make(['grantId' => 'grant-1']),
     ]);
 
-    $this->artisan('sso:org-grant', ['--org' => 'partner.example', '--tool' => 'drive', '--no-interaction' => true])
+    $this->artisan('sso:org-grant', ['--org' => 'partner.example', '--tool' => 'ocis', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain("'partner.example' now has scoped access to");
 

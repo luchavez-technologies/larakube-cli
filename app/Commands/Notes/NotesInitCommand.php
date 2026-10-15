@@ -57,12 +57,12 @@ abstract class NotesInitCommand extends AbstractToolInitCommand
         // No --domain given → ask which registered instance to target, or
         // offer to create a new one, rather than guessing (see
         // resolveInstanceAwareHost()'s docblock).
-        [$host, $instance] = $this->resolveInstanceAwareHost(SharedClusterService::NOTES, ClusterTool::NOTES, $env, $kubectl);
+        [$host, $instance] = $this->resolveInstanceAwareHost(SharedClusterService::NOTES, ClusterTool::OUTLINE, $env, $kubectl);
 
         $ns = $this->notesNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::NOTES, $kubectl, $instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::OUTLINE, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -99,21 +99,21 @@ abstract class NotesInitCommand extends AbstractToolInitCommand
 
         $s3AccessKey = $creds['access'];
         $s3SecretKey = $creds['secret'];
-        $deploymentName = ClusterTool::NOTES->deploymentName($instance);
+        $deploymentName = ClusterTool::OUTLINE->deploymentName($instance);
         // The manifest's Service/Ingress default to the bare 'notes' name when
         // this isn't passed — fine for main, but a second instance applying
         // that same default would silently steal main's Service selector and
         // Ingress host rule instead of getting its own. Every other
         // multi-instance tool (data, chat, ...) already suffixes its
         // Service/Ingress name by instance; Outline just never did.
-        $names = ToolInstance::forInstance(ClusterTool::NOTES, $instance);
+        $names = ToolInstance::forInstance(ClusterTool::OUTLINE, $instance);
         $serviceName = $deploymentName;
         $secretName = $names->secret();
         $oidcSecretName = $names->secret(SecretKind::OIDC);
         $labels = $names->labels();
-        $dbName = ClusterTool::NOTES->commonsDatabases($instance)[0];
+        $dbName = ClusterTool::OUTLINE->commonsDatabases($instance)[0];
         $s3Bucket = "notes-storage-{$instance}";
-        $aliasHosts = $this->resolveToolAliasHosts($kubectl, ClusterTool::NOTES, $instance);
+        $aliasHosts = $this->resolveToolAliasHosts($kubectl, ClusterTool::OUTLINE, $instance);
 
         $driver = StorageDriver::from($s3Service);
 
@@ -183,7 +183,7 @@ abstract class NotesInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Outline wiki manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180, tool: ClusterTool::NOTES),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180, tool: ClusterTool::OUTLINE),
         );
         $temporaryDirectory->delete();
 
@@ -191,7 +191,7 @@ abstract class NotesInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::NOTES, $kubectl, $host, instance: $instance, extra: ['adminEmail' => $adminEmail]);
+        $this->registerDeployedTool(ClusterTool::OUTLINE, $kubectl, $host, instance: $instance, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Outline wiki stack is live.');
@@ -313,7 +313,7 @@ abstract class NotesInitCommand extends AbstractToolInitCommand
             return false;
         }
 
-        $tool = ClusterTool::NOTES;
+        $tool = ClusterTool::OUTLINE;
         $appName = "{$tool->productName()} ({$instance})";
         $registered = null;
         $this->withSpin("Registering Outline ({$instance}) as an OIDC client in Zitadel...", function () use (&$registered, $ssoHost, $pat, $tool, $host, $aliasHosts, $appName): void {
@@ -336,7 +336,7 @@ abstract class NotesInitCommand extends AbstractToolInitCommand
             return false;
         }
 
-        $ssoAppSecret = $this->ssoAppSecretName(ClusterTool::NOTES, $instance);
+        $ssoAppSecret = $this->ssoAppSecretName(ClusterTool::OUTLINE, $instance);
 
         Kubectl::fromPrefix($kubectl)->putSecret($this->ssoNamespace(), $ssoAppSecret, [
             'project-id' => $registered['projectId'],
@@ -370,7 +370,7 @@ abstract class NotesInitCommand extends AbstractToolInitCommand
 
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::NOTES);
+        return $this->resolveToolEnvironment(ClusterTool::OUTLINE);
     }
 
     /** Resolve the admin email for Outline */

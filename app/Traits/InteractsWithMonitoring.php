@@ -36,7 +36,7 @@ trait InteractsWithMonitoring
     /** Grafana's credentials Secret, as monitoring's manifests name it. */
     protected function monitorSecretName(?string $instance): string
     {
-        return ToolInstance::forInstance(ClusterTool::MONITOR, $instance ?: 'monitor')->secret();
+        return ToolInstance::forInstance(ClusterTool::GRAFANA, $instance ?: 'monitor')->secret();
     }
 
     /** The existing Grafana admin password, or null when the secret isn't there. */
@@ -84,7 +84,7 @@ trait InteractsWithMonitoring
         }
 
         $host = $this->resolveGrafanaHostReadOnly($env, $config);
-        $instance = $host !== null ? ClusterTool::MONITOR->instanceSlugFromHost($host) : 'monitor';
+        $instance = $host !== null ? ClusterTool::GRAFANA->instanceSlugFromHost($host) : 'monitor';
         $lokiName = "loki-{$instance}";
         $promName = "prometheus-{$instance}";
 

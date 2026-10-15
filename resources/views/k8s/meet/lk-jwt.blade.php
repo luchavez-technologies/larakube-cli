@@ -8,8 +8,8 @@
     // instance when the caller didn't thread one through.
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::MEET->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $meetHost));
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::MEET, $instance);
+        : \App\Enums\ClusterTool::LIVEKIT->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $meetHost));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::LIVEKIT, $instance);
     $bridge = $names->deployment('lk-jwt');
     $labels = $names->labels('lk-jwt');
 @endphp

@@ -61,7 +61,7 @@ test('SupportedDriversTrait resolves storage driver for tool', function (): void
     ]);
 
     $tester = new CommonsDriverResolutionTest;
-    $driver = $tester->resolveToolStorageDriver('kubectl', ClusterTool::SIGN);
+    $driver = $tester->resolveToolStorageDriver('kubectl', ClusterTool::DOCUMENSO);
     expect($driver)->toBe(StorageDriver::MINIO);
 });
 

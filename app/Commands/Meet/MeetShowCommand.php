@@ -13,7 +13,7 @@ abstract class MeetShowCommand extends AbstractToolShowCommand
 
     protected function tool(): ClusterTool
     {
-        return ClusterTool::MEET;
+        return ClusterTool::LIVEKIT;
     }
 
     /**
@@ -32,7 +32,7 @@ abstract class MeetShowCommand extends AbstractToolShowCommand
 
         // The bootstrap key is an implementation detail of "LiveKit refuses to
         // start with no keys" — listing it would read as a consumer you wired.
-        $names = $instance !== '' ? ToolInstance::forInstance(ClusterTool::MEET, $instance) : $this->meetInstance($kubectl);
+        $names = $instance !== '' ? ToolInstance::forInstance(ClusterTool::LIVEKIT, $instance) : $this->meetInstance($kubectl);
         $registry = $names !== null ? $this->meetConsumers($this->readMeetKeys($kubectl, $names)) : [];
 
         if ($registry === []) {

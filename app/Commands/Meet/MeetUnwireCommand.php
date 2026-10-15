@@ -88,7 +88,7 @@ class MeetUnwireCommand extends Command
             $registry = $this->writeMeetKeys($kubectl, $names, $registry);
         });
 
-        $meetHost = $this->getToolHost($kubectl, ClusterTool::MEET);
+        $meetHost = $this->getToolHost($kubectl, ClusterTool::LIVEKIT);
 
         if ($meetHost !== null && $this->isMeetInstalled($kubectl, $ns)) {
             $instance = $names->instance;

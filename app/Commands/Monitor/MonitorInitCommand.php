@@ -47,16 +47,16 @@ abstract class MonitorInitCommand extends AbstractToolInitCommand
         $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->monitoringNamespace();
 
-        $host = $this->resolveToolHost(SharedClusterService::GRAFANA, ClusterTool::MONITOR, $env, $kubectl);
-        $instance = ClusterTool::MONITOR->instanceSlugFromHost($host);
+        $host = $this->resolveToolHost(SharedClusterService::GRAFANA, ClusterTool::GRAFANA, $env, $kubectl);
+        $instance = ClusterTool::GRAFANA->instanceSlugFromHost($host);
         $grafanaDeployment = "grafana-{$instance}";
         $prometheusDeployment = "prometheus-{$instance}";
         $lokiDeployment = "loki-{$instance}";
         $lokiConfigMap = "loki-config-{$instance}";
-        $lokiVolume = ToolInstance::forInstance(ClusterTool::MONITOR, $instance)->volume('storage', 'loki');
+        $lokiVolume = ToolInstance::forInstance(ClusterTool::GRAFANA, $instance)->volume('storage', 'loki');
         $promtailDaemonset = "promtail-{$instance}";
         $promtailConfigMap = "promtail-config-{$instance}";
-        $names = ToolInstance::forInstance(ClusterTool::MONITOR, $instance);
+        $names = ToolInstance::forInstance(ClusterTool::GRAFANA, $instance);
         $tempoDeployment = $names->deployment('tempo');
         $ksmDeployment = $names->deployment('kube-state-metrics');
 
@@ -110,7 +110,7 @@ abstract class MonitorInitCommand extends AbstractToolInitCommand
             // GitInitCommand — `{tool}:init` must never call
             // registerStaticRole()/isOpenBaoBootstrapped() to INITIATE
             // rotation, only to avoid clobbering it if already active.
-            $tenant = ToolInstance::forInstance(ClusterTool::MONITOR, $instance)->database();
+            $tenant = ToolInstance::forInstance(ClusterTool::GRAFANA, $instance)->database();
             $dbPassword = $this->resolveManagedDbPassword($kubectl, $tenant, $dbPassword);
 
             if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $tenant, $dbPassword)) {
@@ -119,9 +119,9 @@ abstract class MonitorInitCommand extends AbstractToolInitCommand
         }
 
         $vpnOnly = (bool) $this->option('vpn-only');
-        $branding = $this->resolveToolBranding($kubectl, ClusterTool::MONITOR, ClusterTool::MONITOR->instanceSlugFromHost($host));
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::GRAFANA, ClusterTool::GRAFANA->instanceSlugFromHost($host));
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::MONITOR, $kubectl, $instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::GRAFANA, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -244,7 +244,7 @@ abstract class MonitorInitCommand extends AbstractToolInitCommand
             }
         }
 
-        $this->registerDeployedTool(ClusterTool::MONITOR, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::GRAFANA, $kubectl, $host);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Monitoring stack is live.');
@@ -458,7 +458,7 @@ abstract class MonitorInitCommand extends AbstractToolInitCommand
 
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::MONITOR);
+        return $this->resolveToolEnvironment(ClusterTool::GRAFANA);
     }
 
     /**

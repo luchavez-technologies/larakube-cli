@@ -190,7 +190,7 @@ test('plex:evict refuses a tenant an installed Cluster Tool still owns', functio
         ),
     ]));
     Tests\Support\FakeToolRegistry::install([
-        ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'host' => 'notes.luchtech.dev'],
+        ['tool' => 'outline', 'instance' => 'notes-luchtech-dev', 'host' => 'notes.luchtech.dev'],
     ]);
 
     $this->artisan('plex:evict local --tenant=outline_notes_luchtech_dev')
@@ -212,7 +212,7 @@ test('plex:evict still removes a tenant no installed instance claims', function 
         ),
     ]));
     Tests\Support\FakeToolRegistry::install([
-        ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'host' => 'notes.luchtech.dev'],
+        ['tool' => 'outline', 'instance' => 'notes-luchtech-dev', 'host' => 'notes.luchtech.dev'],
     ]);
 
     $this->artisan('plex:evict local --tenant=outline_main --force --no-backup')

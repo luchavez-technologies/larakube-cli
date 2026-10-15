@@ -34,11 +34,11 @@ final class NoteTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommo
     {
         $name = ($instance === null || $instance === '')
             ? 'notes-vpn-only'
-            : ToolInstance::forInstance(ClusterTool::NOTES, $instance)->name('vpn-only');
+            : ToolInstance::forInstance(ClusterTool::OUTLINE, $instance)->name('vpn-only');
 
         return [
             'name' => $name,
-            'namespace' => ClusterTool::NOTES->namespace(),
+            'namespace' => ClusterTool::OUTLINE->namespace(),
         ];
     }
 

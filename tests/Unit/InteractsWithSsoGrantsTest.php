@@ -46,22 +46,22 @@ test('resolveInstanceForTool honours --domain= outright, even for a single-insta
 test('resolveInstanceForTool returns null for a multi-instance tool with no registered instances yet', function (): void {
     ssoGrantsRegistryFake([]);
 
-    expect(ssoGrantsInstanceResolver()->resolve(ClusterTool::NOTES, 'kubectl', ''))->toBeNull();
+    expect(ssoGrantsInstanceResolver()->resolve(ClusterTool::OUTLINE, 'kubectl', ''))->toBeNull();
 });
 
 test('resolveInstanceForTool auto-picks the one named instance of a multi-instance tool', function (): void {
     ssoGrantsRegistryFake([
-        ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
+        ['tool' => 'outline', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
     ]);
 
-    expect(ssoGrantsInstanceResolver()->resolve(ClusterTool::NOTES, 'kubectl', ''))->toBe('notes-luchtech-dev');
+    expect(ssoGrantsInstanceResolver()->resolve(ClusterTool::OUTLINE, 'kubectl', ''))->toBe('notes-luchtech-dev');
 });
 
 test('resolveInstanceForTool refuses to guess when 2+ named instances exist and no --domain= is given', function (): void {
     ssoGrantsRegistryFake([
-        ['tool' => 'notes', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
-        ['tool' => 'notes', 'instance' => 'blog-example-com', 'installedAt' => '2026-08-02T00:00:00+00:00', 'host' => 'blog.example.com'],
+        ['tool' => 'outline', 'instance' => 'notes-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
+        ['tool' => 'outline', 'instance' => 'blog-example-com', 'installedAt' => '2026-08-02T00:00:00+00:00', 'host' => 'blog.example.com'],
     ]);
 
-    expect(ssoGrantsInstanceResolver()->resolve(ClusterTool::NOTES, 'kubectl', ''))->toBeFalse();
+    expect(ssoGrantsInstanceResolver()->resolve(ClusterTool::OUTLINE, 'kubectl', ''))->toBeFalse();
 });

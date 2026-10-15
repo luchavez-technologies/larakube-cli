@@ -152,7 +152,7 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
     {
         $ns = ($instance === null || $instance === '') ? 'larakube-shared' : "larakube-shared-{$instance}";
         $instanceName = ($instance !== null && $instance !== '') ? $instance : 'monitor';
-        $secret = ToolInstance::forInstance(ClusterTool::MONITOR, $instanceName)->secret();
+        $secret = ToolInstance::forInstance(ClusterTool::GRAFANA, $instanceName)->secret();
         $decodedPass = Kubectl::fromPrefix($kubectl)->secretValue($ns, $secret, 'password') ?? '<unknown>';
         $lokiName = "loki-{$instanceName}";
         $promName = "prometheus-{$instanceName}";
@@ -168,11 +168,11 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
     {
         $name = ($instance === null || $instance === '')
             ? 'grafana-vpn-only'
-            : ToolInstance::forInstance(ClusterTool::MONITOR, $instance)->name('vpn-only');
+            : ToolInstance::forInstance(ClusterTool::GRAFANA, $instance)->name('vpn-only');
 
         return [
             'name' => $name,
-            'namespace' => ClusterTool::MONITOR->namespace(),
+            'namespace' => ClusterTool::GRAFANA->namespace(),
         ];
     }
 

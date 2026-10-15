@@ -1,8 +1,8 @@
 @php
-    $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::MONITOR->instanceSlugFromHost($host) : 'monitor');
+    $instance = $instance ?? (isset($host) && $host ? \App\Enums\ClusterTool::GRAFANA->instanceSlugFromHost($host) : 'monitor');
     $ingressName = "grafana-{$instance}";
     $serviceName = "grafana-{$instance}";
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::MONITOR, $instance);
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::GRAFANA, $instance);
     $labels = $names->labels('grafana');
 @endphp
 apiVersion: networking.k8s.io/v1
