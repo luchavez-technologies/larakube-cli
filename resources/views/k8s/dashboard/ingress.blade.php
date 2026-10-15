@@ -3,8 +3,8 @@
     // ingress path (which passes only the host), so derive what is missing.
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::DASHBOARD->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
-    $names ??= \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::DASHBOARD, $instance);
+        : \App\Enums\ClusterTool::HEADLAMP->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names ??= \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::HEADLAMP, $instance);
     $labels ??= $names->labels();
 @endphp
 apiVersion: networking.k8s.io/v1

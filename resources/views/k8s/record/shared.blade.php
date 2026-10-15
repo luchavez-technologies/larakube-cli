@@ -2,8 +2,8 @@
     // Every name comes from ToolInstance (ADR 0021).
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::RECORD->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::RECORD, $instance);
+        : \App\Enums\ClusterTool::SENDREC->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::SENDREC, $instance);
     $dbName ??= $names->database();
     $deploymentName = $names->deployment();
     $secretName = $names->secret();
@@ -72,7 +72,7 @@ spec:
               value: "true"
             # 465 is implicit TLS; SendRec defaults to STARTTLS and would hang.
             # Must be "tls", not "implicit" — SendRec coerces any
-            # unrecognised value back to starttls (see ClusterTool::RECORD's
+            # unrecognised value back to starttls (see ClusterTool::SENDREC's
             # smtpEnv(), which documents this exact deadlock).
             - name: SMTP_TLS
               value: "tls"

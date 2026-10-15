@@ -29,8 +29,8 @@ test('dashboard requires RBAC gating — its ServiceAccount is bound to cluster-
     // full cluster-admin (it runs -in-cluster, sharing one ServiceAccount's
     // token regardless of which user is logged in). Caught before sso:wire
     // was ever run against it, not after.
-    expect(ClusterTool::DASHBOARD->requiresRbacGating())->toBeTrue()
-        ->and(ClusterTool::DASHBOARD->rbacRoles())->not->toBeEmpty();
+    expect(ClusterTool::HEADLAMP->requiresRbacGating())->toBeTrue()
+        ->and(ClusterTool::HEADLAMP->rbacRoles())->not->toBeEmpty();
 });
 
 test('only tools that own their namespace outright are torn down namespace-wide', function (): void {
@@ -53,7 +53,7 @@ test('only tools that own their namespace outright are torn down namespace-wide'
 test('every tool except dns maps to a SharedClusterService for host resolution', function (): void {
     ssoRegistered();
     foreach (ClusterTool::cases() as $tool) {
-        if ($tool === ClusterTool::DNS || $tool === ClusterTool::EXTERNAL_DNS) {
+        if ($tool === ClusterTool::EXTERNAL_DNS) {
             // ExternalDNS is a controller with no ingress — nothing to show.
             expect($tool->service())->toBeNull();
 
@@ -111,7 +111,7 @@ test('only tools that can bundle their own storage advertise --no-plex', functio
     );
 
     expect($noPlex)->toEqualCanonicalizing([
-        'chat', 'drive', 'errors', 'flow', 'git', 'insights', 'sso',
+        'chat', 'drive', 'errors', 'flow', 'git', 'sso',
         'matrix', 'ocis', 'glitchtip', 'n8n', 'windmill', 'forgejo', 'metabase', 'zitadel',
         'monitor', 'grafana', 'vpn', 'netbird',
     ]);
@@ -212,7 +212,7 @@ test('supportsMultipleInstances() pins the 2026-08 multi-instance capability aud
         ClusterTool::CHAT, ClusterTool::MATRIX, ClusterTool::MEET, ClusterTool::LIVEKIT, ClusterTool::GIT, ClusterTool::FORGEJO,
         ClusterTool::MAIL, ClusterTool::STALWART, ClusterTool::SSO, ClusterTool::ZITADEL, ClusterTool::SECRETS, ClusterTool::OPENBAO,
         ClusterTool::MONITOR, ClusterTool::GRAFANA, ClusterTool::VPN, ClusterTool::NETBIRD,
-        ClusterTool::WEBMAIL, ClusterTool::BULWARK, ClusterTool::DASHBOARD, ClusterTool::HEADLAMP, ClusterTool::DNS, ClusterTool::EXTERNAL_DNS,
+        ClusterTool::WEBMAIL, ClusterTool::BULWARK, ClusterTool::HEADLAMP, ClusterTool::EXTERNAL_DNS,
     ];
 
     foreach (ClusterTool::cases() as $tool) {
@@ -246,10 +246,10 @@ test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance
         ClusterTool::SHEETS, ClusterTool::TEABLE,
         ClusterTool::TASKS, ClusterTool::PLANKA,
         ClusterTool::UPTIME, ClusterTool::KUMA,
-        ClusterTool::INSIGHTS, ClusterTool::METABASE,
+        ClusterTool::METABASE,
         ClusterTool::ERRORS, ClusterTool::GLITCHTIP,
         ClusterTool::SUPPORT, ClusterTool::CHATWOOT,
-        ClusterTool::RECORD, ClusterTool::SENDREC,
+        ClusterTool::SENDREC,
         ClusterTool::RESUME,
     ];
 

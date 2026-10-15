@@ -9,7 +9,7 @@ abstract class DashboardRemoveCommand extends AbstractToolRemoveCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::DASHBOARD;
+        return ClusterTool::HEADLAMP;
     }
 
     protected function usesBundledStorage(string $kubectl, string $namespace): bool

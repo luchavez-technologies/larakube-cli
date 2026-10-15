@@ -34,7 +34,7 @@ abstract class DnsListCommand extends Command
             $this->renderHeader();
         }
 
-        $env = $this->resolveToolEnvironment(ClusterTool::DNS);
+        $env = $this->resolveToolEnvironment(ClusterTool::EXTERNAL_DNS);
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
         $kubectl = Kubectl::forContext($context)->prefix();
 

@@ -87,7 +87,7 @@ test('keys are strings, never integers', function (): void {
 test('the capability predicate keeps out tools the pair cannot act on', function (): void {
     $subject = picksSubject((string) json_encode([
         ['tool' => 'chat', 'host' => 'chat.example.com'],
-        ['tool' => 'dns', 'host' => 'dns.example.com'],
+        ['tool' => 'external-dns', 'host' => 'dns.example.com'],
     ]));
 
     $choices = $subject->choicesFor('kubectl', fn (ClusterTool $t): bool => $t->hasVpnWire());

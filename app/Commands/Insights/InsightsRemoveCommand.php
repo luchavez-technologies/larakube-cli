@@ -11,19 +11,19 @@ abstract class InsightsRemoveCommand extends AbstractToolRemoveCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::INSIGHTS;
+        return ClusterTool::METABASE;
     }
 
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
-        $names = ToolInstance::forInstance(ClusterTool::INSIGHTS, (string) $this->resolveInstance($kubectl));
+        $names = ToolInstance::forInstance(ClusterTool::METABASE, (string) $this->resolveInstance($kubectl));
 
         return trim(Process::run("{$kubectl} get secret {$names->secret()} -n {$namespace}")->output()) === '';
     }
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
-        $names = ToolInstance::forInstance(ClusterTool::INSIGHTS, (string) $this->resolveInstance($kubectl));
+        $names = ToolInstance::forInstance(ClusterTool::METABASE, (string) $this->resolveInstance($kubectl));
         $deployment = $names->deployment();
 
         return $this->removeResources(

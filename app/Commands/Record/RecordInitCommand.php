@@ -40,13 +40,13 @@ abstract class RecordInitCommand extends AbstractToolInitCommand
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = Kubectl::forContext($context)->prefix();
-        $host = $this->resolveToolHost(SharedClusterService::RECORD, ClusterTool::RECORD, $env, $kubectl);
+        $host = $this->resolveToolHost(SharedClusterService::RECORD, ClusterTool::SENDREC, $env, $kubectl);
 
         $ns = $this->recordNamespace();
-        $names = ToolInstance::forHost(ClusterTool::RECORD, $host);
+        $names = ToolInstance::forHost(ClusterTool::SENDREC, $host);
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::RECORD, $kubectl, $names->instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::SENDREC, $kubectl, $names->instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -159,7 +159,7 @@ abstract class RecordInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Sendrec manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180, tool: ClusterTool::RECORD),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 180, tool: ClusterTool::SENDREC),
         );
         $temporaryDirectory->delete();
 
@@ -167,7 +167,7 @@ abstract class RecordInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::RECORD, $kubectl, $host, $names->instance);
+        $this->registerDeployedTool(ClusterTool::SENDREC, $kubectl, $host, $names->instance);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Sendrec async video platform stack is live.');
@@ -181,6 +181,6 @@ abstract class RecordInitCommand extends AbstractToolInitCommand
 
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::RECORD);
+        return $this->resolveToolEnvironment(ClusterTool::SENDREC);
     }
 }

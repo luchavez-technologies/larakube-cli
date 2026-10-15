@@ -23,11 +23,11 @@ final class DashboardTool implements ClusterToolVendor, HasOidcWiring, HasVpnWir
     {
         $name = ($instance === null || $instance === '')
             ? 'dashboard-vpn-only'
-            : ToolInstance::forInstance(ClusterTool::DASHBOARD, $instance)->name('vpn-only');
+            : ToolInstance::forInstance(ClusterTool::HEADLAMP, $instance)->name('vpn-only');
 
         return [
             'name' => $name,
-            'namespace' => ClusterTool::DASHBOARD->namespace(),
+            'namespace' => ClusterTool::HEADLAMP->namespace(),
         ];
     }
 
@@ -44,7 +44,7 @@ final class DashboardTool implements ClusterToolVendor, HasOidcWiring, HasVpnWir
         // these nested resource names have to follow the same rule. Composed
         // here rather than read back from ToolInstance, which derives every
         // name FROM this list and would recurse.
-        $canonical = fn (string $n) => ClusterTool::DASHBOARD->withoutCategory($n);
+        $canonical = fn (string $n) => ClusterTool::HEADLAMP->withoutCategory($n);
         $deployment = $canonical($name('dashboard-headlamp'));
         $owned = fn (string $token) => $canonical($name("dashboard-headlamp-{$token}"));
 

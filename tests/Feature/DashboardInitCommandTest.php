@@ -40,7 +40,7 @@ test('tool:init --tool=headlamp --vpn-only creates the Traefik Middleware before
 
     $this->artisan('tool:init --tool=headlamp local --vpn-only --no-interaction')
         ->assertExitCode(0)
-        ->expectsOutputToContain('Ensuring VPN-only Middleware for Kubernetes Control Plane (Headlamp)...')
+        ->expectsOutputToContain('Ensuring VPN-only Middleware for Headlamp (Kubernetes Dashboard)...')
         ->expectsOutputToContain('CNCF Headlamp Kubernetes Control Plane is live.');
 });
 
@@ -67,7 +67,7 @@ test('dashboard manifest uses Headlamp\'s real listen port 4466, not 4686', func
 
 test('dashboard manifest sets Headlamp\'s OIDC env vars with the HEADLAMP_CONFIG_ prefix koanf actually reads', function (): void {
     // Regression guard for a real incident (2026-08-06): the OIDC Secret keys
-    // (and ClusterTool::DASHBOARD->oidcEnv()'s vars/static, wired the same way
+    // (and ClusterTool::HEADLAMP->oidcEnv()'s vars/static, wired the same way
     // by sso:wire) were named HEADLAMP_OIDC_* — Headlamp's koanf-based config
     // loader strips a HEADLAMP_CONFIG_ prefix before matching its flag names
     // (oidc-client-id etc.), so the unprefixed vars were silently ignored: no
@@ -87,13 +87,13 @@ test('dashboard manifest sets Headlamp\'s OIDC env vars with the HEADLAMP_CONFIG
         ->and($manifest)->toContain('HEADLAMP_CONFIG_OIDC_CLIENT_SECRET')
         ->and($manifest)->toContain('HEADLAMP_CONFIG_OIDC_SCOPES')
         ->and($manifest)->not->toContain('HEADLAMP_OIDC_')
-        ->and(ClusterTool::DASHBOARD->oidcEnv())
-        ->and(ClusterTool::DASHBOARD->oidcEnv()['vars'])->toBe([
+        ->and(ClusterTool::HEADLAMP->oidcEnv())
+        ->and(ClusterTool::HEADLAMP->oidcEnv()['vars'])->toBe([
             'client_id' => 'HEADLAMP_CONFIG_OIDC_CLIENT_ID',
             'client_secret' => 'HEADLAMP_CONFIG_OIDC_CLIENT_SECRET',
             'issuer' => 'HEADLAMP_CONFIG_OIDC_IDP_ISSUER_URL',
         ])
-        ->and(ClusterTool::DASHBOARD->oidcEnv()['static'])->toBe([
+        ->and(ClusterTool::HEADLAMP->oidcEnv()['static'])->toBe([
             'HEADLAMP_CONFIG_OIDC_SCOPES' => 'openid profile email groups',
         ]);
 });

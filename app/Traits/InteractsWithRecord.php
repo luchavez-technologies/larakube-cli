@@ -14,7 +14,7 @@ trait InteractsWithRecord
 
     protected function recordNamespace(): string
     {
-        return ClusterTool::RECORD->namespace();
+        return ClusterTool::SENDREC->namespace();
     }
 
     protected function isRecordInstalled(string $kubectl, string $ns): bool

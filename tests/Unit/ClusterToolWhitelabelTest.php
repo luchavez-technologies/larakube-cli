@@ -9,7 +9,7 @@ test('whiteLabel() returns non-null schemas for the 7 supported whitelabel tools
         ClusterTool::SUPPORT,
         ClusterTool::ERRORS,
         ClusterTool::LINK,
-        ClusterTool::INSIGHTS,
+        ClusterTool::METABASE,
         ClusterTool::MONITOR,
     ];
 
@@ -20,7 +20,7 @@ test('whiteLabel() returns non-null schemas for the 7 supported whitelabel tools
 
 test('whiteLabel() returns null for unsupported tools like DNS, VPN, SECRETS', function (): void {
     $unsupportedTools = [
-        ClusterTool::DNS,
+        ClusterTool::EXTERNAL_DNS,
         ClusterTool::VPN,
         ClusterTool::SECRETS,
         ClusterTool::PASSWORDS,

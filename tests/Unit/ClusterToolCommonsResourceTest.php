@@ -3,7 +3,7 @@
 use App\Enums\ClusterTool;
 
 test('forCommonsResource resolves a tool from its Commons DB name', function (): void {
-    expect(ClusterTool::forCommonsResource('sendrec'))->toBe(ClusterTool::RECORD)
+    expect(ClusterTool::forCommonsResource('sendrec'))->toBe(ClusterTool::SENDREC)
         ->and(ClusterTool::forCommonsResource('documenso'))->toBe(ClusterTool::SIGN)
         ->and(ClusterTool::forCommonsResource('zitadel'))->toBe(ClusterTool::SSO);
 });
@@ -34,7 +34,7 @@ test('PASSWORDS is wired into openbaoSyncConfig so tool:init --tool=openbao actu
 
 test('resolveCommonsResource names the tool and the instance an instanced tenant or bucket belongs to', function (): void {
     $cases = [
-        'sendrec_record_example_com' => [ClusterTool::RECORD, 'record-example-com'],
+        'sendrec_record_example_com' => [ClusterTool::SENDREC, 'record-example-com'],
         'forgejo_git_luchtech_dev' => [ClusterTool::GIT, 'git-luchtech-dev'],
         'yopass-storage-paste-example-com' => [ClusterTool::PASTE, 'paste-example-com'],
         'forgejo-lfs-git-luchtech-dev' => [ClusterTool::GIT, 'git-luchtech-dev'],
@@ -49,6 +49,6 @@ test('resolveCommonsResource names the tool and the instance an instanced tenant
     }
 
     // A bare name is the tool itself, and an application tenant is nobody's.
-    expect(ClusterTool::resolveCommonsResource('sendrec'))->toBe(['tool' => ClusterTool::RECORD, 'instance' => null])
+    expect(ClusterTool::resolveCommonsResource('sendrec'))->toBe(['tool' => ClusterTool::SENDREC, 'instance' => null])
         ->and(ClusterTool::resolveCommonsResource('luchtech_local'))->toBeNull();
 });

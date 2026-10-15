@@ -317,7 +317,10 @@ class SsoUnwireCommand extends Command
 
     protected function applyToolIngress(string $kubectl, ClusterTool $tool, string $host, bool $ssoWired, bool $isLocal): bool
     {
-        $view = "k8s.{$tool->value}.ingress";
+        // View folders are still named after the legacy category word
+        // (k8s/record/, k8s/dashboard/) even for a canonical-only case like
+        // SENDREC/HEADLAMP, whose ->value differs from its folder.
+        $view = 'k8s.'.($tool->legacyCategoryPrefix() ?? $tool->value).'.ingress';
         if (! view()->exists($view)) {
             $this->laraKubeError("No ingress template for '{$tool->value}' — cannot toggle its SSO middleware.");
 

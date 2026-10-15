@@ -34,21 +34,21 @@ abstract class DashboardInitCommand extends AbstractToolInitCommand
 
     protected function deployDashboard(): int
     {
-        $env = $this->resolveToolEnvironment(ClusterTool::DASHBOARD);
+        $env = $this->resolveToolEnvironment(ClusterTool::HEADLAMP);
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = Kubectl::forContext($context)->prefix();
-        $host = $this->resolveToolHost(SharedClusterService::DASHBOARD, ClusterTool::DASHBOARD, $env, $kubectl);
+        $host = $this->resolveToolHost(SharedClusterService::DASHBOARD, ClusterTool::HEADLAMP, $env, $kubectl);
         // Every tool's instance identifier is a real, host-derived slug now,
         // Dashboard included — it will never have a SECOND instance (one K8s
         // API server, one view of it), but its resource names still follow
         // the same convention as every other tool rather than a special-cased
         // bare name (no more '' /'main' escape hatch anywhere).
-        $instance = ClusterTool::DASHBOARD->instanceSlugFromHost($host);
+        $instance = ClusterTool::HEADLAMP->instanceSlugFromHost($host);
         $ns = $this->dashboardNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::DASHBOARD, $kubectl, $instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::HEADLAMP, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -59,7 +59,7 @@ abstract class DashboardInitCommand extends AbstractToolInitCommand
         ));
 
         $oidc = $this->readDashboardWiredOidc($kubectl, $ns, $instance);
-        $branding = $this->resolveToolBranding($kubectl, ClusterTool::DASHBOARD, ClusterTool::DASHBOARD->instanceSlugFromHost($host));
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::HEADLAMP, ClusterTool::HEADLAMP->instanceSlugFromHost($host));
 
         $manifest = view('k8s.dashboard.headlamp', [
             'host' => $host,
@@ -76,11 +76,11 @@ abstract class DashboardInitCommand extends AbstractToolInitCommand
         $tmp = $temporaryDirectory->path('larakube-dashboard-headlamp.yaml');
         file_put_contents($tmp, $manifest);
 
-        $deploymentName = ClusterTool::DASHBOARD->deploymentName($instance);
+        $deploymentName = ClusterTool::HEADLAMP->deploymentName($instance);
 
         $rolledOut = $this->withSpin(
             'Applying Headlamp Control Plane manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180, tool: ClusterTool::DASHBOARD),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180, tool: ClusterTool::HEADLAMP),
         );
         $temporaryDirectory->delete();
 
@@ -88,7 +88,7 @@ abstract class DashboardInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::DASHBOARD, $kubectl, $host, $instance);
+        $this->registerDeployedTool(ClusterTool::HEADLAMP, $kubectl, $host, $instance);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ CNCF Headlamp Kubernetes Control Plane is live.');

@@ -57,7 +57,7 @@ trait SupportedDriversTrait
             ClusterTool::CRM, ClusterTool::SIGN, ClusterTool::SUPPORT,
             ClusterTool::LINK, ClusterTool::DATA, ClusterTool::ANALYTICS,
             ClusterTool::FLOW, ClusterTool::SHEETS, ClusterTool::ERRORS,
-            ClusterTool::GIT, ClusterTool::INSIGHTS, ClusterTool::SSO => [DatabaseDriver::POSTGRESQL, DatabaseDriver::MYSQL],
+            ClusterTool::GIT, ClusterTool::METABASE, ClusterTool::SSO => [DatabaseDriver::POSTGRESQL, DatabaseDriver::MYSQL],
             default => DatabaseDriver::cases(),
         };
     }

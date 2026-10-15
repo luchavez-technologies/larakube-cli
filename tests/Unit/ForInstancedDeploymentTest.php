@@ -56,7 +56,7 @@ test('a headless tool is identified by a null service(), not a parallel contract
     // service() already models "exposes something over HTTP". Adding a
     // NeedsDomain contract beside it would be a second source of truth that
     // could disagree.
-    expect(ClusterTool::DNS->service())->toBeNull();
+    expect(ClusterTool::EXTERNAL_DNS->service())->toBeNull();
 
     foreach ([ClusterTool::NOTES, ClusterTool::MAIL, ClusterTool::MONITOR] as $tool) {
         expect($tool->service())->not->toBeNull();

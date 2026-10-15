@@ -12,12 +12,12 @@ abstract class RecordRemoveCommand extends AbstractToolRemoveCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::RECORD;
+        return ClusterTool::SENDREC;
     }
 
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
-        $names = ToolInstance::forInstance(ClusterTool::RECORD, (string) $this->resolveInstance($kubectl));
+        $names = ToolInstance::forInstance(ClusterTool::SENDREC, (string) $this->resolveInstance($kubectl));
 
         return trim(Process::run(
             "{$kubectl} get secret {$names->secret()} -n {$namespace} --ignore-not-found",
@@ -26,7 +26,7 @@ abstract class RecordRemoveCommand extends AbstractToolRemoveCommand
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
-        $names = ToolInstance::forInstance(ClusterTool::RECORD, (string) $this->resolveInstance($kubectl));
+        $names = ToolInstance::forInstance(ClusterTool::SENDREC, (string) $this->resolveInstance($kubectl));
         $deployment = $names->deployment();
 
         return $this->removeResources(

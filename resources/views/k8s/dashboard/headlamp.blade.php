@@ -3,9 +3,9 @@
     // ingress path (which passes only the host), so derive what is missing.
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::DASHBOARD->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+        : \App\Enums\ClusterTool::HEADLAMP->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
     // Every name comes from ToolInstance (ADR 0021).
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::DASHBOARD, $instance);
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::HEADLAMP, $instance);
     $deployment = $names->deployment();
     $oidcSecret = $names->secret(\App\Enums\SecretKind::OIDC);
     $labels = $names->labels();
@@ -65,7 +65,7 @@ subjects:
 # logged-in user.
 #
 # The "-" prefix on the group name is NOT a typo. "dashboard-admin" is the bare
-# Zitadel project role key (ClusterTool::DASHBOARD->rbacRoles()) that
+# Zitadel project role key (ClusterTool::HEADLAMP->rbacRoles()) that
 # zitadelEnsureRbacAction() flattens into the token's `groups` claim — a fixed,
 # cluster-wide claim value, never instance-suffixed (there is exactly one K8s
 # API server this binds against, regardless of naming convention elsewhere) —

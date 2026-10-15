@@ -73,7 +73,7 @@ abstract class DnsInitCommand extends AbstractToolInitCommand
 
     protected function deployDns(): int
     {
-        $env = $this->resolveToolEnvironment(ClusterTool::DNS);
+        $env = $this->resolveToolEnvironment(ClusterTool::EXTERNAL_DNS);
 
         if ($env === 'local') {
             $this->laraKubeError('ExternalDNS is only supported on cloud environments.');

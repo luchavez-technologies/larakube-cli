@@ -47,7 +47,7 @@ test('sso:wire is registered', function (): void {
 
 test('sso:wire rejects a tool with no OIDC support', function (): void {
     ssoRegistered();
-    $this->artisan('sso:wire', ['--tool' => 'dns', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'external-dns', '--no-interaction' => true])
         ->assertExitCode(1)
         ->expectsOutputToContain("can't be wired to SSO");
 });
@@ -76,7 +76,7 @@ test('sso:wire resolves a cloud tool host from the cluster registry when .laraku
     // persists to the CLUSTER REGISTRY, not .larakube.json — the project
     // file's `hosts` map never gets a `dashboard` entry at all. sso:wire's
     // targetHost() only ever read .larakube.json, so it reported "No host is
-    // configured for Kubernetes Control Plane (Headlamp) or Zitadel" even
+    // configured for Headlamp (Kubernetes Dashboard) or Zitadel" even
     // though both :init commands had clearly already run. This fixture
     // mirrors that exact state: .larakube.json knows about `sso` (an older
     // tool, wired before the registry migration) but nothing about
@@ -104,7 +104,7 @@ test('sso:wire resolves a cloud tool host from the cluster registry when .laraku
             '*get secret larakube-tools-registry*' => Process::result(
                 output: base64_encode((string) json_encode([
                     ssoRegistryRow(),
-                    ['tool' => 'dashboard', 'instance' => 'main', 'installed_at' => '2026-08-01T00:00:00+00:00', 'host' => 'dashboard.luchtech.dev'],
+                    ['tool' => 'headlamp', 'instance' => 'main', 'installed_at' => '2026-08-01T00:00:00+00:00', 'host' => 'dashboard.luchtech.dev'],
                 ])),
             ),
             '*create secret generic*' => Process::result(output: 'secret created'),
@@ -128,7 +128,7 @@ test('sso:wire resolves a cloud tool host from the cluster registry when .laraku
             CreateProjectRoleRequest::class => MockResponse::make([]),
         ]);
 
-        $this->artisan('sso:wire', ['environment' => 'production', '--context' => 'ctx', '--tool' => 'dashboard', '--no-interaction' => true])
+        $this->artisan('sso:wire', ['environment' => 'production', '--context' => 'ctx', '--tool' => 'headlamp', '--no-interaction' => true])
             ->assertExitCode(0)
             ->doesntExpectOutputToContain('No host is configured')
             ->expectsOutputToContain('wired to Zitadel SSO');
@@ -655,7 +655,7 @@ test('sso:wire refreshes a stale flattenLaraKubeRoles script to add the groups c
         },
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'dashboard', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'headlamp', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('wired to Zitadel SSO');
 
@@ -734,7 +734,7 @@ test('sso:wire aborts before registering an OIDC client if role-gating setup fai
 });
 
 test('sso:wire gates the ForwardAuth proxy with --allowed-group for a role-gated tool', function (): void {
-    Tests\Support\FakeToolRegistry::install([openBaoRegistryRow(), ssoRegistryRow(), ['tool' => 'record', 'instance' => 'record-example-com', 'host' => 'record.example.com']]);
+    Tests\Support\FakeToolRegistry::install([openBaoRegistryRow(), ssoRegistryRow(), ['tool' => 'sendrec', 'instance' => 'record-example-com', 'host' => 'record.example.com']]);
     // Record (Sendrec) has no native OIDC of its own — it's gated at the
     // ingress via the shared SSO proxy (ADR 0006). Added 2026-08-20: that
     // ADR's own "non-goals" section already named this gap
@@ -775,7 +775,7 @@ test('sso:wire gates the ForwardAuth proxy with --allowed-group for a role-gated
         CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'record', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'sendrec', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('is gated behind Zitadel SSO')
         ->expectsOutputToContain('record-user')
@@ -787,7 +787,7 @@ test('sso:wire gates the ForwardAuth proxy with --allowed-group for a role-gated
 });
 
 test('sso:wire aborts before deploying the ForwardAuth proxy if role-gating setup fails', function (): void {
-    Tests\Support\FakeToolRegistry::install([openBaoRegistryRow(), ssoRegistryRow(), ['tool' => 'record', 'instance' => 'record-example-com', 'host' => 'record.example.com']]);
+    Tests\Support\FakeToolRegistry::install([openBaoRegistryRow(), ssoRegistryRow(), ['tool' => 'sendrec', 'instance' => 'record-example-com', 'host' => 'record.example.com']]);
     Process::fake([
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment sendrec-record-example-com*' => Process::result(output: 'sendrec-record-example-com   1/1   1   1   10d'),
@@ -804,7 +804,7 @@ test('sso:wire aborts before deploying the ForwardAuth proxy if role-gating setu
         GetProjectRequest::class => MockResponse::make(['project' => ['id' => 'proj-1', 'name' => 'LaraKube RBAC', 'projectRoleAssertion' => true, 'projectRoleCheck' => true]]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'record', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'sendrec', '--no-interaction' => true])
         ->assertExitCode(1)
         ->expectsOutputToContain('Could not set up role-gated access');
 

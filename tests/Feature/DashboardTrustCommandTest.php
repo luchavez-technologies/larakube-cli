@@ -62,7 +62,7 @@ function dashboardTrustRegistryJson(): string
 {
     return (string) json_encode([
         [...ssoRegistryRow(), 'host' => 'sso.luchtech.dev'],
-        ['tool' => 'dashboard', 'instance' => 'dashboard-luchtech-dev', 'host' => 'dashboard.luchtech.dev'],
+        ['tool' => 'headlamp', 'instance' => 'dashboard-luchtech-dev', 'host' => 'dashboard.luchtech.dev'],
     ]);
 }
 

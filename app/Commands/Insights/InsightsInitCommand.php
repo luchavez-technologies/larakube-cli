@@ -41,14 +41,14 @@ abstract class InsightsInitCommand extends AbstractToolInitCommand
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = Kubectl::forContext($context)->prefix();
-        $host = $this->resolveToolHost(SharedClusterService::INSIGHTS, ClusterTool::INSIGHTS, $env, $kubectl);
+        $host = $this->resolveToolHost(SharedClusterService::INSIGHTS, ClusterTool::METABASE, $env, $kubectl);
 
-        $names = ToolInstance::forHost(ClusterTool::INSIGHTS, $host);
+        $names = ToolInstance::forHost(ClusterTool::METABASE, $host);
         $ns = $this->insightsNamespace();
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::INSIGHTS, $kubectl, $names->instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::METABASE, $kubectl, $names->instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -80,7 +80,7 @@ abstract class InsightsInitCommand extends AbstractToolInitCommand
             Kubectl::fromPrefix($kubectl)->putSecret($ns, $names->secret(), ['db-password' => $dbPassword, 'encryption-key' => $encryptionKey, 'admin-email' => $adminEmail]);
         });
 
-        $branding = $this->resolveToolBranding($kubectl, ClusterTool::INSIGHTS, ClusterTool::INSIGHTS->instanceSlugFromHost($host));
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::METABASE, ClusterTool::METABASE->instanceSlugFromHost($host));
 
         $manifest = view('k8s.insights.shared', [
             'dbName' => $dbName,
@@ -103,7 +103,7 @@ abstract class InsightsInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Insights (Metabase) manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 120, tool: ClusterTool::INSIGHTS),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 120, tool: ClusterTool::METABASE),
         );
         $temporaryDirectory->delete();
 
@@ -111,7 +111,7 @@ abstract class InsightsInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::INSIGHTS, $kubectl, $host, $names->instance, extra: ['adminEmail' => $adminEmail]);
+        $this->registerDeployedTool(ClusterTool::METABASE, $kubectl, $host, $names->instance, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Insights (Metabase) stack is live.');
@@ -125,7 +125,7 @@ abstract class InsightsInitCommand extends AbstractToolInitCommand
 
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::INSIGHTS);
+        return $this->resolveToolEnvironment(ClusterTool::METABASE);
     }
 
     protected function readInsightsEncryptionKey(string $kubectl, string $ns, string $secret): ?string

@@ -9,7 +9,7 @@ test('vpn:wire is registered', function (): void {
 });
 
 test('vpn:wire rejects a tool with no --vpn-only mode', function (): void {
-    $this->artisan('vpn:wire', ['--tool' => 'dns'])
+    $this->artisan('vpn:wire', ['--tool' => 'external-dns'])
         ->assertExitCode(1)
         ->expectsOutputToContain("doesn't have a --vpn-only ingress mode");
 });
@@ -109,7 +109,7 @@ test('vpn:wire --domain= passes the domain through to the re-applied {tool}:init
 });
 
 test('vpn:wire rejects --domain on a tool that does not support multiple instances', function (): void {
-    $this->artisan('vpn:wire', ['--tool' => 'dashboard', '--domain' => 'blog.example.com'])
+    $this->artisan('vpn:wire', ['--tool' => 'headlamp', '--domain' => 'blog.example.com'])
         ->assertExitCode(1)
         ->expectsOutputToContain('does not support multiple instances');
 });

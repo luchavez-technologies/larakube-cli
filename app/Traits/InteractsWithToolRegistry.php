@@ -190,7 +190,7 @@ trait InteractsWithToolRegistry
      */
     protected function isToolPresentOnCluster(string $kubectl, ClusterTool $tool, ?string $instance = null): bool
     {
-        if ($tool === ClusterTool::DNS || $tool === ClusterTool::EXTERNAL_DNS) {
+        if ($tool === ClusterTool::EXTERNAL_DNS) {
             return trim(Process::run("{$kubectl} get deployment -n larakube-shared --no-headers --ignore-not-found 2>/dev/null | grep external-dns")->output()) !== '';
         }
 

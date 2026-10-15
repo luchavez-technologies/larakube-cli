@@ -36,13 +36,13 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
     $expected = [
         'analytics' => 'umami', 'crm' => 'twenty',
         'drive' => 'ocis', 'errors' => 'glitchtip',
-        'flow' => 'n8n', 'insights' => 'metabase',
+        'flow' => 'n8n', 'metabase' => 'metabase',
         'link' => 'kutt', 'mail' => 'stalwart', 'monitor' => 'grafana',
-        'notes' => 'outline', 'passwords' => 'vaultwarden', 'record' => 'sendrec',
+        'notes' => 'outline', 'passwords' => 'vaultwarden', 'sendrec' => 'sendrec',
         'secrets' => 'openbao', 'sheets' => 'teable', 'sign' => 'documenso',
         'sso' => 'zitadel', 'support' => 'chatwoot', 'tasks' => 'planka',
         'uptime' => 'kuma', 'webmail' => 'bulwark',
-        'dns' => 'external-dns', 'dashboard' => 'headlamp', 'meet' => 'livekit',
+        'external-dns' => 'external-dns', 'headlamp' => 'headlamp', 'meet' => 'livekit',
         'design' => 'penpot-backend',
     ];
 
