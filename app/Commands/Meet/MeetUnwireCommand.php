@@ -122,7 +122,7 @@ class MeetUnwireCommand extends Command
         $this->laraKubeInfo('✅ Team Chat is disconnected from Meet.');
         $this->newLine();
         $this->line('  <fg=gray>Matrix video calling is now unavailable until you re-wire it.</>');
-        $this->line("  <fg=gray>Re-connect:</> <fg=blue>larakube meet:wire {$env} --tool=chat</>");
+        $this->line("  <fg=gray>Re-connect:</> <fg=blue>larakube meet:wire {$env} --tool=matrix</>");
         $this->newLine();
 
         return 0;

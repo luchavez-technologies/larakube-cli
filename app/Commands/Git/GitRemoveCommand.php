@@ -14,7 +14,7 @@ abstract class GitRemoveCommand extends AbstractToolRemoveCommand
 
     protected function tool(): ClusterTool
     {
-        return ClusterTool::GIT;
+        return ClusterTool::FORGEJO;
     }
 
     /** @return list<string> */
@@ -34,7 +34,7 @@ abstract class GitRemoveCommand extends AbstractToolRemoveCommand
             $this->teardownComponentsCommand($kubectl, $namespace, $instance),
         );
 
-        $vpnMiddleware = ClusterTool::GIT->vpnMiddlewareTarget($instance);
+        $vpnMiddleware = ClusterTool::FORGEJO->vpnMiddlewareTarget($instance);
         if ($vpnMiddleware !== null) {
             Process::run("{$kubectl} delete middleware/{$vpnMiddleware['name']} -n {$vpnMiddleware['namespace']} --ignore-not-found 2>/dev/null");
         }

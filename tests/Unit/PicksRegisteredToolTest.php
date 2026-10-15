@@ -58,7 +58,7 @@ test('each registered instance is its own row, labelled by the host that identif
     $subject = picksSubject((string) json_encode([
         ['tool' => 'outline', 'host' => 'notes.example.com'],
         ['tool' => 'outline', 'host' => 'team.notes.example.com'],
-        ['tool' => 'chat', 'host' => 'chat.example.com'],
+        ['tool' => 'matrix', 'host' => 'chat.example.com'],
     ]));
 
     $choices = $subject->choicesFor('kubectl', fn (ClusterTool $t): bool => $t->hasVpnWire());
@@ -76,7 +76,7 @@ test('keys are strings, never integers', function (): void {
     // to whatever sits first. Confirmed live 2026-08-29 — picking NetBird
     // wired Matrix.
     $subject = picksSubject((string) json_encode([
-        ['tool' => 'chat', 'host' => 'chat.example.com'],
+        ['tool' => 'matrix', 'host' => 'chat.example.com'],
     ]));
 
     $choices = $subject->choicesFor('kubectl', fn (ClusterTool $t): bool => $t->hasVpnWire());
@@ -86,13 +86,13 @@ test('keys are strings, never integers', function (): void {
 
 test('the capability predicate keeps out tools the pair cannot act on', function (): void {
     $subject = picksSubject((string) json_encode([
-        ['tool' => 'chat', 'host' => 'chat.example.com'],
+        ['tool' => 'matrix', 'host' => 'chat.example.com'],
         ['tool' => 'external-dns', 'host' => 'dns.example.com'],
     ]));
 
     $choices = $subject->choicesFor('kubectl', fn (ClusterTool $t): bool => $t->hasVpnWire());
 
-    expect($choices)->toHaveKey('chat|chat.example.com')
+    expect($choices)->toHaveKey('matrix|chat.example.com')
         ->and($choices)->not->toHaveKey('dns|dns.example.com');
 });
 
@@ -117,7 +117,7 @@ test('--tool narrows the list to that tool\'s instances instead of skipping the 
     $subject = picksSubject((string) json_encode([
         ['tool' => 'outline', 'host' => 'notes.example.com'],
         ['tool' => 'outline', 'host' => 'team.notes.example.com'],
-        ['tool' => 'chat', 'host' => 'chat.example.com'],
+        ['tool' => 'matrix', 'host' => 'chat.example.com'],
     ]));
 
     $choices = $subject->choicesFor(

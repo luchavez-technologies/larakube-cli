@@ -161,7 +161,7 @@ class MailTestCommand extends Command
         // NO -crlf: the convo already uses \r\n, and -crlf would turn each into
         // \r\r\n — strict servers (e.g. SES) reject the doubled CR with a 501.
         $script = 'echo '.base64_encode($convo).' | base64 -d | openssl s_client -quiet -connect 127.0.0.1:465 2>/dev/null';
-        $deployment = ClusterTool::MAIL->deploymentName($this->resolveMailInstance($kubectl));
+        $deployment = ClusterTool::STALWART->deploymentName($this->resolveMailInstance($kubectl));
         $raw = Process::timeout(40)->run(
             "{$kubectl} exec deploy/{$deployment} -n {$ns} -- sh -c ".escapeshellarg($script),
         )->output();

@@ -19,7 +19,7 @@ trait DeregistersSsoApp
 {
     protected function deregisterSsoApp(ClusterTool $tool, string $instance, string $kubectl, string $env): void
     {
-        $ssoNs = ClusterTool::SSO->namespace();
+        $ssoNs = ClusterTool::ZITADEL->namespace();
         $appSecret = $this->ssoAppSecretName($tool, $instance);
         $projectId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'project-id');
         $appId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'app-id');

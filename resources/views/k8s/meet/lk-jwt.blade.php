@@ -1,5 +1,5 @@
 {{-- The Matrix↔LiveKit bridge. It belongs to neither service on its own: it
-     exists only while `meet:wire --tool=chat` says the two are connected, which
+     exists only while `meet:wire --tool=matrix` says the two are connected, which
      is why it lives here rather than in either tool's own manifest. --}}
 @php
     $__tplHash = substr(hash_file('sha256', resource_path('views/k8s/meet/lk-jwt.blade.php')), 0, 12);

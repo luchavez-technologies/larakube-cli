@@ -309,11 +309,11 @@ class SsoWireCommand extends Command
         // Skip applyToolEnv and go straight to wireSynapseOidc.
         // OpenBao is configured via its CLI inside the pod (bao auth enable oidc).
         // NetBird is configured via its own REST API (/api/identity-providers).
-        if ($tool->category() === ClusterTool::CHAT) {
+        if ($tool === ClusterTool::MATRIX) {
             $ok = $this->wireSynapseOidc($kubectl, $schema['namespace'], $ssoHost, $logical['issuer'], $clientId, $clientSecret, $env);
-        } elseif ($tool->category() === ClusterTool::SECRETS) {
+        } elseif ($tool === ClusterTool::OPENBAO) {
             $ok = $this->wireOpenBaoOidc($kubectl, $schema['namespace'], $ssoHost, $toolHost, $clientId, $clientSecret, $env);
-        } elseif ($tool->category() === ClusterTool::VPN) {
+        } elseif ($tool === ClusterTool::NETBIRD) {
             $ok = $this->wireNetbirdOidc($kubectl, $schema['namespace'], $toolHost, $ssoHost, $clientId, $clientSecret);
         } else {
             $ok = $tool->usesCliOidc()
@@ -511,7 +511,7 @@ class SsoWireCommand extends Command
         // :init / heal re-inject creds for the now-deregistered Zitadel app.
         Process::run("{$kubectl} delete secret {$schema['secret']} -n {$schema['namespace']} --ignore-not-found");
 
-        if ($tool->category() === ClusterTool::CHAT) {
+        if ($tool === ClusterTool::MATRIX) {
             $this->unwireSynapseOidc($kubectl, $schema['namespace']);
             Process::run("{$kubectl} rollout restart deployment/{$schema['deployment']} -n {$schema['namespace']}");
             $this->laraKubeInfo("✅ {$tool->getLabel()} no longer uses Zitadel SSO.");
@@ -519,7 +519,7 @@ class SsoWireCommand extends Command
             return 0;
         }
 
-        if ($tool->category() === ClusterTool::SECRETS) {
+        if ($tool === ClusterTool::OPENBAO) {
             $this->unwireOpenBaoOidc($kubectl, $schema['namespace']);
             $this->laraKubeInfo("✅ {$tool->getLabel()} no longer uses Zitadel SSO.");
 
@@ -713,7 +713,7 @@ class SsoWireCommand extends Command
             $rbacRole = array_key_first($tool->rbacRoles());
         }
 
-        $app = $this->ensureProxyOidcApp($kubectl, $ssoNs, $ssoHost, $authHost, $pat, $env, $this->ssoAppSecretName(ClusterTool::SSO, $sso->instance, 'proxy'));
+        $app = $this->ensureProxyOidcApp($kubectl, $ssoNs, $ssoHost, $authHost, $pat, $env, $this->ssoAppSecretName(ClusterTool::ZITADEL, $sso->instance, 'proxy'));
         if ($app === null) {
             return 1;
         }
@@ -824,7 +824,7 @@ class SsoWireCommand extends Command
         $sso = $this->ssoNames($kubectl);
         if ($sso !== null && $this->gatedForwardAuthTools($kubectl, $tool) === []) {
             $this->withSpin('No gated tools left — removing the shared SSO proxy...', function () use ($kubectl, $sso, $ssoNs, $ssoHost, $pat): void {
-                $appSecret = $this->ssoAppSecretName(ClusterTool::SSO, $sso->instance, 'proxy');
+                $appSecret = $this->ssoAppSecretName(ClusterTool::ZITADEL, $sso->instance, 'proxy');
                 $projectId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'project-id');
                 $appId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'app-id');
                 if ($projectId !== null && $appId !== null) {
@@ -1601,7 +1601,7 @@ class SsoWireCommand extends Command
         $this->line('  <fg=gray>just retired. Only an SSO login produces one SSO users can share.</>');
         $this->newLine();
         $this->line('  <fg=gray>1.</> Grant yourself the role first — SSO is denied to everyone until then:');
-        $this->line('     <fg=blue>larakube sso:grant --tool=vpn --domain='.$toolHost.' --role=vpn-user --email=&lt;you&gt;</>');
+        $this->line('     <fg=blue>larakube sso:grant --tool=netbird --domain='.$toolHost.' --role=vpn-user --email=&lt;you&gt;</>');
         $this->line('     <fg=gray>Then sign in through the identity provider directly, NOT the dashboard root:</>');
         $this->line('     <fg=blue>https://'.$toolHost.'/oauth2/auth?client_id=netbird-dashboard&amp;response_type=code&amp;scope=openid+profile+email&amp;redirect_uri=https://'.$toolHost.'/nb-auth</>');
         $this->line('  <fg=gray>2.</> Mint a token: <fg=gray>Team → Users → your user → Access Tokens, then</>');

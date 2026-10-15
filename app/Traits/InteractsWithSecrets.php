@@ -44,7 +44,7 @@ trait InteractsWithSecrets
             return $this->secretsNamesOverride;
         }
 
-        return $this->secretsNamesMemo[$kubectl] ??= ToolInstance::first($kubectl, ClusterTool::SECRETS);
+        return $this->secretsNamesMemo[$kubectl] ??= ToolInstance::first($kubectl, ClusterTool::OPENBAO);
     }
 
     /** The in-cluster URL ESO and every generator reach OpenBao on, or null when not installed. */
@@ -58,7 +58,7 @@ trait InteractsWithSecrets
     /** The dedicated namespace the Secrets Manager lives in. */
     protected function secretsNamespace(): string
     {
-        return ClusterTool::SECRETS->namespace();
+        return ClusterTool::OPENBAO->namespace();
     }
 
     /** OpenBao secrets backend Deployment present? */

@@ -10,7 +10,7 @@ function gitLoginFakes(array $overrides = []): array
         '*logins delete*' => Process::result(),
         '*login add*' => Process::result(output: 'Login as larakube on https://git.example.com successful'),
         '*get secret larakube-tools-registry*' => base64_encode(json_encode([
-            ['tool' => 'git', 'instance' => 'git-example-com', 'host' => 'git.example.com'],
+            ['tool' => 'forgejo', 'instance' => 'git-example-com', 'host' => 'git.example.com'],
         ])),
         '*' => Process::result(),
     ], $overrides);

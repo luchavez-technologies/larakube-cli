@@ -63,7 +63,7 @@ trait InteractsWithStalwartApi
             return $pod;
         }
 
-        return 'deploy/'.ClusterTool::MAIL->deploymentName($this->resolveMailInstance($kubectl));
+        return 'deploy/'.ClusterTool::STALWART->deploymentName($this->resolveMailInstance($kubectl));
     }
 
     protected function stalwartBasicAuth(string $kubectl, string $ns): ?string
@@ -130,7 +130,7 @@ trait InteractsWithStalwartApi
         }
 
         $port = random_int(30100, 31100);
-        $svc = ClusterTool::MAIL->deploymentName($this->resolveMailInstance($kubectl));
+        $svc = ClusterTool::STALWART->deploymentName($this->resolveMailInstance($kubectl));
         $pf = Process::start("{$kubectl} port-forward -n {$ns} svc/{$svc} {$port}:8080");
 
         if (! $this->awaitLocalPort($port, $pf)) {

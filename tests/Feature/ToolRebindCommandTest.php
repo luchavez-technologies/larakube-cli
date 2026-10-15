@@ -30,7 +30,7 @@ test('tool:rebind updates the registry host and re-applies the Ingress without c
         '*annotate ingress*' => Process::result(output: 'annotated'),
     ]);
 
-    $this->artisan('tool:rebind', ['--tool' => 'mail', '--to' => 'mail.newdomain.com', '--force' => true])
+    $this->artisan('tool:rebind', ['--tool' => 'stalwart', '--to' => 'mail.newdomain.com', '--force' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('now serves https://mail.newdomain.com')
         ->expectsOutputToContain('instance: send-luchtech-dev');
@@ -41,7 +41,7 @@ test('tool:rebind refuses when the tool is not registered', function (): void {
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([]))),
     ]);
 
-    $this->artisan('tool:rebind', ['--tool' => 'mail', '--to' => 'mail.newdomain.com', '--force' => true])
+    $this->artisan('tool:rebind', ['--tool' => 'stalwart', '--to' => 'mail.newdomain.com', '--force' => true])
         ->assertExitCode(1)
         ->expectsOutputToContain('is not registered on this cluster');
 });
@@ -55,7 +55,7 @@ test('tool:rebind is a no-op when --to matches the current host', function (): v
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode($registryJson)),
     ]);
 
-    $this->artisan('tool:rebind', ['--tool' => 'mail', '--to' => 'send.luchtech.dev', '--force' => true])
+    $this->artisan('tool:rebind', ['--tool' => 'stalwart', '--to' => 'send.luchtech.dev', '--force' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('already serves send.luchtech.dev — nothing to rebind');
 });
@@ -70,7 +70,7 @@ test('tool:rebind refuses when the new host already belongs to a different tool'
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode($registryJson)),
     ]);
 
-    $this->artisan('tool:rebind', ['--tool' => 'mail', '--to' => 'git.luchtech.dev', '--force' => true])
+    $this->artisan('tool:rebind', ['--tool' => 'stalwart', '--to' => 'git.luchtech.dev', '--force' => true])
         ->assertExitCode(1)
         ->expectsOutputToContain('already registered to');
 });
@@ -98,7 +98,7 @@ test('tool:rebind leaves the registry resolving the SAME instance for the new ho
         '*annotate ingress*' => Process::result(output: 'annotated'),
     ]);
 
-    $this->artisan('tool:rebind', ['--tool' => 'chat', '--to' => 'talk.newdomain.com', '--force' => true])
+    $this->artisan('tool:rebind', ['--tool' => 'matrix', '--to' => 'talk.newdomain.com', '--force' => true])
         ->assertExitCode(0);
 
     // This is exactly what SsoWireCommand::handle() calls (resolveInstanceForDomain,
@@ -120,5 +120,5 @@ test('tool:rebind requires --force when running non-interactively', function ():
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode($registryJson)),
     ]);
 
-    $this->artisan('tool:rebind', ['--tool' => 'mail', '--to' => 'mail.newdomain.com']);
+    $this->artisan('tool:rebind', ['--tool' => 'stalwart', '--to' => 'mail.newdomain.com']);
 })->throws(App\Exceptions\MissingFlagException::class, 'Missing required --force');

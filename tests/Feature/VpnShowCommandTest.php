@@ -23,7 +23,7 @@ function vpnShowFakes(string $singleAccountLog): array
         '*get secret netbird-secrets*' => Process::result(output: '', exitCode: 1),
         '*larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
-                ['tool' => 'vpn', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'vpn.example.com'],
+                ['tool' => 'netbird', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'vpn.example.com'],
             ])),
         ),
         '*' => Process::result(output: ''),

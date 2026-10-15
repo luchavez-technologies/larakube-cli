@@ -482,7 +482,7 @@ test('secrets:wire requires --tool or --all when it cannot prompt', function ():
     $this->artisan('secrets:wire local --no-interaction')->run();
 })->throws(MissingFlagException::class, 'Missing required --tool');
 
-test('secrets:wire --tool=mail registers a static role for stalwart and restarts stalwart deployment', function (): void {
+test('secrets:wire --tool=stalwart registers a static role for stalwart and restarts stalwart deployment', function (): void {
     openBaoRegistered();
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
@@ -501,9 +501,9 @@ test('secrets:wire --tool=mail registers a static role for stalwart and restarts
         MockResponse::make([]),
     ]);
 
-    $this->artisan('secrets:wire local --tool=mail --force')
+    $this->artisan('secrets:wire local --tool=stalwart --force')
         ->assertExitCode(0)
-        ->expectsOutputToContain("Mail Server (Stalwart)'s DB password is now rotated by OpenBao every 168h");
+        ->expectsOutputToContain("Stalwart (All-in-One Mail Server)'s DB password is now rotated by OpenBao every 168h");
 
     Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
         && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/stalwart')
@@ -518,7 +518,7 @@ test('secrets:wire --tool=mail registers a static role for stalwart and restarts
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/stalwart'));
 });
 
-test('secrets:wire --tool=mail does not restart the deployment when the forced rotation fails', function (): void {
+test('secrets:wire --tool=stalwart does not restart the deployment when the forced rotation fails', function (): void {
     openBaoRegistered();
     // Regression: registerStaticRole()'s create-time rotation is not
     // reliable when re-wiring a role name that previously existed and was
@@ -546,9 +546,9 @@ test('secrets:wire --tool=mail does not restart the deployment when the forced r
         MockResponse::make([], 500),
     ]);
 
-    $this->artisan('secrets:wire local --tool=mail --force')
+    $this->artisan('secrets:wire local --tool=stalwart --force')
         ->assertExitCode(1)
-        ->expectsOutputToContain("Could not confirm Mail Server (Stalwart)'s static role password with OpenBao.");
+        ->expectsOutputToContain("Could not confirm Stalwart (All-in-One Mail Server)'s static role password with OpenBao.");
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'apply -f'));
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'rollout restart'));
@@ -590,9 +590,9 @@ test('secrets:wire --tool=vaultwarden registers a static role for vaultwarden wi
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/vaultwarden-vault-dev-test'));
 });
 
-test('secrets:wire supports git, notes, sheets, and chat tools', function (): void {
+test('secrets:wire supports git, notes, sheets, and matrix tools', function (): void {
     openBaoRegistered();
-    foreach (['git' => 'forgejo', 'outline' => 'outline-secrets', 'teable' => 'sheet-secrets', 'chat' => 'chat-secrets'] as $toolSlug => $secretName) {
+    foreach (['forgejo' => 'forgejo', 'outline' => 'outline-secrets', 'teable' => 'sheet-secrets', 'matrix' => 'chat-secrets'] as $toolSlug => $secretName) {
         expect(App\Enums\ClusterTool::from($toolSlug)->dbSecretRef())->not->toBeNull();
     }
 });

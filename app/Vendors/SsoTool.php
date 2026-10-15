@@ -32,7 +32,7 @@ final class SsoTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
     {
         $database = ($instance === null || $instance === '')
             ? 'zitadel'
-            : ToolInstance::forInstance(ClusterTool::SSO, $instance)->database();
+            : ToolInstance::forInstance(ClusterTool::ZITADEL, $instance)->database();
 
         return [
             ['Database', "{$database} (Commons Postgres)"],
@@ -83,7 +83,7 @@ final class SsoTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommon
     public function components(?string $instance = null, ?string $engine = null): array
     {
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
-        $canonical = fn (string $n) => ClusterTool::SSO->withoutCategory($n);
+        $canonical = fn (string $n) => ClusterTool::ZITADEL->withoutCategory($n);
         $deployment = $canonical($name('sso-zitadel'));
 
         return [

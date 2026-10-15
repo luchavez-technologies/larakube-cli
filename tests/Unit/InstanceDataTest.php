@@ -36,7 +36,7 @@ test('InstanceData round-trips a raw registry entry onto its properties', functi
 
 test('InstanceData stores dates as ISO-8601 strings, not raw timestamps', function (): void {
     $data = InstanceData::from([
-        'tool' => 'sso',
+        'tool' => 'zitadel',
         'installedAt' => '2026-08-01T09:00:00+00:00',
         'updatedAt' => '2026-08-01T09:00:00+00:00',
     ]);
@@ -63,7 +63,7 @@ test('adminEmail defaults to null for tools that never record one (e.g. mail, fl
 
 test('engine defaults to null for tools with no engine concept', function (): void {
     $data = InstanceData::from([
-        'tool' => 'sso',
+        'tool' => 'zitadel',
         'host' => 'sso.example.com',
         'instance' => 'main',
     ]);

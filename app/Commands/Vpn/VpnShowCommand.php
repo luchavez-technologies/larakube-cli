@@ -16,7 +16,7 @@ abstract class VpnShowCommand extends AbstractToolShowCommand
 
     protected function tool(): ClusterTool
     {
-        return ClusterTool::VPN;
+        return ClusterTool::NETBIRD;
     }
 
     /**

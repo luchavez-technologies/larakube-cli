@@ -142,7 +142,7 @@ class ToolAddCommand extends Command
         }
 
         // Check if mail (Stalwart) is actually installed in the cluster registry
-        if (! $this->isToolRegistered($kubectl, ClusterTool::MAIL)) {
+        if (! $this->isToolRegistered($kubectl, ClusterTool::STALWART)) {
             return;
         }
 
@@ -197,7 +197,7 @@ class ToolAddCommand extends Command
             return;
         }
 
-        if (! $this->isToolRegistered($kubectl, ClusterTool::SSO)) {
+        if (! $this->isToolRegistered($kubectl, ClusterTool::ZITADEL)) {
             return;
         }
 

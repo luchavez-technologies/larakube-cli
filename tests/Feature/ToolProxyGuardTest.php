@@ -68,7 +68,7 @@ test('tools that can\'t sit behind Cloudflare refuse --proxied', function (Clust
     proxyGuardCluster();
 
     guardProxy(proxyGuardCommand(['--proxied' => true]), 'x.example.com', $tool);
-})->with([ClusterTool::GIT, ClusterTool::MAIL, ClusterTool::VPN, ClusterTool::LIVEKIT])
+})->with([ClusterTool::FORGEJO, ClusterTool::STALWART, ClusterTool::NETBIRD, ClusterTool::LIVEKIT])
     ->throws(RuntimeException::class, 'Not proxying x.example.com');
 
 test('--vpn-only with --proxied is refused', function (): void {
@@ -99,7 +99,7 @@ test('local installs are never checked or proxied', function (): void {
     Process::fake(['*' => Process::result(output: '')]);
     $command = proxyGuardCommand(['--proxied' => true]);
 
-    (new ReflectionMethod($command, 'guardRequestedProxy'))->invoke($command, ClusterTool::GIT, 'local', 'kubectl', 'git.test');
+    (new ReflectionMethod($command, 'guardRequestedProxy'))->invoke($command, ClusterTool::FORGEJO, 'local', 'kubectl', 'git.test');
 
     expect($command->resolveProxied(true))->toBeFalse();
     Process::assertNothingRan();

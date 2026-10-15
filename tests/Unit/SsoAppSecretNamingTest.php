@@ -30,16 +30,16 @@ test('the Zitadel app Secret carries the instance so two instances cannot collid
 
     // {component}-sso-{instance}, the same shape as the tool's other Secrets.
     expect($namer->name(ClusterTool::OUTLINE, 'notes-luchtech-dev'))->toBe('outline-sso-notes-luchtech-dev')
-        ->and($namer->name(ClusterTool::GIT, 'git-luchtech-dev'))->toBe('forgejo-sso-git-luchtech-dev');
+        ->and($namer->name(ClusterTool::FORGEJO, 'git-luchtech-dev'))->toBe('forgejo-sso-git-luchtech-dev');
 
     // Two instances of one tool must not resolve to the same Secret.
-    expect($namer->name(ClusterTool::VPN, 'vpn-a-example-com'))
-        ->not->toBe($namer->name(ClusterTool::VPN, 'vpn-b-example-com'));
+    expect($namer->name(ClusterTool::NETBIRD, 'vpn-a-example-com'))
+        ->not->toBe($namer->name(ClusterTool::NETBIRD, 'vpn-b-example-com'));
 });
 
 test('a tool with two OIDC clients names the second after its component', function (): void {
     $namer = ssoAppNamer();
 
-    expect($namer->name(ClusterTool::CHAT, 'chat-luchtech-dev', 'mas'))
+    expect($namer->name(ClusterTool::MATRIX, 'chat-luchtech-dev', 'mas'))
         ->toBe('mas-sso-chat-luchtech-dev');
 });

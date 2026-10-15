@@ -31,7 +31,7 @@ test('secrets:rotate fails when OpenBao is not deployed', function (): void {
         '*' => Process::result(),
     ]);
 
-    $this->artisan('secrets:rotate local --tool=git --force')
+    $this->artisan('secrets:rotate local --tool=forgejo --force')
         ->assertExitCode(1)
         ->expectsOutputToContain('OpenBao is not deployed.');
 });
@@ -46,7 +46,7 @@ test('secrets:rotate fails when the database engine is not mounted', function ()
 
     Saloon::fake([MockResponse::make(['data' => ['secret/' => ['type' => 'kv']]])]);
 
-    $this->artisan('secrets:rotate local --tool=git --force')
+    $this->artisan('secrets:rotate local --tool=forgejo --force')
         ->assertExitCode(1)
         ->expectsOutputToContain('database secrets engine is not mounted');
 });
@@ -71,7 +71,7 @@ test('secrets:rotate rotates an OpenBao-wired tool immediately', function (): vo
         MockResponse::make([]),
     ]);
 
-    $this->artisan('secrets:rotate local --tool=git --force')
+    $this->artisan('secrets:rotate local --tool=forgejo --force')
         ->assertExitCode(0);
 
     Saloon::assertSent(fn ($request) => str_contains($request->resolveEndpoint(), '/v1/database/rotate-role/forgejo'));
@@ -95,7 +95,7 @@ test('secrets:rotate --tool=X with no --domain never resolves the instance again
         '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             openBaoRegistryRow(),
-            ['tool' => 'secrets', 'host' => 'secrets.example.com', 'instance' => 'secrets-own-instance'],
+            ['tool' => 'openbao', 'host' => 'secrets.example.com', 'instance' => 'secrets-own-instance'],
         ]))),
         // Strict: only the BARE deployment name exists. Anything with an
         // instance suffix appended (the old code's behavior) must resolve
@@ -117,7 +117,7 @@ test('secrets:rotate --tool=X with no --domain never resolves the instance again
         MockResponse::make([]),
     ]);
 
-    $this->artisan('secrets:rotate local --tool=mail --force')
+    $this->artisan('secrets:rotate local --tool=stalwart --force')
         ->assertExitCode(0);
 
     Saloon::assertSent(fn ($request) => str_contains($request->resolveEndpoint(), '/v1/database/static-roles/stalwart')
@@ -142,6 +142,6 @@ test('secrets:rotate rejects an un-wired tool', function (): void {
         MockResponse::make([], 404),
     ]);
 
-    $this->artisan('secrets:rotate local --tool=git --force')
+    $this->artisan('secrets:rotate local --tool=forgejo --force')
         ->assertExitCode(1);
 });

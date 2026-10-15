@@ -88,7 +88,7 @@ class MailCheckCommand extends Command
         }
 
         // --- Cluster -------------------------------------------------------
-        $deployment = ClusterTool::MAIL->deploymentName($this->resolveMailInstance($kubectl));
+        $deployment = ClusterTool::STALWART->deploymentName($this->resolveMailInstance($kubectl));
         $ready = trim(Process::run(
             "{$kubectl} get deployment {$deployment} -n {$ns} -o jsonpath='{.status.readyReplicas}'",
         )->output());

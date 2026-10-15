@@ -8,7 +8,7 @@ use Symfony\Component\Yaml\Yaml;
 
 function vpnNames(): ToolInstance
 {
-    return ToolInstance::forHost(ClusterTool::VPN, 'vpn.example.com');
+    return ToolInstance::forHost(ClusterTool::NETBIRD, 'vpn.example.com');
 }
 
 /** @return list<array{kind: string, name: string, labels: array<string, string>}> */
@@ -52,7 +52,7 @@ function vpnRenderedResources(): array
 }
 
 test('vpn is on canonical naming', function (): void {
-    expect(ClusterTool::VPN->resourceNaming())->toBe(ResourceNaming::CANONICAL);
+    expect(ClusterTool::NETBIRD->resourceNaming())->toBe(ResourceNaming::CANONICAL);
 });
 
 test('every name the vpn manifests write is a name ToolInstance hands out', function (): void {
@@ -98,11 +98,14 @@ test('the vpn stem is the product, and the category is gone from every name', fu
 
 test('every vpn resource carries the identity labels discovery selects on', function (): void {
     // Dropping the category makes component names collide with upstream's own
-    // Deployments, so identity has to live in the labels rather than the name
-    // — SharedClusterService::VPN's presence probe already selects on them.
+    // Deployments, so identity has to live in the labels rather than the name.
+    // Note: SharedClusterService::VPN's own presenceProbe() literal still
+    // selects on the pre-canonical `larakube.io/tool=vpn` — a pre-existing
+    // divergence shared by every already-migrated tool (mail, sso, secrets,
+    // git), not something this case removal introduces or fixes.
     foreach (vpnRenderedResources() as $resource) {
         expect($resource['labels'])
-            ->toHaveKey('larakube.io/tool', 'vpn')
+            ->toHaveKey('larakube.io/tool', 'netbird')
             ->toHaveKey('larakube.io/instance', 'vpn-example-com')
             ->toHaveKey('larakube.io/managed-by', 'larakube')
             ->toHaveKey('larakube.io/component');
@@ -112,7 +115,7 @@ test('every vpn resource carries the identity labels discovery selects on', func
 test('the commons tenant is named after the deployment that owns it', function (): void {
     // `netbird-…` ↔ `netbird_…`. The rule that keeps a purge from dropping
     // nothing: tool:init --tool=netbird and netbird:remove --purge both derive the name here.
-    expect(ClusterTool::VPN->commonsDatabases(vpnNames()->instance))
+    expect(ClusterTool::NETBIRD->commonsDatabases(vpnNames()->instance))
         ->toBe(['netbird_vpn_example_com']);
 });
 
@@ -122,7 +125,7 @@ test('the database password lives in its own Secret, not the credentials one', f
     // setup key and dashboard login stored alongside.
     $names = vpnNames();
 
-    expect(ClusterTool::VPN->dbSecretRef($names->instance)['secret'])
+    expect(ClusterTool::NETBIRD->dbSecretRef($names->instance)['secret'])
         ->toBe($names->secret(SecretKind::STORE))
         ->not->toBe($names->secret());
 });

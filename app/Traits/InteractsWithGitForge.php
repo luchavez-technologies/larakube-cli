@@ -17,7 +17,7 @@ trait InteractsWithGitForge
     /** The shared namespace Forgejo lives in. */
     protected function gitNamespace(): string
     {
-        return ClusterTool::GIT->namespace();
+        return ClusterTool::FORGEJO->namespace();
     }
 
     /**
@@ -27,7 +27,7 @@ trait InteractsWithGitForge
     protected function isGitInstalled(string $kubectl, string $ns, ?string $instance = null): bool
     {
         $target = $instance !== null
-            ? 'deployment '.ClusterTool::GIT->deploymentName($instance)
+            ? 'deployment '.ClusterTool::FORGEJO->deploymentName($instance)
             : 'deployment -l larakube.io/tool=git';
 
         return trim(Process::run("{$kubectl} get {$target} -n {$ns} --no-headers")->output()) !== '';
@@ -61,7 +61,7 @@ trait InteractsWithGitForge
         $ns = $this->gitNamespace();
 
         $host = $this->resolveGitHostReadOnly($env, $config);
-        $instance = $host !== null ? ClusterTool::GIT->instanceSlugFromHost($host) : null;
+        $instance = $host !== null ? ClusterTool::FORGEJO->instanceSlugFromHost($host) : null;
 
         if (! $this->isGitInstalled($kubectl, $ns, $instance)) {
             return null;
@@ -91,7 +91,7 @@ trait InteractsWithGitForge
 
         $kubectl = Kubectl::forContext($context)->prefix();
         $sharedNs = $this->gitNamespace();
-        $secret = ToolInstance::forHost(ClusterTool::GIT, $registryHost)->secret();
+        $secret = ToolInstance::forHost(ClusterTool::FORGEJO, $registryHost)->secret();
 
         $username = trim((string) $this->readClusterSecretKey($kubectl, $sharedNs, $secret, 'username'));
         $token = trim((string) $this->readClusterSecretKey($kubectl, $sharedNs, $secret, 'registry-token'));

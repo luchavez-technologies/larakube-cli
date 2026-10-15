@@ -37,7 +37,7 @@ class ToolRebindCommand extends Command
 
     protected $signature = 'tool:rebind
         {environment=local : Environment whose deployment to rebind}
-        {--tool= : The tool to rebind (e.g. mail, chat, forgejo)}
+        {--tool= : The tool to rebind (e.g. stalwart, matrix, forgejo)}
         {--domain= : The CURRENT host identifying which registered instance to target. Omit for the tool\'s sole instance}
         {--to= : The NEW host this instance should be served under}
         {--context= : Target a specific kube-context}
@@ -57,7 +57,7 @@ class ToolRebindCommand extends Command
             'tool',
             fn () => text(label: 'Which tool should be rebound?', required: true),
             'the tool to rebind',
-            '--tool=mail',
+            '--tool=stalwart',
         );
         $tool = ClusterTool::tryFrom($toolSlug);
         if ($tool === null) {

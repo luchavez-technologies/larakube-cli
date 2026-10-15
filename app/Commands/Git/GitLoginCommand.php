@@ -83,7 +83,7 @@ class GitLoginCommand extends Command
         $kubectl = Kubectl::forContext($context)->prefix();
 
         $hosts = array_values(array_unique(array_filter(array_map(
-            fn (array $entry) => ($entry['tool'] ?? null) === ClusterTool::GIT->value ? ($entry['host'] ?? null) : null,
+            fn (array $entry) => ($entry['tool'] ?? null) === ClusterTool::FORGEJO->value ? ($entry['host'] ?? null) : null,
             $this->getRegisteredTools($kubectl),
         ))));
 

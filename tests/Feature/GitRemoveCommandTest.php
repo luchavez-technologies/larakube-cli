@@ -14,7 +14,7 @@ test('forgejo:remove deletes the same resource set as before the component refac
         // bare/default removal path to pin here anymore.
         '*get secret larakube-tools-registry*' => Process::result(
             base64_encode(json_encode([
-                ['tool' => 'git', 'host' => 'git.luchtech.dev', 'instance' => 'git-luchtech-dev'],
+                ['tool' => 'forgejo', 'host' => 'git.luchtech.dev', 'instance' => 'git-luchtech-dev'],
             ])),
         ),
         '*delete *' => Process::result(output: 'deleted'),

@@ -18,7 +18,7 @@ use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 use App\Data\ToolInstance;
 
-/** The vendor enum backing ClusterTool::CHAT — 'Team Chat'. Only Matrix today. */
+/** The vendor enum backing ClusterTool::MATRIX — 'Team Chat'. Only Matrix today. */
 enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasMeetBridge, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents
 {
     public function getLabel(): string
@@ -30,11 +30,11 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
     {
         $name = ($instance === null || $instance === '')
             ? 'chat-vpn-only'
-            : ToolInstance::forInstance(ClusterTool::CHAT, $instance)->name('vpn-only', 'synapse');
+            : ToolInstance::forInstance(ClusterTool::MATRIX, $instance)->name('vpn-only', 'synapse');
 
         return [
             'name' => $name,
-            'namespace' => ClusterTool::CHAT->namespace(),
+            'namespace' => ClusterTool::MATRIX->namespace(),
         ];
     }
 
@@ -61,7 +61,7 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
         // Null-safe on purpose: ClusterTool::forDeployment()'s reverse lookup
         // calls this with no instance BECAUSE it doesn't know the instance yet.
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
-        $canonical = fn (string $n) => ClusterTool::CHAT->withoutCategory($n);
+        $canonical = fn (string $n) => ClusterTool::MATRIX->withoutCategory($n);
         $synapse = $canonical($name('chat-synapse'));
 
         return [
@@ -165,7 +165,7 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
     public function smtpEnv(?string $instance = null): ?array
     {
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
-        $canonical = fn (string $n) => ClusterTool::CHAT->withoutCategory($n);
+        $canonical = fn (string $n) => ClusterTool::MATRIX->withoutCategory($n);
 
         return [
             'deployment' => $canonical($name('chat-synapse')),
@@ -184,7 +184,7 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
     public function oidcEnv(?string $instance = null): ?array
     {
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
-        $canonical = fn (string $n) => ClusterTool::CHAT->withoutCategory($n);
+        $canonical = fn (string $n) => ClusterTool::MATRIX->withoutCategory($n);
 
         return [
             'deployment' => $canonical($name('chat-synapse')),
@@ -236,7 +236,7 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
         return [
             'secret' => ($instance === null || $instance === '')
                 ? 'synapse-secrets'
-                : ToolInstance::forInstance(ClusterTool::CHAT, $instance)->secret(SecretKind::CREDENTIALS, 'synapse'),
+                : ToolInstance::forInstance(ClusterTool::MATRIX, $instance)->secret(SecretKind::CREDENTIALS, 'synapse'),
             'keys' => ['CHAT_MATRIX_DB_PASSWORD'],
         ];
     }

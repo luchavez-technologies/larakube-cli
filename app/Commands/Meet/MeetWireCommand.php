@@ -59,7 +59,7 @@ class MeetWireCommand extends Command
         }
 
         $meetHost = $this->getToolHost($kubectl, ClusterTool::LIVEKIT);
-        $chatHost = $this->getToolHost($kubectl, ClusterTool::CHAT);
+        $chatHost = $this->getToolHost($kubectl, ClusterTool::MATRIX);
 
         if ($meetHost === null || $chatHost === null) {
             $this->laraKubeError('Could not resolve the Meet and Chat hosts from the tool registry — re-run their init commands.');

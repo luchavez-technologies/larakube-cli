@@ -51,7 +51,7 @@ class MailRestartCommand extends Command
             return 1;
         }
 
-        $deployment = ClusterTool::MAIL->deploymentName($this->resolveMailInstance($kubectl));
+        $deployment = ClusterTool::STALWART->deploymentName($this->resolveMailInstance($kubectl));
 
         $this->withSpin('Restarting Stalwart...', fn () => Process::run(
             "{$kubectl} rollout restart deployment/{$deployment} -n {$ns}",

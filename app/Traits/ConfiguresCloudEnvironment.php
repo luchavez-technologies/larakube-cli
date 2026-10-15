@@ -966,9 +966,9 @@ trait ConfiguresCloudEnvironment
         }
 
         $kubectl = Kubectl::forContext($context)->prefix();
-        $secret = 'git-secrets-'.ClusterTool::GIT->instanceSlugFromHost($registryHost);
-        $username = $this->readClusterSecretKey($kubectl, ClusterTool::GIT->namespace(), $secret, 'username');
-        $token = $this->readClusterSecretKey($kubectl, ClusterTool::GIT->namespace(), $secret, 'registry-token');
+        $secret = 'git-secrets-'.ClusterTool::FORGEJO->instanceSlugFromHost($registryHost);
+        $username = $this->readClusterSecretKey($kubectl, ClusterTool::FORGEJO->namespace(), $secret, 'username');
+        $token = $this->readClusterSecretKey($kubectl, ClusterTool::FORGEJO->namespace(), $secret, 'registry-token');
 
         if ($username === null || $token === null || $token === '' || $token === 'pending') {
             return null;

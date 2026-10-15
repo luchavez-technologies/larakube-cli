@@ -947,7 +947,7 @@ test('sso:wire writes three bound_claims-gated roles to OpenBao, not one uncondi
         CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'secrets', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'openbao', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('wired to Zitadel SSO');
 
@@ -1323,7 +1323,7 @@ test('sso:wire updates a legacy "Login with SSO" Forgejo source in place (rename
         CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'git', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'forgejo', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('is wired to Zitadel SSO');
 
@@ -1374,7 +1374,7 @@ test('sso:wire registers the Forgejo login source under the canonical `zitadel` 
         CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'git', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'forgejo', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('is wired to Zitadel SSO');
 
@@ -1436,7 +1436,7 @@ test('sso:wire registers NetBird as a Zitadel identity provider via its own REST
         CreateIdentityProviderRequest::class => MockResponse::make(['id' => 'idp-1', 'type' => 'zitadel', 'name' => 'Zitadel'], 200),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'vpn', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'netbird', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('is wired to Zitadel SSO');
 
@@ -1477,8 +1477,8 @@ test('sso:wire registers NetBird as a Zitadel identity provider via its own REST
     // rbacRoles(), not open to any org member.
     // Derived, not hardcoded: the project name follows deploymentName(), which
     // is instance-suffixed since VPN joined the naming convention (2026-08-29).
-    $expectedProject = ClusterTool::VPN->deploymentName(
-        ClusterTool::VPN->instanceSlugFromHost('vpn.'.GlobalConfigData::load()->getLocalTld()),
+    $expectedProject = ClusterTool::NETBIRD->deploymentName(
+        ClusterTool::NETBIRD->instanceSlugFromHost('vpn.'.GlobalConfigData::load()->getLocalTld()),
     );
 
     Saloon::assertSent(fn ($request) => $request instanceof CreateProjectRequest
@@ -1535,7 +1535,7 @@ test('sso:wire re-wiring NetBird updates the existing identity provider via PUT,
         UpdateIdentityProviderRequest::class => MockResponse::make(['id' => 'idp-1', 'type' => 'zitadel', 'name' => 'Zitadel'], 200),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'vpn', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'netbird', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('is wired to Zitadel SSO');
 
@@ -1559,7 +1559,7 @@ test('plain sso:wire lists each registered instance by its host', function (): v
     Process::fake([
         '*larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
             ssoRegistryRow(),
-            ['tool' => 'git', 'instance' => 'git-luchtech-dev', 'host' => 'git.luchtech.dev'],
+            ['tool' => 'forgejo', 'instance' => 'git-luchtech-dev', 'host' => 'git.luchtech.dev'],
         ]))),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get deployment forgejo*' => Process::result(output: 'forgejo   1/1   1   1   10d'),

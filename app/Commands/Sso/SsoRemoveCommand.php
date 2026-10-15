@@ -10,12 +10,12 @@ abstract class SsoRemoveCommand extends AbstractToolRemoveCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::SSO;
+        return ClusterTool::ZITADEL;
     }
 
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
-        $names = ToolInstance::first($kubectl, ClusterTool::SSO);
+        $names = ToolInstance::first($kubectl, ClusterTool::ZITADEL);
 
         return $names !== null && $this->deploymentExists($kubectl, $namespace, $names->deployment('db'));
     }

@@ -3,8 +3,8 @@
     // via applySharedService(), which knows only the host), so derive every name here.
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::SECRETS->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::SECRETS, $instance);
+        : \App\Enums\ClusterTool::OPENBAO->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::OPENBAO, $instance);
     $deploymentName = $names->deployment();
     $ingressLabels = '';
     foreach ($names->labels() as $key => $value) {

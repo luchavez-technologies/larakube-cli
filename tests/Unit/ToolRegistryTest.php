@@ -49,13 +49,13 @@ test('a host resolves to its registered instance, or derives one when unregister
 });
 
 test('register heals a legacy row but never overwrites a different instance', function (): void {
-    $registry = FakeToolRegistry::install([['tool' => 'mail', 'instance' => '', 'host' => 'send.example.com']]);
-    $registry->register(ClusterTool::MAIL, ['host' => 'send.example.com'], 'send-example-com');
+    $registry = FakeToolRegistry::install([['tool' => 'stalwart', 'instance' => '', 'host' => 'send.example.com']]);
+    $registry->register(ClusterTool::STALWART, ['host' => 'send.example.com'], 'send-example-com');
 
     expect($registry->stored)->toHaveCount(1)
         ->and($registry->stored[0]['instance'])->toBe('send-example-com');
 
-    $registry->register(ClusterTool::MAIL, ['host' => 'other.example.com'], 'other-example-com');
+    $registry->register(ClusterTool::STALWART, ['host' => 'other.example.com'], 'other-example-com');
 
     expect($registry->stored)->toHaveCount(2);
 });

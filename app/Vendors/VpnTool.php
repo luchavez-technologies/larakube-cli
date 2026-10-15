@@ -152,10 +152,10 @@ final class VpnTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploy
 
     public function presenceProbe(?string $instance = null): ?string
     {
-        $names = ToolInstance::forInstance(ClusterTool::VPN, $instance === null || $instance === '' ? 'x' : $instance);
+        $names = ToolInstance::forInstance(ClusterTool::NETBIRD, $instance === null || $instance === '' ? 'x' : $instance);
 
         return ($instance === null || $instance === '')
-            ? 'deployment/netbird -n '.ClusterTool::VPN->namespace()
+            ? 'deployment/netbird -n '.ClusterTool::NETBIRD->namespace()
             : "deployment/{$names->deployment()} -n {$names->namespace()}";
     }
 
@@ -183,7 +183,7 @@ final class VpnTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploy
         // the tool as SSO-wired after unwiring it.
         $names = ($instance === null || $instance === '')
             ? null
-            : ToolInstance::forInstance(ClusterTool::VPN, $instance);
+            : ToolInstance::forInstance(ClusterTool::NETBIRD, $instance);
 
         return [
             'deployment' => $names?->deployment() ?? 'netbird',

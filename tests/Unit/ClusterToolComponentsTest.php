@@ -37,10 +37,10 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
         'umami' => 'umami', 'twenty' => 'twenty',
         'ocis' => 'ocis', 'glitchtip' => 'glitchtip',
         'flow' => 'n8n', 'metabase' => 'metabase',
-        'kutt' => 'kutt', 'mail' => 'stalwart', 'grafana' => 'grafana',
+        'kutt' => 'kutt', 'stalwart' => 'stalwart', 'grafana' => 'grafana',
         'outline' => 'outline', 'vaultwarden' => 'vaultwarden', 'sendrec' => 'sendrec',
-        'secrets' => 'openbao', 'teable' => 'teable', 'documenso' => 'documenso',
-        'sso' => 'zitadel', 'chatwoot' => 'chatwoot', 'planka' => 'planka',
+        'openbao' => 'openbao', 'teable' => 'teable', 'documenso' => 'documenso',
+        'zitadel' => 'zitadel', 'chatwoot' => 'chatwoot', 'planka' => 'planka',
         'kuma' => 'kuma', 'bulwark' => 'bulwark',
         'external-dns' => 'external-dns', 'headlamp' => 'headlamp', 'livekit' => 'livekit',
         'penpot' => 'penpot-backend',
@@ -54,8 +54,8 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
 
     // VPN was exempt from instance suffixing until 2026-08-29; it now follows
     // {category}-{component}-{instance} like every other tool.
-    expect(ClusterTool::VPN->deploymentName())->toBe('netbird')
-        ->and(ClusterTool::VPN->deploymentName('blog-example-com'))->toBe('netbird-blog-example-com')
+    expect(ClusterTool::NETBIRD->deploymentName())->toBe('netbird')
+        ->and(ClusterTool::NETBIRD->deploymentName('blog-example-com'))->toBe('netbird-blog-example-com')
         ->and(ClusterTool::DATA->deploymentName(engine: 'pocketbase'))->toBe('pocketbase')
         ->and(ClusterTool::DATA->deploymentName(engine: 'directus'))->toBe('directus')
         ->and(ClusterTool::DATA->deploymentName())->toBe('directus');
@@ -66,14 +66,14 @@ test('GIT always requires a real instance — there is no bare/default deploymen
     // Unlike every other tool, GIT's server component was rebuilt with the
     // Postgres/OpenBao rename (2026-08-23) to have zero bare-name fallback:
     // the instance is always the host-derived slug, never null/''.
-    expect(ClusterTool::GIT->deploymentName('git-luchtech-dev'))->toBe('forgejo-git-luchtech-dev');
+    expect(ClusterTool::FORGEJO->deploymentName('git-luchtech-dev'))->toBe('forgejo-git-luchtech-dev');
 });
 
-test('CHAT names every component per instance, with the product as the stem', function (): void {
+test('MATRIX names every component per instance, with the product as the stem', function (): void {
     openBaoRegistered();
     // Synapse holds the server's signing key, which is a reason to copy its
     // volume with care, not to leave it unnamed (ADR 0021 has no exemptions).
-    $components = collect(ClusterTool::CHAT->components('chat-luchtech-dev'))->keyBy('key');
+    $components = collect(ClusterTool::MATRIX->components('chat-luchtech-dev'))->keyBy('key');
 
     expect($components['synapse']->deployment)->toBe('synapse-chat-luchtech-dev')
         ->and($components['db']->deployment)->toBe('synapse-db-chat-luchtech-dev')
@@ -101,12 +101,12 @@ test('CHAT names every component per instance, with the product as the stem', fu
         ->and($synapseResources)->toContain('synapse-media-prune-chat-luchtech-dev');
 });
 
-test('CHAT/GIT/DESIGN component lists match today\'s hand-written Blade/teardown deployment names exactly', function (): void {
+test('MATRIX/FORGEJO/PENPOT component lists match today\'s hand-written Blade/teardown deployment names exactly', function (): void {
     openBaoRegistered();
-    $chatDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::CHAT->components());
+    $chatDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::MATRIX->components());
     expect($chatDeployments)->toBe(['synapse', 'element-web', 'coturn', 'synapse-db', 'mas', 'mas-db', 'element-admin']);
 
-    $gitDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::GIT->components('git-luchtech-dev'));
+    $gitDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::FORGEJO->components('git-luchtech-dev'));
     expect($gitDeployments)->toBe(['forgejo-git-luchtech-dev', 'forgejo-runner-git-luchtech-dev']);
 
     $designDeployments = array_map(fn ($c) => $c->deployment, ClusterTool::PENPOT->components());
@@ -146,14 +146,14 @@ test('backupVolume is only true for the components InteractsWithBackup already c
     // audit pass explicitly opts it in — a false negative here must never
     // silently start (or stop) a backup as a side effect of this refactor.
     $expected = [
-        'secrets' => ['app' => ['/openbao']],
+        'openbao' => ['app' => ['/openbao']],
         'openbao' => ['app' => ['/openbao']],
         'git' => ['server' => ['/data']],
         'forgejo' => ['server' => ['/data']],
         'ocis' => ['app' => ['/var/lib/ocis']],
         'ocis' => ['app' => ['/var/lib/ocis']],
         'vaultwarden' => ['app' => ['/data']],
-        'mail' => ['app' => ['/var/lib/stalwart']],
+        'stalwart' => ['app' => ['/var/lib/stalwart']],
         'stalwart' => ['app' => ['/var/lib/stalwart']],
         'chat' => ['synapse' => ['/data/chat.luchtech.dev.signing.key']],
         'matrix' => ['synapse' => ['/data/chat.luchtech.dev.signing.key']],

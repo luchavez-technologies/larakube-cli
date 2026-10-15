@@ -32,9 +32,9 @@ trait ChecksCloudflareProxy
     public static function proxyRefusal(ClusterTool $tool, bool $vpnOnly): ?string
     {
         return match (true) {
-            $tool === ClusterTool::GIT => 'Git serves SSH (port 2222) and large pushes, which Cloudflare\'s proxy doesn\'t carry.',
-            $tool === ClusterTool::MAIL => 'Mail serves SMTP and IMAP, which Cloudflare\'s proxy doesn\'t carry.',
-            $tool === ClusterTool::VPN => 'NetBird\'s WireGuard and gRPC traffic can\'t go through Cloudflare\'s proxy.',
+            $tool === ClusterTool::FORGEJO => 'Git serves SSH (port 2222) and large pushes, which Cloudflare\'s proxy doesn\'t carry.',
+            $tool === ClusterTool::STALWART => 'Mail serves SMTP and IMAP, which Cloudflare\'s proxy doesn\'t carry.',
+            $tool === ClusterTool::NETBIRD => 'NetBird\'s WireGuard and gRPC traffic can\'t go through Cloudflare\'s proxy.',
             $tool === ClusterTool::LIVEKIT => 'LiveKit\'s media ports can\'t go through Cloudflare\'s proxy.',
             $vpnOnly => 'A VPN-only host gains nothing from the proxy, and visitors would arrive from Cloudflare\'s addresses instead of the VPN\'s.',
             default => null,

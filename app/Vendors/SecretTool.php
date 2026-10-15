@@ -47,7 +47,7 @@ final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasOid
     public function components(?string $instance = null, ?string $engine = null): array
     {
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
-        $canonical = fn (string $n) => ClusterTool::SECRETS->withoutCategory($n);
+        $canonical = fn (string $n) => ClusterTool::OPENBAO->withoutCategory($n);
         $deployment = $canonical($name('secrets-openbao'));
 
         return [
@@ -72,7 +72,7 @@ final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasOid
     public function oidcEnv(?string $instance = null): ?array
     {
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
-        $canonical = fn (string $n) => ClusterTool::SECRETS->withoutCategory($n);
+        $canonical = fn (string $n) => ClusterTool::OPENBAO->withoutCategory($n);
 
         return [
             'deployment' => $canonical($name('secrets-openbao')),
@@ -96,10 +96,10 @@ final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasOid
 
     public function toolAccessRows(?string $host, string $env, string $kubectl, ?string $instance = null): array
     {
-        $ns = ClusterTool::SECRETS->namespace();
+        $ns = ClusterTool::OPENBAO->namespace();
         $secretName = ($instance === null || $instance === '')
             ? 'openbao-secrets'
-            : ToolInstance::forInstance(ClusterTool::SECRETS, $instance)->secret();
+            : ToolInstance::forInstance(ClusterTool::OPENBAO, $instance)->secret();
         $tokenVal = trim(Process::run(
             "{$kubectl} get secret {$secretName} -n {$ns} -o jsonpath='{.data.root-token}' --ignore-not-found",
         )->output());

@@ -18,7 +18,7 @@ test('correctly maps supported database drivers for ClusterTool', function (): v
         use SupportedDriversTrait;
     };
 
-    expect($traitObject->getSupportedDatabaseDrivers(ClusterTool::CHAT))
+    expect($traitObject->getSupportedDatabaseDrivers(ClusterTool::MATRIX))
         ->toEqual([DatabaseDriver::POSTGRESQL])
         ->and($traitObject->getSupportedDatabaseDrivers(ClusterTool::PLANKA))->toContain(DatabaseDriver::POSTGRESQL, DatabaseDriver::MYSQL);
 });

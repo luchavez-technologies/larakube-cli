@@ -43,7 +43,7 @@ test('only tools that own their namespace outright are torn down namespace-wide'
     ));
 
     expect(array_map(fn ($t) => $t->value, $wholesale))
-        ->toEqualCanonicalizing(['secrets', 'sso', 'vpn', 'netbird', 'openbao', 'vaultwarden', 'zitadel']);
+        ->toEqualCanonicalizing(['netbird', 'openbao', 'vaultwarden', 'zitadel']);
 
     foreach ($wholesale as $tool) {
         expect($tool->namespace())->not->toBe('larakube-shared');
@@ -111,9 +111,9 @@ test('only tools that can bundle their own storage advertise --no-plex', functio
     );
 
     expect($noPlex)->toEqualCanonicalizing([
-        'chat', 'flow', 'git', 'sso',
+        'flow',
         'matrix', 'ocis', 'glitchtip', 'n8n', 'windmill', 'forgejo', 'metabase', 'zitadel',
-        'grafana', 'vpn', 'netbird',
+        'grafana', 'netbird',
     ]);
 
     // A tool that leases no Commons tenant has nothing to bypass. Drive and OCIS are the
@@ -147,9 +147,9 @@ test('deploymentName() matches the actual Deployment name each tool\'s own manif
     // as "not installed". Values here are cross-checked against
     // SharedClusterService::presenceProbe() and the tools' own manifests,
     // not just re-asserting whatever the enum currently says.
-    expect(ClusterTool::SSO->deploymentName())->toBe('zitadel');
+    expect(ClusterTool::ZITADEL->deploymentName())->toBe('zitadel');
     expect(ClusterTool::GLITCHTIP->deploymentName())->toBe('glitchtip')
-        ->and(ClusterTool::VPN->deploymentName())->toBe('netbird');
+        ->and(ClusterTool::NETBIRD->deploymentName())->toBe('netbird');
 });
 
 test('tasks (Planka) does not claim OIDC wiring — it was removed from the OSS edition', function (): void {
@@ -200,18 +200,18 @@ test('only DATA carries an SSO license caveat', function (): void {
 
 test('supportsMultipleInstances() pins the 2026-08 multi-instance capability audit', function (): void {
     ssoRegistered();
-    // CHAT/MEET bind hostPort (TURN, LiveKit SFU) — a second instance
+    // MATRIX/MEET bind hostPort (TURN, LiveKit SFU) — a second instance
     // collides on the same node. GIT exposes SSH via a fixed-port
-    // LoadBalancer — same collision risk. MAIL/SSO/SECRETS/MONITOR/VPN/
+    // LoadBalancer — same collision risk. MAIL/SSO/SECRETS/MONITOR/NETBIRD/
     // WEBMAIL/DASHBOARD are architectural singletons every other tool's
     // wiring assumes exists exactly once. DNS has its own --zone-based
     // multi-tenancy, not this generic mechanism. A tool moving in or out of
     // this list is a deliberate capability change, not drift — this test
     // exists so that change has to touch this file too.
     $expectedFalse = [
-        ClusterTool::CHAT, ClusterTool::MATRIX, ClusterTool::LIVEKIT, ClusterTool::GIT, ClusterTool::FORGEJO,
-        ClusterTool::MAIL, ClusterTool::STALWART, ClusterTool::SSO, ClusterTool::ZITADEL, ClusterTool::SECRETS, ClusterTool::OPENBAO,
-        ClusterTool::GRAFANA, ClusterTool::VPN, ClusterTool::NETBIRD,
+        ClusterTool::MATRIX, ClusterTool::LIVEKIT, ClusterTool::FORGEJO, ClusterTool::FORGEJO,
+        ClusterTool::STALWART, ClusterTool::STALWART, ClusterTool::ZITADEL, ClusterTool::ZITADEL, ClusterTool::OPENBAO, ClusterTool::OPENBAO,
+        ClusterTool::GRAFANA, ClusterTool::NETBIRD,
         ClusterTool::BULWARK, ClusterTool::HEADLAMP, ClusterTool::EXTERNAL_DNS,
     ];
 
@@ -325,7 +325,7 @@ test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifest
     // cannot create its target, so a suffix the tool's templates don't use
     // leaves the synced values reaching nothing. Live names as deployed.
     $names = [];
-    foreach ([ClusterTool::CHAT, ClusterTool::GRAFANA, ClusterTool::VAULTWARDEN, ClusterTool::SSO, ClusterTool::GIT, ClusterTool::OUTLINE, ClusterTool::MAIL, ClusterTool::DOCUMENSO, ClusterTool::DATA, ClusterTool::VPN] as $tool) {
+    foreach ([ClusterTool::MATRIX, ClusterTool::GRAFANA, ClusterTool::VAULTWARDEN, ClusterTool::ZITADEL, ClusterTool::FORGEJO, ClusterTool::OUTLINE, ClusterTool::STALWART, ClusterTool::DOCUMENSO, ClusterTool::DATA, ClusterTool::NETBIRD] as $tool) {
         $names[$tool->value] = [
             $tool->openbaoSyncConfig('inst')['secret'] ?? null,
             $tool->dbSecretRef('inst')['secret'] ?? null,
@@ -333,18 +333,18 @@ test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifest
     }
 
     expect($names)->toBe([
-        'chat' => ['synapse-secrets-inst', 'synapse-secrets-inst'],
+        'matrix' => ['synapse-secrets-inst', 'synapse-secrets-inst'],
         'grafana' => ['grafana-secrets-inst', 'grafana-secrets-inst'],
         'vaultwarden' => ['vaultwarden-secrets-inst', 'vaultwarden-secrets-inst'],
-        'sso' => [null, 'zitadel-secrets-inst'],
+        'zitadel' => [null, 'zitadel-secrets-inst'],
         // Canonical ({component}-{token}-{instance}) once a tool has migrated,
         // otherwise the shape its manifests still write.
-        'git' => ['forgejo-secrets-inst', 'forgejo-secrets-inst'],
+        'forgejo' => ['forgejo-secrets-inst', 'forgejo-secrets-inst'],
         'outline' => ['outline-secrets-inst', 'outline-secrets-inst'],
-        'mail' => ['stalwart-store-inst', 'stalwart-store-inst'],
+        'stalwart' => ['stalwart-store-inst', 'stalwart-store-inst'],
         'documenso' => [null, 'documenso-secrets-inst'],
         'data' => [null, 'directus-secrets-inst'],
-        'vpn' => ['netbird-secrets-inst', 'netbird-store-inst'],
+        'netbird' => ['netbird-secrets-inst', 'netbird-store-inst'],
     ]);
 });
 

@@ -229,7 +229,7 @@ test('sso:revoke\'s discovery picker defaults to an empty selection under non-in
             "james@luchtech.dev's current access — select what to revoke",
             [],
             [
-                'openbao-admin' => 'Secrets Manager (OpenBao) — Full read/write on all secrets and Commons database credentials',
+                'openbao-admin' => 'OpenBao (Secrets & Encryption) — Full read/write on all secrets and Commons database credentials',
                 'grafana-user' => 'Grafana (Metrics & Dashboards) — Can log in to Grafana (Viewer role)',
             ],
         )
@@ -346,7 +346,7 @@ test("sso:revoke's discovery picker surfaces Drive's ocisAdmin on Drive's own pr
     // Both tools' roles were offered in ONE picker — the old single-project
     // discovery never even saw ocisAdmin, which is the bug this locks in.
     Prompt::assertStrippedOutputContains('ownCloud Infinite Scale (oCIS) — oCIS administrator');
-    Prompt::assertStrippedOutputContains('Secrets Manager (OpenBao)');
+    Prompt::assertStrippedOutputContains('OpenBao (Secrets & Encryption)');
 
     // ocisAdmin was the user's last role on Drive's project → the grant is
     // deleted outright, and the revoke never touched Secrets' grant.

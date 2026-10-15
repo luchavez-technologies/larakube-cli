@@ -14,7 +14,7 @@ abstract class MailRemoveCommand extends AbstractToolRemoveCommand
 
     protected function tool(): ClusterTool
     {
-        return ClusterTool::MAIL;
+        return ClusterTool::STALWART;
     }
 
     protected function teardownWarning(string $env): array
@@ -43,7 +43,7 @@ abstract class MailRemoveCommand extends AbstractToolRemoveCommand
         // Every resource Stalwart owns comes from the vendor's component list,
         // so this can't drift from what the manifest deploys; the volume is in
         // it, and Kubernetes holds the claim until its pod is gone.
-        $instance = (string) ($this->getToolInstanceData($kubectl, ClusterTool::MAIL)?->instance ?? '');
+        $instance = (string) ($this->getToolInstanceData($kubectl, ClusterTool::STALWART)?->instance ?? '');
 
         $ok = $this->removeResources(
             'Removing Stalwart resources...',

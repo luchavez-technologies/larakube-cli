@@ -8,7 +8,7 @@ use App\Enums\ClusterTool;
  */
 test('resolves an instance-suffixed PRIMARY component', function (): void {
     $match = ClusterTool::forDeployment('forgejo-git-example-com');
-    expect($match['tool'])->toBe(ClusterTool::GIT)
+    expect($match['tool'])->toBe(ClusterTool::FORGEJO)
         ->and($match['component']->key)->toBe('server');
 });
 
@@ -19,7 +19,7 @@ test('the longest component name wins, so a WORKER is not mistaken for its prima
     // suffix-stripping pass (which has no other tool's base name to
     // collide with here, but must not be relied on regardless).
     $match = ClusterTool::forDeployment('forgejo-runner-git-example-com');
-    expect($match['tool'])->toBe(ClusterTool::GIT)
+    expect($match['tool'])->toBe(ClusterTool::FORGEJO)
         ->and($match['component']->key)->toBe('runner');
 });
 
@@ -42,7 +42,7 @@ test('returns null for an unmanaged Deployment — the exclusion mechanism itsel
 
 test('a compound tool\'s bundled-storage component resolves by its own exact name', function (): void {
     $match = ClusterTool::forDeployment('synapse-db-chat-example-com');
-    expect($match['tool'])->toBe(ClusterTool::CHAT)
+    expect($match['tool'])->toBe(ClusterTool::MATRIX)
         ->and($match['component']->key)->toBe('db');
 });
 

@@ -205,7 +205,7 @@ test('plex:show --json groups tenants into tool, project, and custom buckets', f
         ->and(collect($report['tenants']['custom'])->first()['rotation'])->toBeNull() // no database — nothing to rotate
         ->and(collect($report['tenants']['project'])->first()['rotation'])->toBe(['state' => 'manual', 'nextRotation' => null])
         ->and(collect($report['tenants']['tool'])->first()['clusterTool'])->toMatchArray([
-            'tool' => 'git',
+            'tool' => 'forgejo',
             // The short product name/tagline (tool:list --json's own pair), not
             // getLabel()'s verbose "Product (category tagline)" string — and
             // resolved from the legacy "git" category to the real "Forgejo" product.

@@ -87,7 +87,7 @@ test('sso:unwire deletes a legacy "Login with SSO" Forgejo source', function ():
 
     Saloon::fake([DeleteProjectAppRequest::class => MockResponse::make([], 200)]);
 
-    $this->artisan('sso:unwire', ['--tool' => 'git', '--no-interaction' => true])
+    $this->artisan('sso:unwire', ['--tool' => 'forgejo', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('no longer uses Zitadel SSO');
 
@@ -115,7 +115,7 @@ test('sso:unwire deregisters NetBird\'s Zitadel identity provider via its own RE
         DeleteIdentityProviderRequest::class => MockResponse::make([], 200),
     ]);
 
-    $this->artisan('sso:unwire', ['--tool' => 'vpn', '--no-interaction' => true])
+    $this->artisan('sso:unwire', ['--tool' => 'netbird', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('no longer uses Zitadel SSO');
 
@@ -139,7 +139,7 @@ test('sso:unwire for NetBird is a clean no-op when no zitadel identity provider 
         ListIdentityProvidersRequest::class => MockResponse::make([], 200),
     ]);
 
-    $this->artisan('sso:unwire', ['--tool' => 'vpn', '--no-interaction' => true])
+    $this->artisan('sso:unwire', ['--tool' => 'netbird', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain('no longer uses Zitadel SSO');
 
@@ -151,7 +151,7 @@ test('sso:unwire removes the same OIDC secret sso:wire wrote', function (): void
     // wire wrote netbird-oidc-{instance} (via vpnName()) while unwire
     // deleted $schema['secret'], which was unsuffixed — so the marker survived
     // and tool:list kept reporting the tool as SSO-wired after unwiring it.
-    $vpn = ClusterTool::VPN;
+    $vpn = ClusterTool::NETBIRD;
     $instance = $vpn->instanceSlugFromHost('vpn.luchtech.dev');
 
     expect($vpn->oidcEnv(instance: $instance)['secret'])
@@ -173,7 +173,7 @@ test('sso:unwire lists only tools that are actually wired, by host', function ()
     Process::fake([
         '*larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
             ssoRegistryRow(),
-            ['tool' => 'vpn', 'instance' => 'vpn-luchtech-dev', 'host' => 'vpn.luchtech.dev'],
+            ['tool' => 'netbird', 'instance' => 'vpn-luchtech-dev', 'host' => 'vpn.luchtech.dev'],
             ['tool' => 'outline', 'instance' => 'notes-luchtech-dev', 'host' => 'notes.luchtech.dev'],
         ]))),
         // Only VPN's marker exists, so only VPN is offered.
@@ -197,7 +197,7 @@ test('sso:unwire says nothing is wired rather than listing every capable tool', 
     Process::fake([
         '*larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
             ssoRegistryRow(),
-            ['tool' => 'vpn', 'instance' => 'vpn-luchtech-dev', 'host' => 'vpn.luchtech.dev'],
+            ['tool' => 'netbird', 'instance' => 'vpn-luchtech-dev', 'host' => 'vpn.luchtech.dev'],
         ]))),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*' => Process::result(output: ''),

@@ -105,7 +105,7 @@ test('sso:org-grant --tool= resolves the project the same way sso:grant does', f
         CreateProjectGrantRequest::class => MockResponse::make(['grantId' => 'grant-1']),
     ]);
 
-    $this->artisan('sso:org-grant', ['--org' => 'partner.example', '--tool' => 'secrets', '--no-interaction' => true])
+    $this->artisan('sso:org-grant', ['--org' => 'partner.example', '--tool' => 'openbao', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain("'partner.example' now has scoped access to 'openbao'");
 

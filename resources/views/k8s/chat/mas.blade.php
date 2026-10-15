@@ -20,8 +20,8 @@
     $__tplHash = substr(hash_file('sha256', resource_path('views/k8s/chat/mas.blade.php')), 0, 12);
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::CHAT->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::CHAT, $instance);
+        : \App\Enums\ClusterTool::MATRIX->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::MATRIX, $instance);
     $labels = function (string $component) use ($names) {
         $out = '';
         foreach ($names->labels($component) as $key => $value) {

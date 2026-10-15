@@ -6,7 +6,7 @@
 
     // Instance is always a real, host-derived slug — no bare/default form.
     // Every name comes from ToolInstance (ADR 0021).
-    $tool = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::GIT, $instance);
+    $tool = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::FORGEJO, $instance);
     $secretsName = $tool->secret();
     // One Secret per component: rotation merges the DB password into it.
     $dbSecretName = $secretsName;

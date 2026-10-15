@@ -14,7 +14,7 @@ abstract class ChatRemoveCommand extends AbstractToolRemoveCommand
 
     protected function tool(): ClusterTool
     {
-        return ClusterTool::CHAT;
+        return ClusterTool::MATRIX;
     }
 
     protected function teardownWarning(string $env): array
@@ -36,7 +36,7 @@ abstract class ChatRemoveCommand extends AbstractToolRemoveCommand
     /** A bundled (--no-plex) install runs its own Postgres Deployment. */
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
-        $chat = ToolInstance::first($kubectl, ClusterTool::CHAT);
+        $chat = ToolInstance::first($kubectl, ClusterTool::MATRIX);
 
         return $chat !== null && $this->deploymentExists($kubectl, $namespace, $chat->deployment('db'));
     }

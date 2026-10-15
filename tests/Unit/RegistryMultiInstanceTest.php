@@ -34,10 +34,10 @@ test('a legacy sentinel row is still healed in place, not duplicated', function 
     // This is what selfHeal exists for: a pre-ADR-0012 row whose instance is ''
     // is the same install, just recorded before instances had real slugs.
     $holder = registryHolder([
-        ['tool' => 'mail', 'instance' => '', 'host' => 'send.test'],
+        ['tool' => 'stalwart', 'instance' => '', 'host' => 'send.test'],
     ]);
 
-    $holder->register(ClusterTool::MAIL, ['host' => 'send.test'], 'send-test');
+    $holder->register(ClusterTool::STALWART, ['host' => 'send.test'], 'send-test');
 
     expect($holder->stored)->toHaveCount(1)
         ->and($holder->stored[0]['instance'])->toBe('send-test');

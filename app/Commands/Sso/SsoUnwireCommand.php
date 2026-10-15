@@ -156,7 +156,7 @@ class SsoUnwireCommand extends Command
         Process::run("{$kubectl} delete secret {$appSecret} -n {$ssoNs} --ignore-not-found");
         Process::run("{$kubectl} delete secret {$schema['secret']} -n {$schema['namespace']} --ignore-not-found");
 
-        if ($tool->category() === ClusterTool::CHAT) {
+        if ($tool === ClusterTool::MATRIX) {
             $this->unwireSynapseOidc($kubectl, $schema['namespace']);
             Process::run("{$kubectl} rollout restart deployment/{$schema['deployment']} -n {$schema['namespace']}");
             $this->laraKubeInfo("✅ {$tool->getLabel()} no longer uses Zitadel SSO.");
@@ -164,14 +164,14 @@ class SsoUnwireCommand extends Command
             return 0;
         }
 
-        if ($tool->category() === ClusterTool::SECRETS) {
+        if ($tool === ClusterTool::OPENBAO) {
             $this->unwireOpenBaoOidc($kubectl, $schema['namespace']);
             $this->laraKubeInfo("✅ {$tool->getLabel()} no longer uses Zitadel SSO.");
 
             return 0;
         }
 
-        if ($tool->category() === ClusterTool::VPN) {
+        if ($tool === ClusterTool::NETBIRD) {
             if ($toolHost !== null) {
                 $this->unwireNetbirdOidc($kubectl, $schema['namespace'], $toolHost);
             }
@@ -240,7 +240,7 @@ class SsoUnwireCommand extends Command
         $sso = $this->ssoNames($kubectl);
         if ($sso !== null && $this->gatedForwardAuthTools($kubectl, $tool) === []) {
             $this->withSpin('No gated tools left — removing the shared SSO proxy...', function () use ($kubectl, $sso, $ssoNs, $ssoHost, $pat): void {
-                $appSecret = $this->ssoAppSecretName(ClusterTool::SSO, $sso->instance, 'proxy');
+                $appSecret = $this->ssoAppSecretName(ClusterTool::ZITADEL, $sso->instance, 'proxy');
                 $projectId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'project-id');
                 $appId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'app-id');
                 if ($projectId !== null && $appId !== null) {

@@ -24,7 +24,7 @@ function openBaoDocuments(array $overrides = []): array
 }
 
 test('OpenBao resolves every resource name from ToolInstance with the category gone', function (): void {
-    $names = ToolInstance::forInstance(ClusterTool::SECRETS, 'secrets-luchtech-dev');
+    $names = ToolInstance::forInstance(ClusterTool::OPENBAO, 'secrets-luchtech-dev');
 
     expect($names->deployment())->toBe('openbao-secrets-luchtech-dev')
         ->and($names->secret())->toBe('openbao-secrets-secrets-luchtech-dev')
@@ -33,7 +33,7 @@ test('OpenBao resolves every resource name from ToolInstance with the category g
         ->and($names->volume())->toBe('openbao-storage-secrets-luchtech-dev')
         ->and($names->name('auth-delegator'))->toBe('openbao-auth-delegator-secrets-luchtech-dev')
         ->and($names->vpnMiddleware()->name)->toBe('openbao-vpn-only-secrets-luchtech-dev')
-        ->and(ClusterTool::SECRETS->resourceNaming())->toBe(ResourceNaming::CANONICAL)
+        ->and(ClusterTool::OPENBAO->resourceNaming())->toBe(ResourceNaming::CANONICAL)
         ->and(ClusterTool::OPENBAO->resourceNaming())->toBe(ResourceNaming::CANONICAL);
 });
 
@@ -47,7 +47,7 @@ test('the canonical Deployment name resolves to a component whose volume is back
 });
 
 test('the SSO schema names the OpenBao Deployment and the OIDC Secret from ToolInstance', function (): void {
-    $schema = ClusterTool::SECRETS->oidcEnv(instance: 'secrets-luchtech-dev');
+    $schema = ClusterTool::OPENBAO->oidcEnv(instance: 'secrets-luchtech-dev');
 
     expect($schema['deployment'])->toBe('openbao-secrets-luchtech-dev')
         ->and($schema['secret'])->toBe('openbao-oidc-secrets-luchtech-dev');
@@ -65,7 +65,7 @@ test('the manifest names every object from ToolInstance and the claim matches th
 
     expect($deployment['metadata']['name'])->toBe('openbao-secrets-example-com')
         ->and($deployment['spec']['selector']['matchLabels']['app'])->toBe('openbao-secrets-example-com')
-        ->and($deployment['spec']['template']['metadata']['labels']['larakube.io/tool'])->toBe('secrets')
+        ->and($deployment['spec']['template']['metadata']['labels']['larakube.io/tool'])->toBe('openbao')
         ->and($deployment['spec']['template']['spec']['serviceAccountName'])->toBe('openbao-secrets-example-com')
         ->and($account['metadata']['name'])->toBe('openbao-secrets-example-com')
         ->and($binding['metadata']['name'])->toBe('openbao-auth-delegator-secrets-example-com')
@@ -104,7 +104,7 @@ test('the VPN-only Ingress points at the instance Middleware', function (): void
 });
 
 test('teardown names every resource the manifest declares', function (): void {
-    $component = ClusterTool::SECRETS->components('secrets-luchtech-dev')[0];
+    $component = ClusterTool::OPENBAO->components('secrets-luchtech-dev')[0];
     $refs = collect($component->resources)->map(fn ($r) => "{$r['kind']}/{$r['name']}")->all();
 
     expect($component->deployment)->toBe('openbao-secrets-luchtech-dev')

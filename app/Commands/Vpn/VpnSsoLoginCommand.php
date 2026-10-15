@@ -131,7 +131,7 @@ class VpnSsoLoginCommand extends Command
         if ($domain === null || $domain === '') {
             $this->laraKubeError('The account was created without an email domain, so SSO users still cannot share it.');
             $this->line('  <fg=gray>This is the state tool:init --tool=netbird used to leave behind. Retire it with</>');
-            $this->line('  <fg=blue>  larakube sso:wire '.$env.' --tool=vpn</> <fg=gray>and sign in again.</>');
+            $this->line('  <fg=blue>  larakube sso:wire '.$env.' --tool=netbird</> <fg=gray>and sign in again.</>');
 
             return 1;
         }

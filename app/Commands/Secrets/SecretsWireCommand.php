@@ -52,7 +52,7 @@ class SecretsWireCommand extends Command
     {
         $this->renderHeader();
 
-        $env = $this->resolveToolEnvironment(ClusterTool::SECRETS);
+        $env = $this->resolveToolEnvironment(ClusterTool::OPENBAO);
         $context = $this->resolveToolContext($env, $this->option('context'));
         $kubectl = Kubectl::forContext($context)->prefix();
         $rotationPeriod = (string) ($this->option('rotation-period') ?: '168h');

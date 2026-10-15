@@ -59,8 +59,8 @@ abstract class MailInitCommand extends AbstractToolInitCommand
         // (supportsMultipleInstances() is still false); this isn't multi-
         // instance support, just giving its one real instance a real name
         // instead of an unsuffixed one.
-        $resourceInstance = ClusterTool::MAIL->instanceSlugFromHost($host);
-        $names = ToolInstance::forInstance(ClusterTool::MAIL, $resourceInstance);
+        $resourceInstance = ClusterTool::STALWART->instanceSlugFromHost($host);
+        $names = ToolInstance::forInstance(ClusterTool::STALWART, $resourceInstance);
 
         $projectPath = getcwd();
         $config = file_exists($projectPath.'/'.ConfigData::CONFIG_FILE)
@@ -84,11 +84,11 @@ abstract class MailInitCommand extends AbstractToolInitCommand
         $ns = $this->mailNamespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->assertVpnOnlySupported(ClusterTool::MAIL)) {
+        if ($vpnOnly && ! $this->assertVpnOnlySupported(ClusterTool::STALWART)) {
             return 1;
         }
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::MAIL, $kubectl, $resourceInstance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::STALWART, $kubectl, $resourceInstance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -158,7 +158,7 @@ abstract class MailInitCommand extends AbstractToolInitCommand
         // which let it disagree with $resourceInstance and look up aliases for
         // an installation that did not exist -- for a tool that can only ever
         // have one instance anyway.
-        $aliasHosts = $this->resolveToolAliasHosts($kubectl, ClusterTool::MAIL, $resourceInstance);
+        $aliasHosts = $this->resolveToolAliasHosts($kubectl, ClusterTool::STALWART, $resourceInstance);
 
         $manifest = view('k8s.mail.stalwart', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
@@ -178,7 +178,7 @@ abstract class MailInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Stalwart manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, ClusterTool::MAIL->deploymentName($resourceInstance), 180, tool: ClusterTool::MAIL),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, ClusterTool::STALWART->deploymentName($resourceInstance), 180, tool: ClusterTool::STALWART),
         );
         $temporaryDirectory->delete();
 
@@ -291,7 +291,7 @@ abstract class MailInitCommand extends AbstractToolInitCommand
             $this->printPlexHint($kubectl, $host, storeBootstrap: $storeBootstrap);
         }
 
-        $this->registerDeployedTool(ClusterTool::MAIL, $kubectl, $host, instance: $resourceInstance, extra: ['adminEmail' => $adminEmail]);
+        $this->registerDeployedTool(ClusterTool::STALWART, $kubectl, $host, instance: $resourceInstance, extra: ['adminEmail' => $adminEmail]);
 
         $this->offerWebmail($env);
 
@@ -521,7 +521,7 @@ abstract class MailInitCommand extends AbstractToolInitCommand
         // at install, so a name chosen here is the name Stalwart keeps; changing an
         // existing install's identity means repointing all three, which is
         // what its migration runbook does before this command is run again.
-        $names = ToolInstance::forInstance(ClusterTool::MAIL, $instance);
+        $names = ToolInstance::forInstance(ClusterTool::STALWART, $instance);
         $tenant = $names->database();
         $openbaoBookkeepingSecret = $names->name('openbao');
         $openBaoSyncedSecretName = $names->secret(SecretKind::STORE);
@@ -687,12 +687,12 @@ abstract class MailInitCommand extends AbstractToolInitCommand
 
     protected function resolveMailHost(string $env, ?string $kubectl = null): string
     {
-        return $this->resolveToolHost(SharedClusterService::MAIL, ClusterTool::MAIL, $env, $kubectl);
+        return $this->resolveToolHost(SharedClusterService::MAIL, ClusterTool::STALWART, $env, $kubectl);
     }
 
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::MAIL);
+        return $this->resolveToolEnvironment(ClusterTool::STALWART);
     }
 
     /** Resolve the admin email for Stalwart Mail */

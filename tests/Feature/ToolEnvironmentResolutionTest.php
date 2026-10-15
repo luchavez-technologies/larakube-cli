@@ -75,7 +75,7 @@ test('an explicit environment always wins, even alongside --domain', function ()
     $resolved = envResolver(
         ['environment' => 'production'],
         ['domain' => 'example.com'],
-    )->resolve(ClusterTool::SECRETS);
+    )->resolve(ClusterTool::OPENBAO);
 
     expect($resolved)->toBe('production');
 });
@@ -83,27 +83,27 @@ test('an explicit environment always wins, even alongside --domain', function ()
 test('--domain without an environment is refused instead of silently becoming local', function (): void {
     // The regression: this used to return 'local' and deploy a production
     // hostname to the current kube-context with local TLS.
-    expect(fn () => envResolver([], ['domain' => 'example.com'])->resolve(ClusterTool::SECRETS))
+    expect(fn () => envResolver([], ['domain' => 'example.com'])->resolve(ClusterTool::OPENBAO))
         ->toThrow(AmbiguousEnvironmentException::class);
 });
 
 test('--domain is refused even under --no-interaction', function (): void {
     // CI is exactly where a silently-wrong cluster does the most damage.
     expect(fn () => envResolver([], ['domain' => 'example.com', 'no-interaction' => true])
-        ->resolve(ClusterTool::SECRETS))
+        ->resolve(ClusterTool::OPENBAO))
         ->toThrow(AmbiguousEnvironmentException::class);
 });
 
 test('a bare --no-interaction run still defaults to local', function (): void {
     // No domain means no evidence of a cloud target — `local` stays the
     // documented default for an omitted {environment?}.
-    expect(envResolver([], ['no-interaction' => true])->resolve(ClusterTool::SECRETS))
+    expect(envResolver([], ['no-interaction' => true])->resolve(ClusterTool::OPENBAO))
         ->toBe('local');
 });
 
 test('the refusal names the command and the domain so the fix is copy-pasteable', function (): void {
     try {
-        envResolver([], ['domain' => 'example.com'])->resolve(ClusterTool::MAIL);
+        envResolver([], ['domain' => 'example.com'])->resolve(ClusterTool::STALWART);
         $this->fail('expected AmbiguousEnvironmentException');
     } catch (AmbiguousEnvironmentException $e) {
         expect($e->command)->toBe('tool:init --tool=stalwart')

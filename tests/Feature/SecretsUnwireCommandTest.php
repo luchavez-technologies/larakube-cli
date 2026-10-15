@@ -58,9 +58,9 @@ test('secrets:unwire errors when OpenBao is not deployed', function (): void {
         ->expectsOutputToContain('OpenBao is not deployed on this cluster');
 });
 
-test('secrets:unwire supports unwiring git, notes, sheets, and chat tools', function (): void {
+test('secrets:unwire supports unwiring git, notes, sheets, and matrix tools', function (): void {
     openBaoRegistered();
-    foreach (['git' => 'forgejo', 'outline' => 'outline-secrets', 'teable' => 'sheet-secrets', 'chat' => 'chat-secrets'] as $toolSlug => $secretName) {
+    foreach (['forgejo' => 'forgejo', 'outline' => 'outline-secrets', 'teable' => 'sheet-secrets', 'matrix' => 'chat-secrets'] as $toolSlug => $secretName) {
         fakeOpenBaoUnwireHttp();
         Process::fake([
             '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('root-token')),

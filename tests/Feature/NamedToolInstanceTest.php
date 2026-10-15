@@ -35,7 +35,7 @@ test('tool:init --tool=outline deploys a named multi-instance with isolated DB a
     // command actually computes now that the instance IS the host, not a
     // separately-typed --instance flag.
     $registryJson = json_encode([
-        ['tool' => 'sso', 'instance' => 'main', 'host' => 'sso.kube', 'installedAt' => '2026-08-01T00:00:00+00:00'],
+        ['tool' => 'zitadel', 'instance' => 'main', 'host' => 'sso.kube', 'installedAt' => '2026-08-01T00:00:00+00:00'],
     ]);
 
     Saloon::fake([

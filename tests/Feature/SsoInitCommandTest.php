@@ -192,5 +192,5 @@ test('tool:init --tool=zitadel wires Zitadel outbound email to Stalwart when the
 
     $this->artisan('tool:init --tool=zitadel local --no-plex --admin-email=admin@example.com')
         ->assertExitCode(0)
-        ->expectsOutputToContain('larakube mail:wire --tool=sso');
+        ->expectsOutputToContain('larakube mail:wire --tool=zitadel');
 });

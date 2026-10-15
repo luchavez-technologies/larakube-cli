@@ -51,13 +51,13 @@ trait InteractsWithSso
             return $this->ssoNamesOverride;
         }
 
-        return $this->ssoNamesMemo[$kubectl] ??= ToolInstance::first($kubectl, ClusterTool::SSO);
+        return $this->ssoNamesMemo[$kubectl] ??= ToolInstance::first($kubectl, ClusterTool::ZITADEL);
     }
 
     /** The namespace the SSO stack lives in — dedicated, not larakube-shared. */
     protected function ssoNamespace(): string
     {
-        return ClusterTool::SSO->namespace();
+        return ClusterTool::ZITADEL->namespace();
     }
 
     /** Zitadel Deployment present? */
@@ -95,7 +95,7 @@ trait InteractsWithSso
         }
 
         if ($kubectl !== null) {
-            $registered = $this->resolveLiveToolHost($kubectl, ClusterTool::SSO);
+            $registered = $this->resolveLiveToolHost($kubectl, ClusterTool::ZITADEL);
             if ($registered !== null && $registered !== '') {
                 return $registered;
             }

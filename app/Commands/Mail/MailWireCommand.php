@@ -142,7 +142,7 @@ class MailWireCommand extends Command
     {
         $capable = array_filter(
             ClusterTool::shippedCases(),
-            fn (ClusterTool $t) => $t->smtpEnv() !== null || $t->category() === ClusterTool::SSO,
+            fn (ClusterTool $t) => $t->smtpEnv() !== null || $t === ClusterTool::ZITADEL,
         );
 
         $installed = array_values(array_filter(
@@ -165,7 +165,7 @@ class MailWireCommand extends Command
             if ($this->refuseUnshippedTool($tool)) {
                 return [];
             }
-            if ($tool->smtpEnv() === null && $tool->category() !== ClusterTool::SSO) {
+            if ($tool->smtpEnv() === null && $tool->category() !== ClusterTool::ZITADEL) {
                 $this->laraKubeError("'{$slug}' is not an SMTP-capable tool.");
 
                 return [];
@@ -305,7 +305,7 @@ class MailWireCommand extends Command
         // NO -crlf: the convo already uses \r\n; -crlf would double it to \r\r\n,
         // which strict servers reject (RFC 2821 §2.7.1).
         $script = 'echo '.base64_encode($convo).' | base64 -d | openssl s_client -quiet -connect 127.0.0.1:465 2>/dev/null';
-        $deployment = ClusterTool::MAIL->deploymentName($this->resolveMailInstance($kubectl));
+        $deployment = ClusterTool::STALWART->deploymentName($this->resolveMailInstance($kubectl));
         $out = Process::timeout(30)->run(
             "{$kubectl} exec deploy/{$deployment} -n {$ns} -- sh -c ".escapeshellarg($script),
         )->output();
@@ -318,7 +318,7 @@ class MailWireCommand extends Command
      */
     protected function wireTool(string $kubectl, ClusterTool $tool, array $endpoint, string $sender, string $appPassword, string $env): bool
     {
-        if ($tool->category() === ClusterTool::SSO) {
+        if ($tool === ClusterTool::ZITADEL) {
             $pat = $this->readSsoSecret($kubectl, $this->ssoNamespace(), 'machine-pat');
             if ($pat === null) {
                 $this->laraKubeError('Could not read Zitadel automation PAT. Ensure tool:init --tool=zitadel has completed.');
@@ -334,7 +334,7 @@ class MailWireCommand extends Command
             }
 
             $ok = false;
-            $this->withSpin('Wiring Identity Provider / SSO (Zitadel)...', function () use ($ssoHost, $pat, $endpoint, $sender, $appPassword, &$ok) {
+            $this->withSpin('Wiring Zitadel (Identity Provider & SSO)...', function () use ($ssoHost, $pat, $endpoint, $sender, $appPassword, &$ok) {
                 $ok = $this->zitadelConfigureSmtp(
                     $ssoHost,
                     $pat,
@@ -382,7 +382,7 @@ class MailWireCommand extends Command
         // per-host/port/user vars. Stalwart talks implicit TLS on 465, hence
         // smtp+ssl://, and the credentials must be percent-encoded (the
         // sender is an email address — an unencoded @ would break the URL).
-        if ($tool->category() === ClusterTool::GLITCHTIP) {
+        if ($tool === ClusterTool::GLITCHTIP) {
             $logical['email_url'] = 'smtp+ssl://'.rawurlencode($logical['user']).':'.rawurlencode($logical['password']).'@'.$logical['host'].':'.$logical['port'];
         }
 
@@ -462,7 +462,7 @@ class MailWireCommand extends Command
 
     protected function isToolInstalledForMail(string $kubectl, ClusterTool $tool): bool
     {
-        if ($tool->category() === ClusterTool::SSO) {
+        if ($tool === ClusterTool::ZITADEL) {
             return $this->isSsoInstalled($kubectl, $this->ssoNamespace());
         }
 

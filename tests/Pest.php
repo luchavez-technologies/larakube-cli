@@ -259,7 +259,7 @@ function registeredToolRemoveFakes(string $removeCommand, string $instance = '',
     return [
         '*get secret larakube-tools-registry*' => Illuminate\Support\Facades\Process::result(output: base64_encode(json_encode([
             ['tool' => $tool->value, 'instance' => $instance, 'host' => $host],
-            ...($tool === App\Enums\ClusterTool::SSO ? [] : [ssoRegistryRow()]),
+            ...($tool === App\Enums\ClusterTool::ZITADEL ? [] : [ssoRegistryRow()]),
         ]))),
         '*create namespace larakube-shared*' => Illuminate\Support\Facades\Process::result(),
         '*create secret generic larakube-tools-registry*' => Illuminate\Support\Facades\Process::result(),

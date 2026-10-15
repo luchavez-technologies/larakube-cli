@@ -53,7 +53,7 @@ abstract class VpnInitCommand extends AbstractToolInitCommand
         $env = $this->resolveEnvironment($config);
         $kubectl = Kubectl::forContext($this->resolveVpnContext($env, $config))->prefix();
 
-        $host = $this->resolveToolHost(SharedClusterService::VPN, ClusterTool::VPN, $env, $kubectl);
+        $host = $this->resolveToolHost(SharedClusterService::VPN, ClusterTool::NETBIRD, $env, $kubectl);
 
         // Resolved from $host, not the registry: on a first install tool:init --tool=netbird
         // renders and waits on these resources before it registers the tool.
@@ -95,7 +95,7 @@ abstract class VpnInitCommand extends AbstractToolInitCommand
             // success, so the mismatch is invisible — confirmed live
             // 2026-08-29, where a --purge left the store fully intact and the
             // next tool:init --tool=netbird hit "setup already completed".
-            $storeDb = ClusterTool::VPN->commonsDatabases(ClusterTool::VPN->instanceSlugFromHost($host))[0];
+            $storeDb = ClusterTool::NETBIRD->commonsDatabases(ClusterTool::NETBIRD->instanceSlugFromHost($host))[0];
 
             $dbPassword = $this->readClusterSecretKey($kubectl, $ns, $storeSecret, 'db-password') ?? Str::random(24);
 
@@ -124,7 +124,7 @@ abstract class VpnInitCommand extends AbstractToolInitCommand
             'noPlex' => $noPlex,
             'plexNamespace' => $this->plexNamespace(),
             'storeDb' => $storeDb,
-            'instance' => ClusterTool::VPN->instanceSlugFromHost($host),
+            'instance' => ClusterTool::NETBIRD->instanceSlugFromHost($host),
         ])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();
@@ -216,7 +216,7 @@ abstract class VpnInitCommand extends AbstractToolInitCommand
         $this->seedVpnResolverConfig($kubectl, $ns, $host);
 
         $clientManifest = view('k8s.vpn.client', [
-            'instance' => ClusterTool::VPN->instanceSlugFromHost($host),
+            'instance' => ClusterTool::NETBIRD->instanceSlugFromHost($host),
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
         ])->render();
         $clientTemporaryDirectory = TemporaryDirectory::make();
@@ -225,7 +225,7 @@ abstract class VpnInitCommand extends AbstractToolInitCommand
 
         $clientRolledOut = $this->withSpin(
             'Deploying NetBird Client...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $clientTmp, $ns, $client, 120, tool: ClusterTool::VPN),
+            fn () => $this->applyAndVerifyRollout($kubectl, $clientTmp, $ns, $client, 120, tool: ClusterTool::NETBIRD),
         );
         $clientTemporaryDirectory->delete();
 
@@ -237,7 +237,7 @@ abstract class VpnInitCommand extends AbstractToolInitCommand
         // computed the unsuffixed tenant name, and ran DROP DATABASE IF EXISTS
         // against a name that never existed — reporting success while the real
         // database survived untouched. Confirmed live 2026-08-29, twice.
-        $this->registerDeployedTool(ClusterTool::VPN, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::NETBIRD, $kubectl, $host);
 
         if (! $clientRolledOut) {
             return 1;
@@ -700,7 +700,7 @@ abstract class VpnInitCommand extends AbstractToolInitCommand
      */
     protected function seedVpnPatIntoOpenBao(string $kubectl, string $host, string $pat, string $env): void
     {
-        $keyMap = ClusterTool::VPN->openbaoSyncConfig(ClusterTool::VPN->instanceSlugFromHost($host))['keyMap'] ?? [];
+        $keyMap = ClusterTool::NETBIRD->openbaoSyncConfig(ClusterTool::NETBIRD->instanceSlugFromHost($host))['keyMap'] ?? [];
         $kvKey = array_key_first($keyMap);
 
         if ($kvKey === null || ! $this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
@@ -906,7 +906,7 @@ abstract class VpnInitCommand extends AbstractToolInitCommand
      */
     protected function forceFreshAcmeAttempt(string $kubectl, string $ns, string $host, bool $isLocal): void
     {
-        $manifest = view('k8s.vpn.ingress', ['host' => $host, 'isLocal' => $isLocal, 'instance' => ClusterTool::VPN->instanceSlugFromHost($host)])->render();
+        $manifest = view('k8s.vpn.ingress', ['host' => $host, 'isLocal' => $isLocal, 'instance' => ClusterTool::NETBIRD->instanceSlugFromHost($host)])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();
         $tmp = $temporaryDirectory->path('larakube-vpn-ingress-retry.yaml');
@@ -923,6 +923,6 @@ abstract class VpnInitCommand extends AbstractToolInitCommand
      */
     protected function resolveEnvironment(?ConfigData $config = null): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::VPN, $config);
+        return $this->resolveToolEnvironment(ClusterTool::NETBIRD, $config);
     }
 }

@@ -25,7 +25,7 @@ function stalwartDocuments(array $overrides = []): array
 }
 
 test('Stalwart resolves every resource name from ToolInstance with the category gone', function (): void {
-    $names = ToolInstance::forInstance(ClusterTool::MAIL, 'send-luchtech-dev');
+    $names = ToolInstance::forInstance(ClusterTool::STALWART, 'send-luchtech-dev');
 
     expect($names->deployment())->toBe('stalwart-send-luchtech-dev')
         ->and($names->name('mail'))->toBe('stalwart-mail-send-luchtech-dev')
@@ -42,15 +42,15 @@ test('Stalwart resolves every resource name from ToolInstance with the category 
 });
 
 test('the Redis tenant is the database name, so one install owns one registry row', function (): void {
-    $names = ToolInstance::forInstance(ClusterTool::MAIL, 'send-luchtech-dev');
+    $names = ToolInstance::forInstance(ClusterTool::STALWART, 'send-luchtech-dev');
 
     expect($names->redisTenant())->toBe($names->database());
 });
 
 test('the rotation Secret and the OpenBao sync Secret are the store Secret the manifest reads', function (): void {
-    expect(ClusterTool::MAIL->dbSecretRef('send-luchtech-dev')['secret'])->toBe('stalwart-store-send-luchtech-dev')
-        ->and(ClusterTool::MAIL->openbaoSyncConfig('send-luchtech-dev')['secret'])->toBe('stalwart-store-send-luchtech-dev')
-        ->and(ClusterTool::MAIL->openbaoSyncConfig('send-luchtech-dev'))->not->toHaveKey('kind');
+    expect(ClusterTool::STALWART->dbSecretRef('send-luchtech-dev')['secret'])->toBe('stalwart-store-send-luchtech-dev')
+        ->and(ClusterTool::STALWART->openbaoSyncConfig('send-luchtech-dev')['secret'])->toBe('stalwart-store-send-luchtech-dev')
+        ->and(ClusterTool::STALWART->openbaoSyncConfig('send-luchtech-dev'))->not->toHaveKey('kind');
 });
 
 /**
@@ -76,7 +76,7 @@ test('the manifest names every object from ToolInstance and the claim matches th
 
     expect($deployment['metadata']['name'])->toBe('stalwart-send-example-com')
         ->and($deployment['spec']['selector']['matchLabels']['app'])->toBe('stalwart-send-example-com')
-        ->and($deployment['spec']['template']['metadata']['labels']['larakube.io/tool'])->toBe('mail')
+        ->and($deployment['spec']['template']['metadata']['labels']['larakube.io/tool'])->toBe('stalwart')
         ->and($pvc['metadata']['name'])->toBe('stalwart-storage-send-example-com')
         ->and(collect($deployment['spec']['template']['spec']['volumes'])->firstWhere('name', 'stalwart-data')['persistentVolumeClaim']['claimName'])->toBe('stalwart-storage-send-example-com')
         ->and($env['STALWART_RECOVERY_ADMIN']['valueFrom']['secretKeyRef']['name'])->toBe('stalwart-secrets-send-example-com')
@@ -99,7 +99,7 @@ test('the Ingress renders from the host alone, the way the local re-point does',
 });
 
 test('teardown names every resource the manifest declares', function (): void {
-    $component = ClusterTool::MAIL->components('send-luchtech-dev')[0];
+    $component = ClusterTool::STALWART->components('send-luchtech-dev')[0];
     $refs = collect($component->resources)->map(fn ($r) => "{$r['kind']}/{$r['name']}")->all();
 
     expect($component->deployment)->toBe('stalwart-send-luchtech-dev')

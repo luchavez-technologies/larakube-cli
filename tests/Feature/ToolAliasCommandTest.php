@@ -7,11 +7,11 @@ pest()->use(InteractsWithToolRegistry::class);
 
 test('tool:alias adds an alias domain to a registered tool and re-applies ingress', function (): void {
     $initialJson = json_encode([
-        ['tool' => 'mail', 'instance' => 'main', 'host' => 'send.luchtech.dev', 'installedAt' => '2026-08-01T00:00:00+00:00'],
+        ['tool' => 'stalwart', 'instance' => 'main', 'host' => 'send.luchtech.dev', 'installedAt' => '2026-08-01T00:00:00+00:00'],
     ]);
 
     $updatedJson = json_encode([
-        ['tool' => 'mail', 'instance' => 'main', 'host' => 'send.luchtech.dev', 'aliases' => ['send.next.site'], 'installedAt' => '2026-08-01T00:00:00+00:00'],
+        ['tool' => 'stalwart', 'instance' => 'main', 'host' => 'send.luchtech.dev', 'aliases' => ['send.next.site'], 'installedAt' => '2026-08-01T00:00:00+00:00'],
     ]);
 
     $callCount = 0;
@@ -27,9 +27,9 @@ test('tool:alias adds an alias domain to a registered tool and re-applies ingres
         '*apply -f *' => Process::result(output: 'applied'),
     ]);
 
-    $this->artisan('tool:alias', ['tool' => 'mail', '--alias' => 'send.next.site'])
+    $this->artisan('tool:alias', ['tool' => 'stalwart', '--alias' => 'send.next.site'])
         ->assertExitCode(0)
-        ->expectsOutputToContain('Registered alias domain \'send.next.site\' for Mail Server (Stalwart)')
+        ->expectsOutputToContain('Registered alias domain \'send.next.site\' for Stalwart (All-in-One Mail Server)')
         ->expectsOutputToContain('https://send.next.site');
 });
 
@@ -40,7 +40,7 @@ test('tool:alias --domain= targets the registered instance serving that host, no
     // with "instance is not registered" even though 'main' serves that host.
     // Host identity must win: --domain resolves to the REGISTERED instance.
     $registryJson = json_encode([
-        ['tool' => 'mail', 'instance' => 'main', 'host' => 'send.luchtech.dev', 'installedAt' => '2026-08-01T00:00:00+00:00'],
+        ['tool' => 'stalwart', 'instance' => 'main', 'host' => 'send.luchtech.dev', 'installedAt' => '2026-08-01T00:00:00+00:00'],
     ]);
 
     Process::fake([
@@ -50,14 +50,14 @@ test('tool:alias --domain= targets the registered instance serving that host, no
         '*apply -f *' => Process::result(output: 'applied'),
     ]);
 
-    $this->artisan('tool:alias', ['tool' => 'mail', '--alias' => 'send.next.site', '--domain' => 'send.luchtech.dev'])
+    $this->artisan('tool:alias', ['tool' => 'stalwart', '--alias' => 'send.next.site', '--domain' => 'send.luchtech.dev'])
         ->assertExitCode(0)
-        ->expectsOutputToContain('Registered alias domain \'send.next.site\' for Mail Server (Stalwart)');
+        ->expectsOutputToContain('Registered alias domain \'send.next.site\' for Stalwart (All-in-One Mail Server)');
 });
 
 test('tool:alias --remove removes an alias domain from a registered tool', function (): void {
     $registryJson = json_encode([
-        ['tool' => 'mail', 'instance' => 'main', 'host' => 'send.luchtech.dev', 'aliases' => ['send.next.site'], 'installedAt' => '2026-08-01T00:00:00+00:00'],
+        ['tool' => 'stalwart', 'instance' => 'main', 'host' => 'send.luchtech.dev', 'aliases' => ['send.next.site'], 'installedAt' => '2026-08-01T00:00:00+00:00'],
     ]);
 
     Process::fake([
@@ -67,7 +67,7 @@ test('tool:alias --remove removes an alias domain from a registered tool', funct
         '*apply -f *' => Process::result(output: 'applied'),
     ]);
 
-    $this->artisan('tool:alias', ['tool' => 'mail', '--alias' => 'send.next.site', '--remove' => true])
+    $this->artisan('tool:alias', ['tool' => 'stalwart', '--alias' => 'send.next.site', '--remove' => true])
         ->assertExitCode(0)
-        ->expectsOutputToContain('Removed alias domain \'send.next.site\' from Mail Server (Stalwart)');
+        ->expectsOutputToContain('Removed alias domain \'send.next.site\' from Stalwart (All-in-One Mail Server)');
 });

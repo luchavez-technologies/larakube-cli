@@ -74,13 +74,13 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::MATRIX => ChatTool::MATRIX,
             self::PENPOT => DesignTool::PENPOT,
             self::PLANKA => TaskTool::PLANKA,
-            self::MAIL, self::STALWART => new MailTool,
-            self::SECRETS, self::OPENBAO => new SecretTool,
+            self::STALWART => new MailTool,
+            self::OPENBAO => new SecretTool,
             self::OCIS => new DriveTool,
             self::VAULTWARDEN => new PasswordTool,
             self::DOCUMENSO => new SignTool,
             self::SENDREC => new RecordTool,
-            self::SSO, self::ZITADEL => new SsoTool,
+            self::ZITADEL => new SsoTool,
             self::KUTT => new LinkTool,
             self::BULWARK => new WebmailTool,
             self::OUTLINE => new NoteTool,
@@ -94,7 +94,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::LIVEKIT => new MeetTool,
             self::EXTERNAL_DNS => new DnsTool,
             self::KUMA => new UptimeTool,
-            self::VPN, self::NETBIRD => new VpnTool,
+            self::NETBIRD => new VpnTool,
             self::HEADLAMP => new DashboardTool,
             self::RESUME => new ResumeTool,
             self::YOPASS => new YopassTool,
@@ -142,12 +142,6 @@ enum ClusterTool: string implements HasWorkloadComponents
 
             // Legacy Categories
             self::FLOW => 'Workflow Automation (N8N or Windmill)',
-            self::SECRETS => 'Secrets Manager (OpenBao)',
-            self::GIT => 'Git Forge & CI/CD (Forgejo)',
-            self::VPN => 'Zero-Trust VPN Mesh (NetBird)',
-            self::MAIL => 'Mail Server (Stalwart)',
-            self::CHAT => 'Team Chat (Matrix)',
-            self::SSO => 'Identity Provider / SSO (Zitadel)',
             self::DATA => 'Headless CMS & Data API (PocketBase or Directus)',
         };
     }
@@ -200,14 +194,8 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::EXTERNAL_DNS => '🌐',
 
             // Legacy categories
-            self::CHAT => '💬',
             self::DATA => '🗄️',
             self::FLOW => '⚡',
-            self::GIT => '🦊',
-            self::MAIL => '✉️',
-            self::SECRETS => '🔒',
-            self::SSO => '🪪',
-            self::VPN => '🔑',
         };
     }
 
@@ -257,14 +245,8 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::EXTERNAL_DNS => 'ExternalDNS',
 
             // Legacy categories
-            self::CHAT => 'Chat',
             self::DATA => 'Data',
             self::FLOW => 'Automation',
-            self::GIT => 'Git',
-            self::MAIL => 'Mail',
-            self::SECRETS => 'Secrets',
-            self::SSO => 'SSO',
-            self::VPN => 'VPN',
         };
     }
 
@@ -298,13 +280,13 @@ enum ClusterTool: string implements HasWorkloadComponents
         return match ($this) {
             self::POCKETBASE, self::DIRECTUS, self::WORDPRESS, self::DATA => SharedClusterService::DATA,
             self::N8N, self::WINDMILL, self::FLOW => SharedClusterService::FLOW,
-            self::FORGEJO, self::GIT => SharedClusterService::FORGEJO,
-            self::MATRIX, self::CHAT => SharedClusterService::CHAT,
+            self::FORGEJO => SharedClusterService::FORGEJO,
+            self::MATRIX => SharedClusterService::CHAT,
             self::TWENTY => SharedClusterService::CRM,
             self::LIVEKIT => SharedClusterService::MEET,
-            self::OPENBAO, self::SECRETS => SharedClusterService::SECRETS,
-            self::NETBIRD, self::VPN => SharedClusterService::VPN,
-            self::ZITADEL, self::SSO => SharedClusterService::SSO,
+            self::OPENBAO => SharedClusterService::SECRETS,
+            self::NETBIRD => SharedClusterService::VPN,
+            self::ZITADEL => SharedClusterService::SSO,
             self::VAULTWARDEN => SharedClusterService::VAULT,
             self::KUMA => SharedClusterService::UPTIME_KUMA,
             self::GRAFANA => SharedClusterService::GRAFANA,
@@ -317,7 +299,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::CHATWOOT => SharedClusterService::SUPPORT,
             self::UMAMI, self::PLAUSIBLE => SharedClusterService::ANALYTICS,
             self::HEADLAMP => SharedClusterService::DASHBOARD,
-            self::STALWART, self::MAIL => SharedClusterService::MAIL,
+            self::STALWART => SharedClusterService::MAIL,
             self::BULWARK => SharedClusterService::WEBMAIL,
             self::PLANKA => SharedClusterService::TASKS,
             self::KUTT => SharedClusterService::LINK,
@@ -341,9 +323,9 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         return match ($this) {
             self::VAULTWARDEN => 'larakube-vault',
-            self::SECRETS, self::OPENBAO => 'larakube-secrets',
-            self::SSO, self::ZITADEL => 'larakube-sso',
-            self::VPN, self::NETBIRD => 'larakube-vpn',
+            self::OPENBAO => 'larakube-secrets',
+            self::ZITADEL => 'larakube-sso',
+            self::NETBIRD => 'larakube-vpn',
             default => 'larakube-shared',
         };
     }
@@ -499,7 +481,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public static function forGrantableRoleKey(string $roleKey): ?self
     {
         if (str_starts_with($roleKey, 'secrets-')) {
-            return self::SECRETS;
+            return self::OPENBAO;
         }
 
         foreach (self::cases() as $tool) {
@@ -594,7 +576,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function engines(): array
     {
         return match ($this) {
-            self::CHAT => ['matrix' => 'Matrix (Synapse + Element)'],
+            self::MATRIX => ['matrix' => 'Matrix (Synapse + Element)'],
             self::DATA => ['pocketbase' => 'PocketBase', 'directus' => 'Directus', 'wordpress' => 'WordPress'],
             self::OCIS => ['ocis' => 'oCIS'],
             self::FLOW => ['n8n' => 'n8n', 'windmill' => 'Windmill'],
@@ -618,10 +600,10 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function supportsNoPlex(): bool
     {
         return match ($this) {
-            self::CHAT, self::MATRIX, self::OCIS, self::GLITCHTIP,
-            self::FLOW, self::N8N, self::WINDMILL, self::GIT, self::FORGEJO,
-            self::METABASE, self::SSO, self::ZITADEL,
-            self::GRAFANA, self::VPN, self::NETBIRD => true,
+            self::MATRIX, self::OCIS, self::GLITCHTIP,
+            self::FLOW, self::N8N, self::WINDMILL, self::FORGEJO,
+            self::METABASE, self::ZITADEL,
+            self::GRAFANA, self::NETBIRD => true,
             default => false,
         };
     }
@@ -682,14 +664,8 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function isLegacy(): bool
     {
         return match ($this) {
-            self::CHAT,
             self::DATA,
-            self::FLOW,
-            self::GIT,
-            self::MAIL,
-            self::SECRETS,
-            self::SSO,
-            self::VPN => true,
+            self::FLOW => true,
             default => false,
         };
     }
@@ -706,21 +682,15 @@ enum ClusterTool: string implements HasWorkloadComponents
                 default => self::DIRECTUS,
             },
             self::FLOW => ($engine === 'windmill') ? self::WINDMILL : self::N8N,
-            self::GIT => self::FORGEJO,
-            self::CHAT => self::MATRIX,
-            self::MAIL => self::STALWART,
-            self::SECRETS => self::OPENBAO,
-            self::SSO => self::ZITADEL,
-            self::VPN => self::NETBIRD,
             default => $this,
         };
     }
 
     /**
-     * The category case a tool-named case belongs to (ZITADEL → SSO, GRAFANA →
-     * MONITOR); a category case, or one with no category, is its own. For code that
+     * The category case a tool-named case belongs to (N8N → FLOW, POCKETBASE →
+     * DATA); a category case, or one with no category, is its own. For code that
      * branches on "which kind of tool is this" and must give the same answer for
-     * `--tool=sso` and `--tool=zitadel`.
+     * `--tool=flow` and `--tool=n8n`.
      */
     public function category(): self
     {
@@ -751,13 +721,13 @@ enum ClusterTool: string implements HasWorkloadComponents
         return match ($this) {
             self::POCKETBASE, self::DIRECTUS, self::WORDPRESS, self::DATA => 'data',
             self::N8N, self::WINDMILL, self::FLOW => 'flow',
-            self::FORGEJO, self::GIT => 'git',
-            self::MATRIX, self::CHAT => 'chat',
+            self::FORGEJO => 'git',
+            self::MATRIX => 'chat',
             self::TWENTY => 'crm',
             self::LIVEKIT => 'meet',
-            self::OPENBAO, self::SECRETS => 'secrets',
-            self::NETBIRD, self::VPN => 'vpn',
-            self::ZITADEL, self::SSO => 'sso',
+            self::OPENBAO => 'secrets',
+            self::NETBIRD => 'vpn',
+            self::ZITADEL => 'sso',
             self::VAULTWARDEN => 'passwords',
             self::KUMA => 'uptime',
             self::GRAFANA => 'monitor',
@@ -770,7 +740,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::CHATWOOT => 'support',
             self::UMAMI, self::PLAUSIBLE => 'analytics',
             self::HEADLAMP => 'dashboard',
-            self::STALWART, self::MAIL => 'mail',
+            self::STALWART => 'mail',
             self::BULWARK => 'webmail',
             self::PLANKA => 'tasks',
             self::KUTT => 'link',
@@ -1279,7 +1249,7 @@ enum ClusterTool: string implements HasWorkloadComponents
      */
     public function hasMailWire(): bool
     {
-        return $this->vendor() instanceof HasSmtpWiring || $this === self::SSO || $this === self::ZITADEL;
+        return $this->vendor() instanceof HasSmtpWiring || $this === self::ZITADEL;
     }
 
     /**
@@ -1315,7 +1285,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function rbacRoles(): array
     {
         return match ($this) {
-            self::SECRETS, self::OPENBAO => [
+            self::OPENBAO => [
                 'openbao-admin' => 'Full read/write on all secrets and Commons database credentials',
                 'openbao-operator' => 'Read-only on production secrets and static database roles',
                 'openbao-auditor' => 'Read-only on audit logs and secret metadata (no values)',
@@ -1364,7 +1334,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             // Added 2026-08-20 at the user's explicit request — a git forge
             // holding real source/CI credentials must not be reachable by
             // every org member (a future partner-org identity included).
-            self::GIT, self::FORGEJO => ['git-user' => 'Can log in to Forgejo'],
+            self::FORGEJO => ['git-user' => 'Can log in to Forgejo'],
             // DRIVE keeps its ssoAdminRoles() (ocisAdmin/ocisSpaceAdmin) —
             // this base role is the ONLY thing that changes: it's what an
             // operator grants for plain "can log in, no admin tier" access.
@@ -1384,7 +1354,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             // gap than the open-to-org tools above if left ungated, so this
             // is gated from the moment sso:wire vpn ships, not added
             // reactively after an incident like the others above were.
-            self::VPN, self::NETBIRD => ['vpn-user' => 'Can join the VPN via SSO'],
+            self::NETBIRD => ['vpn-user' => 'Can join the VPN via SSO'],
             default => [],
         };
     }
@@ -1532,9 +1502,9 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function supportsMultipleInstances(): bool
     {
         return match ($this) {
-            self::CHAT, self::MATRIX, self::LIVEKIT, self::GIT, self::FORGEJO,
-            self::MAIL, self::STALWART, self::SSO, self::ZITADEL, self::SECRETS, self::OPENBAO,
-            self::GRAFANA, self::VPN, self::NETBIRD, self::BULWARK,
+            self::MATRIX, self::LIVEKIT, self::FORGEJO,
+            self::STALWART, self::ZITADEL, self::OPENBAO,
+            self::GRAFANA, self::NETBIRD, self::BULWARK,
             self::HEADLAMP, self::EXTERNAL_DNS => false,
             default => true,
         };
@@ -1700,7 +1670,7 @@ enum ClusterTool: string implements HasWorkloadComponents
         $uris = [];
 
         foreach ($allHosts as $h) {
-            if ($this === self::SECRETS) {
+            if ($this === self::OPENBAO) {
                 $uris[] = "https://{$h}{$basePath}";
                 $uris[] = "https://{$h}/ui/vault/auth/oidc/oidc/callback";
             } elseif ($this === self::OCIS) {
@@ -1733,7 +1703,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::OCIS => ["https://{$toolHost}/"],
             // Fixed NetBird dashboard-frontend path (IdentityProviderModal.tsx),
             // not derived from redirect_path — same reasoning as DRIVE above.
-            self::VPN, self::NETBIRD => ["https://{$toolHost}/oauth2/logout/callback"],
+            self::NETBIRD => ["https://{$toolHost}/oauth2/logout/callback"],
             default => [],
         };
     }
@@ -1919,13 +1889,13 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function resourceNaming(): ResourceNaming
     {
         return match ($this) {
-            self::GRAFANA, self::GIT, self::FORGEJO, self::OUTLINE,
+            self::GRAFANA, self::FORGEJO, self::OUTLINE,
             self::FLOW, self::N8N, self::WINDMILL, self::DOCUMENSO, self::DATA, self::POCKETBASE,
             self::DIRECTUS, self::WORDPRESS, self::KUTT, self::UMAMI, self::PLAUSIBLE,
             self::TEABLE, self::PLANKA, self::HEADLAMP,
-            self::LIVEKIT, self::BULWARK, self::OCIS, self::VPN, self::NETBIRD,
-            self::TWENTY, self::VAULTWARDEN, self::CHAT, self::MATRIX, self::MAIL, self::STALWART,
-            self::SECRETS, self::OPENBAO, self::SSO, self::ZITADEL,
+            self::LIVEKIT, self::BULWARK, self::OCIS, self::NETBIRD,
+            self::TWENTY, self::VAULTWARDEN, self::MATRIX, self::STALWART,
+            self::OPENBAO, self::ZITADEL,
             self::YOPASS, self::KUMA, self::METABASE,
             // ExternalDNS is keyed by a zone group, not a host: `external-dns-{group}` already is
             // {component}-{instance}, so listing it changes no name.
@@ -2158,14 +2128,8 @@ enum ClusterTool: string implements HasWorkloadComponents
     }
 
     // Legacy Category Cases (Retained as deprecated aliases for backwards compatibility with production clusters)
-    case CHAT = 'chat';
     case DATA = 'data';
     case FLOW = 'flow';
-    case GIT = 'git';
-    case MAIL = 'mail';
-    case SECRETS = 'secrets';
-    case SSO = 'sso';
-    case VPN = 'vpn';
 
     // Canonical Individual Tool Cases
     case POCKETBASE = 'pocketbase';

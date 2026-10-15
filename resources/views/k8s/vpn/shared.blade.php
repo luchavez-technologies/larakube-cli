@@ -6,8 +6,8 @@
     // thing is.
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::VPN->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::VPN, $instance);
+        : \App\Enums\ClusterTool::NETBIRD->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::NETBIRD, $instance);
 
     $mgmt = $names->deployment();
     $dashboard = $names->deployment('dashboard');

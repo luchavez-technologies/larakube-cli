@@ -67,9 +67,9 @@ trait InteractsWithVpn
             return $this->vpnInstanceCache;
         }
 
-        $host = $this->getToolHost($kubectl, ClusterTool::VPN);
+        $host = $this->getToolHost($kubectl, ClusterTool::NETBIRD);
 
-        return $this->vpnInstanceCache = $host !== null ? ClusterTool::VPN->instanceSlugFromHost($host) : '';
+        return $this->vpnInstanceCache = $host !== null ? ClusterTool::NETBIRD->instanceSlugFromHost($host) : '';
     }
 
     /**
@@ -87,7 +87,7 @@ trait InteractsWithVpn
      */
     protected function persistVpnPat(string $kubectl, string $pat, string $env): bool
     {
-        $keyMap = ClusterTool::VPN->openbaoSyncConfig($this->vpnInstance($kubectl))['keyMap'] ?? [];
+        $keyMap = ClusterTool::NETBIRD->openbaoSyncConfig($this->vpnInstance($kubectl))['keyMap'] ?? [];
         $kvKey = array_key_first($keyMap);
 
         if ($kvKey !== null && $this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
@@ -124,17 +124,17 @@ trait InteractsWithVpn
      */
     protected function vpnDeploymentForHost(string $host, ?string $component = null): string
     {
-        return $this->vpnComponentDeployment(ClusterTool::VPN->instanceSlugFromHost($host), $component);
+        return $this->vpnComponentDeployment(ClusterTool::NETBIRD->instanceSlugFromHost($host), $component);
     }
 
     protected function vpnSecretForHost(string $host, SecretKind $kind = SecretKind::CREDENTIALS, ?string $component = null): string
     {
-        return $this->vpnSecretFor(ClusterTool::VPN->instanceSlugFromHost($host), $kind, $component);
+        return $this->vpnSecretFor(ClusterTool::NETBIRD->instanceSlugFromHost($host), $kind, $component);
     }
 
     protected function vpnNamespace(): string
     {
-        return ClusterTool::VPN->namespace();
+        return ClusterTool::NETBIRD->namespace();
     }
 
     /**
@@ -901,8 +901,8 @@ trait InteractsWithVpn
      */
     protected function seedVpnResolverConfig(string $kubectl, string $ns, string $vpnHost): bool
     {
-        $instance = ClusterTool::VPN->instanceSlugFromHost($vpnHost);
-        $name = ToolInstance::forInstance(ClusterTool::VPN, $instance)->configMap('resolver', 'client');
+        $instance = ClusterTool::NETBIRD->instanceSlugFromHost($vpnHost);
+        $name = ToolInstance::forInstance(ClusterTool::NETBIRD, $instance)->configMap('resolver', 'client');
 
         if (Kubectl::fromPrefix($kubectl)->exists(new ResourceRef('ConfigMap', $name, $ns))) {
             return true;
@@ -926,7 +926,7 @@ trait InteractsWithVpn
             // hosts it answers for. The registry is deliberately not consulted
             // — a first tool:init --tool=netbird reconciles split-DNS before it registers, and
             // an unnamed instance would write a ConfigMap nothing mounts.
-            'instance' => ClusterTool::VPN->instanceSlugFromHost($vpnHost),
+            'instance' => ClusterTool::NETBIRD->instanceSlugFromHost($vpnHost),
         ])->render();
 
         $applied = Kubectl::fromPrefix($kubectl)->apply($manifest)->ok;
@@ -1023,7 +1023,7 @@ trait InteractsWithVpn
     {
         $key = $component ?? 'management';
 
-        return ClusterTool::VPN->componentByKey($key, $instance)?->deployment
+        return ClusterTool::NETBIRD->componentByKey($key, $instance)?->deployment
             ?? throw new LogicException("vpn declares no '{$key}' component.");
     }
 
@@ -1031,6 +1031,6 @@ trait InteractsWithVpn
     {
         return $instance === ''
             ? $this->vpnComponentDeployment('', $component).'-'.$kind->value
-            : ToolInstance::forInstance(ClusterTool::VPN, $instance)->secret($kind, $component);
+            : ToolInstance::forInstance(ClusterTool::NETBIRD, $instance)->secret($kind, $component);
     }
 }

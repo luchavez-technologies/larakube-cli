@@ -24,7 +24,7 @@ test('mail:wire --forget clears the cached sender and exits (no Stalwart needed)
     Process::assertRan(fn ($process) => str_contains($process->command, 'delete secret stalwart-sender'));
 });
 
-test('mail:wire --tool=sso configures Zitadel SMTP via API', function (): void {
+test('mail:wire --tool=zitadel configures Zitadel SMTP via API', function (): void {
     ssoRegistered();
     Saloon::fake([
         SearchEmailProvidersRequest::class => MockResponse::make(['result' => []]),
@@ -40,8 +40,8 @@ test('mail:wire --tool=sso configures Zitadel SMTP via API', function (): void {
         '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
     ]);
 
-    $this->artisan('mail:wire local --tool=sso')
-        ->expectsOutputToContain('Wired to Stalwart: Identity Provider / SSO (Zitadel)');
+    $this->artisan('mail:wire local --tool=zitadel')
+        ->expectsOutputToContain('Wired to Stalwart: Zitadel (Identity Provider & SSO)');
 });
 
 test('mail:wire local --tool=data configures Directus SMTP via deployment secret', function (): void {

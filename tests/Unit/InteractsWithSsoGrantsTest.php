@@ -32,15 +32,15 @@ function ssoGrantsRegistryFake(array $entries): void
 }
 
 test('resolveInstanceForTool returns null for a single-instance tool with no --domain=', function (): void {
-    expect(ssoGrantsInstanceResolver()->resolve(ClusterTool::SECRETS, 'kubectl', ''))->toBeNull();
+    expect(ssoGrantsInstanceResolver()->resolve(ClusterTool::OPENBAO, 'kubectl', ''))->toBeNull();
 });
 
 test('resolveInstanceForTool honours --domain= outright, even for a single-instance tool', function (): void {
     ssoGrantsRegistryFake([
-        ['tool' => 'secrets', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'secrets.luchtech.dev'],
+        ['tool' => 'openbao', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'secrets.luchtech.dev'],
     ]);
 
-    expect(ssoGrantsInstanceResolver()->resolve(ClusterTool::SECRETS, 'kubectl', 'secrets.luchtech.dev'))->toBe('main');
+    expect(ssoGrantsInstanceResolver()->resolve(ClusterTool::OPENBAO, 'kubectl', 'secrets.luchtech.dev'))->toBe('main');
 });
 
 test('resolveInstanceForTool returns null for a multi-instance tool with no registered instances yet', function (): void {

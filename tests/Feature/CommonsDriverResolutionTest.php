@@ -18,13 +18,13 @@ class CommonsDriverResolutionTest
 
 test('SupportedDriversTrait resolves database driver for single supported tool', function (): void {
     $tester = new CommonsDriverResolutionTest;
-    $driver = $tester->resolveToolDatabaseDriver('kubectl', ClusterTool::CHAT);
+    $driver = $tester->resolveToolDatabaseDriver('kubectl', ClusterTool::MATRIX);
     expect($driver)->toBe(DatabaseDriver::POSTGRESQL);
 });
 
 test('SupportedDriversTrait respects explicit database driver option', function (): void {
     $tester = new CommonsDriverResolutionTest;
-    $driver = $tester->resolveToolDatabaseDriver('kubectl', ClusterTool::GIT, 'mysql');
+    $driver = $tester->resolveToolDatabaseDriver('kubectl', ClusterTool::FORGEJO, 'mysql');
     expect($driver)->toBe(DatabaseDriver::MYSQL);
 });
 
@@ -39,7 +39,7 @@ test('SupportedDriversTrait resolves active database driver from cluster probe',
     ]);
 
     $tester = new CommonsDriverResolutionTest;
-    $driver = $tester->resolveToolDatabaseDriver('kubectl', ClusterTool::GIT);
+    $driver = $tester->resolveToolDatabaseDriver('kubectl', ClusterTool::FORGEJO);
     expect($driver)->toBe(DatabaseDriver::MYSQL);
 });
 
@@ -50,7 +50,7 @@ test('SupportedDriversTrait resolves cache driver for tool', function (): void {
     ]);
 
     $tester = new CommonsDriverResolutionTest;
-    $driver = $tester->resolveToolCacheDriver('kubectl', ClusterTool::GIT);
+    $driver = $tester->resolveToolCacheDriver('kubectl', ClusterTool::FORGEJO);
     expect($driver)->toBe(CacheDriver::REDIS);
 });
 

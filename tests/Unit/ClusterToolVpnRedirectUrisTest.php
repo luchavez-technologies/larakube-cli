@@ -13,19 +13,19 @@
 use App\Enums\ClusterTool;
 
 test('the VPN management app registers only its own callback', function (): void {
-    $uris = ClusterTool::VPN->oidcRedirectUris('vpn.example.com');
+    $uris = ClusterTool::NETBIRD->oidcRedirectUris('vpn.example.com');
 
     expect($uris)->toBe(['https://vpn.example.com/oauth2/callback']);
 });
 
 test('VPN redirect URIs cover every alias host', function (): void {
-    $uris = ClusterTool::VPN->oidcRedirectUris('vpn.example.com', ['vpn.example.org']);
+    $uris = ClusterTool::NETBIRD->oidcRedirectUris('vpn.example.com', ['vpn.example.org']);
 
     expect($uris)->toContain('https://vpn.example.org/oauth2/callback');
 });
 
 test('VPN post-logout redirect stays on the dashboard logout callback', function (): void {
-    expect(ClusterTool::VPN->oidcPostLogoutRedirectUris('vpn.example.com'))
+    expect(ClusterTool::NETBIRD->oidcPostLogoutRedirectUris('vpn.example.com'))
         ->toBe(['https://vpn.example.com/oauth2/logout/callback']);
 });
 

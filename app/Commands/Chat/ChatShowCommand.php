@@ -9,6 +9,6 @@ abstract class ChatShowCommand extends AbstractToolShowCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::CHAT;
+        return ClusterTool::MATRIX;
     }
 }

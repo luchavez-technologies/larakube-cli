@@ -1,7 +1,7 @@
 @php
     // Names from ToolInstance (ADR 0021). The Corefile belongs to the gateway
     // peer's resolver sidecar, so it is named against the client component.
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::VPN, (string) $instance);
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::NETBIRD, (string) $instance);
     $resolverConfig = $names->configMap('resolver', 'client');
     $labels = $names->labels('client');
 @endphp

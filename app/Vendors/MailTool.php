@@ -57,7 +57,7 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
     public function components(?string $instance = null, ?string $engine = null): array
     {
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
-        $canonical = fn (string $n) => ClusterTool::MAIL->withoutCategory($n);
+        $canonical = fn (string $n) => ClusterTool::STALWART->withoutCategory($n);
         $deployment = $canonical($name('mail-stalwart'));
 
         return [
@@ -136,7 +136,7 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
         // store Secret holds DB/S3 creds and never admin-password.
         $secretName = ($instance === null || $instance === '')
             ? 'stalwart-secrets'
-            : ToolInstance::forInstance(ClusterTool::MAIL, $instance)->secret();
+            : ToolInstance::forInstance(ClusterTool::STALWART, $instance)->secret();
         $passVal = trim(Process::run(
             "{$kubectl} get secret {$secretName} -n {$ns} -o jsonpath='{.data.admin-password}' --ignore-not-found",
         )->output());

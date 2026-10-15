@@ -19,7 +19,7 @@ function meetWireFakes(array $overrides = []): array
         '*get secret livekit-secrets-meet-example-com*' => Process::result(output: base64_encode($registry)),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ['tool' => 'livekit', 'host' => 'meet.example.com', 'instance' => 'meet-example-com'],
-            ['tool' => 'chat', 'host' => 'chat.example.com', 'instance' => 'chat-example-com'],
+            ['tool' => 'matrix', 'host' => 'chat.example.com', 'instance' => 'chat-example-com'],
         ]))),
         '*get secret synapse-config-chat-example-com*' => Process::result(output: $homeserver),
         '*create secret*' => Process::result(output: 'secret created'),
@@ -32,7 +32,7 @@ function meetWireFakes(array $overrides = []): array
 test('meet:wire refuses when Meet is not installed instead of half-wiring chat', function (): void {
     Process::fake(meetWireFakes(['*-l larakube.io/tool=meet --no-headers*' => Process::result(output: '')]));
 
-    $this->artisan('meet:wire local --tool=chat --no-interaction')
+    $this->artisan('meet:wire local --tool=matrix --no-interaction')
         ->assertExitCode(1)
         ->expectsOutputToContain('Meet is not installed');
 });
@@ -43,7 +43,7 @@ test('meet:wire refuses when Team Chat is not installed', function (): void {
         '*get deployment synapse-chat-example-com*' => Process::result(output: ''),
     ]));
 
-    $this->artisan('meet:wire local --tool=chat --no-interaction')
+    $this->artisan('meet:wire local --tool=matrix --no-interaction')
         ->assertExitCode(1)
         ->expectsOutputToContain('is not installed on this cluster');
 });
@@ -67,7 +67,7 @@ test('meet:wire demands --tool by name when it cannot prompt', function (): void
 test('meet:wire deploys the bridge and points Synapse at it', function (): void {
     Process::fake(meetWireFakes());
 
-    $this->artisan('meet:wire local --tool=chat --no-interaction')
+    $this->artisan('meet:wire local --tool=matrix --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('Team Chat is wired to Meet.')
         ->expectsOutputToContain('https://meet.example.com/jwt');
@@ -81,7 +81,7 @@ test('meet:wire deploys the bridge and points Synapse at it', function (): void 
 test('meet:unwire is a no-op when chat was never wired', function (): void {
     Process::fake(meetWireFakes());
 
-    $this->artisan('meet:unwire local --tool=chat --no-interaction')
+    $this->artisan('meet:unwire local --tool=matrix --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('not wired to Meet');
 });
@@ -97,7 +97,7 @@ test('meet:unwire removes the bridge and revokes the key', function (): void {
         '*larakube.io/component=lk-jwt*' => Process::result(output: 'lk-jwt-meet-example-com 1/1'),
     ]));
 
-    $this->artisan('meet:unwire local --tool=chat --no-interaction')
+    $this->artisan('meet:unwire local --tool=matrix --no-interaction')
         ->assertExitCode(0)
         ->expectsOutputToContain('disconnected from Meet');
 

@@ -18,7 +18,7 @@ test('every ClusterTool has a non-empty brandName', function (): void {
 
 test('icon() covers every case without falling through to a default', function (): void {
     // All cases covered means no two tools share an icon by accident (unless
-    // intentional — CHAT and SUPPORT both use 💬, which is deliberate).
+    // intentional — MATRIX and CHATWOOT both use 💬, which is deliberate).
     $icons = array_map(fn ($t) => $t->icon(), ClusterTool::cases());
 
     expect($icons)->each->toBeString()->not->toBe('');
@@ -36,17 +36,7 @@ test('brandName() produces short operator-friendly labels without product names'
     }
 });
 
-test('ClusterTool::CHAT icon is 💬 and brandName is Chat', function (): void {
-    expect(ClusterTool::CHAT->icon())->toBe('💬')
-        ->and(ClusterTool::CHAT->brandName())->toBe('Chat');
-});
-
-test('ClusterTool::VPN icon is 🔑 and brandName is VPN', function (): void {
-    expect(ClusterTool::VPN->icon())->toBe('🔑')
-        ->and(ClusterTool::VPN->brandName())->toBe('VPN');
-});
-
-test('ClusterTool::SSO icon is 🪪 and brandName is SSO', function (): void {
-    expect(ClusterTool::SSO->icon())->toBe('🪪')
-        ->and(ClusterTool::SSO->brandName())->toBe('SSO');
+test('ClusterTool::ZITADEL icon is 🪪 and brandName is Zitadel', function (): void {
+    expect(ClusterTool::ZITADEL->icon())->toBe('🪪')
+        ->and(ClusterTool::ZITADEL->brandName())->toBe('Zitadel');
 });

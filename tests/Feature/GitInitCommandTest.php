@@ -170,7 +170,7 @@ test('tool:init --tool=forgejo registers itself in the cluster tool registry, in
         ->assertExitCode(0);
 
     expect($captured)->not->toBeNull();
-    $gitEntry = collect($captured)->firstWhere('tool', 'git');
+    $gitEntry = collect($captured)->firstWhere('tool', 'forgejo');
     expect($gitEntry)->not->toBeNull()
         ->and($gitEntry['host'])->not->toBeNull()
         ->and($gitEntry['adminEmail'])->toBe('admin@example.com');
@@ -180,9 +180,9 @@ test('tool:init --tool=forgejo reads and keeps the brand name on its own instanc
     // With more than one git row, an instance-less lookup matched nothing:
     // every run prompted for the brand again and appended another row.
     $registry = [
-        ['tool' => 'git', 'instance' => 'git-example-com', 'host' => 'git.example.com', 'brandName' => 'Acme Git'],
-        ['tool' => 'git', 'instance' => '', 'host' => 'git.example.com'],
-        ['tool' => 'git', 'instance' => null, 'brandName' => 'Acme Git'],
+        ['tool' => 'forgejo', 'instance' => 'git-example-com', 'host' => 'git.example.com', 'brandName' => 'Acme Git'],
+        ['tool' => 'forgejo', 'instance' => '', 'host' => 'git.example.com'],
+        ['tool' => 'forgejo', 'instance' => null, 'brandName' => 'Acme Git'],
     ];
     $captured = null;
     $manifests = [];
@@ -223,7 +223,7 @@ test('tool:init --tool=forgejo reads and keeps the brand name on its own instanc
 
     expect($manifests)->toHaveCount(2)->each->toContain('value: "Acme Git"');
 
-    $gitRows = collect($captured)->where('tool', 'git');
+    $gitRows = collect($captured)->where('tool', 'forgejo');
     expect($gitRows)->toHaveCount(3)
         ->and($gitRows->firstWhere('instance', 'git-example-com')['brandName'])->toBe('Acme Git');
 });

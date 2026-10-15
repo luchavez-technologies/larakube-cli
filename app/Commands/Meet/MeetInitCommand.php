@@ -128,7 +128,7 @@ abstract class MeetInitCommand extends AbstractToolInitCommand
 
         if ($consumers === []) {
             $this->line('  <fg=gray>No consumers wired yet.</>');
-            $this->line("  <fg=gray>Connect Matrix:</>  <fg=blue>larakube meet:wire {$env} --tool=chat</>");
+            $this->line("  <fg=gray>Connect Matrix:</>  <fg=blue>larakube meet:wire {$env} --tool=matrix</>");
         } else {
             $this->line('  <fg=gray>Wired consumers:</> <fg=blue>'.implode(', ', array_keys($consumers)).'</>');
         }

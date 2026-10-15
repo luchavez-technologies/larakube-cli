@@ -2,8 +2,8 @@
     // Names from ToolInstance (ADR 0021), same derivation as shared.blade.php.
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::VPN->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::VPN, $instance);
+        : \App\Enums\ClusterTool::NETBIRD->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::NETBIRD, $instance);
 
     $client = $names->deployment('client');
     $clientPvc = $names->volume('storage', 'client');

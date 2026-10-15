@@ -44,7 +44,7 @@ abstract class SecretsInitCommand extends AbstractToolInitCommand
 
         // The registry has no row for this install yet, so every helper below
         // would find nothing; hand them the names this command is deploying.
-        $this->secretsNamesOverride = ToolInstance::forHost(ClusterTool::SECRETS, $host);
+        $this->secretsNamesOverride = ToolInstance::forHost(ClusterTool::OPENBAO, $host);
         $names = $this->secretsNamesOverride;
 
         // Ensure namespace exists
@@ -54,7 +54,7 @@ abstract class SecretsInitCommand extends AbstractToolInitCommand
 
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::SECRETS, $kubectl, $names->instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::OPENBAO, $kubectl, $names->instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -142,7 +142,7 @@ abstract class SecretsInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::SECRETS, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::OPENBAO, $kubectl, $host);
         $this->laraKubeInfo("✅ OpenBao stack & External Secrets Operator are live in {$ns}.");
         $this->newLine();
         $this->line("  <fg=gray>OpenBao:</>  <fg=blue>https://{$host}</>");
@@ -154,13 +154,13 @@ abstract class SecretsInitCommand extends AbstractToolInitCommand
     /** Resolve the OpenBao ingress host for this install */
     protected function resolveSecretsHost(string $env, ?string $kubectl = null): string
     {
-        return $this->resolveToolHost(SharedClusterService::SECRETS, ClusterTool::SECRETS, $env, $kubectl);
+        return $this->resolveToolHost(SharedClusterService::SECRETS, ClusterTool::OPENBAO, $env, $kubectl);
     }
 
     /** Decide which environment this install targets */
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::SECRETS);
+        return $this->resolveToolEnvironment(ClusterTool::OPENBAO);
     }
 
     /**

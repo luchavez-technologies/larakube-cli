@@ -311,7 +311,7 @@ test('netbird:remove also targets the CHOSEN environment\'s own saved context', 
             // The shared base also unregisters the tool from the cluster
             // registry, which the old --remove path skipped entirely.
             '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
-                ['tool' => 'vpn', 'instance' => '', 'host' => 'vpn.example.com'],
+                ['tool' => 'netbird', 'instance' => '', 'host' => 'vpn.example.com'],
             ]))),
             '*larakube-tools-registry*' => Process::result(output: ''),
             '*apply -f -*' => Process::result(output: 'configured'),
@@ -758,7 +758,7 @@ test('tool:init --tool=netbird defers to the OpenBao-owned password when the ten
 test('VpnTool satisfies the secrets:wire rotation contract', function (): void {
     // secrets:wire discovers targets purely through these four — a tool missing
     // any one of them is silently absent from --all and from the picker.
-    $vpn = ClusterTool::VPN;
+    $vpn = ClusterTool::NETBIRD;
 
     expect($vpn->supportsDatabasePasswordRotation())->toBeTrue()
         ->and($vpn->commonsDatabases())->toBe(['netbird'])
@@ -788,7 +788,7 @@ test('netbird:remove still unregisters the tool when the namespace is slow to dr
         '*get namespace larakube-vpn*' => Process::result(output: 'larakube-vpn   Terminating   5d'),
         '*delete namespace larakube-vpn*' => Process::result(output: 'namespace "larakube-vpn" deleted'),
         '*larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
-            ['tool' => 'vpn', 'instance' => 'vpn-luchtech-dev', 'installedAt' => '2026-08-27T16:45:44+00:00', 'host' => 'vpn.luchtech.dev'],
+            ['tool' => 'netbird', 'instance' => 'vpn-luchtech-dev', 'installedAt' => '2026-08-27T16:45:44+00:00', 'host' => 'vpn.luchtech.dev'],
         ]))),
         '*' => Process::result(output: ''),
     ]);
@@ -1006,7 +1006,7 @@ test('tool:init --tool=netbird allocates exactly the database netbird:remove --p
     // a name that never existed reports success — so a mismatch is completely
     // silent. Confirmed live 2026-08-29: --purge left the store fully intact,
     // and the next tool:init --tool=netbird failed with "setup already completed".
-    $vpn = ClusterTool::VPN;
+    $vpn = ClusterTool::NETBIRD;
     $instance = $vpn->instanceSlugFromHost('vpn.luchtech.dev');
 
     // What netbird:remove --purge drops, via dropCommonsTenants().

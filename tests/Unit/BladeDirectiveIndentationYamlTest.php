@@ -57,7 +57,7 @@ test('vpn ingress manifest parses as valid YAML across isLocal/proxied branches'
 
 test('sso oauth2-proxy ingress manifest parses as valid YAML across isLocal/proxied branches', function (bool $isLocal, bool $proxied): void {
     $rendered = view('k8s.sso.proxy', [
-        'names' => App\Data\ToolInstance::forInstance(App\Enums\ClusterTool::SSO, 'sso-example-com'),
+        'names' => App\Data\ToolInstance::forInstance(App\Enums\ClusterTool::ZITADEL, 'sso-example-com'),
         'namespace' => 'larakube-sso', 'authHost' => 'sso.example.com', 'isLocal' => $isLocal, 'proxied' => $proxied,
         'clientId' => 'cid', 'clientSecret' => 'csecret', 'cookieDomain' => 'example.com', 'cookieSecret' => 'cookiesecret',
         'image' => 'quay.io/oauth2-proxy/oauth2-proxy:v7.6.0', 'rbacRole' => 'owner', 'secretChecksum' => 'abc123', 'ssoHost' => 'sso.example.com',

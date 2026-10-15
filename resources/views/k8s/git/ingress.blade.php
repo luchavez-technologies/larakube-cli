@@ -1,8 +1,8 @@
 @php
     // `up` reconciles this Ingress with only the host; tool:init --tool=forgejo derives the
     // instance from the host the same way.
-    $instance ??= \App\Enums\ClusterTool::GIT->instanceSlugFromHost($host);
-    $tool = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::GIT, $instance);
+    $instance ??= \App\Enums\ClusterTool::FORGEJO->instanceSlugFromHost($host);
+    $tool = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::FORGEJO, $instance);
     $ingressName = $tool->deployment('server');
     $httpServiceName = $tool->name('http', 'server');
 @endphp

@@ -209,7 +209,7 @@ test('tool:init --tool=matrix --vpn-only creates the Traefik Middleware before a
 
     $this->artisan('tool:init --tool=matrix local --no-plex --vpn-only --no-interaction')
         ->assertExitCode(0)
-        ->expectsOutputToContain('Ensuring VPN-only Middleware for Team Chat (Matrix)...')
+        ->expectsOutputToContain('Ensuring VPN-only Middleware for Matrix (Synapse + Element)...')
         ->expectsOutputToContain('Matrix (Synapse + Element) is live.');
 });
 

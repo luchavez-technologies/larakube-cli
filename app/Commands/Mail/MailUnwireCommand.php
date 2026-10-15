@@ -145,7 +145,7 @@ class MailUnwireCommand extends Command
 
     protected function isToolInstalledForMail(string $kubectl, ClusterTool $tool): bool
     {
-        if ($tool->category() === ClusterTool::SSO) {
+        if ($tool === ClusterTool::ZITADEL) {
             return $this->isSsoInstalled($kubectl, $this->ssoNamespace());
         }
 
@@ -168,7 +168,7 @@ class MailUnwireCommand extends Command
 
         $unwired = [];
         foreach ($targets as $tool) {
-            if ($tool->category() === ClusterTool::SSO) {
+            if ($tool === ClusterTool::ZITADEL) {
                 $ssoNs = $this->ssoNamespace();
                 $pat = $this->readSsoSecret($kubectl, $ssoNs, 'machine-pat');
                 $ssoHost = $this->resolveSsoHostReadOnly($env, null, $kubectl);

@@ -6,7 +6,7 @@ use App\Enums\ResourceNaming;
 use App\Enums\SecretKind;
 
 test('Chat resolves every resource name from ToolInstance with the category gone', function (): void {
-    $names = ToolInstance::forInstance(ClusterTool::CHAT, 'chat-luchtech-dev');
+    $names = ToolInstance::forInstance(ClusterTool::MATRIX, 'chat-luchtech-dev');
 
     expect($names->deployment())->toBe('synapse-chat-luchtech-dev')
         ->and($names->deployment('web'))->toBe('element-web-chat-luchtech-dev')
@@ -31,7 +31,7 @@ test('Chat resolves every resource name from ToolInstance with the category gone
 });
 
 test('Synapse and MAS each get their own database, and the bucket carries the instance', function (): void {
-    $names = ToolInstance::forInstance(ClusterTool::CHAT, 'chat-luchtech-dev');
+    $names = ToolInstance::forInstance(ClusterTool::MATRIX, 'chat-luchtech-dev');
 
     expect($names->commonsDatabases())->toBe(['synapse_chat_luchtech_dev', 'mas_chat_luchtech_dev'])
         ->and($names->database())->toBe('synapse_chat_luchtech_dev')
@@ -39,12 +39,12 @@ test('Synapse and MAS each get their own database, and the bucket carries the in
 });
 
 test('a purge reaches both databases, which the single-name list used to miss', function (): void {
-    expect(ClusterTool::CHAT->commonsDatabases('chat-luchtech-dev'))->toContain('mas_chat_luchtech_dev');
+    expect(ClusterTool::MATRIX->commonsDatabases('chat-luchtech-dev'))->toContain('mas_chat_luchtech_dev');
 });
 
 test('the rotation Secret and the OpenBao sync Secret are the credentials Secret the manifest writes', function (): void {
-    expect(ClusterTool::CHAT->dbSecretRef('chat-luchtech-dev')['secret'])->toBe('synapse-secrets-chat-luchtech-dev')
-        ->and(ClusterTool::CHAT->openbaoSyncConfig('chat-luchtech-dev')['secret'])->toBe('synapse-secrets-chat-luchtech-dev');
+    expect(ClusterTool::MATRIX->dbSecretRef('chat-luchtech-dev')['secret'])->toBe('synapse-secrets-chat-luchtech-dev')
+        ->and(ClusterTool::MATRIX->openbaoSyncConfig('chat-luchtech-dev')['secret'])->toBe('synapse-secrets-chat-luchtech-dev');
 });
 
 /**
@@ -66,13 +66,13 @@ test('every Chat component Deployment resolves back to Chat with its instance', 
         $hit = ClusterTool::forInstancedDeployment("{$stem}-chat-luchtech-dev");
 
         expect($hit)->not->toBeNull("{$stem}")
-            ->and($hit['tool'])->toBeIn([ClusterTool::CHAT, ClusterTool::MATRIX])
+            ->and($hit['tool'])->toBe(ClusterTool::MATRIX)
             ->and($hit['instance'])->toBe('chat-luchtech-dev');
     }
 });
 
 test('the SSO wiring Secrets for Synapse and MAS are named for their component', function (): void {
-    $names = ToolInstance::forInstance(ClusterTool::CHAT, 'chat-luchtech-dev');
+    $names = ToolInstance::forInstance(ClusterTool::MATRIX, 'chat-luchtech-dev');
 
     expect($names->secret(SecretKind::SSO_APP))->not->toBe($names->secret(SecretKind::SSO_APP, 'mas'));
 });

@@ -39,7 +39,7 @@ class SecretsRotateCommand extends Command
     {
         $this->renderHeader();
 
-        $env = $this->resolveToolEnvironment(ClusterTool::SECRETS);
+        $env = $this->resolveToolEnvironment(ClusterTool::OPENBAO);
         $context = $this->resolveToolContext($env, $this->option('context'));
         $kubectl = Kubectl::forContext($context)->prefix();
 
@@ -84,7 +84,7 @@ class SecretsRotateCommand extends Command
      * ever targets ONE specific tool's instance and is ignored with --all —
      * the instance itself is resolved per-tool (not once up front against an
      * unrelated tool enum), matching secrets:wire's resolveTargets(). Passing
-     * ClusterTool::SECRETS into resolveInstanceForDomain() here regardless of
+     * ClusterTool::OPENBAO into resolveInstanceForDomain() here regardless of
      * which tool was actually being rotated was a real bug: it silently
      * resolved to whatever instance SECRETS itself maps that host to, then
      * appended it as a `-{instance}` suffix onto a DIFFERENT tool's secret

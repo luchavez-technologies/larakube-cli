@@ -60,7 +60,7 @@ trait InteractsWithMail
     {
         $instance ??= $this->resolveMailInstance($kubectl);
 
-        return $instance === '' ? null : ToolInstance::forInstance(ClusterTool::MAIL, $instance);
+        return $instance === '' ? null : ToolInstance::forInstance(ClusterTool::STALWART, $instance);
     }
 
     /**
@@ -74,9 +74,9 @@ trait InteractsWithMail
      */
     protected function resolveMailInstance(string $kubectl): string
     {
-        $host = $this->resolveLiveToolHost($kubectl, ClusterTool::MAIL);
+        $host = $this->resolveLiveToolHost($kubectl, ClusterTool::STALWART);
 
-        return ($host !== null && $host !== '') ? ClusterTool::MAIL->instanceSlugFromHost($host) : '';
+        return ($host !== null && $host !== '') ? ClusterTool::STALWART->instanceSlugFromHost($host) : '';
     }
 
     /** Stalwart's credentials Secret, or the bare stem when no instance is registered yet. */
@@ -138,7 +138,7 @@ trait InteractsWithMail
         $service = SharedClusterService::MAIL;
 
         if ($kubectl !== null) {
-            $registered = $this->resolveLiveToolHost($kubectl, ClusterTool::MAIL);
+            $registered = $this->resolveLiveToolHost($kubectl, ClusterTool::STALWART);
             if ($registered !== null && $registered !== '') {
                 return $registered;
             }

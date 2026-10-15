@@ -35,7 +35,7 @@ class ChatUseMasCommand extends Command
 
         $env = (string) $this->argument('environment');
         $kubectl = Kubectl::forContext($this->resolveToolContext($env, (string) ($this->option('context') ?: '') ?: null))->prefix();
-        $ns = ClusterTool::CHAT->namespace();
+        $ns = ClusterTool::MATRIX->namespace();
 
         if ($this->readChatWiredMas($kubectl, $ns) === null) {
             $this->laraKubeError('MAS isn\'t deployed for Chat here. Run `larakube tool:init --tool=matrix '.$env.'` first (it deploys MAS when Zitadel is installed).');

@@ -38,7 +38,7 @@ test('sso:grant rejects a tool with no role-gated access', function (): void {
 
     // mail has neither rbacRoles() nor ssoAdminRoles() — genuinely open,
     // unlike passwords (gated 2026-08-20 after the Outline incident).
-    $this->artisan('sso:grant', ['--tool' => 'mail', '--role' => 'whatever', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
+    $this->artisan('sso:grant', ['--tool' => 'stalwart', '--role' => 'whatever', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(1)
         ->expectsOutputToContain('has no role-gated access to grant');
 });
@@ -191,7 +191,7 @@ test('sso:grant rejects a role the tool does not define', function (): void {
         SearchProjectsRequest::class => MockResponse::make(['result' => [['id' => 'proj-1']]]),
     ]);
 
-    $this->artisan('sso:grant', ['--tool' => 'secrets', '--role' => 'openbao-superuser', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
+    $this->artisan('sso:grant', ['--tool' => 'openbao', '--role' => 'openbao-superuser', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(1)
         ->expectsOutputToContain("isn't a role");
 });
@@ -202,7 +202,7 @@ test('sso:grant errors when Zitadel is not installed', function (): void {
         '*get deployment zitadel-sso-example-com*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('sso:grant', ['--tool' => 'secrets', '--role' => 'openbao-admin', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
+    $this->artisan('sso:grant', ['--tool' => 'openbao', '--role' => 'openbao-admin', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(1)
         ->expectsOutputToContain('Zitadel is not installed');
 });
@@ -220,7 +220,7 @@ test('sso:grant errors when Zitadel user cannot be resolved or created', functio
         CreateUserRequest::class => MockResponse::make([], 500),
     ]);
 
-    $this->artisan('sso:grant', ['--tool' => 'secrets', '--role' => 'openbao-admin', '--email' => 'ghost@luchtech.dev', '--no-interaction' => true])
+    $this->artisan('sso:grant', ['--tool' => 'openbao', '--role' => 'openbao-admin', '--email' => 'ghost@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(1)
         ->expectsOutputToContain('Failed to resolve or create Zitadel user');
 });
@@ -248,7 +248,7 @@ test('sso:grant creates a fresh UserGrant when the user holds none on the RBAC p
         CreateUserGrantRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:grant', ['--tool' => 'secrets', '--role' => 'openbao-admin', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
+    $this->artisan('sso:grant', ['--tool' => 'openbao', '--role' => 'openbao-admin', '--email' => 'james@luchtech.dev', '--no-interaction' => true])
         ->assertExitCode(0)
         ->expectsOutputToContain("Granted 'openbao-admin' to james@luchtech.dev")
         ->expectsOutputToContain('openbao-admin');

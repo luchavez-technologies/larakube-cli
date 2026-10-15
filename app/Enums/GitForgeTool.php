@@ -21,7 +21,7 @@ use App\Contracts\UsesCliOidc;
 use App\Data\ClusterToolComponentData;
 use Illuminate\Support\Facades\Process;
 
-/** The vendor enum backing ClusterTool::GIT — 'Git Forge & CI/CD'. Only Forgejo today; a future alternative would add a case here. */
+/** The vendor enum backing ClusterTool::FORGEJO — 'Git Forge & CI/CD'. Only Forgejo today; a future alternative would add a case here. */
 enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasOidcWiring, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents, UsesCliOidc
 {
     public function getLabel(): string
@@ -54,7 +54,7 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
         // ClusterTool::components() strips the category for a migrated tool;
         // these nested resource names have to follow the same rule.
-        $canonical = fn (string $n) => ClusterTool::GIT->withoutCategory($n);
+        $canonical = fn (string $n) => ClusterTool::FORGEJO->withoutCategory($n);
 
         return [
             new ClusterToolComponentData(
@@ -88,7 +88,7 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
         // MAILER_TYPE/HOST). `smtps` = implicit TLS, which is Stalwart's
         // 465 submissions listener.
         return [
-            'deployment' => ClusterTool::GIT->withoutCategory("git-forgejo-{$instance}"),
+            'deployment' => ClusterTool::FORGEJO->withoutCategory("git-forgejo-{$instance}"),
             'secret' => 'forgejo-smtp',
             'static' => [
                 'FORGEJO__mailer__ENABLED' => 'true',
@@ -112,7 +112,7 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
         // /user/oauth2/<source name>/callback, and sso:wire names the
         // source `zitadel`.
         return [
-            'deployment' => ClusterTool::GIT->withoutCategory("git-forgejo-{$instance}"),
+            'deployment' => ClusterTool::FORGEJO->withoutCategory("git-forgejo-{$instance}"),
             'secret' => 'forgejo-oidc',
             'static' => [],
             'vars' => [],
@@ -185,7 +185,7 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
 
     public function presenceProbe(?string $instance = null): ?string
     {
-        return 'deployment/'.ClusterTool::GIT->withoutCategory("git-forgejo-{$instance}").' -n larakube-shared';
+        return 'deployment/'.ClusterTool::FORGEJO->withoutCategory("git-forgejo-{$instance}").' -n larakube-shared';
     }
 
     /**
@@ -199,8 +199,8 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
             return 'git-secrets';
         }
 
-        return ClusterTool::GIT->resourceNaming() === ResourceNaming::CANONICAL
-            ? ClusterTool::GIT->withoutCategory("git-forgejo-secrets-{$instance}")
+        return ClusterTool::FORGEJO->resourceNaming() === ResourceNaming::CANONICAL
+            ? ClusterTool::FORGEJO->withoutCategory("git-forgejo-secrets-{$instance}")
             : "git-secrets-{$instance}";
     }
     case FORGEJO = 'forgejo';

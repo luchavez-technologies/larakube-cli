@@ -58,14 +58,14 @@ test('getRegisteredTools parses the flat list from the cluster secret', function
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             base64_encode(json_encode([
-                ['tool' => 'sso', 'host' => 'sso.example.com', 'instance' => 'sso-example-com', 'installedAt' => '2026-08-01T09:00:00+00:00'],
+                ['tool' => 'zitadel', 'host' => 'sso.example.com', 'instance' => 'sso-example-com', 'installedAt' => '2026-08-01T09:00:00+00:00'],
             ])),
         ),
     ]);
 
     $tools = $trait->get('kubectl');
     expect($tools)->toBeArray()->toHaveCount(1)
-        ->and($tools[0]['tool'])->toBe('sso')
+        ->and($tools[0]['tool'])->toBe('zitadel')
         ->and($tools[0]['installedAt'])->toBe('2026-08-01T09:00:00+00:00');
 });
 
@@ -87,14 +87,14 @@ test('findToolInstanceEntry does an exact match when an instance is given', func
             base64_encode(json_encode([
                 ['tool' => 'data', 'host' => 'data.example.com', 'instance' => 'data-example-com'],
                 ['tool' => 'data', 'host' => 'blog.example.com', 'instance' => 'blog-example-com'],
-                ['tool' => 'sso', 'host' => 'sso.example.com', 'instance' => 'sso-example-com'],
+                ['tool' => 'zitadel', 'host' => 'sso.example.com', 'instance' => 'sso-example-com'],
             ])),
         ),
     ]);
 
     expect($trait->find('kubectl', ClusterTool::DATA, 'blog-example-com')['host'])->toBe('blog.example.com')
         ->and($trait->find('kubectl', ClusterTool::DATA, 'data-example-com')['host'])->toBe('data.example.com')
-        ->and($trait->find('kubectl', ClusterTool::SSO, 'blog-example-com'))->toBeNull();
+        ->and($trait->find('kubectl', ClusterTool::ZITADEL, 'blog-example-com'))->toBeNull();
 });
 
 test('findToolInstanceEntry with no instance resolves the tool\'s sole entry regardless of its stored value', function (): void {
@@ -107,13 +107,13 @@ test('findToolInstanceEntry with no instance resolves the tool\'s sole entry reg
                 // resolve the same way when $instance is omitted — there is
                 // no special stored value being recognized, just "there's
                 // exactly one entry for this tool."
-                ['tool' => 'sso', 'host' => 'sso.example.com', 'instance' => 'main'],
+                ['tool' => 'zitadel', 'host' => 'sso.example.com', 'instance' => 'main'],
                 ['tool' => 'data', 'host' => 'data.example.com', 'instance' => 'data-example-com'],
             ])),
         ),
     ]);
 
-    expect($trait->find('kubectl', ClusterTool::SSO)['host'])->toBe('sso.example.com')
+    expect($trait->find('kubectl', ClusterTool::ZITADEL)['host'])->toBe('sso.example.com')
         ->and($trait->find('kubectl', ClusterTool::DATA)['host'])->toBe('data.example.com');
 });
 
@@ -146,13 +146,13 @@ test('registerTool appends a new tool entry to the flat list and saves it via a 
         },
     ]);
 
-    expect($trait->register('kubectl', ClusterTool::SSO, ['engine' => 'zitadel']))->toBeTrue();
+    expect($trait->register('kubectl', ClusterTool::ZITADEL, ['engine' => 'zitadel']))->toBeTrue();
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'create secret generic larakube-tools-registry')
         && str_contains($process->command, '--from-file=registry.json='));
 
     expect($captured)->toBeArray()->toHaveCount(1)
-        ->and($captured[0]['tool'])->toBe('sso')
+        ->and($captured[0]['tool'])->toBe('zitadel')
         ->and($captured[0]['instance'])->toBeNull()
         ->and($captured[0]['engine'])->toBe('zitadel');
 });
@@ -164,7 +164,7 @@ test('registerTool merges metadata into an existing matching entry instead of du
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             base64_encode(json_encode([
-                ['tool' => 'sso', 'host' => 'sso.old.example.com', 'instance' => 'sso-old-example-com', 'installedAt' => '2026-08-01T09:00:00+00:00'],
+                ['tool' => 'zitadel', 'host' => 'sso.old.example.com', 'instance' => 'sso-old-example-com', 'installedAt' => '2026-08-01T09:00:00+00:00'],
             ])),
         ),
         '*create namespace larakube-shared*' => Process::result(),
@@ -175,7 +175,7 @@ test('registerTool merges metadata into an existing matching entry instead of du
         },
     ]);
 
-    expect($trait->register('kubectl', ClusterTool::SSO, ['host' => 'sso.new.example.com']))->toBeTrue()
+    expect($trait->register('kubectl', ClusterTool::ZITADEL, ['host' => 'sso.new.example.com']))->toBeTrue()
         ->and($captured)->toHaveCount(1)
         ->and($captured[0]['host'])->toBe('sso.new.example.com')
         ->and($captured[0]['installedAt'])->toBe('2026-08-01T09:00:00+00:00');
@@ -191,7 +191,7 @@ test('registerTool self-heals a stale stored instance value in place, never appe
                 // A leftover pre-migration value — nothing textually matches
                 // the freshly-derived slug below, but there's exactly one
                 // entry for this tool, so it's still found and corrected.
-                ['tool' => 'sso', 'host' => 'sso.example.com', 'instance' => 'main'],
+                ['tool' => 'zitadel', 'host' => 'sso.example.com', 'instance' => 'main'],
             ])),
         ),
         '*create namespace larakube-shared*' => Process::result(),
@@ -202,7 +202,7 @@ test('registerTool self-heals a stale stored instance value in place, never appe
         },
     ]);
 
-    expect($trait->register('kubectl', ClusterTool::SSO, [], 'sso-example-com'))->toBeTrue()
+    expect($trait->register('kubectl', ClusterTool::ZITADEL, [], 'sso-example-com'))->toBeTrue()
         ->and($captured)->toHaveCount(1)
         ->and($captured[0]['instance'])->toBe('sso-example-com');
 });
@@ -214,7 +214,7 @@ test('unregisterTool removes only the matching tool entry and saves it', functio
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             base64_encode(json_encode([
-                ['tool' => 'sso', 'host' => 'sso.example.com', 'instance' => 'sso-example-com'],
+                ['tool' => 'zitadel', 'host' => 'sso.example.com', 'instance' => 'sso-example-com'],
                 ['tool' => 'data', 'host' => 'data.example.com', 'instance' => 'data-example-com'],
             ])),
         ),
@@ -226,7 +226,7 @@ test('unregisterTool removes only the matching tool entry and saves it', functio
         },
     ]);
 
-    expect($trait->unregister('kubectl', ClusterTool::SSO))->toBeTrue()
+    expect($trait->unregister('kubectl', ClusterTool::ZITADEL))->toBeTrue()
         ->and($captured)->toHaveCount(1)
         ->and($captured[0]['tool'])->toBe('data');
 });
@@ -246,12 +246,12 @@ test('resolveInstanceForDomain derives a fresh slug instead of returning a stale
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             base64_encode(json_encode([
-                ['tool' => 'mail', 'host' => 'send.luchtech.dev', 'instance' => ''],
+                ['tool' => 'stalwart', 'host' => 'send.luchtech.dev', 'instance' => ''],
             ])),
         ),
     ]);
 
-    expect($trait->forDomain('kubectl', ClusterTool::MAIL, 'send.luchtech.dev'))
+    expect($trait->forDomain('kubectl', ClusterTool::STALWART, 'send.luchtech.dev'))
         ->toBe('send-luchtech-dev');
 });
 
@@ -261,13 +261,13 @@ test('resolveInstanceForDomain prefers a real registered instance over a stale d
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             base64_encode(json_encode([
-                ['tool' => 'mail', 'host' => 'send.luchtech.dev', 'instance' => ''],
-                ['tool' => 'mail', 'host' => 'send.luchtech.dev', 'instance' => 'send-luchtech-dev'],
+                ['tool' => 'stalwart', 'host' => 'send.luchtech.dev', 'instance' => ''],
+                ['tool' => 'stalwart', 'host' => 'send.luchtech.dev', 'instance' => 'send-luchtech-dev'],
             ])),
         ),
     ]);
 
-    expect($trait->forDomain('kubectl', ClusterTool::MAIL, 'send.luchtech.dev'))
+    expect($trait->forDomain('kubectl', ClusterTool::STALWART, 'send.luchtech.dev'))
         ->toBe('send-luchtech-dev');
 });
 
@@ -279,11 +279,11 @@ test('two different tools coexist in the same flat list without colliding', func
             base64_encode(json_encode([
                 ['tool' => 'data', 'host' => 'data.example.com', 'instance' => 'data-example-com'],
                 ['tool' => 'data', 'host' => 'blog.example.com', 'instance' => 'blog-example-com'],
-                ['tool' => 'sso', 'host' => 'sso.example.com', 'instance' => 'sso-example-com'],
+                ['tool' => 'zitadel', 'host' => 'sso.example.com', 'instance' => 'sso-example-com'],
             ])),
         ),
     ]);
 
     expect($trait->all('kubectl', ClusterTool::DATA))->toBe(['data-example-com', 'blog-example-com'])
-        ->and($trait->all('kubectl', ClusterTool::SSO))->toBe(['sso-example-com']);
+        ->and($trait->all('kubectl', ClusterTool::ZITADEL))->toBe(['sso-example-com']);
 });

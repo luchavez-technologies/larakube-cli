@@ -38,7 +38,7 @@ trait InteractsWithChat
     {
         $slug = $this->chatInstanceSlug($kubectl, $host);
 
-        return $slug === null ? null : ToolInstance::forInstance(ClusterTool::CHAT, $slug);
+        return $slug === null ? null : ToolInstance::forInstance(ClusterTool::MATRIX, $slug);
     }
 
     /** Which engine is installed? Always returns 'matrix' when present. */
@@ -104,7 +104,7 @@ trait InteractsWithChat
     }
 
     /**
-     * The Meet bridge URL wired by `meet:wire --tool=chat`, or null when Matrix
+     * The Meet bridge URL wired by `meet:wire --tool=matrix`, or null when Matrix
      * calling is not connected to a Meet install. Read back on every `tool:init --tool=matrix`
      * so a re-run does not silently un-wire calling — same discipline as the
      * SMTP and OIDC read-backs either side of this.
@@ -245,12 +245,12 @@ trait InteractsWithChat
      */
     protected function chatInstanceSlug(string $kubectl, ?string $host = null): ?string
     {
-        $host ??= $this->resolveLiveToolHost($kubectl, ClusterTool::CHAT);
+        $host ??= $this->resolveLiveToolHost($kubectl, ClusterTool::MATRIX);
         if ($host === null || $host === '') {
             return null;
         }
 
-        return ClusterTool::CHAT->instanceSlugFromHost($host);
+        return ClusterTool::MATRIX->instanceSlugFromHost($host);
     }
 
     /**

@@ -40,9 +40,9 @@ test('registerDeployedTool merges $extra metadata alongside the host, e.g. admin
         },
     ]);
 
-    expect($trait->register('kubectl', ClusterTool::SSO, 'sso.example.com', ['adminEmail' => 'admin@example.com']))->toBeTrue()
+    expect($trait->register('kubectl', ClusterTool::ZITADEL, 'sso.example.com', ['adminEmail' => 'admin@example.com']))->toBeTrue()
         ->and($captured)->toHaveCount(1)
-        ->and($captured[0]['tool'])->toBe('sso')
+        ->and($captured[0]['tool'])->toBe('zitadel')
         ->and($captured[0]['host'])->toBe('sso.example.com')
         ->and($captured[0]['adminEmail'])->toBe('admin@example.com');
 });

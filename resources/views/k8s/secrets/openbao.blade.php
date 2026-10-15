@@ -2,8 +2,8 @@
     // Every name comes from ToolInstance (ADR 0021).
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::SECRETS->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::SECRETS, $instance);
+        : \App\Enums\ClusterTool::OPENBAO->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) ($host ?? '')));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::OPENBAO, $instance);
     $deploymentName = $names->deployment();
     $configMapName = $names->configMap('config');
     $credentialsSecret = $names->secret();

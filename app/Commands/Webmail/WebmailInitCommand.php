@@ -151,7 +151,7 @@ abstract class WebmailInitCommand extends AbstractToolInitCommand
         // login keeps failing with a CORS error — the trap the first cut hit.
         $restarted = false;
         if ($corsOk && ! $this->option('no-mail-restart')) {
-            $mailDeployment = ClusterTool::MAIL->deploymentName($this->resolveMailInstance($kubectl));
+            $mailDeployment = ClusterTool::STALWART->deploymentName($this->resolveMailInstance($kubectl));
             $this->withSpin('Restarting Stalwart to apply CORS (brief mail blip)...', fn () => Process::run(
                 "{$kubectl} rollout restart deployment/{$mailDeployment} -n {$ns}",
             ));

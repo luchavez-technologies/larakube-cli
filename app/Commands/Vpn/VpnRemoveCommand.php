@@ -12,7 +12,7 @@ abstract class VpnRemoveCommand extends AbstractToolRemoveCommand
 
     protected function tool(): ClusterTool
     {
-        return ClusterTool::VPN;
+        return ClusterTool::NETBIRD;
     }
 
     protected function teardownWarning(string $env): array
@@ -28,7 +28,7 @@ abstract class VpnRemoveCommand extends AbstractToolRemoveCommand
     {
         // Captured before the namespace goes: the Ingress is what ExternalDNS
         // watches, so this is the host whose record is about to disappear.
-        $host = $this->getToolHost($kubectl, ClusterTool::VPN);
+        $host = $this->getToolHost($kubectl, ClusterTool::NETBIRD);
 
         $removed = $this->removeNamespace(
             'Removing NetBird VPN namespace...',

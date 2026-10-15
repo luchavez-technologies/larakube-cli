@@ -916,7 +916,7 @@ trait InteractsWithPlex
         // the two paths are mutually exclusive, and an earlier version printed
         // both, so mixing the `postgres` username with STALWART_STORE_PASSWORD
         // (the 'stalwart' role's password) failed authentication.
-        $openBaoNames = ToolInstance::first($kubectl, ClusterTool::SECRETS);
+        $openBaoNames = ToolInstance::first($kubectl, ClusterTool::OPENBAO);
         $openBaoBootstrapped = $openBaoNames !== null
             && trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'secret', $openBaoNames->secret(), '-n', $openBaoNames->namespace(), '--no-headers'])->output) !== '';
 

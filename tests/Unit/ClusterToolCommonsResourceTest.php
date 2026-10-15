@@ -5,12 +5,12 @@ use App\Enums\ClusterTool;
 test('forCommonsResource resolves a tool from its Commons DB name', function (): void {
     expect(ClusterTool::forCommonsResource('sendrec'))->toBe(ClusterTool::SENDREC)
         ->and(ClusterTool::forCommonsResource('documenso'))->toBe(ClusterTool::DOCUMENSO)
-        ->and(ClusterTool::forCommonsResource('zitadel'))->toBe(ClusterTool::SSO);
+        ->and(ClusterTool::forCommonsResource('zitadel'))->toBe(ClusterTool::ZITADEL);
 });
 
 test('forCommonsResource resolves a tool from its Commons bucket name', function (): void {
     expect(ClusterTool::forCommonsResource('documenso-storage'))->toBe(ClusterTool::DOCUMENSO)
-        ->and(ClusterTool::forCommonsResource('forgejo-lfs'))->toBe(ClusterTool::GIT)
+        ->and(ClusterTool::forCommonsResource('forgejo-lfs'))->toBe(ClusterTool::FORGEJO)
         ->and(ClusterTool::forCommonsResource('ocis-storage'))->toBe(ClusterTool::OCIS);
 });
 
@@ -35,10 +35,10 @@ test('PASSWORDS is wired into openbaoSyncConfig so tool:init --tool=openbao actu
 test('resolveCommonsResource names the tool and the instance an instanced tenant or bucket belongs to', function (): void {
     $cases = [
         'sendrec_record_example_com' => [ClusterTool::SENDREC, 'record-example-com'],
-        'forgejo_git_luchtech_dev' => [ClusterTool::GIT, 'git-luchtech-dev'],
+        'forgejo_git_luchtech_dev' => [ClusterTool::FORGEJO, 'git-luchtech-dev'],
         'yopass-storage-paste-example-com' => [ClusterTool::YOPASS, 'paste-example-com'],
-        'forgejo-lfs-git-luchtech-dev' => [ClusterTool::GIT, 'git-luchtech-dev'],
-        'stalwart-storage-send-luchtech-dev' => [ClusterTool::MAIL, 'send-luchtech-dev'],
+        'forgejo-lfs-git-luchtech-dev' => [ClusterTool::FORGEJO, 'git-luchtech-dev'],
+        'stalwart-storage-send-luchtech-dev' => [ClusterTool::STALWART, 'send-luchtech-dev'],
     ];
 
     foreach ($cases as $name => [$tool, $instance]) {

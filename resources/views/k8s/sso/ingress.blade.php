@@ -3,8 +3,8 @@
     // path (SharedClusterService::SSO), so derive every name here.
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::SSO->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::SSO, $instance);
+        : \App\Enums\ClusterTool::ZITADEL->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::ZITADEL, $instance);
     $deploymentName = $names->deployment();
     $ingressLabels = '';
     foreach ($names->labels() as $key => $value) {

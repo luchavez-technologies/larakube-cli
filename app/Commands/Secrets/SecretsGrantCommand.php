@@ -71,7 +71,7 @@ class SecretsGrantCommand extends Command
             return 1;
         }
 
-        $projectId = $this->resolveSsoProject(ClusterTool::SECRETS, $ssoHost, $pat, $kubectl, ToolInstance::first($kubectl, ClusterTool::SECRETS)?->instance);
+        $projectId = $this->resolveSsoProject(ClusterTool::OPENBAO, $ssoHost, $pat, $kubectl, ToolInstance::first($kubectl, ClusterTool::OPENBAO)?->instance);
         if ($projectId === null) {
             return 1;
         }
@@ -79,7 +79,7 @@ class SecretsGrantCommand extends Command
         $roleKey = $this->appSecretsRoleKey($app, $environment, $role);
 
         if (! $this->zitadelEnsureProjectRole($ssoHost, $pat, $projectId, $roleKey, "Secrets: {$app}/{$environment} ({$role})")) {
-            $this->laraKubeError("Could not ensure the '{$roleKey}' role exists on ".ClusterTool::SECRETS->rbacProjectName(ToolInstance::first($kubectl, ClusterTool::SECRETS)?->instance).'.');
+            $this->laraKubeError("Could not ensure the '{$roleKey}' role exists on ".ClusterTool::OPENBAO->rbacProjectName(ToolInstance::first($kubectl, ClusterTool::OPENBAO)?->instance).'.');
 
             return 1;
         }

@@ -142,7 +142,7 @@ test('runner config mounts the Podman socket into jobs and maps every label to t
         ->toContain(['name' => 'runner-cache', 'mountPath' => '/data/.cache'])
         ->and($runnerConfig['container']['docker_host'])->toBe('unix:///run/podman/podman.sock')
         ->and($runnerConfig['container']['network'])->toBe('host')
-        ->and($forgejo['metadata']['labels']['larakube.io/tool'])->toBe('git')
+        ->and($forgejo['metadata']['labels']['larakube.io/tool'])->toBe('forgejo')
         ->and($images->all())->toContain('quay.io/podman/stable:v5.8.4', 'code.forgejo.org/forgejo/runner:13.1.0');
 });
 

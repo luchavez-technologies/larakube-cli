@@ -32,7 +32,7 @@ test('a fresh tool:init --tool=livekit points you at the wire command instead of
 
     $this->artisan('tool:init --tool=livekit local --no-interaction')
         ->assertExitCode(0)
-        ->expectsOutputToContain('meet:wire local --tool=chat');
+        ->expectsOutputToContain('meet:wire local --tool=matrix');
 });
 
 test('livekit:remove tears down the SFU and its bridge', function (): void {

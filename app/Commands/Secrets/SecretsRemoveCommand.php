@@ -23,7 +23,7 @@ abstract class SecretsRemoveCommand extends AbstractToolRemoveCommand
 
     protected function tool(): ClusterTool
     {
-        return ClusterTool::SECRETS;
+        return ClusterTool::OPENBAO;
     }
 
     protected function teardownWarning(string $env): array

@@ -57,7 +57,7 @@ class SecretsRevokeCommand extends Command
             return 1;
         }
 
-        $projectId = $this->resolveSsoProject(ClusterTool::SECRETS, $ssoHost, $pat, $kubectl, ToolInstance::first($kubectl, ClusterTool::SECRETS)?->instance);
+        $projectId = $this->resolveSsoProject(ClusterTool::OPENBAO, $ssoHost, $pat, $kubectl, ToolInstance::first($kubectl, ClusterTool::OPENBAO)?->instance);
         if ($projectId === null) {
             return 1;
         }

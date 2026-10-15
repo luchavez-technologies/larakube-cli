@@ -22,7 +22,7 @@ function resolvesToolHostRunner(): object
 
         public function host(string $env): string
         {
-            return $this->resolveToolHost(SharedClusterService::FORGEJO, ClusterTool::GIT, $env, 'kubectl');
+            return $this->resolveToolHost(SharedClusterService::FORGEJO, ClusterTool::FORGEJO, $env, 'kubectl');
         }
 
         public function option(string $key): mixed
@@ -46,7 +46,7 @@ function resolvesToolHostRegistry(array $rows): array
 
 test('a tool recorded under its host-derived slug is found without asking for the host again', function (): void {
     Process::fake(resolvesToolHostRegistry([
-        ['tool' => 'git', 'instance' => 'git-example-com', 'host' => 'git.example.com'],
+        ['tool' => 'forgejo', 'instance' => 'git-example-com', 'host' => 'git.example.com'],
     ]));
 
     expect(resolvesToolHostRunner()->host('production'))->toBe('git.example.com');
@@ -56,8 +56,8 @@ test('several different recorded hosts are ambiguous, so the host is asked for',
     Prompt::fake(['g', 'i', 't', '.', 'n', 'e', 'w', Laravel\Prompts\Key::ENTER]);
     Process::fake([
         ...resolvesToolHostRegistry([
-            ['tool' => 'git', 'instance' => 'git-one-example', 'host' => 'git.one.example'],
-            ['tool' => 'git', 'instance' => 'git-two-example', 'host' => 'git.two.example'],
+            ['tool' => 'forgejo', 'instance' => 'git-one-example', 'host' => 'git.one.example'],
+            ['tool' => 'forgejo', 'instance' => 'git-two-example', 'host' => 'git.two.example'],
         ]),
         '*' => Process::result(),
     ]);

@@ -53,17 +53,17 @@ abstract class ChatInitCommand extends AbstractToolInitCommand
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = Kubectl::forContext($context)->prefix();
-        $host = $this->resolveToolHost(SharedClusterService::CHAT, ClusterTool::CHAT, $env, $kubectl);
+        $host = $this->resolveToolHost(SharedClusterService::CHAT, ClusterTool::MATRIX, $env, $kubectl);
         $ns = $this->chatNamespace();
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
         // Every name comes from ToolInstance (ADR 0021). Synapse's one-server_name-
         // per-process constraint means Chat never has a second instance to
         // collide with; it is named per instance like every other tool.
-        $instance = ClusterTool::CHAT->instanceSlugFromHost($host);
-        $names = ToolInstance::forInstance(ClusterTool::CHAT, $instance);
+        $instance = ClusterTool::MATRIX->instanceSlugFromHost($host);
+        $names = ToolInstance::forInstance(ClusterTool::MATRIX, $instance);
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::CHAT, $kubectl, $instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::MATRIX, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -136,7 +136,7 @@ abstract class ChatInitCommand extends AbstractToolInitCommand
         // Calling lives in the Meet tool now — chat only records that it is
         // wired, so a re-run cannot silently disable it.
         $meetJwtUrl = $this->readChatWiredMeet($kubectl, $ns, $host);
-        $branding = $this->resolveToolBranding($kubectl, ClusterTool::CHAT, ClusterTool::CHAT->instanceSlugFromHost($host));
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::MATRIX, ClusterTool::MATRIX->instanceSlugFromHost($host));
 
         $manifest = view('k8s.chat.matrix', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
@@ -186,7 +186,7 @@ abstract class ChatInitCommand extends AbstractToolInitCommand
             "{$kubectl} rollout status deploy/{$names->deployment()} -n {$ns} --timeout=180s",
         ));
 
-        $this->registerDeployedTool(ClusterTool::CHAT, $kubectl, $host, instance: $instance);
+        $this->registerDeployedTool(ClusterTool::MATRIX, $kubectl, $host, instance: $instance);
 
         // Matrix Authentication Service — deployed unconditionally, same tier
         // as Coturn/the web client above, whenever Zitadel is already available.
@@ -283,7 +283,7 @@ abstract class ChatInitCommand extends AbstractToolInitCommand
 
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::CHAT);
+        return $this->resolveToolEnvironment(ClusterTool::MATRIX);
     }
 
     /**
@@ -310,7 +310,7 @@ abstract class ChatInitCommand extends AbstractToolInitCommand
         $masDeploymentName = $names->deployment('mas');
         $masDbDeploymentName = $names->deployment('mas-db');
         $masDbName = $names->commonsDatabases()[1];
-        $ssoAppSecretName = $this->ssoAppSecretName(ClusterTool::CHAT, $instance, 'mas');
+        $ssoAppSecretName = $this->ssoAppSecretName(ClusterTool::MATRIX, $instance, 'mas');
 
         // 1. MAS's own Postgres tenant.
         if (! $noPlex) {
@@ -525,7 +525,7 @@ abstract class ChatInitCommand extends AbstractToolInitCommand
      */
     protected function deployAdmin(string $kubectl, string $ns, string $host, ToolInstance $names, string $env): bool
     {
-        if (! $this->ensureVpnMiddleware(ClusterTool::CHAT, $kubectl, $names->instance)) {
+        if (! $this->ensureVpnMiddleware(ClusterTool::MATRIX, $kubectl, $names->instance)) {
             $this->laraKubeLine('  <fg=gray>Skipping Element Admin — could not create its required VPN-only Middleware.</>');
 
             return false;

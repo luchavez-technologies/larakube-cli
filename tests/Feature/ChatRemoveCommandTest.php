@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Process;
  * Regression test for the ClusterTool component refactor: matrix:remove's
  * teardown() used to hand-copy a `kubectl delete` resource list independently
  * of the Blade manifest that deploys Matrix. It now iterates
- * ClusterTool::CHAT->components() instead — this pins that the exact same
+ * ClusterTool::MATRIX->components() instead — this pins that the exact same
  * set of resources still gets deleted (order doesn't matter to `kubectl
  * delete`, so this compares the resource SET, not a literal string).
  */
@@ -82,7 +82,7 @@ test('matrix:remove targets the real instance-suffixed resources when chat is ac
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
-                ['tool' => 'chat', 'instance' => 'chat-luchtech-dev', 'installed_at' => '2026-08-01T00:00:00+00:00', 'host' => 'chat.luchtech.dev'],
+                ['tool' => 'matrix', 'instance' => 'chat-luchtech-dev', 'installed_at' => '2026-08-01T00:00:00+00:00', 'host' => 'chat.luchtech.dev'],
             ])),
         ),
         '*delete *' => Process::result(output: 'deleted'),

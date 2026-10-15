@@ -28,7 +28,7 @@ function zitadelDocuments(array $overrides = []): array
 }
 
 test('Zitadel resolves every resource name from ToolInstance with the category gone', function (): void {
-    $names = ToolInstance::forInstance(ClusterTool::SSO, 'sso-luchtech-dev');
+    $names = ToolInstance::forInstance(ClusterTool::ZITADEL, 'sso-luchtech-dev');
 
     expect($names->deployment())->toBe('zitadel-sso-luchtech-dev')
         ->and($names->secret())->toBe('zitadel-secrets-sso-luchtech-dev')
@@ -38,12 +38,12 @@ test('Zitadel resolves every resource name from ToolInstance with the category g
         ->and($names->deployment('proxy'))->toBe('proxy-sso-luchtech-dev')
         ->and($names->secret(SecretKind::CREDENTIALS, 'proxy'))->toBe('proxy-secrets-sso-luchtech-dev')
         ->and($names->secret(SecretKind::SSO_APP, 'proxy'))->toBe('proxy-sso-sso-luchtech-dev')
-        ->and(ClusterTool::SSO->resourceNaming())->toBe(ResourceNaming::CANONICAL)
+        ->and(ClusterTool::ZITADEL->resourceNaming())->toBe(ResourceNaming::CANONICAL)
         ->and(ClusterTool::ZITADEL->resourceNaming())->toBe(ResourceNaming::CANONICAL);
 });
 
 test('the rotation Secret is the credentials Secret the manifest reads', function (): void {
-    expect(ClusterTool::SSO->dbSecretRef('sso-luchtech-dev')['secret'])->toBe('zitadel-secrets-sso-luchtech-dev');
+    expect(ClusterTool::ZITADEL->dbSecretRef('sso-luchtech-dev')['secret'])->toBe('zitadel-secrets-sso-luchtech-dev');
 });
 
 test('the manifest names every object from ToolInstance and points Zitadel at the tenant database', function (): void {
@@ -55,7 +55,7 @@ test('the manifest names every object from ToolInstance and points Zitadel at th
 
     expect($deployment['metadata']['name'])->toBe('zitadel-sso-example-com')
         ->and($deployment['spec']['selector']['matchLabels']['app'])->toBe('zitadel-sso-example-com')
-        ->and($deployment['spec']['template']['metadata']['labels']['larakube.io/tool'])->toBe('sso')
+        ->and($deployment['spec']['template']['metadata']['labels']['larakube.io/tool'])->toBe('zitadel')
         ->and($deployment['spec']['template']['metadata']['labels']['larakube.io/component'])->toBe('zitadel')
         ->and($service['metadata']['name'])->toBe('zitadel-sso-example-com')
         ->and($service['spec']['selector']['app'])->toBe('zitadel-sso-example-com')
@@ -105,7 +105,7 @@ test('the Ingress renders from the host alone, the way the local re-point does',
 
 test('the shared proxy names its Deployment, Service, Ingress and Secret from the Zitadel instance', function (): void {
     $rendered = view('k8s.sso.proxy', [
-        'names' => ToolInstance::forInstance(ClusterTool::SSO, 'sso-example-com'),
+        'names' => ToolInstance::forInstance(ClusterTool::ZITADEL, 'sso-example-com'),
         'namespace' => 'larakube-shared', 'authHost' => 'auth.example.com', 'ssoHost' => 'sso.example.com',
         'isLocal' => false, 'proxied' => false, 'clientId' => 'cid', 'clientSecret' => 'csecret',
         'cookieDomain' => '.example.com', 'cookieSecret' => 'cookiesecret', 'rbacRole' => null, 'secretChecksum' => 'abc',
@@ -121,7 +121,7 @@ test('the shared proxy names its Deployment, Service, Ingress and Secret from th
 });
 
 test('teardown names every resource the manifests declare', function (): void {
-    $components = collect(ClusterTool::SSO->components('sso-luchtech-dev'))->keyBy('key');
+    $components = collect(ClusterTool::ZITADEL->components('sso-luchtech-dev'))->keyBy('key');
     $refs = fn (string $key) => collect($components[$key]->resources)->map(fn ($r) => "{$r['kind']}/{$r['name']}")->all();
 
     expect($components['zitadel']->deployment)->toBe('zitadel-sso-luchtech-dev')

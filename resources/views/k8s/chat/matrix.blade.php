@@ -8,8 +8,8 @@
     // passes a real $instance; a bare render derives it from the host.
     $instance = ($instance ?? '') !== ''
         ? $instance
-        : \App\Enums\ClusterTool::CHAT->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
-    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::CHAT, $instance);
+        : \App\Enums\ClusterTool::MATRIX->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::MATRIX, $instance);
     $synapseName = $names->deployment('synapse');
     $synapseConfigName = $names->secret(\App\Enums\SecretKind::CONFIG);
     $secretsName = $names->secret();

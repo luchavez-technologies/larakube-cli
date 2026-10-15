@@ -74,15 +74,15 @@ abstract class GitInitCommand extends AbstractToolInitCommand
         $ns = $this->gitNamespace();
         $noPlex = (bool) $this->option('no-plex');
 
-        $host = $this->resolveToolHost(SharedClusterService::FORGEJO, ClusterTool::GIT, $env, $kubectl);
+        $host = $this->resolveToolHost(SharedClusterService::FORGEJO, ClusterTool::FORGEJO, $env, $kubectl);
         // Every tool's instance identifier is a real, host-derived slug — Git
         // included, even though it's an architectural singleton (Forgejo's
         // SSH LoadBalancer binds a fixed port, so a genuine second instance is
         // impossible on one node regardless of naming).
-        $instance = ClusterTool::GIT->instanceSlugFromHost($host);
-        $tenant = ClusterTool::GIT->commonsDatabases($instance)[0];
-        $deployment = ClusterTool::GIT->deploymentName($instance);
-        $buckets = ClusterTool::GIT->commonsBuckets($instance);
+        $instance = ClusterTool::FORGEJO->instanceSlugFromHost($host);
+        $tenant = ClusterTool::FORGEJO->commonsDatabases($instance)[0];
+        $deployment = ClusterTool::FORGEJO->deploymentName($instance);
+        $buckets = ClusterTool::FORGEJO->commonsBuckets($instance);
 
         $s3Service = null;
         $s3Endpoint = '';
@@ -215,9 +215,9 @@ abstract class GitInitCommand extends AbstractToolInitCommand
         ));
 
         $vpnOnly = (bool) $this->option('vpn-only');
-        $branding = $this->resolveToolBranding($kubectl, ClusterTool::GIT, $instance);
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::FORGEJO, $instance);
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::GIT, $kubectl, $instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::FORGEJO, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -272,7 +272,7 @@ abstract class GitInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Forgejo core manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deployment, 120, tool: ClusterTool::GIT),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deployment, 120, tool: ClusterTool::FORGEJO),
         );
         $temporaryDirectory->delete();
 
@@ -386,7 +386,7 @@ abstract class GitInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $runnerDeployment = ClusterTool::GIT->componentByKey('runner', $instance)->deployment;
+        $runnerDeployment = ClusterTool::FORGEJO->componentByKey('runner', $instance)->deployment;
 
         // A runner version bump means a fresh image pull on the node, which
         // has taken over 12 minutes from code.forgejo.org.
@@ -409,7 +409,7 @@ abstract class GitInitCommand extends AbstractToolInitCommand
         // was actually passed. Every plain `tool:init --tool=forgejo` left the tool entirely
         // absent from the registry: no host, so tool:list/tool:show and any
         // `git:` -domain targeting had nothing to find.
-        $this->registerDeployedTool(ClusterTool::GIT, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
+        $this->registerDeployedTool(ClusterTool::FORGEJO, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Forgejo forge and Actions runner are live.');
@@ -450,7 +450,7 @@ abstract class GitInitCommand extends AbstractToolInitCommand
     /** Read any key from this instance's credentials Secret; null when absent. */
     protected function readForgejoSecret(string $kubectl, string $ns, string $instance, string $key): ?string
     {
-        return $this->readClusterSecretKey($kubectl, $ns, ToolInstance::forInstance(ClusterTool::GIT, $instance)->secret(), $key);
+        return $this->readClusterSecretKey($kubectl, $ns, ToolInstance::forInstance(ClusterTool::FORGEJO, $instance)->secret(), $key);
     }
 
     /** Parse admin password from existing secret */
@@ -462,6 +462,6 @@ abstract class GitInitCommand extends AbstractToolInitCommand
     /** Decide which environment this install targets */
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::GIT);
+        return $this->resolveToolEnvironment(ClusterTool::FORGEJO);
     }
 }

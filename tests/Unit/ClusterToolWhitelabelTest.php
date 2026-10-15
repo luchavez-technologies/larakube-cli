@@ -4,8 +4,8 @@ use App\Enums\ClusterTool;
 
 test('whiteLabel() returns non-null schemas for the 7 supported whitelabel tools', function (): void {
     $whitelabeledTools = [
-        ClusterTool::CHAT,
-        ClusterTool::GIT,
+        ClusterTool::MATRIX,
+        ClusterTool::FORGEJO,
         ClusterTool::CHATWOOT,
         ClusterTool::GLITCHTIP,
         ClusterTool::KUTT,
@@ -18,11 +18,11 @@ test('whiteLabel() returns non-null schemas for the 7 supported whitelabel tools
     }
 });
 
-test('whiteLabel() returns null for unsupported tools like DNS, VPN, SECRETS', function (): void {
+test('whiteLabel() returns null for unsupported tools like DNS, NetBird, OpenBao', function (): void {
     $unsupportedTools = [
         ClusterTool::EXTERNAL_DNS,
-        ClusterTool::VPN,
-        ClusterTool::SECRETS,
+        ClusterTool::NETBIRD,
+        ClusterTool::OPENBAO,
         ClusterTool::VAULTWARDEN,
         ClusterTool::KUMA,
     ];

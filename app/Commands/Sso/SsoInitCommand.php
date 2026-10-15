@@ -48,11 +48,11 @@ abstract class SsoInitCommand extends AbstractToolInitCommand
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = Kubectl::forContext($context)->prefix();
-        $host = $this->resolveToolHost(SharedClusterService::SSO, ClusterTool::SSO, $env, $kubectl);
+        $host = $this->resolveToolHost(SharedClusterService::SSO, ClusterTool::ZITADEL, $env, $kubectl);
 
         // The registry has no row for this install yet, so every helper below
         // would find nothing; hand them the names this command is deploying.
-        $this->ssoNamesOverride = ToolInstance::forHost(ClusterTool::SSO, $host);
+        $this->ssoNamesOverride = ToolInstance::forHost(ClusterTool::ZITADEL, $host);
         $names = $this->ssoNamesOverride;
         $dbName = $names->database();
 
@@ -60,11 +60,11 @@ abstract class SsoInitCommand extends AbstractToolInitCommand
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->assertVpnOnlySupported(ClusterTool::SSO)) {
+        if ($vpnOnly && ! $this->assertVpnOnlySupported(ClusterTool::ZITADEL)) {
             return 1;
         }
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::SSO, $kubectl, $names->instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::ZITADEL, $kubectl, $names->instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -188,7 +188,7 @@ abstract class SsoInitCommand extends AbstractToolInitCommand
         // serving traffic — give it generous headroom (up to 300s).
         $rolledOut = $this->withSpin(
             'Applying Zitadel manifests (first boot runs schema setup)...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 300, tool: ClusterTool::SSO),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $names->deployment(), 300, tool: ClusterTool::ZITADEL),
         );
         $temporaryDirectory->delete();
 
@@ -198,7 +198,7 @@ abstract class SsoInitCommand extends AbstractToolInitCommand
 
         $machinePatCaptured = $this->captureMachinePat($kubectl, $ns);
 
-        $this->registerDeployedTool(ClusterTool::SSO, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
+        $this->registerDeployedTool(ClusterTool::ZITADEL, $kubectl, $host, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Zitadel is live.');
@@ -219,7 +219,7 @@ abstract class SsoInitCommand extends AbstractToolInitCommand
         $this->line('     <fg=blue>larakube sso:wire <tool></>');
         $this->newLine();
         $this->line('  <fg=yellow>Wiring Zitadel outbound email to Stalwart</>:');
-        $this->line('     <fg=blue>larakube mail:wire --tool=sso</>');
+        $this->line('     <fg=blue>larakube mail:wire --tool=zitadel</>');
         $this->newLine();
 
         return 0;
@@ -318,6 +318,6 @@ abstract class SsoInitCommand extends AbstractToolInitCommand
 
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::SSO);
+        return $this->resolveToolEnvironment(ClusterTool::ZITADEL);
     }
 }

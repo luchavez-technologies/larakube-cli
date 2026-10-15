@@ -72,7 +72,7 @@ class SecretsImportCommand extends Command
             $input,
         ));
 
-        $env = $this->resolveToolEnvironment(ClusterTool::SECRETS);
+        $env = $this->resolveToolEnvironment(ClusterTool::OPENBAO);
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
         $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->secretsNamespace();

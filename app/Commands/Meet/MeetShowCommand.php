@@ -36,7 +36,7 @@ abstract class MeetShowCommand extends AbstractToolShowCommand
         $registry = $names !== null ? $this->meetConsumers($this->readMeetKeys($kubectl, $names)) : [];
 
         if ($registry === []) {
-            $rows[] = ['Consumers', "<fg=gray>none — run meet:wire {$env} --tool=chat</>"];
+            $rows[] = ['Consumers', "<fg=gray>none — run meet:wire {$env} --tool=matrix</>"];
 
             return $rows;
         }

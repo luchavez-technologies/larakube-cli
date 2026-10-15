@@ -7,7 +7,7 @@
 use App\Enums\ClusterTool;
 
 test('the PAT is readable from OpenBao under an instance-scoped KV key', function (): void {
-    $vpn = ClusterTool::VPN;
+    $vpn = ClusterTool::NETBIRD;
     $instance = $vpn->instanceSlugFromHost('vpn.luchtech.dev');
     $config = $vpn->openbaoSyncConfig($instance);
 
@@ -26,7 +26,7 @@ test('the setup key is deliberately absent from the KV sync', function (): void 
     // one into OpenBao would not re-home an enrolled peer — that still needs
     // vpn:setup-key to clear the daemon's config.json. Offering it here would
     // look like a rotation path that silently does nothing.
-    $config = ClusterTool::VPN->openbaoSyncConfig('vpn-luchtech-dev');
+    $config = ClusterTool::NETBIRD->openbaoSyncConfig('vpn-luchtech-dev');
 
     expect($config['keyMap'])->not->toHaveKey('VPN_VPN_LUCHTECH_DEV_SETUP_KEY')
         ->and(array_values($config['keyMap']))->not->toContain('setup-key');
@@ -35,7 +35,7 @@ test('the setup key is deliberately absent from the KV sync', function (): void 
 test('the PAT sync targets a different Secret than the database rotation', function (): void {
     // secrets:wire's ExternalSecret owns every key in the Secret it targets.
     // Sharing one would let a database rotation clobber the PAT.
-    $vpn = ClusterTool::VPN;
+    $vpn = ClusterTool::NETBIRD;
     $instance = $vpn->instanceSlugFromHost('vpn.luchtech.dev');
 
     expect($vpn->openbaoSyncConfig($instance)['secret'])
@@ -43,7 +43,7 @@ test('the PAT sync targets a different Secret than the database rotation', funct
 });
 
 test('the ExternalSecret maps the KV key onto the Secret key', function (): void {
-    $config = ClusterTool::VPN->openbaoSyncConfig('vpn-luchtech-dev');
+    $config = ClusterTool::NETBIRD->openbaoSyncConfig('vpn-luchtech-dev');
 
     $manifest = view('k8s.secrets.tool-es', [
         'namespace' => 'larakube-vpn',
