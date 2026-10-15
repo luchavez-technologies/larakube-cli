@@ -66,8 +66,11 @@ trait ManagesDevBoxTunnel
         $socket = $this->tunnelSocket($stack->name);
         @unlink($socket);
 
+        $sshPort = (int) ($stack->port ?? 22);
+
         // Backgrounds itself once connected; its output is discarded so this does not wait for it.
         $command = 'ssh -f -N -M -S '.escapeshellarg($socket)
+            .' -p '.$sshPort
             .' -i '.escapeshellarg((string) $stack->sshKey)
             .' -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ConnectTimeout=15'
             ." -L 127.0.0.1:{$port}:127.0.0.1:6443 ".escapeshellarg('larakube@'.$stack->ip).' >/dev/null 2>&1';

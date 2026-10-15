@@ -97,6 +97,7 @@ class CloudStacksCommand extends Command
             'projectId' => $stack->projectId,
             'bindings' => $stack->bindings,
             'role' => $stack->role,
+            'port' => $stack->port ?? 22,
             'createdAt' => $stack->createdAt,
             'status' => $status,
         ];

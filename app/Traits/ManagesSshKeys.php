@@ -35,6 +35,7 @@ trait ManagesSshKeys
         // 1. Try to find a matching stack name from global config if available
         $stackName = null;
         $stackKey = null;
+        $stackPort = null;
         if (class_exists(GlobalConfigData::class)) {
             try {
                 $global = GlobalConfigData::load();
@@ -45,6 +46,7 @@ trait ManagesSshKeys
                         || ($stack->context !== null && ($stack->context === $hostOrIp || $stack->context === $context))
                     ) {
                         $stackName = $stack->name;
+                        $stackPort = $stack->port ?? 22;
                         if (! empty($stack->sshKey) && file_exists(str_replace('~', home_path(), $stack->sshKey))) {
                             $stackKey = str_replace('~', home_path(), $stack->sshKey);
                         }
@@ -119,7 +121,7 @@ trait ManagesSshKeys
         if ($stackKey !== null) {
             return [
                 'user' => 'larakube',
-                'port' => 22,
+                'port' => $stackPort ?? 22,
                 'key' => $stackKey,
                 'host' => $stackName,
             ];

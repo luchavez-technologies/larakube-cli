@@ -58,7 +58,7 @@ class DevboxRevokeCommand extends Command
         $escaped = escapeshellarg($search);
         $script = "grep -v {$escaped} ~/.ssh/authorized_keys > ~/.ssh/authorized_keys.tmp && mv ~/.ssh/authorized_keys.tmp ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys";
 
-        $ok = $this->runRemoteUserCommand('larakube', $stack->ip, 22, $stack->sshKey, $script);
+        $ok = $this->runRemoteUserCommand('larakube', $stack->ip, $stack->port ?? 22, $stack->sshKey, $script);
 
         if (! $ok) {
             return $this->failWithError("Failed to update authorized_keys on {$stack->name}.");

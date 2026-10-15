@@ -50,6 +50,21 @@ resource "digitalocean_droplet" "larakube" {
   image       = "{{ $image ?? 'ubuntu-24-04-x64' }}"
   ssh_keys    = [local.ssh_fingerprint]
   tags        = ["larakube"]
+@if(isset($sshPort) && (int) $sshPort !== 22)
+  user_data   = <<-EOF
+                #!/bin/bash
+                sed -i 's/^#\?Port .*/Port {{ $sshPort }}/' /etc/ssh/sshd_config
+                grep -qxF 'Port {{ $sshPort }}' /etc/ssh/sshd_config || echo 'Port {{ $sshPort }}' >> /etc/ssh/sshd_config
+                if [ -d /etc/ssh/sshd_config.d ]; then
+                  sed -i 's/^#\?Port .*/Port {{ $sshPort }}/' /etc/ssh/sshd_config.d/*.conf 2>/dev/null || true
+                fi
+                if systemctl is-active --quiet ssh.socket 2>/dev/null; then
+                  systemctl disable --now ssh.socket 2>/dev/null || true
+                  systemctl enable --now ssh.service 2>/dev/null || true
+                fi
+                systemctl reload ssh || systemctl restart ssh || systemctl restart sshd || true
+                EOF
+@endif
 }
 
 resource "digitalocean_firewall" "larakube" {
@@ -59,7 +74,7 @@ resource "digitalocean_firewall" "larakube" {
   # SSH — restricted to the admin CIDR when provided, else open.
   inbound_rule {
     protocol         = "tcp"
-    port_range       = "22"
+    port_range       = "{{ $sshPort ?? 22 }}"
     source_addresses = [{!! $sshSources !!}]
   }
 

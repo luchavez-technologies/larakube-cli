@@ -47,6 +47,8 @@ class StackData extends Data
         public string $role = 'deploy',
         /** For a dev box: the port on this computer that its cluster API is tunnelled to over SSH. */
         public ?int $tunnelPort = null,
+        /** SSH port for a VPS or dev box (default 22). */
+        public int $port = 22,
     ) {}
 
     /** Add an "appName/env" binding (idempotent). */

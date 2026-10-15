@@ -62,6 +62,21 @@ resource "google_compute_instance" "larakube" {
     # Disable OS Login to permit direct root SSH key authentication for K3s automation
     enable-oslogin = "FALSE"
     ssh-keys       = "root:{{ $sshPubKey }}"
+@if(isset($sshPort) && (int) $sshPort !== 22)
+    "startup-script" = <<-EOF
+      #!/bin/bash
+      sed -i 's/^#\?Port .*/Port {{ $sshPort }}/' /etc/ssh/sshd_config
+      grep -qxF 'Port {{ $sshPort }}' /etc/ssh/sshd_config || echo 'Port {{ $sshPort }}' >> /etc/ssh/sshd_config
+      if [ -d /etc/ssh/sshd_config.d ]; then
+        sed -i 's/^#\?Port .*/Port {{ $sshPort }}/' /etc/ssh/sshd_config.d/*.conf 2>/dev/null || true
+      fi
+      if systemctl is-active --quiet ssh.socket 2>/dev/null; then
+        systemctl disable --now ssh.socket 2>/dev/null || true
+        systemctl enable --now ssh.service 2>/dev/null || true
+      fi
+      systemctl reload ssh || systemctl restart ssh || systemctl restart sshd || true
+    EOF
+@endif
   }
 
   depends_on = [google_project_service.compute]
@@ -74,7 +89,7 @@ resource "google_compute_firewall" "larakube_ingress" {
   # SSH — restricted to admin CIDR when provided, else open.
   allow {
     protocol = "tcp"
-    ports    = ["22"]
+    ports    = ["{{ $sshPort ?? 22 }}"]
   }
 
   # k3s API (6443) — restricted to admin CIDR when provided, else open.

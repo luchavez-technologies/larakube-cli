@@ -23,10 +23,9 @@ trait ProvisionsDevBox
      * The whole pipeline, as root on a reachable host. Every step is safe to run again.
      * Returns the login the box ends up with ("larakube" once root login is closed).
      */
-    protected function provisionDevBox(string $name, string $ip, string $keyPath, string $channel = 'canary', ?string $adminCidr = null): ?string
+    protected function provisionDevBox(string $name, string $ip, string $keyPath, string $channel = 'canary', ?string $adminCidr = null, string $port = '22'): ?string
     {
         $user = 'root';
-        $port = '22';
 
         // Only SSH is open: the app is reached through a tunnel, not a public port.
         if (! $this->hardenServer($user, $ip, (int) $port, $keyPath, $adminCidr, allowPorts: [])) {

@@ -104,6 +104,7 @@ class DevboxImportCommand extends Command
             createdAt: $stack['createdAt'] ?? now()->toIso8601String(),
             sshKey: $keyPath,
             role: 'dev',
+            port: (int) ($stack['port'] ?? 22),
         );
 
         $config->putStack($stackData);
@@ -115,7 +116,7 @@ class DevboxImportCommand extends Command
         if (! $this->flag('skip-test') && $stackData->ip) {
             $this->laraKubeInfo("Testing SSH connectivity to {$stackData->name} ({$stackData->ip})...");
             $tested = true;
-            $reachable = $this->testSsh('larakube', $stackData->ip, 22, $keyPath);
+            $reachable = $this->testSsh('larakube', $stackData->ip, (int) ($stackData->port ?? 22), $keyPath);
         }
 
         if ($this->flag('json')) {

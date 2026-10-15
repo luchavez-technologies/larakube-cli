@@ -65,7 +65,7 @@ class DevboxConnectCommand extends Command
             return $this->failed("Could not open an SSH tunnel to {$stack->ip}. Check the box is running and reachable.");
         }
 
-        if (! $contextExists && ! $this->syncKubeconfig('larakube', $stack->ip, 22, $stack->sshKey, $context, "https://127.0.0.1:{$port}")) {
+        if (! $contextExists && ! $this->syncKubeconfig('larakube', $stack->ip, (string) ($stack->port ?? 22), $stack->sshKey, $context, "https://127.0.0.1:{$port}")) {
             return $this->failed('Could not bring the box\'s kubeconfig to this computer.');
         }
 

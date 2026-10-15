@@ -76,6 +76,7 @@ class DevboxExportCommand extends Command
                 'account' => $stack->account,
                 'projectId' => $stack->projectId,
                 'role' => 'dev',
+                'port' => $stack->port ?? 22,
             ],
             'keys' => [
                 'private' => $privateKey,

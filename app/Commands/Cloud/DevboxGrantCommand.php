@@ -77,7 +77,7 @@ class DevboxGrantCommand extends Command
             }
         }
 
-        $ok = $this->runRemoteUserCommand('larakube', $stack->ip, 22, $stack->sshKey, $script);
+        $ok = $this->runRemoteUserCommand('larakube', $stack->ip, $stack->port ?? 22, $stack->sshKey, $script);
 
         if (! $ok) {
             return $this->failWithError("Failed to update authorized_keys on {$stack->name}. Check server connectivity.");

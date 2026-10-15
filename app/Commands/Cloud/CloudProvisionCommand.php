@@ -20,6 +20,7 @@ class CloudProvisionCommand extends Command
      */
     protected $signature = 'cloud:init
         {environment? : Inside a project, the environment to bind to this VPS.}
+        {--ssh-port= : SSH port to connect to (default: 22)}
         {--context= : (DOKS only) target a specific kube-context}';
 
     /**
@@ -66,10 +67,10 @@ class CloudProvisionCommand extends Command
             default: 'root',
         );
 
-        $port = text(
+        $port = (string) ($this->option('ssh-port') ?: text(
             label: 'SSH Port',
             default: '22',
-        );
+        ));
 
         $keyPath = text(
             label: 'Path to your SSH Private Key',

@@ -61,6 +61,7 @@ class CloudCreateCommand extends Command
         {--zone= : GCP Compute zone (defaults to <region>-a)}
         {--size= : Droplet/node size slug}
         {--key= : Path to the SSH private key (VPS)}
+        {--ssh-port=22 : SSH port to configure on the VPS (default: 22; e.g. 8443 if port 22 is blocked)}
         {--admin-cidr= : Restrict SSH + the k3s API to this CIDR (VPS); omit = open}
         {--node-count= : Managed cluster node count (min 1)}
         {--ha : Enable HA (High-Availability) control plane (+$40/mo on DOKS, irreversible)}
@@ -172,7 +173,7 @@ class CloudCreateCommand extends Command
         return $this->getGlobalConfig()->findStack($this->slug($nameBase.'-'.$targetKind));
     }
 
-    protected function registerStack(string $name, string $kind, ?string $region, ?string $ip, ?string $context, ?ConfigData $config, ?string $environment, string $provider = 'do', string $role = 'deploy'): void
+    protected function registerStack(string $name, string $kind, ?string $region, ?string $ip, ?string $context, ?ConfigData $config, ?string $environment, string $provider = 'do', string $role = 'deploy', int $port = 22): void
     {
         $defaultDo = $this->getGlobalConfig()->getDefaultCloudAccount('do');
         $defaultHetzner = $this->getGlobalConfig()->getDefaultCloudAccount('hetzner');
@@ -200,6 +201,7 @@ class CloudCreateCommand extends Command
             projectId: $projectId,
             createdAt: gmdate('c'),
             role: $role,
+            port: $port,
         );
         if ($config && $environment) {
             $stack->bind($config->getName(), $environment);
@@ -540,9 +542,9 @@ class CloudCreateCommand extends Command
      * Turn the new, reachable host into what this command makes. Returns the kube-context the
      * server ends up with ('' when it has none, as a dev box), or null on failure.
      */
-    protected function provisionHost(string $stackName, string $ip, string $keyPath, ?ConfigData $config, ?string $adminCidr): ?string
+    protected function provisionHost(string $stackName, string $ip, string $keyPath, ?ConfigData $config, ?string $adminCidr, int $sshPort = 22): ?string
     {
-        return $this->provisionK3sNode('root', $ip, '22', $keyPath, $config ?? $this->getProjectConfigObject(getcwd()), adminCidr: $adminCidr);
+        return $this->provisionK3sNode('root', $ip, (string) $sshPort, $keyPath, $config ?? $this->getProjectConfigObject(getcwd()), adminCidr: $adminCidr);
     }
 
     /** Resolve vps vs managed kind. */
@@ -624,6 +626,11 @@ class CloudCreateCommand extends Command
             default => $adminCidr ? '"'.$adminCidr.'"' : '"0.0.0.0/0", "::/0"',
         };
 
+        $sshPort = $this->promptSshPort();
+        if ($sshPort === null) {
+            return 1;
+        }
+
         $hcl = view("tofu.{$provider}.vps", [
             'region' => $region,
             'zone' => $zone,
@@ -635,6 +642,7 @@ class CloudCreateCommand extends Command
             'sshSources' => $sources,
             'apiSources' => $sources,
             'adminCidr' => $adminCidr,
+            'sshPort' => $sshPort,
         ])->render();
         $this->writeTofuFiles($stackName, ['main.tf' => $hcl]);
 
@@ -658,19 +666,19 @@ class CloudCreateCommand extends Command
 
         // Register the stack now (before the long provisioning run) so a later
         // failure still leaves a destroyable record.
-        $this->registerStack($stackName, 'vps', $region, $ip, null, $config, $environment, $provider, $this->stackRole());
+        $this->registerStack($stackName, 'vps', $region, $ip, null, $config, $environment, $provider, $this->stackRole(), $sshPort);
 
         // A new VM can get an IP an earlier one had; its old host key would make ssh refuse the new one.
         $this->forgetHostKey($ip);
 
         // Wait for sshd, then run the shared single-node pipeline as root.
-        if (! $this->waitForSsh('root', $ip, '22', $keyPath)) {
+        if (! $this->waitForSsh('root', $ip, (string) $sshPort, $keyPath)) {
             $this->laraKubeError("SSH never came up at root@{$ip}. The {$serverLabel} exists — re-run provisioning once it's reachable.");
 
             return 1;
         }
 
-        $context = $this->provisionHost($stackName, $ip, $keyPath, $config, $adminCidr);
+        $context = $this->provisionHost($stackName, $ip, $keyPath, $config, $adminCidr, $sshPort);
 
         if ($context === null) {
             return 1;
@@ -680,16 +688,16 @@ class CloudCreateCommand extends Command
         $this->updateStackContext($stackName, $context === '' ? null : $context, $keyPath);
 
         // `ssh <stack-name>` just works from here on.
-        $this->upsertSshConfigHost($stackName, $ip, 'larakube', '22', $keyPath);
+        $this->upsertSshConfigHost($stackName, $ip, 'larakube', (string) $sshPort, $keyPath);
 
-        return $this->finishVps($stackName, $ip, $keyPath, $context, $config, $projectPath, $environment);
+        return $this->finishVps($stackName, $ip, $keyPath, $context, $config, $projectPath, $environment, $sshPort);
     }
 
     /** What happens once the host is provisioned: bind the environment, report, connect Cloudflare. */
-    protected function finishVps(string $stackName, string $ip, string $keyPath, string $context, ?ConfigData $config, ?string $projectPath, ?string $environment): int
+    protected function finishVps(string $stackName, string $ip, string $keyPath, string $context, ?ConfigData $config, ?string $projectPath, ?string $environment, int $sshPort = 22): int
     {
         if ($config && $environment) {
-            $this->bindVpsEnv($config, $projectPath, $environment, $ip, 'larakube', '22', $keyPath);
+            $this->bindVpsEnv($config, $projectPath, $environment, $ip, 'larakube', (string) $sshPort, $keyPath);
             $this->tagBinding($stackName, $config->getName(), $environment);
         }
 
@@ -744,6 +752,35 @@ class CloudCreateCommand extends Command
             copy($tmp, $local);
         }
         $temporaryDirectory->delete();
+    }
+
+    // --- prompts ------------------------------------------------------------
+
+    protected function promptSshPort(): ?int
+    {
+        $flag = $this->option('ssh-port');
+        if ($flag !== null && $flag !== '') {
+            $port = (int) $flag;
+            if ($port < 1 || $port > 65535) {
+                $this->laraKubeError("Invalid --ssh-port '{$flag}'. Port must be between 1 and 65535.");
+
+                return null;
+            }
+            if (in_array($port, [80, 443, 2222], true)) {
+                $service = match ($port) {
+                    80 => 'Traefik HTTP web ingress',
+                    443 => 'Traefik HTTPS web ingress',
+                    2222 => 'Forgejo Git SSH service',
+                };
+                $this->laraKubeError("Port {$port} cannot be used for host SSH because it is reserved for {$service}. Recommended alternates: 8443 or 2200.");
+
+                return null;
+            }
+
+            return $port;
+        }
+
+        return 22;
     }
 
     /**
@@ -828,7 +865,7 @@ class CloudCreateCommand extends Command
         }
 
         if ($target === 'vps') {
-            $this->bindVpsEnv($config, $projectPath, $environment, $stack->ip, 'larakube', '22', $this->defaultKeyPath());
+            $this->bindVpsEnv($config, $projectPath, $environment, $stack->ip, 'larakube', (string) ($stack->port ?? 22), $this->defaultKeyPath());
         } else {
             $managedProvider = $this->resolveManagedProvider($provider);
             $this->recordManagedTarget($config, $environment, $projectPath, $stack->context, $managedProvider);
@@ -1004,8 +1041,6 @@ class CloudCreateCommand extends Command
         ConfigData::from($data)->saveToFile($projectPath);
         $this->laraKubeInfo("Bound '{$environment}' to {$ip} (saved to .larakube.local.json).");
     }
-
-    // --- prompts ------------------------------------------------------------
 
     private function promptKeyPath(): ?string
     {

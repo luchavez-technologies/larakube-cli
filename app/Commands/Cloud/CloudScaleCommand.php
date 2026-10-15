@@ -278,7 +278,7 @@ class CloudScaleCommand extends Command
         if ($stack->ip !== null && $stack->sshKey !== null && is_file($stack->sshKey)) {
             $this->laraKubeInfo("Waiting for '{$stack->name}' to come back...");
 
-            if (! $this->waitForSsh('larakube', $stack->ip, '22', $stack->sshKey)) {
+            if (! $this->waitForSsh('larakube', $stack->ip, (string) ($stack->port ?? 22), $stack->sshKey)) {
                 $message = "'{$stack->name}' did not come back over SSH after scaling. Check it in your provider's console.";
                 $this->laraKubeError($message);
                 State::setLastError($message);

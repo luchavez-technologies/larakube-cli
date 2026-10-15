@@ -76,3 +76,68 @@ test('backend-s3 template renders an S3-compatible backend with per-stack key an
         ->not->toContain('&quot;')
         ->not->toContain('&gt;');
 });
+
+test('do/vps template renders custom sshPort in firewall and user_data', function (): void {
+    $hcl = view('tofu.do.vps', [
+        'region' => 'sgp1',
+        'size' => 's-1vcpu-1gb',
+        'dropletName' => 'larakube-alt-port',
+        'sshKeyName' => 'larakube-alt',
+        'sshPubKey' => 'ssh-ed25519 AAAAC3NzaC1lZDI1 user@host',
+        'keyFingerprint' => '3b:16:aa:cc',
+        'sshSources' => '"0.0.0.0/0", "::/0"',
+        'apiSources' => '"0.0.0.0/0", "::/0"',
+        'sshPort' => 8443,
+    ])->render();
+
+    expect($hcl)->toContain('port_range       = "8443"')
+        ->and($hcl)->toContain('user_data   = <<-EOF')
+        ->and($hcl)->toContain('Port 8443');
+});
+
+test('aws/vps template renders custom sshPort in security group and user_data', function (): void {
+    $hcl = view('tofu.aws.vps', [
+        'region' => 'us-east-1',
+        'size' => 't4g.small',
+        'dropletName' => 'larakube-aws-alt',
+        'sshKeyName' => 'larakube-aws-key',
+        'sshPubKey' => 'ssh-ed25519 AAAAC3NzaC1lZDI1 user@host',
+        'sshPort' => 8443,
+    ])->render();
+
+    expect($hcl)->toContain('from_port        = 8443')
+        ->and($hcl)->toContain('to_port          = 8443')
+        ->and($hcl)->toContain('Port 8443');
+});
+
+test('hetzner/vps template renders custom sshPort in firewall and user_data', function (): void {
+    $hcl = view('tofu.hetzner.vps', [
+        'region' => 'fsn1',
+        'size' => 'cx22',
+        'dropletName' => 'larakube-hetzner-alt',
+        'sshKeyName' => 'larakube-hetzner-key',
+        'sshPubKey' => 'ssh-ed25519 AAAAC3NzaC1lZDI1 user@host',
+        'sshSources' => '"0.0.0.0/0", "::/0"',
+        'apiSources' => '"0.0.0.0/0", "::/0"',
+        'sshPort' => 2200,
+    ])->render();
+
+    expect($hcl)->toContain('port       = "2200"')
+        ->and($hcl)->toContain('user_data    = <<-EOF')
+        ->and($hcl)->toContain('Port 2200');
+});
+
+test('gcp/vps template renders custom sshPort in firewall and startup-script', function (): void {
+    $hcl = view('tofu.gcp.vps', [
+        'region' => 'us-central1',
+        'size' => 'e2-medium',
+        'dropletName' => 'larakube-gcp-alt',
+        'sshPubKey' => 'ssh-ed25519 AAAAC3NzaC1lZDI1 user@host',
+        'sshSources' => '"0.0.0.0/0"',
+        'sshPort' => 8443,
+    ])->render();
+
+    expect($hcl)->toContain('ports    = ["8443"]')
+        ->and($hcl)->toContain('"startup-script" = <<-EOF')
+        ->and($hcl)->toContain('Port 8443');
+});

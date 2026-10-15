@@ -22,6 +22,7 @@ class DevboxCreateCommand extends CloudCreateCommand
         {--zone= : GCP Compute zone (defaults to <region>-a)}
         {--size= : Server size slug (8 GB of RAM is comfortable for one app)}
         {--key= : Path to the SSH private key}
+        {--ssh-port=22 : SSH port to configure on the dev box (default: 22; e.g. 8443 if port 22 is blocked)}
         {--admin-cidr= : Restrict SSH to this CIDR; omit = open}
         {--channel= : LaraKube CLI channel installed on the box: canary (default) or stable}
         {--do-token= : DigitalOcean API token for this run only (never persisted)}
@@ -61,16 +62,16 @@ class DevboxCreateCommand extends CloudCreateCommand
         return 'vps';
     }
 
-    protected function provisionHost(string $stackName, string $ip, string $keyPath, ?ConfigData $config, ?string $adminCidr): ?string
+    protected function provisionHost(string $stackName, string $ip, string $keyPath, ?ConfigData $config, ?string $adminCidr, int $sshPort = 22): ?string
     {
         $channel = in_array($this->flag('channel'), ['canary', 'stable'], true) ? (string) $this->flag('channel') : 'canary';
 
-        return $this->provisionDevBox($stackName, $ip, $keyPath, $channel, $adminCidr) === null ? null : '';
+        return $this->provisionDevBox($stackName, $ip, $keyPath, $channel, $adminCidr, (string) $sshPort) === null ? null : '';
     }
 
-    protected function finishVps(string $stackName, string $ip, string $keyPath, string $context, ?ConfigData $config, ?string $projectPath, ?string $environment): int
+    protected function finishVps(string $stackName, string $ip, string $keyPath, string $context, ?ConfigData $config, ?string $projectPath, ?string $environment, int $sshPort = 22): int
     {
-        $this->result += ['ip' => $ip, 'context' => null, 'role' => 'dev'];
+        $this->result += ['ip' => $ip, 'context' => null, 'role' => 'dev', 'port' => $sshPort];
 
         $this->newLine();
         $this->laraKubeInfo('✅ Dev box ready!');

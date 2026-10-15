@@ -74,11 +74,11 @@ resource "aws_security_group" "larakube" {
   description = "Security group for LaraKube VPS instance {{ $dropletName }}"
   vpc_id      = data.aws_vpc.default.id
 
-  # SSH (Port 22) — restricted to admin CIDR when provided, else open
+  # SSH (Port {{ $sshPort ?? 22 }}) — restricted to admin CIDR when provided, else open
   ingress {
     description      = "SSH"
-    from_port        = 22
-    to_port          = 22
+    from_port        = {{ $sshPort ?? 22 }}
+    to_port          = {{ $sshPort ?? 22 }}
     protocol         = "tcp"
     cidr_blocks      = [{!! ! empty($adminCidr) ? '"' . $adminCidr . '"' : '"0.0.0.0/0"' !!}]
 @if(empty($adminCidr))
@@ -168,6 +168,17 @@ resource "aws_instance" "larakube" {
               if [ -d /etc/ssh/sshd_config.d ]; then
                 sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config.d/*.conf 2>/dev/null || true
               fi
+@if(isset($sshPort) && (int) $sshPort !== 22)
+              sed -i 's/^#\?Port .*/Port {{ $sshPort }}/' /etc/ssh/sshd_config
+              grep -qxF 'Port {{ $sshPort }}' /etc/ssh/sshd_config || echo 'Port {{ $sshPort }}' >> /etc/ssh/sshd_config
+              if [ -d /etc/ssh/sshd_config.d ]; then
+                sed -i 's/^#\?Port .*/Port {{ $sshPort }}/' /etc/ssh/sshd_config.d/*.conf 2>/dev/null || true
+              fi
+              if systemctl is-active --quiet ssh.socket 2>/dev/null; then
+                systemctl disable --now ssh.socket 2>/dev/null || true
+                systemctl enable --now ssh.service 2>/dev/null || true
+              fi
+@endif
               systemctl reload ssh || systemctl restart ssh || systemctl restart sshd || true
               EOF
 

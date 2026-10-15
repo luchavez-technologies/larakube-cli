@@ -36,7 +36,10 @@ function cloudCreateFlagRunner(array $options = []): CloudCreateCommand
 
         public function line($string, $style = null, $verbosity = null) {}
 
-        public function newLine($count = 1) {}
+        public function newLine($count = 1)
+        {
+            return $this;
+        }
 
         public function bindOptions(array $options): void
         {
@@ -53,6 +56,11 @@ function cloudCreateFlagRunner(array $options = []): CloudCreateCommand
         public function stackName(?string $nameBase, string $kind): string
         {
             return $this->promptStackName($nameBase, $kind);
+        }
+
+        public function sshPort(): ?int
+        {
+            return $this->promptSshPort();
         }
 
         public function doToken(): bool
@@ -133,4 +141,15 @@ test('no --admin-cidr headlessly means open (matches the confirm default of fals
     // application-level flag) — flag() must tolerate that, and the confirm
     // falls back to its `false` default under Prompt::interactive(false).
     expect(cloudCreateFlagRunner()->adminCidr())->toBeNull();
+});
+
+test('--ssh-port defaults to 22, accepts valid ports, and rejects reserved or invalid ports', function (): void {
+    expect(cloudCreateFlagRunner()->sshPort())->toBe(22)
+        ->and(cloudCreateFlagRunner(['--ssh-port' => '8443'])->sshPort())->toBe(8443)
+        ->and(cloudCreateFlagRunner(['--ssh-port' => '2200'])->sshPort())->toBe(2200)
+        ->and(cloudCreateFlagRunner(['--ssh-port' => '443'])->sshPort())->toBeNull()
+        ->and(cloudCreateFlagRunner(['--ssh-port' => '80'])->sshPort())->toBeNull()
+        ->and(cloudCreateFlagRunner(['--ssh-port' => '2222'])->sshPort())->toBeNull()
+        ->and(cloudCreateFlagRunner(['--ssh-port' => '0'])->sshPort())->toBeNull()
+        ->and(cloudCreateFlagRunner(['--ssh-port' => '70000'])->sshPort())->toBeNull();
 });

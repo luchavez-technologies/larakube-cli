@@ -67,7 +67,7 @@ class CloudRestartCommand extends Command
         }
 
         $user = 'larakube';
-        $port = '22';
+        $port = (string) ($stack->port ?? 22);
 
         if (! $this->testSsh($user, $stack->ip, $port, $stack->sshKey)) {
             $this->laraKubeError("Cannot reach {$name} over SSH at {$stack->ip}, so it was not restarted.");

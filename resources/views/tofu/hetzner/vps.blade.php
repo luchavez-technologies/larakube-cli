@@ -47,7 +47,7 @@ resource "hcloud_firewall" "larakube" {
   rule {
     direction  = "in"
     protocol   = "tcp"
-    port       = "22"
+    port       = "{{ $sshPort ?? 22 }}"
     source_ips = [{!! $sshSources !!}]
   }
 
@@ -100,6 +100,21 @@ resource "hcloud_server" "larakube" {
   location     = "{{ $region }}"
   ssh_keys     = [local.ssh_key_id]
   firewall_ids = [hcloud_firewall.larakube.id]
+@if(isset($sshPort) && (int) $sshPort !== 22)
+  user_data    = <<-EOF
+                 #!/bin/bash
+                 sed -i 's/^#\?Port .*/Port {{ $sshPort }}/' /etc/ssh/sshd_config
+                 grep -qxF 'Port {{ $sshPort }}' /etc/ssh/sshd_config || echo 'Port {{ $sshPort }}' >> /etc/ssh/sshd_config
+                 if [ -d /etc/ssh/sshd_config.d ]; then
+                   sed -i 's/^#\?Port .*/Port {{ $sshPort }}/' /etc/ssh/sshd_config.d/*.conf 2>/dev/null || true
+                 fi
+                 if systemctl is-active --quiet ssh.socket 2>/dev/null; then
+                   systemctl disable --now ssh.socket 2>/dev/null || true
+                   systemctl enable --now ssh.service 2>/dev/null || true
+                 fi
+                 systemctl reload ssh || systemctl restart ssh || systemctl restart sshd || true
+                 EOF
+@endif
   labels = {
     managed_by = "larakube"
   }

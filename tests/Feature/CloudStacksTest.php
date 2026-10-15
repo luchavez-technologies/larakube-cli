@@ -78,3 +78,16 @@ test('cloud:stacks --json tells a dev box from a deploy server, and a dev box wi
         ->and($byName['my-dev-box'])->toMatchArray(['role' => 'dev', 'status' => 'ready', 'context' => null])
         ->and($byName['dev-no-key']['status'])->toBe('incomplete');
 });
+
+test('cloud:stacks --json reports port for registered stacks', function (): void {
+    $config = GlobalConfigData::load();
+    $config->putStack(new StackData(name: 'default-ssh-stack', provider: 'do', kind: 'vps', region: 'sgp1', ip: '1.2.3.4'));
+    $config->putStack(new StackData(name: 'custom-ssh-stack', provider: 'do', kind: 'vps', region: 'sgp1', ip: '1.2.3.5', port: 8443));
+    $config->save();
+
+    Artisan::call('cloud:stacks', ['--json' => true]);
+    $byName = collect(json_decode(trim(Artisan::output()), true)['stacks'])->keyBy('name');
+
+    expect($byName['default-ssh-stack']['port'])->toBe(22)
+        ->and($byName['custom-ssh-stack']['port'])->toBe(8443);
+});
