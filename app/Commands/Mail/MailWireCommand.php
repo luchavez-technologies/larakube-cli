@@ -382,7 +382,7 @@ class MailWireCommand extends Command
         // per-host/port/user vars. Stalwart talks implicit TLS on 465, hence
         // smtp+ssl://, and the credentials must be percent-encoded (the
         // sender is an email address — an unencoded @ would break the URL).
-        if ($tool->category() === ClusterTool::ERRORS) {
+        if ($tool->category() === ClusterTool::GLITCHTIP) {
             $logical['email_url'] = 'smtp+ssl://'.rawurlencode($logical['user']).':'.rawurlencode($logical['password']).'@'.$logical['host'].':'.$logical['port'];
         }
 

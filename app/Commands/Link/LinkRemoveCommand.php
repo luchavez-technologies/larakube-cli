@@ -12,13 +12,13 @@ abstract class LinkRemoveCommand extends AbstractToolRemoveCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::LINK;
+        return ClusterTool::KUTT;
     }
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
         $instance = (string) $this->resolveInstance($kubectl);
-        $names = ToolInstance::forInstance(ClusterTool::LINK, $instance);
+        $names = ToolInstance::forInstance(ClusterTool::KUTT, $instance);
         $deployment = $names->deployment();
 
         $targets = [

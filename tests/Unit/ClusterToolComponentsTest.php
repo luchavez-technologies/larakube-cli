@@ -35,10 +35,10 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
     // chat-synapse never gains an instance suffix, even when one is given.
     $expected = [
         'analytics' => 'umami', 'crm' => 'twenty',
-        'drive' => 'ocis', 'errors' => 'glitchtip',
+        'drive' => 'ocis', 'glitchtip' => 'glitchtip',
         'flow' => 'n8n', 'metabase' => 'metabase',
-        'link' => 'kutt', 'mail' => 'stalwart', 'monitor' => 'grafana',
-        'notes' => 'outline', 'passwords' => 'vaultwarden', 'sendrec' => 'sendrec',
+        'kutt' => 'kutt', 'mail' => 'stalwart', 'monitor' => 'grafana',
+        'notes' => 'outline', 'vaultwarden' => 'vaultwarden', 'sendrec' => 'sendrec',
         'secrets' => 'openbao', 'teable' => 'teable', 'sign' => 'documenso',
         'sso' => 'zitadel', 'chatwoot' => 'chatwoot', 'planka' => 'planka',
         'kuma' => 'kuma', 'bulwark' => 'bulwark',
@@ -121,7 +121,7 @@ test('only DESIGN\'s frontend, ERRORS\' worker, and CRM\'s worker components sha
         if ($tool === ClusterTool::PENPOT) {
             expect($shared)->toHaveCount(1)
                 ->and($shared[0]->deployment)->toBe('penpot-frontend');
-        } elseif ($tool === ClusterTool::ERRORS || $tool === ClusterTool::GLITCHTIP) {
+        } elseif ($tool === ClusterTool::GLITCHTIP) {
             expect($shared)->toHaveCount(1)
                 ->and($shared[0]->deployment)->toBe('glitchtip-worker');
         } elseif ($tool === ClusterTool::CRM || $tool === ClusterTool::TWENTY) {
@@ -134,7 +134,7 @@ test('only DESIGN\'s frontend, ERRORS\' worker, and CRM\'s worker components sha
 
     expect(ClusterTool::PENPOT->alsoPatchDeployments())->toBe(['penpot-frontend'])
         ->and(ClusterTool::PENPOT->alsoPatchDeployments())->toBe(['penpot-frontend'])
-        ->and(ClusterTool::ERRORS->alsoPatchDeployments())->toBe(['glitchtip-worker'])
+        ->and(ClusterTool::GLITCHTIP->alsoPatchDeployments())->toBe(['glitchtip-worker'])
         ->and(ClusterTool::GLITCHTIP->alsoPatchDeployments())->toBe(['glitchtip-worker'])
         ->and(ClusterTool::CRM->alsoPatchDeployments())->toBe(['twenty-worker'])
         ->and(ClusterTool::TWENTY->alsoPatchDeployments())->toBe(['twenty-worker']);
@@ -152,7 +152,6 @@ test('backupVolume is only true for the components InteractsWithBackup already c
         'forgejo' => ['server' => ['/data']],
         'drive' => ['app' => ['/var/lib/ocis']],
         'ocis' => ['app' => ['/var/lib/ocis']],
-        'passwords' => ['app' => ['/data']],
         'vaultwarden' => ['app' => ['/data']],
         'mail' => ['app' => ['/var/lib/stalwart']],
         'stalwart' => ['app' => ['/var/lib/stalwart']],

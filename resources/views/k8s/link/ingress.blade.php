@@ -1,5 +1,5 @@
 @php
-    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::LINK, $host);
+    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::KUTT, $host);
     $labels ??= $names->labels();
 @endphp
 apiVersion: networking.k8s.io/v1

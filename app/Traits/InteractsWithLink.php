@@ -15,7 +15,7 @@ trait InteractsWithLink
 
     protected function linkNamespace(): string
     {
-        return ClusterTool::LINK->namespace();
+        return ClusterTool::KUTT->namespace();
     }
 
     protected function isLinkInstalled(string $kubectl, string $ns, string|ToolInstance|null $instance = null): bool
@@ -23,7 +23,7 @@ trait InteractsWithLink
         $k = Kubectl::fromPrefix($kubectl);
         $toolInstance = $instance instanceof ToolInstance
             ? $instance
-            : ($instance !== null && $instance !== '' ? ToolInstance::forInstance(ClusterTool::LINK, $instance) : null);
+            : ($instance !== null && $instance !== '' ? ToolInstance::forInstance(ClusterTool::KUTT, $instance) : null);
 
         if ($toolInstance !== null) {
             return $k->hasDeployment($ns, $toolInstance->deployment());
@@ -36,7 +36,7 @@ trait InteractsWithLink
     {
         $toolInstance = $instance instanceof ToolInstance
             ? $instance
-            : ($instance !== '' ? ToolInstance::forInstance(ClusterTool::LINK, $instance) : null);
+            : ($instance !== '' ? ToolInstance::forInstance(ClusterTool::KUTT, $instance) : null);
 
         return $toolInstance !== null
             ? $this->readClusterSecretKey($kubectl, $ns, $toolInstance->secret(), $key)

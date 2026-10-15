@@ -40,17 +40,17 @@ abstract class LinkInitCommand extends AbstractToolInitCommand
         $this->plexContext = $context;
         $cluster = Kubectl::forContext(($context ?? '') !== '' ? $context : null);
         $kubectl = $cluster->prefix();
-        $host = $this->resolveToolHost(SharedClusterService::LINK, ClusterTool::LINK, $env, $kubectl);
+        $host = $this->resolveToolHost(SharedClusterService::LINK, ClusterTool::KUTT, $env, $kubectl);
 
-        $names = ToolInstance::forHost(ClusterTool::LINK, $host);
+        $names = ToolInstance::forHost(ClusterTool::KUTT, $host);
         $ns = $names->namespace();
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->assertVpnOnlySupported(ClusterTool::LINK)) {
+        if ($vpnOnly && ! $this->assertVpnOnlySupported(ClusterTool::KUTT)) {
             return 1;
         }
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::LINK, $kubectl)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::KUTT, $kubectl)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -82,7 +82,7 @@ abstract class LinkInitCommand extends AbstractToolInitCommand
             'jwt-secret' => $jwtSecret,
         ], $names->labels()));
 
-        $branding = $this->resolveToolBranding($kubectl, ClusterTool::LINK, $instance);
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::KUTT, $instance);
         $deploymentName = $names->deployment();
 
         $manifest = view('k8s.link.shared', [
@@ -105,7 +105,7 @@ abstract class LinkInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Kutt manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180, tool: ClusterTool::LINK),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 180, tool: ClusterTool::KUTT),
         );
         $temporaryDirectory->delete();
 
@@ -113,7 +113,7 @@ abstract class LinkInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::LINK, $kubectl, $host);
+        $this->registerDeployedTool(ClusterTool::KUTT, $kubectl, $host);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Kutt shortener stack is live.');
@@ -128,6 +128,6 @@ abstract class LinkInitCommand extends AbstractToolInitCommand
 
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::LINK);
+        return $this->resolveToolEnvironment(ClusterTool::KUTT);
     }
 }

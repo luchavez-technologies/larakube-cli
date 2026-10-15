@@ -188,7 +188,7 @@ test('sso:revoke\'s discovery sweep checks every RBAC-gated tool\'s OWN project,
         ->expectsChoice(
             "jamescarloluchavez@gmail.com's current access — select what to revoke",
             [],
-            ['kutt-user' => 'Link Management (Kutt) — Can log in to Kutt'],
+            ['kutt-user' => 'Kutt (Link Shortener & Management) — Can log in to Kutt'],
         )
         ->assertExitCode(0);
 

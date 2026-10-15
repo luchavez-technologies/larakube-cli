@@ -1054,10 +1054,10 @@ test('sso:wire registers a new OIDC client and wires it to Kutt (link)', functio
         CreateProjectRoleRequest::class => MockResponse::make([]),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'link', '--no-interaction' => true])
+    $this->artisan('sso:wire', ['--tool' => 'kutt', '--no-interaction' => true])
         ->assertExitCode(0)
-        ->expectsOutputToContain('Registering Link Management (Kutt) as an OIDC client in Zitadel')
-        ->expectsOutputToContain('Link Management (Kutt) is wired to Zitadel SSO');
+        ->expectsOutputToContain('Registering Kutt (Link Shortener & Management) as an OIDC client in Zitadel')
+        ->expectsOutputToContain('Kutt (Link Shortener & Management) is wired to Zitadel SSO');
 
     Saloon::assertSent(fn ($request) => $request instanceof CreateOidcAppRequest
         && $request->body()->get('redirectUris')[0] === 'https://link.'.GlobalConfigData::load()->getLocalTld().'/login/oidc');

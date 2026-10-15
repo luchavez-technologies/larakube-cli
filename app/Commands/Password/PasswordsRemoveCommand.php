@@ -9,7 +9,7 @@ abstract class PasswordsRemoveCommand extends AbstractToolRemoveCommand
 {
     protected function tool(): ClusterTool
     {
-        return ClusterTool::PASSWORDS;
+        return ClusterTool::VAULTWARDEN;
     }
 
     protected function teardownWarning(string $env): array

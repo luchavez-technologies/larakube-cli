@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Process;
 test('kutt:remove tears down single default instance cleanly', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'link', 'instance' => 'link-dev-test', 'host' => 'link.dev.test'],
+            ['tool' => 'kutt', 'instance' => 'link-dev-test', 'host' => 'link.dev.test'],
         ]))),
         '*get deployment kutt-link-dev-test*' => Process::result(output: 'kutt-link-dev-test   1/1   1   1   10d'),
         '*delete deployment/kutt-link-dev-test*' => Process::result(output: 'deleted'),
@@ -23,7 +23,7 @@ test('kutt:remove tears down single default instance cleanly', function (): void
 test('kutt:remove targets explicit domain instance', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'link', 'instance' => 'go-dev-test', 'host' => 'go.dev.test'],
+            ['tool' => 'kutt', 'instance' => 'go-dev-test', 'host' => 'go.dev.test'],
         ]))),
         '*get deployment kutt-go-dev-test*' => Process::result(output: 'kutt-go-dev-test   1/1   1   1   10d'),
         '*delete deployment/kutt-go-dev-test*' => Process::result(output: 'deleted'),
@@ -41,8 +41,8 @@ test('kutt:remove targets explicit domain instance', function (): void {
 test('kutt:remove hard-errors non-interactively when 2+ instances are registered and neither --domain nor --all was given', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'link', 'instance' => 'link-dev-test', 'host' => 'link.dev.test'],
-            ['tool' => 'link', 'instance' => 'go-dev-test', 'host' => 'go.dev.test'],
+            ['tool' => 'kutt', 'instance' => 'link-dev-test', 'host' => 'link.dev.test'],
+            ['tool' => 'kutt', 'instance' => 'go-dev-test', 'host' => 'go.dev.test'],
         ]))),
     ]);
 
@@ -56,8 +56,8 @@ test('kutt:remove hard-errors non-interactively when 2+ instances are registered
 test('kutt:remove --all removes all registered instances', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'link', 'instance' => 'link-dev-test', 'host' => 'link.dev.test'],
-            ['tool' => 'link', 'instance' => 'go-dev-test', 'host' => 'go.dev.test'],
+            ['tool' => 'kutt', 'instance' => 'link-dev-test', 'host' => 'link.dev.test'],
+            ['tool' => 'kutt', 'instance' => 'go-dev-test', 'host' => 'go.dev.test'],
         ]))),
         '*get deployment kutt-link-dev-test*' => Process::result(output: 'kutt-link-dev-test   1/1   1   1   10d'),
         '*get deployment kutt-go-dev-test*' => Process::result(output: 'kutt-go-dev-test   1/1   1   1   10d'),
@@ -75,7 +75,7 @@ test('kutt:remove --all removes all registered instances', function (): void {
 test('kutt:remove --purge drops the Commons postgres database and releases the redis index', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'link', 'instance' => 'link-dev-test', 'host' => 'link.dev.test'],
+            ['tool' => 'kutt', 'instance' => 'link-dev-test', 'host' => 'link.dev.test'],
         ]))),
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,

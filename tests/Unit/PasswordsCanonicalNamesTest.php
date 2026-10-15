@@ -27,7 +27,7 @@ function vaultManifest(array $overrides = []): array
 }
 
 test('Vaultwarden resolves every resource name from ToolInstance with the category gone', function (): void {
-    $names = ToolInstance::forInstance(ClusterTool::PASSWORDS, 'vault-luchtech-dev');
+    $names = ToolInstance::forInstance(ClusterTool::VAULTWARDEN, 'vault-luchtech-dev');
 
     expect($names->deployment())->toBe('vaultwarden-vault-luchtech-dev')
         ->and($names->secret())->toBe('vaultwarden-secrets-vault-luchtech-dev')
@@ -41,7 +41,7 @@ test('Vaultwarden resolves every resource name from ToolInstance with the catego
 });
 
 test('the rotation URL is built from the role OpenBao returns, so it is right for every instance', function (): void {
-    $ref = ClusterTool::PASSWORDS->dbSecretRef('vault-luchtech-dev');
+    $ref = ClusterTool::VAULTWARDEN->dbSecretRef('vault-luchtech-dev');
 
     expect($ref['secret'])->toBe('vaultwarden-secrets-vault-luchtech-dev')
         ->and($ref['key'])->toBe('VAULTWARDEN_DATABASE_URL')
@@ -84,7 +84,7 @@ test('the manifest names every object from ToolInstance and the claim matches th
         ->and($ingress['spec']['rules'][0]['http']['paths'][0]['backend']['service']['name'])->toBe('vaultwarden-vault-example-com');
 
     foreach ([$secret, $pvc, $deployment, $service, $ingress] as $object) {
-        expect($object['metadata']['labels']['larakube.io/tool'])->toBe('passwords')
+        expect($object['metadata']['labels']['larakube.io/tool'])->toBe('vaultwarden')
             ->and($object['metadata']['labels']['larakube.io/instance'])->toBe('vault-example-com');
     }
 });
@@ -104,7 +104,7 @@ test('the Ingress renders from the host alone, the way the shared-service reconc
 });
 
 test('teardown names every resource the manifest declares', function (): void {
-    $component = ClusterTool::PASSWORDS->components('vault-luchtech-dev')[0];
+    $component = ClusterTool::VAULTWARDEN->components('vault-luchtech-dev')[0];
     $refs = collect($component->resources)->map(fn ($r) => "{$r['kind']}/{$r['name']}")->all();
 
     expect($component->deployment)->toBe('vaultwarden-vault-luchtech-dev')

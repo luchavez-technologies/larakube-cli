@@ -43,7 +43,7 @@ test('only tools that own their namespace outright are torn down namespace-wide'
     ));
 
     expect(array_map(fn ($t) => $t->value, $wholesale))
-        ->toEqualCanonicalizing(['passwords', 'secrets', 'sso', 'vpn', 'netbird', 'openbao', 'vaultwarden', 'zitadel']);
+        ->toEqualCanonicalizing(['secrets', 'sso', 'vpn', 'netbird', 'openbao', 'vaultwarden', 'zitadel']);
 
     foreach ($wholesale as $tool) {
         expect($tool->namespace())->not->toBe('larakube-shared');
@@ -111,7 +111,7 @@ test('only tools that can bundle their own storage advertise --no-plex', functio
     );
 
     expect($noPlex)->toEqualCanonicalizing([
-        'chat', 'drive', 'errors', 'flow', 'git', 'sso',
+        'chat', 'drive', 'flow', 'git', 'sso',
         'matrix', 'ocis', 'glitchtip', 'n8n', 'windmill', 'forgejo', 'metabase', 'zitadel',
         'monitor', 'grafana', 'vpn', 'netbird',
     ]);
@@ -133,7 +133,7 @@ test('command name helpers spell the canonical tool:action shape', function (): 
     expect(ClusterTool::FLOW->initInvocation())->toBe('tool:init --tool=n8n')
         ->and(ClusterTool::FLOW->removeCommand())->toBe('n8n:remove')
         ->and(ClusterTool::FLOW->showCommand())->toBe('n8n:show')
-        ->and(ClusterTool::PASSWORDS->removeCommand())->toBe('vaultwarden:remove');
+        ->and(ClusterTool::VAULTWARDEN->removeCommand())->toBe('vaultwarden:remove');
 });
 
 test('deploymentName() matches the actual Deployment name each tool\'s own manifest creates', function (): void {
@@ -148,7 +148,7 @@ test('deploymentName() matches the actual Deployment name each tool\'s own manif
     // SharedClusterService::presenceProbe() and the tools' own manifests,
     // not just re-asserting whatever the enum currently says.
     expect(ClusterTool::SSO->deploymentName())->toBe('zitadel');
-    expect(ClusterTool::ERRORS->deploymentName())->toBe('glitchtip')
+    expect(ClusterTool::GLITCHTIP->deploymentName())->toBe('glitchtip')
         ->and(ClusterTool::VPN->deploymentName())->toBe('netbird');
 });
 
@@ -241,13 +241,13 @@ test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance
         ClusterTool::YOPASS,
         ClusterTool::SIGN, ClusterTool::DOCUMENSO,
         ClusterTool::FLOW, ClusterTool::N8N, ClusterTool::WINDMILL,
-        ClusterTool::LINK, ClusterTool::KUTT,
+        ClusterTool::KUTT,
         ClusterTool::ANALYTICS, ClusterTool::UMAMI, ClusterTool::PLAUSIBLE,
         ClusterTool::TEABLE,
         ClusterTool::PLANKA,
         ClusterTool::KUMA,
         ClusterTool::METABASE,
-        ClusterTool::ERRORS, ClusterTool::GLITCHTIP,
+        ClusterTool::GLITCHTIP,
         ClusterTool::CHATWOOT,
         ClusterTool::SENDREC,
         ClusterTool::RESUME,
@@ -325,7 +325,7 @@ test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifest
     // cannot create its target, so a suffix the tool's templates don't use
     // leaves the synced values reaching nothing. Live names as deployed.
     $names = [];
-    foreach ([ClusterTool::CHAT, ClusterTool::MONITOR, ClusterTool::PASSWORDS, ClusterTool::SSO, ClusterTool::GIT, ClusterTool::NOTES, ClusterTool::MAIL, ClusterTool::SIGN, ClusterTool::DATA, ClusterTool::VPN] as $tool) {
+    foreach ([ClusterTool::CHAT, ClusterTool::MONITOR, ClusterTool::VAULTWARDEN, ClusterTool::SSO, ClusterTool::GIT, ClusterTool::NOTES, ClusterTool::MAIL, ClusterTool::SIGN, ClusterTool::DATA, ClusterTool::VPN] as $tool) {
         $names[$tool->value] = [
             $tool->openbaoSyncConfig('inst')['secret'] ?? null,
             $tool->dbSecretRef('inst')['secret'] ?? null,
@@ -335,7 +335,7 @@ test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifest
     expect($names)->toBe([
         'chat' => ['synapse-secrets-inst', 'synapse-secrets-inst'],
         'monitor' => ['grafana-secrets-inst', 'grafana-secrets-inst'],
-        'passwords' => ['vaultwarden-secrets-inst', 'vaultwarden-secrets-inst'],
+        'vaultwarden' => ['vaultwarden-secrets-inst', 'vaultwarden-secrets-inst'],
         'sso' => [null, 'zitadel-secrets-inst'],
         // Canonical ({component}-{token}-{instance}) once a tool has migrated,
         // otherwise the shape its manifests still write.

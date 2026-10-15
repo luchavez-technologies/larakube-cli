@@ -110,7 +110,7 @@ test('a tool whose proxy is on by default falls back to DNS-only instead of fail
     // No --proxied on the command line: Link's default of 1 applies.
     $command = proxyGuardCommand([], ClusterTool::KUTT);
 
-    guardProxy($command, 'link.example.com', ClusterTool::LINK);
+    guardProxy($command, 'link.example.com', ClusterTool::KUTT);
 
     expect($command->resolveProxied(false))->toBeFalse();
 });

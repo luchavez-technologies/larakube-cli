@@ -1,5 +1,5 @@
 @php
-    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::LINK, $host);
+    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::KUTT, $host);
     $deployment = $names->deployment();
     $service = $names->deployment();
     $secret = $names->secret();
@@ -90,7 +90,7 @@ spec:
             # mail:wire sets this as a plain literal (kubectl set env
             # NAME=value), never through the smtp Secret — must
             # stay a literal here too, or a future kubectl apply conflicts
-            # with mail:wire's live value (see ClusterTool::LINK's smtpEnv()).
+            # with mail:wire's live value (see ClusterTool::KUTT's smtpEnv()).
             - name: MAIL_SECURE
               value: "true"
             - name: MAIL_USER

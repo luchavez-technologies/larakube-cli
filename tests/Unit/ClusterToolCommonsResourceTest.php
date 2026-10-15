@@ -24,11 +24,11 @@ test('PASSWORDS is wired into openbaoSyncConfig so tool:init --tool=openbao actu
     // controls (alongside admin-token/plain-token). secrets:wire's dynamic
     // ExternalSecret merges (creationPolicy: Merge) a rotated value into that
     // same Secret, so the name has to be the one the manifest writes.
-    $config = ClusterTool::PASSWORDS->openbaoSyncConfig();
+    $config = ClusterTool::VAULTWARDEN->openbaoSyncConfig();
 
     expect($config)->not->toBeNull()
         ->and($config['secret'])->toBe('vaultwarden-secrets')
-        ->and(ClusterTool::PASSWORDS->openbaoSyncConfig('vault-example-com')['secret'])->toBe('vaultwarden-secrets-vault-example-com')
+        ->and(ClusterTool::VAULTWARDEN->openbaoSyncConfig('vault-example-com')['secret'])->toBe('vaultwarden-secrets-vault-example-com')
         ->and($config['keys'])->toContain('VAULTWARDEN_DATABASE_URL');
 });
 

@@ -40,7 +40,7 @@ abstract class PasswordsInitCommand extends AbstractToolInitCommand
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = Kubectl::forContext($context)->prefix();
-        $host = $this->resolveToolHost(SharedClusterService::VAULT, ClusterTool::PASSWORDS, $env, $kubectl);
+        $host = $this->resolveToolHost(SharedClusterService::VAULT, ClusterTool::VAULTWARDEN, $env, $kubectl);
         $ns = $this->vaultNamespace();
 
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
@@ -48,8 +48,8 @@ abstract class PasswordsInitCommand extends AbstractToolInitCommand
         ));
 
         // Every name comes from ToolInstance (ADR 0021).
-        $instance = ClusterTool::PASSWORDS->instanceSlugFromHost($host);
-        $names = ToolInstance::forInstance(ClusterTool::PASSWORDS, $instance);
+        $instance = ClusterTool::VAULTWARDEN->instanceSlugFromHost($host);
+        $names = ToolInstance::forInstance(ClusterTool::VAULTWARDEN, $instance);
         $dbName = $names->database();
 
         $adminToken = $this->readVaultAdminToken($kubectl, $ns, $instance) ?? bin2hex(random_bytes(16));
@@ -83,7 +83,7 @@ abstract class PasswordsInitCommand extends AbstractToolInitCommand
 
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::PASSWORDS, $kubectl, $instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::VAULTWARDEN, $kubectl, $instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
@@ -108,7 +108,7 @@ abstract class PasswordsInitCommand extends AbstractToolInitCommand
 
         $rolledOut = $this->withSpin(
             'Applying Vaultwarden manifests...',
-            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 120, tool: ClusterTool::PASSWORDS),
+            fn () => $this->applyAndVerifyRollout($kubectl, $tmp, $ns, $deploymentName, 120, tool: ClusterTool::VAULTWARDEN),
         );
         $temporaryDirectory->delete();
 
@@ -116,7 +116,7 @@ abstract class PasswordsInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $this->registerDeployedTool(ClusterTool::PASSWORDS, $kubectl, $host, instance: $instance);
+        $this->registerDeployedTool(ClusterTool::VAULTWARDEN, $kubectl, $host, instance: $instance);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ Vaultwarden stack is live.');
@@ -134,6 +134,6 @@ abstract class PasswordsInitCommand extends AbstractToolInitCommand
      */
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::PASSWORDS);
+        return $this->resolveToolEnvironment(ClusterTool::VAULTWARDEN);
     }
 }

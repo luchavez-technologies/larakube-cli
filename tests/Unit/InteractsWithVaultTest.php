@@ -77,7 +77,7 @@ test('readVaultAdminToken is null when the Secret is absent', function (): void 
 
 test('vaultAccess is null when vault is not installed, populated when it is', function (): void {
     $registry = base64_encode((string) json_encode([
-        ['tool' => 'passwords', 'instance' => 'vault-example-com', 'host' => 'vault.example.com'],
+        ['tool' => 'vaultwarden', 'instance' => 'vault-example-com', 'host' => 'vault.example.com'],
     ]));
 
     Process::fake(['*get deployment -l larakube.io/tool=passwords*' => Process::result(output: '', exitCode: 1)]);

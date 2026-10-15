@@ -56,7 +56,7 @@ test('link manifest carries canonical resource naming and identity labels', func
 
     expect($manifest)
         ->toContain('name: kutt-link-example-test')
-        ->toContain('larakube.io/tool: link')
+        ->toContain('larakube.io/tool: kutt')
         ->toContain('larakube.io/component: kutt')
         ->toContain('larakube.io/instance: link-example-test')
         ->toContain('name: kutt-secrets-link-example-test')
@@ -151,7 +151,7 @@ test('resolveProxied honors the --proxied flag value and always yields false on 
 test('tool:init --tool=kutt --vpn-only refuses — LINK is public infrastructure with no VPN mode', function (): void {
     $this->artisan('tool:init --tool=kutt local --vpn-only --no-interaction')
         ->assertExitCode(1)
-        ->expectsOutputToContain("'link' doesn't have a --vpn-only ingress mode.");
+        ->expectsOutputToContain("'kutt' doesn't have a --vpn-only ingress mode.");
 });
 
 test('tool:init --tool=kutt --vpn-only aborts without touching kubectl', function (): void {
@@ -162,5 +162,5 @@ test('tool:init --tool=kutt --vpn-only aborts without touching kubectl', functio
 
     $this->artisan('tool:init --tool=kutt local --vpn-only --no-interaction')
         ->assertExitCode(1)
-        ->expectsOutputToContain("'link' doesn't have a --vpn-only ingress mode.");
+        ->expectsOutputToContain("'kutt' doesn't have a --vpn-only ingress mode.");
 });

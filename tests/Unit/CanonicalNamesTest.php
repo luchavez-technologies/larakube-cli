@@ -9,7 +9,6 @@ use App\Enums\SecretKind;
  * category (`design-`, `errors-`, `support-`...) never appears in a name.
  */
 dataset('tools on the canonical naming', [
-    'errors' => [ClusterTool::ERRORS, 'glitchtip'],
     'resume' => [ClusterTool::RESUME, 'reactive'],
 ]);
 

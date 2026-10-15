@@ -109,11 +109,11 @@ test('mail:wire local --tool=penpot configures Penpot SMTP via deployment secret
     Process::assertRan(fn ($process) => isset(appliedSecret($process)['data']['PENPOT_SMTP_HOST']));
 });
 
-test('mail:wire local --tool=<errors|glitchtip> composes GlitchTip EMAIL_URL and patches the worker too, whichever name is given', function (string $toolName): void {
+test('mail:wire local --tool=glitchtip composes GlitchTip EMAIL_URL and patches the worker too', function (string $toolName): void {
     Process::fake([
         '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'errors', 'instance' => 'errors-example-com', 'host' => 'errors.example.com'],
+            ['tool' => 'glitchtip', 'instance' => 'errors-example-com', 'host' => 'errors.example.com'],
         ]))),
         '*get deployment glitchtip-errors-example-com*' => Process::result(output: 'glitchtip-errors-example-com   1/1   1   1   10d'),
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
@@ -139,7 +139,7 @@ test('mail:wire local --tool=<errors|glitchtip> composes GlitchTip EMAIL_URL and
     Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/glitchtip-worker-errors-example-com')
         && str_contains($process->command, '--from=secret/glitchtip-smtp-errors-example-com'));
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/glitchtip-worker-errors-example-com'));
-})->with(['errors', 'glitchtip']);
+})->with(['glitchtip']);
 
 test('mail:wire local --tool=crm resolves the real host-derived instance from the registry and patches the worker too', function (): void {
     // Regression: CRM has no 'main' deployment at all (pure host-derived

@@ -73,7 +73,7 @@ test('readErrorsAdminPassword decodes the admin secret, null when absent', funct
 
 test('errorsAccess is null when glitchtip is not installed, populated when it is', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
-    Tests\Support\FakeToolRegistry::install([['tool' => 'errors', 'instance' => 'errors-example-com', 'host' => 'errors.example.com']]);
+    Tests\Support\FakeToolRegistry::install([['tool' => 'glitchtip', 'instance' => 'errors-example-com', 'host' => 'errors.example.com']]);
 
     Process::fake(["{$kubectl} get deployment -n larakube-shared -l larakube.io/tool=errors,larakube.io/component=glitchtip --no-headers --ignore-not-found" => Process::result(output: '', exitCode: 1)]);
     expect(errorsReader()->access('local', null))->toBeNull();

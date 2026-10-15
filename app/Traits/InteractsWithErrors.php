@@ -17,7 +17,7 @@ trait InteractsWithErrors
     /** The namespace the GlitchTip stack lives in. */
     protected function errorsNamespace(): string
     {
-        return ClusterTool::ERRORS->namespace();
+        return ClusterTool::GLITCHTIP->namespace();
     }
 
     /** GlitchTip web Deployment present? A cheap "is GlitchTip installed" probe, by identity label. */
@@ -69,7 +69,7 @@ trait InteractsWithErrors
 
         return [
             'host' => $this->resolveErrorsHostReadOnly($env, $config),
-            'password' => ($names = ToolInstance::first($kubectl, ClusterTool::ERRORS)) === null ? null : $this->readErrorsAdminPassword($kubectl, $ns, $names->secret()),
+            'password' => ($names = ToolInstance::first($kubectl, ClusterTool::GLITCHTIP)) === null ? null : $this->readErrorsAdminPassword($kubectl, $ns, $names->secret()),
             'label' => 'GlitchTip',
         ];
     }

@@ -40,9 +40,9 @@ abstract class ErrorsInitCommand extends AbstractToolInitCommand
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = Kubectl::forContext($context)->prefix();
-        $host = $this->resolveToolHost(SharedClusterService::ERRORS, ClusterTool::ERRORS, $env, $kubectl);
+        $host = $this->resolveToolHost(SharedClusterService::ERRORS, ClusterTool::GLITCHTIP, $env, $kubectl);
         $ns = $this->errorsNamespace();
-        $names = ToolInstance::forHost(ClusterTool::ERRORS, $host);
+        $names = ToolInstance::forHost(ClusterTool::GLITCHTIP, $host);
 
         $noPlex = (bool) $this->option('no-plex');
 
@@ -91,13 +91,13 @@ abstract class ErrorsInitCommand extends AbstractToolInitCommand
 
         $vpnOnly = (bool) $this->option('vpn-only');
 
-        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::ERRORS, $kubectl, $names->instance)) {
+        if ($vpnOnly && ! $this->ensureVpnMiddleware(ClusterTool::GLITCHTIP, $kubectl, $names->instance)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');
 
             return 1;
         }
 
-        $branding = $this->resolveToolBranding($kubectl, ClusterTool::ERRORS, ClusterTool::ERRORS->instanceSlugFromHost($host));
+        $branding = $this->resolveToolBranding($kubectl, ClusterTool::GLITCHTIP, ClusterTool::GLITCHTIP->instanceSlugFromHost($host));
 
         $manifest = view('k8s.errors.shared', [
             'dbName' => $dbName,
@@ -173,7 +173,7 @@ abstract class ErrorsInitCommand extends AbstractToolInitCommand
 
         $adminEmail = $this->readClusterSecretKey($kubectl, $ns, $names->secret(), 'admin-email') ?? $this->resolveAdminEmail($host);
 
-        $this->registerDeployedTool(ClusterTool::ERRORS, $kubectl, $host, $names->instance, extra: ['adminEmail' => $adminEmail]);
+        $this->registerDeployedTool(ClusterTool::GLITCHTIP, $kubectl, $host, $names->instance, extra: ['adminEmail' => $adminEmail]);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('✅ GlitchTip stack is live.');
@@ -218,7 +218,7 @@ abstract class ErrorsInitCommand extends AbstractToolInitCommand
      */
     protected function resolveEnvironment(): string
     {
-        return $this->resolveToolEnvironment(ClusterTool::ERRORS);
+        return $this->resolveToolEnvironment(ClusterTool::GLITCHTIP);
     }
 
     /** Resolve the admin email for GlitchTip */

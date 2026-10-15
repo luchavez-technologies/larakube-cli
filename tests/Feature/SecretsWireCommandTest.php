@@ -125,7 +125,7 @@ test('secrets:wire --tool=sign registers a static role, wires the ExternalSecret
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/documenso-sign-kube'));
 });
 
-test('secrets:wire --tool=link registers a static role for kutt and restarts kutt', function (): void {
+test('secrets:wire --tool=kutt registers a static role for kutt and restarts kutt', function (): void {
     // fakeSyncedExternalSecret()'s patterns must come BEFORE the catch-all
     // '*' below — Process::fake() matches in array declaration order, and a
     // '*' listed first would swallow the more specific refreshTime/status/
@@ -136,7 +136,7 @@ test('secrets:wire --tool=link registers a static role for kutt and restarts kut
         '*get deployment kutt*' => Process::result(output: 'kutt-link-kube'),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
             openBaoRegistryRow(),
-            ['tool' => 'link', 'instance' => 'link-kube', 'host' => 'link.kube'],
+            ['tool' => 'kutt', 'instance' => 'link-kube', 'host' => 'link.kube'],
         ]))),
         '*port-forward*' => Process::result(output: ''),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -155,9 +155,9 @@ test('secrets:wire --tool=link registers a static role for kutt and restarts kut
         MockResponse::make([]),
     ]);
 
-    $this->artisan('secrets:wire local --tool=link --force')
+    $this->artisan('secrets:wire local --tool=kutt --force')
         ->assertExitCode(0)
-        ->expectsOutputToContain("Link Management (Kutt)'s DB password is now rotated by OpenBao every 168h");
+        ->expectsOutputToContain("Kutt (Link Shortener & Management)'s DB password is now rotated by OpenBao every 168h");
 
     Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
         && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/kutt_link_kube')
@@ -554,14 +554,14 @@ test('secrets:wire --tool=mail does not restart the deployment when the forced r
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'rollout restart'));
 });
 
-test('secrets:wire --tool=passwords registers a static role for vaultwarden with templated database URL and restarts vaultwarden deployment', function (): void {
+test('secrets:wire --tool=vaultwarden registers a static role for vaultwarden with templated database URL and restarts vaultwarden deployment', function (): void {
     Process::fake(array_merge(fakeSyncedExternalSecret(), [
         '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
         '*get secret vaultwarden-secrets*' => Process::result(output: base64_encode('postgresql://vaultwarden_vault_dev_test:pw@postgres:5432/vaultwarden_vault_dev_test')),
         '*get deployment*vaultwarden*' => Process::result(output: 'vaultwarden-vault-dev-test'),
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
             openBaoRegistryRow(),
-            ['tool' => 'passwords', 'instance' => 'vault-dev-test', 'host' => 'vault.dev.test'],
+            ['tool' => 'vaultwarden', 'instance' => 'vault-dev-test', 'host' => 'vault.dev.test'],
         ]))),
         '*port-forward*' => Process::result(output: ''),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -576,9 +576,9 @@ test('secrets:wire --tool=passwords registers a static role for vaultwarden with
         MockResponse::make([]),
     ]);
 
-    $this->artisan('secrets:wire local --tool=passwords --force')
+    $this->artisan('secrets:wire local --tool=vaultwarden --force')
         ->assertExitCode(0)
-        ->expectsOutputToContain("Password Manager (Vaultwarden)'s DB password is now rotated by OpenBao every 168h");
+        ->expectsOutputToContain("Vaultwarden (Bitwarden Server)'s DB password is now rotated by OpenBao every 168h");
 
     Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
         && str_contains($request->resolveEndpoint(), '/v1/database/static-roles/vaultwarden_vault_dev_test')

@@ -34,7 +34,7 @@ test('an unknown component is an error, not a guessed name', function (): void {
 })->throws(LogicException::class);
 
 test('every other resource shares the component\'s stem (ADR 0021)', function (): void {
-    $instance = ToolInstance::forHost(ClusterTool::LINK, 'link.example.com');
+    $instance = ToolInstance::forHost(ClusterTool::KUTT, 'link.example.com');
 
     expect($instance->base())->toBe('kutt')
         ->and($instance->secret())->toBe('kutt-secrets-link-example-com')

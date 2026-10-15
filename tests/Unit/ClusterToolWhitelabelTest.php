@@ -7,8 +7,8 @@ test('whiteLabel() returns non-null schemas for the 7 supported whitelabel tools
         ClusterTool::CHAT,
         ClusterTool::GIT,
         ClusterTool::CHATWOOT,
-        ClusterTool::ERRORS,
-        ClusterTool::LINK,
+        ClusterTool::GLITCHTIP,
+        ClusterTool::KUTT,
         ClusterTool::METABASE,
         ClusterTool::MONITOR,
     ];
@@ -23,7 +23,7 @@ test('whiteLabel() returns null for unsupported tools like DNS, VPN, SECRETS', f
         ClusterTool::EXTERNAL_DNS,
         ClusterTool::VPN,
         ClusterTool::SECRETS,
-        ClusterTool::PASSWORDS,
+        ClusterTool::VAULTWARDEN,
         ClusterTool::KUMA,
     ];
 

@@ -201,7 +201,7 @@ test('a failed delete exits non-zero instead of reporting success', function ():
 });
 
 test('namespace-wholesale tools delete their own namespace and nothing shared', function (): void {
-    foreach ([ClusterTool::PASSWORDS, ClusterTool::VPN] as $tool) {
+    foreach ([ClusterTool::VAULTWARDEN, ClusterTool::VPN] as $tool) {
         Process::fake([...registeredToolRemoveFakes($tool->removeCommand()),
             '*delete namespace*' => Process::result(output: 'deleted'),
             '*' => Process::result(output: ''),

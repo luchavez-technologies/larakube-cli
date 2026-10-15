@@ -36,7 +36,7 @@ final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasCommo
     public function smtpEnv(?string $instance = null): ?array
     {
         return [
-            'deployment' => ClusterTool::LINK->deploymentName($instance),
+            'deployment' => ClusterTool::KUTT->deploymentName($instance),
             'secret' => $this->name($instance, SecretKind::SMTP->value),
             'static' => [
                 'MAIL_ENABLED' => 'true',
@@ -62,7 +62,7 @@ final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasCommo
         // /login/oidc, and OIDC_SCOPE defaults to "openid profile
         // email" (matches Zitadel's default scopes).
         return [
-            'deployment' => ClusterTool::LINK->deploymentName($instance),
+            'deployment' => ClusterTool::KUTT->deploymentName($instance),
             'secret' => $this->name($instance, SecretKind::OIDC->value),
             'static' => [
                 'OIDC_ENABLED' => 'true',
@@ -109,6 +109,6 @@ final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasCommo
     {
         return ($instance === null || $instance === '')
             ? "kutt-{$token}"
-            : ToolInstance::forInstance(ClusterTool::LINK, $instance)->name($token);
+            : ToolInstance::forInstance(ClusterTool::KUTT, $instance)->name($token);
     }
 }

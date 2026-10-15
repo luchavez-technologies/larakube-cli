@@ -14,7 +14,7 @@ abstract class ErrorsRemoveCommand extends AbstractToolRemoveCommand
 
     protected function tool(): ClusterTool
     {
-        return ClusterTool::ERRORS;
+        return ClusterTool::GLITCHTIP;
     }
 
     /**
@@ -25,7 +25,7 @@ abstract class ErrorsRemoveCommand extends AbstractToolRemoveCommand
      */
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
-        $names = ToolInstance::forInstance(ClusterTool::ERRORS, (string) $this->resolveInstance($kubectl));
+        $names = ToolInstance::forInstance(ClusterTool::GLITCHTIP, (string) $this->resolveInstance($kubectl));
         $url = $this->readClusterSecretKey($kubectl, $namespace, $names->secret(), 'database-url');
 
         return $url !== null && str_contains($url, $names->deployment('db'));
@@ -33,7 +33,7 @@ abstract class ErrorsRemoveCommand extends AbstractToolRemoveCommand
 
     protected function teardown(string $kubectl, string $namespace): bool
     {
-        $names = ToolInstance::forInstance(ClusterTool::ERRORS, (string) $this->resolveInstance($kubectl));
+        $names = ToolInstance::forInstance(ClusterTool::GLITCHTIP, (string) $this->resolveInstance($kubectl));
         [$web, $worker, $db, $cache] = [$names->deployment(), $names->deployment('worker'), $names->deployment('db'), $names->deployment('cache')];
 
         return $this->removeResources(

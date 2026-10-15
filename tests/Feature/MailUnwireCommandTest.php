@@ -15,7 +15,7 @@ test('mail:unwire unsets tool mail environment variables', function (): void {
         '*rollout restart*' => Process::result(output: 'restarted'),
     ]);
 
-    $this->artisan('mail:unwire', ['--tool' => 'passwords'])
+    $this->artisan('mail:unwire', ['--tool' => 'vaultwarden'])
         ->assertExitCode(0)
         ->expectsOutputToContain('no longer routes mail through Stalwart');
 });

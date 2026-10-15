@@ -77,11 +77,11 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::MAIL, self::STALWART => new MailTool,
             self::SECRETS, self::OPENBAO => new SecretTool,
             self::DRIVE, self::OCIS => new DriveTool,
-            self::PASSWORDS, self::VAULTWARDEN => new PasswordTool,
+            self::VAULTWARDEN => new PasswordTool,
             self::SIGN, self::DOCUMENSO => new SignTool,
             self::SENDREC => new RecordTool,
             self::SSO, self::ZITADEL => new SsoTool,
-            self::LINK, self::KUTT => new LinkTool,
+            self::KUTT => new LinkTool,
             self::BULWARK => new WebmailTool,
             self::NOTES, self::OUTLINE => new NoteTool,
             self::TEABLE => new SheetTool,
@@ -89,7 +89,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::CRM, self::TWENTY => new CrmTool,
             self::CHATWOOT => new SupportTool,
             self::METABASE => new InsightTool,
-            self::ERRORS, self::GLITCHTIP => new ErrorTool,
+            self::GLITCHTIP => new ErrorTool,
             self::ANALYTICS, self::UMAMI, self::PLAUSIBLE => new AnalyticsTool,
             self::MEET, self::LIVEKIT => new MeetTool,
             self::EXTERNAL_DNS => new DnsTool,
@@ -142,10 +142,8 @@ enum ClusterTool: string implements HasWorkloadComponents
 
             // Legacy Categories
             self::FLOW => 'Workflow Automation (N8N or Windmill)',
-            self::PASSWORDS => 'Password Manager (Vaultwarden)',
             self::MONITOR => 'Monitoring Stack (Grafana + Loki + Prometheus)',
             self::SECRETS => 'Secrets Manager (OpenBao)',
-            self::ERRORS => 'Error Tracking (GlitchTip)',
             self::GIT => 'Git Forge & CI/CD (Forgejo)',
             self::VPN => 'Zero-Trust VPN Mesh (NetBird)',
             self::MAIL => 'Mail Server (Stalwart)',
@@ -155,7 +153,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::DRIVE => 'Cloud Storage & Sync (oCIS)',
             self::ANALYTICS => 'Web Analytics (Umami)',
             self::SIGN => 'Document Signing (Documenso)',
-            self::LINK => 'Link Management (Kutt)',
             self::CRM => 'CRM (Twenty)',
             self::DATA => 'Headless CMS & Data API (PocketBase or Directus)',
             self::MEET => 'Video Meetings (LiveKit)',
@@ -215,14 +212,11 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::CRM => '🤝',
             self::DATA => '🗄️',
             self::DRIVE => '☁️',
-            self::ERRORS => '🐛',
             self::FLOW => '⚡',
             self::GIT => '🦊',
-            self::LINK => '🔗',
             self::MAIL => '✉️',
             self::MONITOR => '📡',
             self::NOTES => '📝',
-            self::PASSWORDS => '🔐',
             self::SECRETS => '🔒',
             self::SIGN => '✍️',
             self::SSO => '🪪',
@@ -282,14 +276,11 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::CRM => 'CRM',
             self::DATA => 'Data',
             self::DRIVE => 'Drive',
-            self::ERRORS => 'Error Tracking',
             self::FLOW => 'Automation',
             self::GIT => 'Git',
-            self::LINK => 'Links',
             self::MAIL => 'Mail',
             self::MONITOR => 'Monitor',
             self::NOTES => 'Notes',
-            self::PASSWORDS => 'Passwords',
             self::SECRETS => 'Secrets',
             self::SIGN => 'Sign',
             self::SSO => 'SSO',
@@ -335,11 +326,11 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::OPENBAO, self::SECRETS => SharedClusterService::SECRETS,
             self::NETBIRD, self::VPN => SharedClusterService::VPN,
             self::ZITADEL, self::SSO => SharedClusterService::SSO,
-            self::VAULTWARDEN, self::PASSWORDS => SharedClusterService::VAULT,
+            self::VAULTWARDEN => SharedClusterService::VAULT,
             self::KUMA => SharedClusterService::UPTIME_KUMA,
             self::GRAFANA, self::MONITOR => SharedClusterService::GRAFANA,
             self::METABASE => SharedClusterService::INSIGHTS,
-            self::GLITCHTIP, self::ERRORS => SharedClusterService::ERRORS,
+            self::GLITCHTIP => SharedClusterService::ERRORS,
             self::OCIS, self::DRIVE => SharedClusterService::DRIVE,
             self::OUTLINE, self::NOTES => SharedClusterService::NOTES,
             self::TEABLE => SharedClusterService::SHEET,
@@ -350,7 +341,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::STALWART, self::MAIL => SharedClusterService::MAIL,
             self::BULWARK => SharedClusterService::WEBMAIL,
             self::PLANKA => SharedClusterService::TASKS,
-            self::KUTT, self::LINK => SharedClusterService::LINK,
+            self::KUTT => SharedClusterService::LINK,
             self::PENPOT => SharedClusterService::DESIGN,
             self::RESUME => SharedClusterService::RESUME,
             self::YOPASS => SharedClusterService::PASTE,
@@ -370,7 +361,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function namespace(): string
     {
         return match ($this) {
-            self::PASSWORDS, self::VAULTWARDEN => 'larakube-vault',
+            self::VAULTWARDEN => 'larakube-vault',
             self::SECRETS, self::OPENBAO => 'larakube-secrets',
             self::SSO, self::ZITADEL => 'larakube-sso',
             self::VPN, self::NETBIRD => 'larakube-vpn',
@@ -648,7 +639,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function supportsNoPlex(): bool
     {
         return match ($this) {
-            self::CHAT, self::MATRIX, self::DRIVE, self::OCIS, self::ERRORS, self::GLITCHTIP,
+            self::CHAT, self::MATRIX, self::DRIVE, self::OCIS, self::GLITCHTIP,
             self::FLOW, self::N8N, self::WINDMILL, self::GIT, self::FORGEJO,
             self::METABASE, self::SSO, self::ZITADEL,
             self::MONITOR, self::GRAFANA, self::VPN, self::NETBIRD => true,
@@ -718,14 +709,11 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::CRM,
             self::DATA,
             self::DRIVE,
-            self::ERRORS,
             self::FLOW,
             self::GIT,
-            self::LINK,
             self::MAIL,
             self::MONITOR,
             self::NOTES,
-            self::PASSWORDS,
             self::SECRETS,
             self::SIGN,
             self::SSO,
@@ -751,12 +739,9 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::CHAT => self::MATRIX,
             self::CRM => self::TWENTY,
             self::DRIVE => self::OCIS,
-            self::ERRORS => self::GLITCHTIP,
-            self::LINK => self::KUTT,
             self::MAIL => self::STALWART,
             self::MONITOR => self::GRAFANA,
             self::NOTES => self::OUTLINE,
-            self::PASSWORDS => self::VAULTWARDEN,
             self::SECRETS => self::OPENBAO,
             self::SIGN => self::DOCUMENSO,
             self::SSO => self::ZITADEL,
@@ -808,11 +793,11 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::OPENBAO, self::SECRETS => 'secrets',
             self::NETBIRD, self::VPN => 'vpn',
             self::ZITADEL, self::SSO => 'sso',
-            self::VAULTWARDEN, self::PASSWORDS => 'passwords',
+            self::VAULTWARDEN => 'passwords',
             self::KUMA => 'uptime',
             self::GRAFANA, self::MONITOR => 'monitor',
             self::METABASE => 'insights',
-            self::GLITCHTIP, self::ERRORS => 'errors',
+            self::GLITCHTIP => 'errors',
             self::OCIS, self::DRIVE => 'drive',
             self::OUTLINE, self::NOTES => 'notes',
             self::TEABLE => 'sheets',
@@ -823,7 +808,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::STALWART, self::MAIL => 'mail',
             self::BULWARK => 'webmail',
             self::PLANKA => 'tasks',
-            self::KUTT, self::LINK => 'link',
+            self::KUTT => 'link',
             self::PENPOT => 'design',
             self::YOPASS => 'paste',
             self::SENDREC => 'record',
@@ -1396,8 +1381,8 @@ enum ClusterTool: string implements HasWorkloadComponents
             // tool without a rbacRoles() entry admits ANY authenticated
             // Zitadel user, regardless of which org they belong to.
             self::NOTES, self::OUTLINE => ['outline-user' => 'Can log in to Outline'],
-            self::PASSWORDS, self::VAULTWARDEN => ['vaultwarden-user' => 'Can log in to Vaultwarden'],
-            self::LINK, self::KUTT => ['kutt-user' => 'Can log in to Kutt'],
+            self::VAULTWARDEN => ['vaultwarden-user' => 'Can log in to Vaultwarden'],
+            self::KUTT => ['kutt-user' => 'Can log in to Kutt'],
             self::RESUME => ['reactive-resume-user' => 'Can log in to Reactive Resume'],
             self::SIGN, self::DOCUMENSO => ['documenso-user' => 'Can log in to Documenso'],
             self::TEABLE => ['teable-user' => 'Can log in to Teable'],
@@ -1637,9 +1622,9 @@ enum ClusterTool: string implements HasWorkloadComponents
         return match ($this) {
             self::DATA, self::POCKETBASE, self::DIRECTUS, self::WORDPRESS, self::NOTES, self::OUTLINE, self::CRM, self::TWENTY,
             self::PENPOT, self::YOPASS, self::SIGN, self::DOCUMENSO,
-            self::FLOW, self::N8N, self::WINDMILL, self::LINK, self::KUTT, self::ANALYTICS, self::UMAMI, self::PLAUSIBLE,
+            self::FLOW, self::N8N, self::WINDMILL, self::KUTT, self::ANALYTICS, self::UMAMI, self::PLAUSIBLE,
             self::TEABLE, self::PLANKA, self::KUMA, self::METABASE,
-            self::ERRORS, self::GLITCHTIP, self::CHATWOOT, self::SENDREC, self::RESUME, self::PENPOT => true,
+            self::GLITCHTIP, self::CHATWOOT, self::SENDREC, self::RESUME, self::PENPOT => true,
             default => false,
         };
     }
@@ -1971,15 +1956,15 @@ enum ClusterTool: string implements HasWorkloadComponents
         return match ($this) {
             self::MONITOR, self::GRAFANA, self::GIT, self::FORGEJO, self::NOTES, self::OUTLINE,
             self::FLOW, self::N8N, self::WINDMILL, self::SIGN, self::DOCUMENSO, self::DATA, self::POCKETBASE,
-            self::DIRECTUS, self::WORDPRESS, self::LINK, self::KUTT, self::ANALYTICS, self::UMAMI, self::PLAUSIBLE,
+            self::DIRECTUS, self::WORDPRESS, self::KUTT, self::ANALYTICS, self::UMAMI, self::PLAUSIBLE,
             self::TEABLE, self::PLANKA, self::HEADLAMP, self::MEET,
             self::LIVEKIT, self::BULWARK, self::DRIVE, self::OCIS, self::VPN, self::NETBIRD,
-            self::CRM, self::TWENTY, self::PASSWORDS, self::VAULTWARDEN, self::CHAT, self::MATRIX, self::MAIL, self::STALWART,
+            self::CRM, self::TWENTY, self::VAULTWARDEN, self::CHAT, self::MATRIX, self::MAIL, self::STALWART,
             self::SECRETS, self::OPENBAO, self::SSO, self::ZITADEL,
             self::YOPASS, self::KUMA, self::METABASE,
             // ExternalDNS is keyed by a zone group, not a host: `external-dns-{group}` already is
             // {component}-{instance}, so listing it changes no name.
-            self::EXTERNAL_DNS, self::ERRORS, self::GLITCHTIP, self::CHATWOOT, self::SENDREC, self::RESUME, self::PENPOT => ResourceNaming::CANONICAL,
+            self::EXTERNAL_DNS, self::GLITCHTIP, self::CHATWOOT, self::SENDREC, self::RESUME, self::PENPOT => ResourceNaming::CANONICAL,
             default => ResourceNaming::INSTANCE_SUFFIXED,
         };
     }
@@ -2214,14 +2199,11 @@ enum ClusterTool: string implements HasWorkloadComponents
     case CRM = 'crm';
     case DATA = 'data';
     case DRIVE = 'drive';
-    case ERRORS = 'errors';
     case FLOW = 'flow';
     case GIT = 'git';
-    case LINK = 'link';
     case MAIL = 'mail';
     case MONITOR = 'monitor';
     case NOTES = 'notes';
-    case PASSWORDS = 'passwords';
     case SECRETS = 'secrets';
     case SIGN = 'sign';
     case SSO = 'sso';

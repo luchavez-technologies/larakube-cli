@@ -16,7 +16,7 @@ trait InteractsWithVault
     /** The dedicated namespace the Vaultwarden stack lives in. */
     protected function vaultNamespace(): string
     {
-        return ClusterTool::PASSWORDS->namespace();
+        return ClusterTool::VAULTWARDEN->namespace();
     }
 
     /** Vaultwarden Deployment present? A cheap "is Vaultwarden installed" probe. */
@@ -36,12 +36,12 @@ trait InteractsWithVault
      */
     protected function readVaultAdminToken(string $kubectl, string $ns, ?string $instance = null): ?string
     {
-        $instance ??= ToolInstance::registered($kubectl, ClusterTool::PASSWORDS)[0]->instance ?? null;
+        $instance ??= ToolInstance::registered($kubectl, ClusterTool::VAULTWARDEN)[0]->instance ?? null;
         if ($instance === null || $instance === '') {
             return null;
         }
 
-        $secret = ToolInstance::forInstance(ClusterTool::PASSWORDS, $instance)->secret();
+        $secret = ToolInstance::forInstance(ClusterTool::VAULTWARDEN, $instance)->secret();
 
         $plain = $this->readClusterSecretKey($kubectl, $ns, $secret, 'plain-token');
         if ($plain !== null) {

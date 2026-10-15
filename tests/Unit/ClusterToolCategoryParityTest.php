@@ -57,7 +57,6 @@ test('category() maps every tool-named case to its category and every other case
         ->and(ClusterTool::SSO->category())->toBe(ClusterTool::SSO)
         ->and(ClusterTool::OPENBAO->category())->toBe(ClusterTool::SECRETS)
         ->and(ClusterTool::GRAFANA->category())->toBe(ClusterTool::MONITOR)
-        ->and(ClusterTool::GLITCHTIP->category())->toBe(ClusterTool::ERRORS)
         ->and(ClusterTool::NETBIRD->category())->toBe(ClusterTool::VPN)
         ->and(ClusterTool::MATRIX->category())->toBe(ClusterTool::CHAT)
         ->and(ClusterTool::WINDMILL->category())->toBe(ClusterTool::FLOW)
