@@ -12,6 +12,7 @@ use Illuminate\Support\Sleep;
 use function Laravel\Prompts\select;
 
 use RuntimeException;
+use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
 
 /**
@@ -428,6 +429,70 @@ trait DeploysClusterTool
             // own, so the teardown is not in doubt — only our patience is.
             return true;
         });
+    }
+
+    /**
+     * Re-render a tool's Ingress with a (possibly new) primary host, reusing
+     * every annotation already on the live object. Shared by `tool:alias`
+     * (host unchanged, only $aliasHosts differ) and `tool:rebind` (host
+     * changes) — one implementation, so they can't drift apart.
+     *
+     * $instance is passed INTO the view explicitly rather than left for the
+     * template to re-derive from $primaryHost. That distinction is invisible
+     * to tool:alias (its host never changes, so a fresh derivation would
+     * match the pinned instance anyway), but it is the entire point for
+     * tool:rebind: deriving fresh from a NEW host would mint a different
+     * instance and silently defeat the whole fix (see
+     * cli/plans/active/tool-rebind-host-identity.md). Every ingress template
+     * must honor a passed-in `$instance` (`??=`, never a bare `=`) for this
+     * to hold — see that same doc for the chat-ingress exception this
+     * uncovered.
+     *
+     * $recordCurrentHost additionally stamps a `larakube.io/current-host`
+     * ANNOTATION (never a label — a hostname has dots and can exceed the
+     * 63-char DNS-1123 format labels require) with the live binding, purely
+     * for operator visibility (`kubectl describe`/`tool:show`) — it is never
+     * read back by any resolution logic, which always goes through the
+     * registry.
+     */
+    protected function reapplyToolIngress(string $kubectl, ClusterTool $tool, string $primaryHost, array $aliasHosts, string $instance, bool $recordCurrentHost = false): bool
+    {
+        // Blade view folders are still named after the legacy category word
+        // (k8s/mail/, k8s/git/) even for a canonical case like STALWART/
+        // FORGEJO — legacyCategoryPrefix() maps either spelling to the same
+        // folder; $tool->value alone would silently 404 for a canonical tool
+        // whose value differs from its folder name.
+        $view = 'k8s.'.($tool->legacyCategoryPrefix() ?? $tool->value).'.ingress';
+        if (! view()->exists($view)) {
+            return false;
+        }
+
+        $service = $tool->service();
+        $isLocal = str_ends_with($primaryHost, '.test') || str_ends_with($primaryHost, '.localhost');
+
+        $ingressName = $instance === '' ? ($service?->value ?? $tool->value) : "{$tool->value}-{$instance}";
+
+        $manifest = view($view, [
+            'host' => $primaryHost,
+            'aliasHosts' => $aliasHosts,
+            'instance' => $instance === '' ? null : $instance,
+            'serviceName' => $tool->deploymentName($instance === '' ? null : $instance),
+            'isLocal' => $isLocal,
+            'vpnOnly' => str_contains(Process::run("{$kubectl} get ingress {$ingressName} -n {$tool->namespace()} -o jsonpath='{.metadata.annotations}' --ignore-not-found")->output(), 'vpn-only'),
+            'proxied' => str_contains(Process::run("{$kubectl} get ingress {$ingressName} -n {$tool->namespace()} -o jsonpath='{.metadata.annotations}' --ignore-not-found")->output(), 'cloudflare-proxied'),
+        ])->render();
+
+        $temporaryDirectory = TemporaryDirectory::make();
+        $tmp = $temporaryDirectory->path("larakube-ingress-{$tool->value}.yaml");
+        file_put_contents($tmp, $manifest);
+        $result = Process::run("{$kubectl} apply -f {$tmp}");
+        $temporaryDirectory->delete();
+
+        if ($result->successful() && $recordCurrentHost) {
+            Process::run("{$kubectl} annotate ingress {$ingressName} -n {$tool->namespace()} larakube.io/current-host={$primaryHost} --overwrite");
+        }
+
+        return $result->successful();
     }
 
     /**

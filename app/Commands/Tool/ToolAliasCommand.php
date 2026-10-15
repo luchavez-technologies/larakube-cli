@@ -10,9 +10,7 @@ use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithToolRegistry;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolHost;
-use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
-use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class ToolAliasCommand extends Command
 {
@@ -116,40 +114,5 @@ class ToolAliasCommand extends Command
         $this->newLine();
 
         return 0;
-    }
-
-    protected function reapplyToolIngress(string $kubectl, ClusterTool $tool, string $primaryHost, array $aliasHosts, string $instance): bool
-    {
-        $view = "k8s.{$tool->value}.ingress";
-        if (! view()->exists($view)) {
-            return false;
-        }
-
-        $service = $tool->service();
-        $isLocal = str_ends_with($primaryHost, '.test') || str_ends_with($primaryHost, '.localhost');
-
-        $ingressName = $instance === '' ? ($service?->value ?? $tool->value) : "{$tool->value}-{$instance}";
-
-        $manifest = view($view, [
-            'host' => $primaryHost,
-            'aliasHosts' => $aliasHosts,
-            // Was always the base/unsuffixed deployment name regardless of
-            // which instance this alias targets — for a multi-instance tool
-            // with 2+ real instances, that pointed the alias Ingress at the
-            // WRONG backend Service entirely. Pass the resolved instance
-            // through, same as every other resource-name derivation here.
-            'serviceName' => $tool->deploymentName($instance === '' ? null : $instance),
-            'isLocal' => $isLocal,
-            'vpnOnly' => str_contains(Process::run("{$kubectl} get ingress {$ingressName} -n {$tool->namespace()} -o jsonpath='{.metadata.annotations}' --ignore-not-found")->output(), 'vpn-only'),
-            'proxied' => str_contains(Process::run("{$kubectl} get ingress {$ingressName} -n {$tool->namespace()} -o jsonpath='{.metadata.annotations}' --ignore-not-found")->output(), 'cloudflare-proxied'),
-        ])->render();
-
-        $temporaryDirectory = TemporaryDirectory::make();
-        $tmp = $temporaryDirectory->path("larakube-alias-{$tool->value}.yaml");
-        file_put_contents($tmp, $manifest);
-        $result = Process::run("{$kubectl} apply -f {$tmp}");
-        $temporaryDirectory->delete();
-
-        return $result->successful();
     }
 }

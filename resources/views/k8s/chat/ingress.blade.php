@@ -11,7 +11,11 @@
      this reconciler's own primary input, so deriving the instance costs
      nothing extra here, unlike the $mas/$instance-elsewhere problem above. --}}
 @php
-    $instance = \App\Enums\ClusterTool::CHAT->instanceSlugFromHost($host);
+    // ??=, not =: a caller (tool:rebind) may already know the pinned
+    // instance and must win over deriving a fresh one from $host — deriving
+    // fresh from a changed host would mint a different instance and defeat
+    // the whole point of a rebind. See tool-rebind-host-identity.md.
+    $instance ??= \App\Enums\ClusterTool::CHAT->instanceSlugFromHost($host);
     $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::CHAT, $instance);
     $synapseName = $names->deployment('synapse');
     $webName = $names->deployment('web');

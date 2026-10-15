@@ -1,6 +1,32 @@
 # 0021 — Every cluster-tool resource is named `{component}-{instance}`
 
-**Status:** Accepted (2026-08-29) · **Amended (2026-09-20): the category is gone**
+**Status:** Accepted (2026-08-29) · **Amended (2026-09-20): the category is gone** ·
+**Amended (2026-10-15): `tool:rebind` mitigates the host-change cost**
+
+## Amendment — `tool:rebind` mitigates the hard-cutover cost for a live host change
+
+The Consequences section below accepts that renaming a tool is a hard cutover because
+Kubernetes cannot rename a Deployment/PVC in place. That's still true, but it was being
+hit for a case that doesn't actually require a rename at all: **losing access to the
+domain a tool is reachable at and needing it reachable at a new one.** Every `*:init`
+command re-derives `instance` fresh from whatever host it's given (`instanceSlugFromHost()`),
+so re-running one with a new `--domain` mints a brand-new, empty instance instead of
+recovering the old one — and silently orphans any RBAC-gated tool's Zitadel project along
+the way, since `rbacProjectName()`/`ssoAppSecretName()` are keyed off that same host-derived
+slug.
+
+`tool:rebind` (`cli/app/Commands/Tool/ToolRebindCommand.php`) fixes this without touching
+the naming scheme above: it updates only the tool registry's recorded `host` for an
+already-pinned `instance` — the instance itself never changes — then re-applies just the
+live Ingress host/TLS. Every resource this ADR's table names (Deployment, PVC, Secret, DB,
+bucket) is still instance-keyed, never host-keyed directly, so none of them move. A tool
+still needs a genuine rename (and the hard cutover above) when its *component* or its
+*instance* must actually change — `tool:rebind` only ever changes which host currently
+answers for an instance that stays exactly who it was. See
+`cli/plans/active/tool-rebind-host-identity.md` for the full design, including the
+`chat/ingress.blade.php` template fix this required (an ingress template must honor a
+passed-in `$instance` with `??=`, never re-derive it unconditionally from the host, or a
+rebind silently defeats itself for that tool).
 
 ## Amendment — the category token was dropped
 
