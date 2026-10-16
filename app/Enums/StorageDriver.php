@@ -527,7 +527,7 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
      */
     private function temporaryUrlTip(): string
     {
-        return 'Tip: Storage::temporaryUrl() needs a small config change to work outside the cluster — see https://cli.larakube.app/docs/storage/overview#temporary-urls-need-a-separate-disk';
+        return 'Tip: Storage::temporaryUrl() needs a small config change to work outside the cluster — see https://docs.larakube.app/docs/storage/overview#temporary-urls-need-a-separate-disk';
     }
 
     /**

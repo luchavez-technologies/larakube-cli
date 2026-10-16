@@ -236,7 +236,7 @@ class SetupCommand extends Command
                 if (str_contains($os, 'Docker Desktop')) {
                     $this->laraKubeWarn('Docker Desktop detected.');
                     $this->line('  LaraKube works with it, but Docker Engine installed directly in WSL2 is more reliable.');
-                    $this->line('  See: <fg=cyan>https://cli.larakube.app/onboarding/operating-systems/windows</>');
+                    $this->line('  See: <fg=cyan>https://docs.larakube.app/docs/onboarding/operating-systems/windows</>');
                 } else {
                     $this->laraKubeInfo('Docker Engine already installed and running.');
                 }

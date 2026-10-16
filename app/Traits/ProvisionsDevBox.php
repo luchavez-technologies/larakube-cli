@@ -77,7 +77,7 @@ trait ProvisionsDevBox
 
         $flag = $channel === 'stable' ? '' : ' -s -- --canary';
 
-        if (! $this->runRemoteUserCommand('larakube', $ip, $port, $keyPath, 'curl -fsSL https://cli.larakube.app/install.sh | bash'.$flag)) {
+        if (! $this->runRemoteUserCommand('larakube', $ip, $port, $keyPath, 'curl -fsSL https://docs.larakube.app/install.sh | bash'.$flag)) {
             $this->laraKubeError('Installing the LaraKube CLI on the box failed. See the output above; re-run to retry.');
 
             return false;

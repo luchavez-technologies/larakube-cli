@@ -88,7 +88,7 @@ test('a dev box is hardened with only SSH open, given a login, the CLI and the l
         ->and($pipeline->steps)->toBe(['harden', 'user', 'git', 'install-cli', 'setup', 'marker', 'lock-root'])
         ->and($pipeline->allowPorts)->toBe([])
         ->and($pipeline->remoteUserScripts[0])->toContain('command -v git')
-        ->and($pipeline->remoteUserScripts[1])->toContain('larakube: curl -fsSL https://cli.larakube.app/install.sh | bash -s -- --canary')
+        ->and($pipeline->remoteUserScripts[1])->toContain('larakube: curl -fsSL https://docs.larakube.app/install.sh | bash -s -- --canary')
         ->and($pipeline->remoteUserScripts[2])->toContain('larakube setup --profile=local --runtime=podman --no-interaction');
 });
 
@@ -103,7 +103,7 @@ test('the stable channel installs without the canary flag', function (): void {
     $pipeline = devboxPipeline();
     $pipeline->run('stable');
 
-    expect($pipeline->remoteUserScripts[1])->toBe('larakube: curl -fsSL https://cli.larakube.app/install.sh | bash');
+    expect($pipeline->remoteUserScripts[1])->toBe('larakube: curl -fsSL https://docs.larakube.app/install.sh | bash');
 });
 
 test('a failing step stops the pipeline and never closes root login', function (string $failing, array $expected): void {
