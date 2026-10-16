@@ -5,9 +5,11 @@ namespace App\Commands\Drive;
 use App\Enums\ClusterTool;
 use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
+use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithOcisExtensions;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ReadsCommandOptions;
 use App\Traits\ResolvesToolEnvironment;
 
 use function Laravel\Prompts\table;
@@ -16,16 +18,23 @@ use LaravelZero\Framework\Commands\Command;
 
 class DriveExtShowCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithOcisExtensions, LaraKubeOutput, ResolvesToolEnvironment;
+    use DeploysClusterTool, EmitsJsonOutput, InteractsWithClusterContext, InteractsWithOcisExtensions, LaraKubeOutput, ReadsCommandOptions, ResolvesToolEnvironment;
 
     protected $signature = 'drive:ext:show
         {environment? : Target environment — "local" (default) or cloud.}
-        {--context=   : Target a specific kube-context}';
+        {--context=   : Target a specific kube-context}
+        {--json       : Emit JSON output}';
 
     protected $description = 'List installed and available web extensions for Drive (oCIS)';
 
     public function handle(): int
     {
+        $json = (bool) $this->flag('json');
+
+        if ($json) {
+            $this->enableJsonMode();
+        }
+
         $this->renderHeader();
 
         $env = (string) $this->argument('environment');
@@ -36,7 +45,7 @@ class DriveExtShowCommand extends Command
         $catalog = $this->fetchOcisMarketplaceCatalog();
         $installed = $this->getInstalledOcisExtensions($kubectl, $ns);
 
-        $rows = [];
+        $extensions = [];
         $matchedInstalled = [];
 
         foreach ($catalog as $item) {
@@ -49,25 +58,43 @@ class DriveExtShowCommand extends Command
                 $matchedInstalled[] = $short;
             }
 
-            $rows[] = [
-                $item['id'],
-                $item['name'],
-                $item['version'],
-                $isInstalled ? '✅ Installed' : 'Available',
+            $extensions[] = [
+                'id' => $item['id'],
+                'name' => $item['name'],
+                'description' => $item['description'] ?? '',
+                'version' => $item['version'],
+                'installed' => $isInstalled,
             ];
         }
 
         // Add any installed items that were not in catalog
         foreach ($installed as $id) {
             if (! in_array($id, $matchedInstalled, true)) {
-                $rows[] = [
-                    $id,
-                    ucfirst($id),
-                    'custom',
-                    '✅ Installed',
+                $extensions[] = [
+                    'id' => $id,
+                    'name' => ucfirst($id),
+                    'description' => '',
+                    'version' => 'custom',
+                    'installed' => true,
                 ];
             }
         }
+
+        if ($json) {
+            $this->jsonOutput([
+                'success' => true,
+                'extensions' => $extensions,
+            ]);
+
+            return 0;
+        }
+
+        $rows = array_map(fn (array $ext): array => [
+            $ext['id'],
+            $ext['name'],
+            $ext['version'],
+            $ext['installed'] ? '✅ Installed' : 'Available',
+        ], $extensions);
 
         $this->laraKubeInfo("oCIS Web Extensions Status ('{$env}'):");
         $this->newLine();

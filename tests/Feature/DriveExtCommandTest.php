@@ -51,6 +51,26 @@ test('drive:ext:show displays installed and available extensions in a table', fu
         ->expectsOutputToContain("oCIS Web Extensions Status ('local'):");
 });
 
+test('drive:ext:show emits structured json when requested', function (): void {
+    Http::fake([
+        'https://marketplace.owncloud.com/*' => Http::response([
+            'apps' => [
+                ['id' => 'excalidraw', 'name' => 'Excalidraw', 'description' => 'Whiteboard', 'version' => 'v0.1.0', 'download_url' => 'http://example.com/excalidraw.tar.gz'],
+                ['id' => 'drawio', 'name' => 'Draw.io', 'description' => 'Diagrams', 'version' => 'v0.2.0', 'download_url' => 'http://example.com/drawio.tar.gz'],
+            ],
+        ], 200),
+    ]);
+
+    Process::fake([
+        '*ls -1*' => Process::result(output: "excalidraw\n"),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('drive:ext:show local --json')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('"success":true,"extensions":[{"id":"excalidraw","name":"Excalidraw","description":"Whiteboard","version":"v0.1.0","installed":true}');
+});
+
 test('drive:ext:remove deletes specified extension', function (): void {
     Process::fake([
         '*ls -1*' => Process::result(output: "excalidraw\n"),
