@@ -38,6 +38,37 @@ test('tool:init --tool=directus deploys Directus with Postgres, Redis, and Seawe
         ->expectsOutputToContain('https://data.');
 });
 
+test('tool:init --tool=directus labels its Secret as directus, not the DATA category placeholder', function (): void {
+    // Regression guard: DataInitCommand used to pass ClusterTool::DATA (the
+    // multi-engine dispatch placeholder, not a real tool) straight into
+    // ToolInstance::forInstance(), so every PocketBase/Directus/WordPress
+    // deploy wrote `larakube.io/tool: data` instead of the engine actually
+    // running — confirmed still live via a direct label check on
+    // larakube-159.89.205.239, same bug class already fixed for Flow.
+    Process::fake([
+        '*plex-commons*' => Process::result(output: '{"services":{"postgres":{"enabled":true},"redis":{"enabled":true},"seaweedfs":{"enabled":true}}}'),
+        '*plex-registry*' => Process::result(output: '{"tenants":{}}'),
+        '*plex-admin*' => Process::result(output: base64_encode('s3-access-key')),
+        '*secrets*' => Process::result(output: ''),
+        '*create namespace*' => Process::result(output: 'namespace/larakube-shared created'),
+        '*create secret*' => Process::result(output: 'secret created'),
+        '*create configmap*' => Process::result(output: 'configmap created'),
+        '*exec*deploy/postgres*' => Process::result(output: 'CREATE DATABASE'),
+        '*exec*deploy/seaweedfs*' => Process::result(output: 'bucket created'),
+        '*apply*' => Process::result(output: 'deployment.apps/directus created'),
+        '*rollout status*' => Process::result(output: 'deployment successfully rolled out'),
+    ]);
+
+    $this->artisan('tool:init', ['--tool' => 'directus',
+        'environment' => 'local',
+        '--admin-email' => 'admin@example.com',
+        '--no-interaction' => true,
+    ])->assertExitCode(0);
+
+    Process::assertRan(fn ($process) => (appliedSecret($process)['labels']['larakube.io/tool'] ?? null) === 'directus');
+    Process::assertNotRan(fn ($process) => (appliedSecret($process)['labels']['larakube.io/tool'] ?? null) === 'data');
+});
+
 test('data manifest wires the Commons Redis via the generic REDIS var, not CACHE_REDIS', function (): void {
     // Regression guard for a real incident (2026-08-05): Directus 12's cache/
     // system-cache/deployment-cache/lock-cache namespaces all read a single

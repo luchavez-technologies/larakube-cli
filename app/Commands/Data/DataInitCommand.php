@@ -87,7 +87,7 @@ abstract class DataInitCommand extends AbstractToolInitCommand
         $s3Key = $s3Creds['access'] ?? 'seaweedfs-access-key';
         $s3Secret = $s3Creds['secret'] ?? 'seaweedfs-secret-key';
 
-        $names = ToolInstance::forInstance(ClusterTool::DATA, $instance, $engine);
+        $names = ToolInstance::forInstance($this->tool(), $instance, $engine);
         $secretName = $names->secret();
         $smtpSecretName = $names->secret(SecretKind::SMTP);
         $oidcSecretName = $names->secret(SecretKind::OIDC);
@@ -96,7 +96,7 @@ abstract class DataInitCommand extends AbstractToolInitCommand
 
         $allEngines = ['pocketbase', 'directus', 'wordpress'];
         foreach (array_diff($allEngines, [$engine]) as $otherEngine) {
-            $otherNames = ToolInstance::forInstance(ClusterTool::DATA, $instance, $otherEngine);
+            $otherNames = ToolInstance::forInstance(ClusterTool::from($otherEngine), $instance, $otherEngine);
             if ($this->deploymentExists($kubectl, $ns, $otherNames->deployment())) {
                 $otherLabel = match ($otherEngine) {
                     'pocketbase' => 'PocketBase',
@@ -117,7 +117,7 @@ abstract class DataInitCommand extends AbstractToolInitCommand
                 );
                 $host = $this->sanitizeDomainInput($newHost);
                 $instance = $this->resolveInstanceForDomain($kubectl, ClusterTool::DATA, $host);
-                $names = ToolInstance::forInstance(ClusterTool::DATA, $instance, $engine);
+                $names = ToolInstance::forInstance($this->tool(), $instance, $engine);
                 $secretName = $names->secret();
                 $smtpSecretName = $names->secret(SecretKind::SMTP);
                 $oidcSecretName = $names->secret(SecretKind::OIDC);
@@ -145,14 +145,14 @@ abstract class DataInitCommand extends AbstractToolInitCommand
                 return 1;
             }
 
-            $dbName = ClusterTool::DATA->commonsDatabases($instance, $engine)[0] ?? 'data_directus';
+            $dbName = $this->tool()->commonsDatabases($instance, $engine)[0] ?? 'data_directus';
             if (! $this->allocateDatabase(DatabaseDriver::POSTGRESQL, $dbName, $dbPassword)) {
                 return 1;
             }
 
             $redisIndex = $this->allocateCommonsRedisIndex($dbName);
 
-            $bucket = ClusterTool::DATA->commonsBuckets($instance, $engine)[0] ?? 'data-directus-storage';
+            $bucket = $this->tool()->commonsBuckets($instance, $engine)[0] ?? 'data-directus-storage';
             if (! $this->allocateStorageBucket(StorageDriver::SEAWEEDFS, $bucket)) {
                 return 1;
             }
@@ -182,7 +182,7 @@ abstract class DataInitCommand extends AbstractToolInitCommand
                     return 1;
                 }
 
-                $dbName = ClusterTool::DATA->commonsDatabases($instance, $engine)[0] ?? 'data_wordpress';
+                $dbName = $this->tool()->commonsDatabases($instance, $engine)[0] ?? 'data_wordpress';
                 if (! $noPlex && ! $this->allocateDatabase(DatabaseDriver::MYSQL, $dbName, $dbPassword)) {
                     return 1;
                 }

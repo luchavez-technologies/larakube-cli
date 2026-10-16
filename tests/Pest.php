@@ -270,7 +270,7 @@ function registeredToolRemoveFakes(string $removeCommand, string $instance = '',
  * The Secret a process applied on stdin (Kubectl::putSecret()), with its values
  * decoded, or null when the process applied something else.
  *
- * @return array{name: string, namespace: string, data: array<string, string>}|null
+ * @return array{name: string, namespace: string, data: array<string, string>, labels: array<string, string>}|null
  */
 function appliedSecret(Illuminate\Process\PendingProcess $process): ?array
 {
@@ -283,6 +283,7 @@ function appliedSecret(Illuminate\Process\PendingProcess $process): ?array
         'name' => (string) $manifest['metadata']['name'],
         'namespace' => (string) ($manifest['metadata']['namespace'] ?? ''),
         'data' => array_map(fn ($value) => (string) base64_decode((string) $value), $manifest['data'] ?? []),
+        'labels' => $manifest['metadata']['labels'] ?? [],
     ];
 }
 
