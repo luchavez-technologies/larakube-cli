@@ -545,8 +545,12 @@ class PlexInitCommand extends Command
                 // Same guard ensureHostsAreSet() already uses for regular
                 // project hosts; also clean up any stale entry a previous
                 // plex:init run left behind before dnsmasq covered this TLD.
+                // On WSL, "covered" additionally requires the Windows NRPT
+                // rule to actually be in place (mirrored networking) — a
+                // dnsmasq-only win there doesn't help the Windows browser.
                 $tld = GlobalConfigData::load()->getLocalTld();
-                if (! $this->isWsl() && $this->dnsmasqCoversKube($tld)) {
+
+                if ($this->dnsmasqFullyCoversKube($tld)) {
                     $this->removeHostsBlock('larakube-plex');
                 } else {
                     if ($this->isWsl()) {

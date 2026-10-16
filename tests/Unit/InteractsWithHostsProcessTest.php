@@ -39,6 +39,41 @@ function hostsProcessHelper(): object
         {
             return $this->windowsTempDir();
         }
+
+        public function fullyCovers(?string $tld = null): bool
+        {
+            return $this->dnsmasqFullyCoversKube($tld);
+        }
+    };
+}
+
+function hostsProcessHelperOnWsl(bool $mirrored): object
+{
+    return new class($mirrored)
+    {
+        use InteractsWithHosts;
+
+        public function __construct(private bool $mirrored) {}
+
+        public function fullyCovers(?string $tld = null): bool
+        {
+            return $this->dnsmasqFullyCoversKube($tld);
+        }
+
+        protected function isWsl(): bool
+        {
+            return true;
+        }
+
+        protected function isDarwin(): bool
+        {
+            return false;
+        }
+
+        protected function mirroredNetworkingActive(): bool
+        {
+            return $this->mirrored;
+        }
     };
 }
 
@@ -117,4 +152,18 @@ test('windowsTempDir returns null when %TEMP% cannot be resolved', function (): 
     ]);
 
     expect(hostsProcessHelper()->winTempDir())->toBeNull();
+});
+
+test('dnsmasqFullyCoversKube is false off WSL when dnsmasq itself does not cover the TLD (no NRPT check needed)', function (): void {
+    $tld = 'nonexistent-tld-'.uniqid();
+    expect(hostsProcessHelper()->fullyCovers($tld))->toBeFalse();
+});
+
+test('dnsmasqFullyCoversKube on WSL requires the Windows NRPT rule too, even once dnsmasq itself resolves the TLD', function (): void {
+    $tld = 'nonexistent-tld-'.uniqid();
+
+    // dnsmasq doesn't cover it at all (no larakube.conf on this machine) —
+    // short-circuits false without ever asking Windows about NRPT.
+    Process::fake(['*Get-DnsClientNrptRule*' => fn () => throw new RuntimeException('should not be called')]);
+    expect(hostsProcessHelperOnWsl(true)->fullyCovers($tld))->toBeFalse();
 });

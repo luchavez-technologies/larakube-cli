@@ -79,19 +79,25 @@ trait InteractsWithHosts
 
         // If dnsmasq is already wildcarding this project's TLD (its own pinned
         // override, or the developer's global default), individual /etc/hosts
-        // entries are redundant — skip the prompt entirely.
-        // On WSL2 dnsmasq runs inside the VM and is invisible to Windows browsers,
-        // so we always fall through to the Windows hosts file sync instead.
+        // entries are redundant — skip the prompt entirely. On WSL2 without
+        // mirrored networking dnsmasq was never installed (setupDnsmasq()
+        // skips it there), so this is naturally false and execution falls
+        // through to the Windows hosts file sync below, same as before. On
+        // WSL2 WITH mirrored networking, dnsmasq alone isn't enough — also
+        // require the Windows NRPT rule to actually be in place, in case a
+        // previous elevation was declined or failed; otherwise this would
+        // skip the fallback sync while NEITHER mechanism is actually working.
         $tld = $config?->getLocalTld() ?? GlobalConfigData::load()->getLocalTld();
 
-        if (! $this->isWsl() && $this->dnsmasqCoversKube($tld)) {
+        if ($this->dnsmasqFullyCoversKube($tld)) {
             return null;
         }
 
-        // dnsmasq is set up but doesn't know about this TLD yet — offer to extend it.
-        // Skip on WSL2: dnsmasq inside the VM doesn't help Windows browsers.
-        if (! $this->isWsl()
-            && $this->isDnsmasqInstalled()
+        // dnsmasq is set up but doesn't know about this TLD yet — offer to
+        // extend it. isDnsmasqInstalled() is false on WSL2 without mirrored
+        // networking (dnsmasq is never installed there), so this naturally
+        // falls through to the Windows hosts file sync below in that case.
+        if ($this->isDnsmasqInstalled()
             && confirm("dnsmasq is set up but doesn't cover .{$tld} yet — extend it to cover this project too? (requires sudo)")
         ) {
             $this->configureDnsmasq($tld);
@@ -525,31 +531,6 @@ trait InteractsWithHosts
     }
 
     /**
-     * A writable directory on the WINDOWS filesystem, returned as a WSL path
-     * (e.g. /mnt/c/Users/<you>/AppData/Local/Temp), or null if it can't be
-     * resolved. This is where syncWindowsHostsFile() must stage the elevation
-     * .ps1 and the new hosts content: a file staged in WSL's /tmp is reachable
-     * from WSL only via the \\wsl.localhost 9P share, which the elevated
-     * Administrator logon session can't see — so the elevated copy silently
-     * no-ops (see syncWindowsHostsFile()). A file under %TEMP% resolves to a
-     * native C:\ path that the elevated session can read.
-     */
-    protected function windowsTempDir(): ?string
-    {
-        // Run cmd.exe from a Windows cwd (/mnt/c) so it doesn't print the
-        // "UNC paths are not supported" warning it emits when the cwd is a
-        // \\wsl$ path — that warning would otherwise pollute the captured output.
-        $winTemp = trim(Process::path('/mnt/c')->run('cmd.exe /c echo %TEMP%')->output());
-        if ($winTemp === '' || ! str_contains($winTemp, ':\\')) {
-            return null;
-        }
-
-        $wslTemp = trim(Process::run('wslpath -u '.escapeshellarg($winTemp))->output());
-
-        return ($wslTemp !== '' && is_dir($wslTemp) && is_writable($wslTemp)) ? $wslTemp : null;
-    }
-
-    /**
      * Insert/replace this project's hosts block idempotently. Strips any existing
      * block with the same identifier, then appends a fresh one — so applying it
      * repeatedly with the same entry yields the same file.
@@ -596,6 +577,25 @@ trait InteractsWithHosts
         $result = Process::run('getent hosts larakube-probe.'.$tld)->output();
 
         return str_contains($result, '127.0.0.1');
+    }
+
+    /**
+     * Whether dnsmasq is a complete substitute for per-host hosts-file
+     * entries for $tld — on macOS/Linux that's just dnsmasqCoversKube(), but
+     * on WSL it additionally requires the Windows NRPT rule to actually be
+     * in place (mirrored networking): dnsmasq resolving *inside* the VM
+     * alone doesn't help the Windows browser. Shared by ensureHostsAreSet(),
+     * ManagesCompanions and PlexInitCommand so the three don't drift.
+     */
+    protected function dnsmasqFullyCoversKube(?string $tld = null): bool
+    {
+        $tld = $tld ?? GlobalConfigData::load()->getLocalTld();
+
+        if (! $this->dnsmasqCoversKube($tld)) {
+            return false;
+        }
+
+        return ! $this->isWsl() || in_array(strtolower($tld), $this->windowsNrptCoveredTlds(), true);
     }
 
     /**

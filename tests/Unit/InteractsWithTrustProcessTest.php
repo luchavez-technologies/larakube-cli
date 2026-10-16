@@ -32,6 +32,11 @@ function trustHelperOnLinux(): object
             return $this->isDnsmasqConfigured();
         }
 
+        public function ensureNrptRule(array $tlds): void
+        {
+            $this->ensureWindowsNrptRule($tlds);
+        }
+
         protected function isWsl(): bool
         {
             return false;
@@ -102,4 +107,93 @@ test('getDnsmasqConfPath on macOS resolves under the brew prefix', function (): 
 
 test('isDnsmasqConfigured is false on Linux when the larakube.conf drop-in does not exist', function (): void {
     expect(trustHelperOnLinux()->dnsmasqConfigured())->toBeFalse();
+});
+
+function trustHelperOnWsl(bool $mirrored): object
+{
+    return new class($mirrored)
+    {
+        use InteractsWithTrust;
+
+        public function __construct(private bool $mirrored) {}
+
+        public function dnsmasqConfigured(): bool
+        {
+            return $this->isDnsmasqConfigured();
+        }
+
+        public function ensureNrptRule(array $tlds): void
+        {
+            $this->ensureWindowsNrptRule($tlds);
+        }
+
+        public function nrptCovered(): array
+        {
+            return $this->windowsNrptCoveredTlds();
+        }
+
+        protected function isWsl(): bool
+        {
+            return true;
+        }
+
+        protected function isDarwin(): bool
+        {
+            return false;
+        }
+
+        protected function isLinux(): bool
+        {
+            return true;
+        }
+
+        protected function mirroredNetworkingActive(): bool
+        {
+            return $this->mirrored;
+        }
+    };
+}
+
+test('isDnsmasqConfigured on WSL is false when the Linux-side conf is missing, before even asking Windows for the NRPT rule', function (): void {
+    Process::fake(['*Get-DnsClientNrptRule*' => fn () => throw new RuntimeException('should not be called — the earlier /etc/dnsmasq.d/larakube.conf check already failed')]);
+
+    // No /etc/dnsmasq.d/larakube.conf on this test machine, mirrored or not.
+    expect(trustHelperOnWsl(true)->dnsmasqConfigured())->toBeFalse();
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'Get-DnsClientNrptRule'));
+});
+
+test('windowsNrptCoveredTlds parses a single-namespace PowerShell result (bare JSON string)', function (): void {
+    Process::fake(['*Get-DnsClientNrptRule*' => '".kube"']);
+
+    expect(trustHelperOnWsl(true)->nrptCovered())->toBe(['kube']);
+});
+
+test('windowsNrptCoveredTlds parses a multi-namespace PowerShell result (JSON array)', function (): void {
+    Process::fake(['*Get-DnsClientNrptRule*' => '[".kube",".test"]']);
+
+    expect(trustHelperOnWsl(true)->nrptCovered())->toBe(['kube', 'test']);
+});
+
+test('windowsNrptCoveredTlds is empty when PowerShell reports no rules at all', function (): void {
+    Process::fake(['*Get-DnsClientNrptRule*' => '']);
+
+    expect(trustHelperOnWsl(true)->nrptCovered())->toBe([]);
+});
+
+test('ensureWindowsNrptRule never shells out off WSL or without mirrored networking', function (): void {
+    Process::fake(['*' => fn () => throw new RuntimeException('no process should run')]);
+
+    trustHelperOnLinux()->ensureNrptRule(['kube']); // not WSL at all
+    trustHelperOnWsl(false)->ensureNrptRule(['kube']); // WSL, not mirrored
+
+    Process::assertNothingRan();
+});
+
+test('ensureWindowsNrptRule is a no-op (no elevation attempted) when every TLD is already covered', function (): void {
+    Process::fake(['*Get-DnsClientNrptRule*' => '[".kube"]']);
+
+    trustHelperOnWsl(true)->ensureNrptRule(['kube']);
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'Get-DnsClientNrptRule'));
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'Start-Process'));
 });

@@ -117,30 +117,34 @@ class SetupCommand extends Command
 
         $this->newLine();
 
-        // Step 4 — dnsmasq (wildcard *.{tld} DNS) — required on macOS/Linux so
-        // every host resolves with no per-project /etc/hosts entries. WSL2's
-        // dnsmasq is inside the VM (invisible to the Windows browser) so this
-        // is a no-op there — WSL2's real DNS problem is the Windows-side hosts
-        // file instead, which `larakube up`/`larakube hosts` handles.
-        if ($this->isWsl()) {
-            // WSL2 host resolution is handled Windows-side
-        } elseif ($this->isDnsmasqConfigured()) {
+        // Step 4 — WSL2 mirrored networking (WSL only; self-guards otherwise).
+        // Decided before dnsmasq below because it decides WHICH mechanism
+        // Step 5 can use: with it active, Windows and WSL share localhost,
+        // so dnsmasq inside the distro works exactly like it does on
+        // macOS/Linux once a Windows NRPT rule points the TLD at it. Without
+        // it (declined, or Windows 10 where mirrored mode doesn't exist),
+        // Step 5 falls back to the per-host Windows hosts file sync that
+        // `larakube up`/`larakube hosts` already do.
+        $this->ensureMirroredNetworking();
+        $this->newLine();
+
+        // Step 5 — dnsmasq (wildcard *.{tld} DNS). Required (not opt-in) on
+        // macOS/Linux and on WSL2 with mirrored networking active — every
+        // host then resolves with no per-project /etc/hosts entries.
+        if ($this->isDnsmasqConfigured()) {
             $this->line('  <fg=green>✓</> Wildcard DNS (dnsmasq) already configured.');
         } else {
             $this->setupDnsmasq();
         }
 
+        if ($this->isWsl() && ! $this->mirroredNetworkingActive()) {
+            $this->line('  <fg=gray>Wildcard DNS: using the Windows hosts file instead (mirrored networking isn\'t active) — `larakube up` keeps it in sync per project.</>');
+        }
+
         $this->newLine();
 
-        // Step 5 — Developer CLI tools (k9s, tofu, gcloud, gh, tea)
+        // Step 6 — Developer CLI tools (k9s, tofu, gcloud, gh, tea)
         $this->setupDeveloperTools();
-
-        // Step 6 — WSL2 mirrored networking (WSL only; self-guards otherwise).
-        // Gives the Windows browser a stable 127.0.0.1 to the cluster so the
-        // hosts entry never staleifies on the next reboot — the recurring pain
-        // the one-time hosts sync can't fix on its own.
-        $this->newLine();
-        $this->ensureMirroredNetworking();
 
         $this->renderReminders();
 

@@ -170,6 +170,32 @@ trait DetectsWsl
     }
 
     /**
+     * A writable directory on the WINDOWS filesystem, returned as a WSL path
+     * (e.g. /mnt/c/Users/<you>/AppData/Local/Temp), or null if it can't be
+     * resolved. Any elevated Windows PowerShell staged from WSL (the hosts
+     * file sync, the NRPT DNS rule) must stage its script and content here:
+     * a file staged in WSL's /tmp is reachable from WSL only via the
+     * \\wsl.localhost 9P share, which the elevated Administrator logon
+     * session can't see — so the elevated step silently no-ops. A file
+     * under %TEMP% resolves to a native C:\ path the elevated session can
+     * read.
+     */
+    protected function windowsTempDir(): ?string
+    {
+        // Run cmd.exe from a Windows cwd (/mnt/c) so it doesn't print the
+        // "UNC paths are not supported" warning it emits when the cwd is a
+        // \\wsl$ path — that warning would otherwise pollute the captured output.
+        $winTemp = trim(Process::path('/mnt/c')->run('cmd.exe /c echo %TEMP%')->output());
+        if ($winTemp === '' || ! str_contains($winTemp, ':\\')) {
+            return null;
+        }
+
+        $wslTemp = trim(Process::run('wslpath -u '.escapeshellarg($winTemp))->output());
+
+        return ($wslTemp !== '' && is_dir($wslTemp) && is_writable($wslTemp)) ? $wslTemp : null;
+    }
+
+    /**
      * Whether Kubernetes is provided by Docker Desktop injected into WSL2.
      *
      * When Docker Desktop's "Enable Kubernetes" is on and its WSL2 integration

@@ -336,7 +336,11 @@ trait ManagesCompanions
 
         $appName = $config->getName();
 
-        if ($this->isWsl()) {
+        // Skip only once dnsmasq fully covers this TLD (on WSL that also
+        // means the Windows NRPT rule is in place, not just the Linux-side
+        // resolution) — the same wildcard already makes companion hosts
+        // resolve, same as macOS/Linux.
+        if ($this->isWsl() && ! $this->dnsmasqFullyCoversKube($tld)) {
             $this->syncWindowsHosts($hosts, "{$appName}-companions");
         }
 
