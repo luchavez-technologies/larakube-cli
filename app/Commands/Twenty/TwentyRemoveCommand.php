@@ -2,18 +2,25 @@
 
 namespace App\Commands\Twenty;
 
-use App\Commands\Crm\CrmRemoveCommand;
+use App\Commands\Tool\AbstractToolRemoveCommand;
 use App\Enums\ClusterTool;
 
-class TwentyRemoveCommand extends CrmRemoveCommand
+class TwentyRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::TWENTY;
+    }
+
+    // CRM has no bundled-storage mode (no --no-plex in tool:init --tool=twenty — it always
+    // leases a Commons Postgres tenant), so the base class's default
+    // (never bundled) is correct as-is.
+
+    protected function teardown(string $kubectl, string $namespace): bool
+    {
+        return $this->removeResources(
+            'Removing Twenty CRM resources...',
+            $this->teardownComponentsCommand($kubectl, $namespace, $this->resolveInstance($kubectl)),
+        );
     }
 }

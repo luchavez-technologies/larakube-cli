@@ -2,18 +2,35 @@
 
 namespace App\Commands\Metabase;
 
-use App\Commands\Insights\InsightsRemoveCommand;
+use App\Commands\Tool\AbstractToolRemoveCommand;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
+use Illuminate\Support\Facades\Process;
 
-class MetabaseRemoveCommand extends InsightsRemoveCommand
+class MetabaseRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::METABASE;
+    }
+
+    protected function usesBundledStorage(string $kubectl, string $namespace): bool
+    {
+        $names = ToolInstance::forInstance(ClusterTool::METABASE, (string) $this->resolveInstance($kubectl));
+
+        return trim(Process::run("{$kubectl} get secret {$names->secret()} -n {$namespace}")->output()) === '';
+    }
+
+    protected function teardown(string $kubectl, string $namespace): bool
+    {
+        $names = ToolInstance::forInstance(ClusterTool::METABASE, (string) $this->resolveInstance($kubectl));
+        $deployment = $names->deployment();
+
+        return $this->removeResources(
+            'Removing Metabase resources...',
+            "{$kubectl} delete deployment/{$deployment} service/{$deployment} "
+            ."ingress/{$deployment} secret/{$names->secret()} pvc/{$names->volume()} "
+            ."-n {$namespace} --ignore-not-found",
+        );
     }
 }

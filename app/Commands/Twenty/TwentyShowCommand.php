@@ -2,16 +2,11 @@
 
 namespace App\Commands\Twenty;
 
-use App\Commands\Crm\CrmShowCommand;
+use App\Commands\Tool\AbstractToolShowCommand;
 use App\Enums\ClusterTool;
 
-class TwentyShowCommand extends CrmShowCommand
+class TwentyShowCommand extends AbstractToolShowCommand
 {
-    public function handle(): int
-    {
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::TWENTY;

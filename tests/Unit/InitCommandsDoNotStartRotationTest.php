@@ -11,7 +11,7 @@
  * their own sync inside the same command.
  */
 dataset('tool inits that must not start rotation', [
-    'sign' => 'Sign/SignInitCommand.php',
+    'sign' => 'Documenso/DocumensoInitCommand.php',
     'record' => 'Record/RecordInitCommand.php',
     'resume' => 'Resume/ResumeInitCommand.php',
     'design' => 'Design/DesignInitCommand.php',

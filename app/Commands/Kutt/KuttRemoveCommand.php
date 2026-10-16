@@ -2,18 +2,34 @@
 
 namespace App\Commands\Kutt;
 
-use App\Commands\Link\LinkRemoveCommand;
+use App\Commands\Tool\AbstractToolRemoveCommand;
+use App\Data\ResourceRef;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
+use App\Enums\SecretKind;
 
-class KuttRemoveCommand extends LinkRemoveCommand
+class KuttRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::KUTT;
+    }
+
+    protected function teardown(string $kubectl, string $namespace): bool
+    {
+        $instance = (string) $this->resolveInstance($kubectl);
+        $names = ToolInstance::forInstance(ClusterTool::KUTT, $instance);
+        $deployment = $names->deployment();
+
+        $targets = [
+            new ResourceRef('Deployment', $deployment, $namespace),
+            new ResourceRef('Service', $deployment, $namespace),
+            new ResourceRef('Ingress', $deployment, $namespace),
+            new ResourceRef('Secret', $names->secret(), $namespace),
+            new ResourceRef('Secret', $names->secret(SecretKind::SMTP), $namespace),
+            new ResourceRef('Secret', $names->secret(SecretKind::OIDC), $namespace),
+        ];
+
+        return $this->deleteResources('Removing Kutt resources...', $targets);
     }
 }

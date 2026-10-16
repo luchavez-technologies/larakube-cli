@@ -4,32 +4,32 @@ namespace App\Services\Tools;
 
 use App\Commands\Analytics\AnalyticsInitCommand;
 use App\Commands\Chat\ChatInitCommand;
-use App\Commands\Crm\CrmInitCommand;
+use App\Commands\Chatwoot\ChatwootInitCommand;
 use App\Commands\Dashboard\DashboardInitCommand;
 use App\Commands\Data\DataInitCommand;
 use App\Commands\Design\DesignInitCommand;
 use App\Commands\Dns\DnsInitCommand;
+use App\Commands\Documenso\DocumensoInitCommand;
 use App\Commands\Drive\DriveInitCommand;
 use App\Commands\Errors\ErrorsInitCommand;
 use App\Commands\Flow\FlowInitCommand;
 use App\Commands\Git\GitInitCommand;
-use App\Commands\Insights\InsightsInitCommand;
-use App\Commands\Link\LinkInitCommand;
+use App\Commands\Kutt\KuttInitCommand;
 use App\Commands\Mail\MailInitCommand;
 use App\Commands\Meet\MeetInitCommand;
+use App\Commands\Metabase\MetabaseInitCommand;
 use App\Commands\Monitor\MonitorInitCommand;
 use App\Commands\Notes\NotesInitCommand;
 use App\Commands\Password\PasswordsInitCommand;
 use App\Commands\Paste\PasteInitCommand;
+use App\Commands\Planka\PlankaInitCommand;
 use App\Commands\Record\RecordInitCommand;
 use App\Commands\Resume\ResumeInitCommand;
 use App\Commands\Secrets\SecretsInitCommand;
 use App\Commands\Sheet\SheetsInitCommand;
-use App\Commands\Sign\SignInitCommand;
 use App\Commands\Sso\SsoInitCommand;
-use App\Commands\Support\SupportInitCommand;
-use App\Commands\Tasks\TasksInitCommand;
 use App\Commands\Tool\AbstractToolInitCommand;
+use App\Commands\Twenty\TwentyInitCommand;
 use App\Commands\Uptime\UptimeInitCommand;
 use App\Commands\Vpn\VpnInitCommand;
 use App\Commands\Webmail\WebmailInitCommand;
@@ -52,7 +52,6 @@ final class ToolInitCommands
         return match ($base) {
             AnalyticsInitCommand::class => new class($tool) extends AnalyticsInitCommand {},
             ChatInitCommand::class => new class($tool) extends ChatInitCommand {},
-            CrmInitCommand::class => new class($tool) extends CrmInitCommand {},
             DashboardInitCommand::class => new class($tool) extends DashboardInitCommand {},
             DataInitCommand::class => new class($tool) extends DataInitCommand
             {
@@ -63,6 +62,7 @@ final class ToolInitCommands
             },
             DesignInitCommand::class => new class($tool) extends DesignInitCommand {},
             DnsInitCommand::class => new class($tool) extends DnsInitCommand {},
+            DocumensoInitCommand::class => new class($tool) extends DocumensoInitCommand {},
             DriveInitCommand::class => new class($tool) extends DriveInitCommand
             {
                 protected function resolveEngine(): string
@@ -79,22 +79,22 @@ final class ToolInitCommands
                 }
             },
             GitInitCommand::class => new class($tool) extends GitInitCommand {},
-            InsightsInitCommand::class => new class($tool) extends InsightsInitCommand {},
-            LinkInitCommand::class => new class($tool) extends LinkInitCommand {},
+            ChatwootInitCommand::class => new class($tool) extends ChatwootInitCommand {},
+            KuttInitCommand::class => new class($tool) extends KuttInitCommand {},
             MailInitCommand::class => new class($tool) extends MailInitCommand {},
             MeetInitCommand::class => new class($tool) extends MeetInitCommand {},
+            MetabaseInitCommand::class => new class($tool) extends MetabaseInitCommand {},
             MonitorInitCommand::class => new class($tool) extends MonitorInitCommand {},
             NotesInitCommand::class => new class($tool) extends NotesInitCommand {},
             PasswordsInitCommand::class => new class($tool) extends PasswordsInitCommand {},
             PasteInitCommand::class => new class($tool) extends PasteInitCommand {},
+            PlankaInitCommand::class => new class($tool) extends PlankaInitCommand {},
             RecordInitCommand::class => new class($tool) extends RecordInitCommand {},
             ResumeInitCommand::class => new class($tool) extends ResumeInitCommand {},
             SecretsInitCommand::class => new class($tool) extends SecretsInitCommand {},
             SheetsInitCommand::class => new class($tool) extends SheetsInitCommand {},
-            SignInitCommand::class => new class($tool) extends SignInitCommand {},
             SsoInitCommand::class => new class($tool) extends SsoInitCommand {},
-            SupportInitCommand::class => new class($tool) extends SupportInitCommand {},
-            TasksInitCommand::class => new class($tool) extends TasksInitCommand {},
+            TwentyInitCommand::class => new class($tool) extends TwentyInitCommand {},
             UptimeInitCommand::class => new class($tool) extends UptimeInitCommand {},
             VpnInitCommand::class => new class($tool) extends VpnInitCommand {},
             WebmailInitCommand::class => new class($tool) extends WebmailInitCommand {},
@@ -109,26 +109,26 @@ final class ToolInitCommands
     {
         return match ($tool->canonicalTool()) {
             ClusterTool::BULWARK => WebmailInitCommand::class,
-            ClusterTool::CHATWOOT => SupportInitCommand::class,
+            ClusterTool::CHATWOOT => ChatwootInitCommand::class,
             ClusterTool::DIRECTUS => DataInitCommand::class,
-            ClusterTool::DOCUMENSO => SignInitCommand::class,
+            ClusterTool::DOCUMENSO => DocumensoInitCommand::class,
             ClusterTool::EXTERNAL_DNS => DnsInitCommand::class,
             ClusterTool::FORGEJO => GitInitCommand::class,
             ClusterTool::GLITCHTIP => ErrorsInitCommand::class,
             ClusterTool::GRAFANA => MonitorInitCommand::class,
             ClusterTool::HEADLAMP => DashboardInitCommand::class,
             ClusterTool::KUMA => UptimeInitCommand::class,
-            ClusterTool::KUTT => LinkInitCommand::class,
+            ClusterTool::KUTT => KuttInitCommand::class,
             ClusterTool::LIVEKIT => MeetInitCommand::class,
             ClusterTool::MATRIX => ChatInitCommand::class,
-            ClusterTool::METABASE => InsightsInitCommand::class,
+            ClusterTool::METABASE => MetabaseInitCommand::class,
             ClusterTool::N8N => FlowInitCommand::class,
             ClusterTool::NETBIRD => VpnInitCommand::class,
             ClusterTool::OCIS => DriveInitCommand::class,
             ClusterTool::OPENBAO => SecretsInitCommand::class,
             ClusterTool::OUTLINE => NotesInitCommand::class,
             ClusterTool::PENPOT => DesignInitCommand::class,
-            ClusterTool::PLANKA => TasksInitCommand::class,
+            ClusterTool::PLANKA => PlankaInitCommand::class,
             ClusterTool::PLAUSIBLE => AnalyticsInitCommand::class,
             ClusterTool::POCKETBASE => DataInitCommand::class,
             ClusterTool::WORDPRESS => DataInitCommand::class,
@@ -136,7 +136,7 @@ final class ToolInitCommands
             ClusterTool::SENDREC => RecordInitCommand::class,
             ClusterTool::STALWART => MailInitCommand::class,
             ClusterTool::TEABLE => SheetsInitCommand::class,
-            ClusterTool::TWENTY => CrmInitCommand::class,
+            ClusterTool::TWENTY => TwentyInitCommand::class,
             ClusterTool::UMAMI => AnalyticsInitCommand::class,
             ClusterTool::VAULTWARDEN => PasswordsInitCommand::class,
             ClusterTool::WINDMILL => FlowInitCommand::class,

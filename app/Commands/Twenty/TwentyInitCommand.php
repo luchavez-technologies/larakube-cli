@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Crm;
+namespace App\Commands\Twenty;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
@@ -26,7 +26,7 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class CrmInitCommand extends AbstractToolInitCommand
+abstract class TwentyInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithCrm, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
@@ -69,7 +69,7 @@ abstract class CrmInitCommand extends AbstractToolInitCommand
 
         // The Commons S3 backend is whatever the operator chose at
         // `plex:init` — never assume SeaweedFS (see NotesInitCommand/
-        // SignInitCommand for the same detection).
+        // DocumensoInitCommand for the same detection).
         $spec = $this->getCommonsSpec();
         $s3Service = null;
         if ($spec !== null) {
