@@ -315,3 +315,61 @@ jobs:
           git diff --staged --quiet && echo "No changes to commit" && exit 0
           git commit -m "chore: update canary formula to ${{ github.sha }}"
           git push
+
+  wsl-image:
+    name: Rebuild larakube-ubuntu WSL image
+    needs: ci
+    if: needs.ci.outputs.is_stable == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      # Cross-repo workflow_dispatch needs a PAT — GITHUB_TOKEN can't trigger a
+      # workflow in another repository. Reuses the same token the Homebrew tap
+      # push already needs: a classic PAT's repo/workflow scopes are not
+      # restricted to one repository, so one token can cover both, as long as
+      # it was created with access to larakube-ubuntu as well.
+      - name: Check WSL rebuild credentials
+        id: wsl_token
+        env:
+          WSL_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          if [ -n "$WSL_TOKEN" ]; then
+            echo "ok=true" >> $GITHUB_OUTPUT
+          else
+            echo "ok=false" >> $GITHUB_OUTPUT
+            echo "TAP_GITHUB_TOKEN is not set on this repository — skipping the larakube-ubuntu rebuild trigger."
+          fi
+
+      # larakube-ubuntu's own release.yml already takes a `channel` input via
+      # workflow_dispatch — nothing to add there, this just calls it. It
+      # fetches the CLI's release assets fresh at build time, so triggering it
+      # right after a publish is what makes the rebuild actually pick up
+      # today's binary, not a cached one.
+      - name: Trigger larakube-ubuntu stable rebuild
+        if: steps.wsl_token.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: gh workflow run release.yml --repo luchavez-technologies/larakube-ubuntu -f channel=stable
+
+  wsl-image-canary:
+    name: Rebuild larakube-ubuntu WSL image (Canary)
+    needs: ci
+    if: github.ref_type == 'branch' && github.ref_name == 'develop'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check WSL rebuild credentials
+        id: wsl_token
+        env:
+          WSL_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          if [ -n "$WSL_TOKEN" ]; then
+            echo "ok=true" >> $GITHUB_OUTPUT
+          else
+            echo "ok=false" >> $GITHUB_OUTPUT
+            echo "TAP_GITHUB_TOKEN is not set on this repository — skipping the larakube-ubuntu rebuild trigger."
+          fi
+
+      - name: Trigger larakube-ubuntu canary rebuild
+        if: steps.wsl_token.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: gh workflow run release.yml --repo luchavez-technologies/larakube-ubuntu -f channel=canary
