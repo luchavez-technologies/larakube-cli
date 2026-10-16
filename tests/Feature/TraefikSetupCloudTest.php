@@ -107,3 +107,28 @@ test('the VPN allow-list matches the real connection address, never a forwarded 
 
     expect($middleware)->toContain('ipAllowList')->not->toContain('ipStrategy');
 });
+
+test('re-rendering Traefik on a managed cluster preserves the existing PVC storageClass', function (): void {
+    $manifest = null;
+    Process::fake([
+        '*get pvc traefik-acme -n traefik -o name*' => Process::result(output: 'persistentvolumeclaim/traefik-acme'),
+        '*get pvc traefik-acme*storageClassName*' => Process::result(output: 'standard-rwo'),
+        '*get secret traefik-acme-cloudflare -n traefik -o name*' => Process::result(output: 'secret/traefik-acme-cloudflare'),
+        '*get deployment traefik -n traefik -o jsonpath*' => Process::result(
+            output: '["--certificatesresolvers.letsencrypt.acme.email=cluster@example.com","--providers.kubernetesingress.ingressendpoint.ip=203.0.113.10"]',
+        ),
+        '*apply -f *traefik-managed.yaml*' => function (PendingProcess $process) use (&$manifest) {
+            preg_match("/apply -f '([^']+)'/", $process->command, $m);
+            $manifest = file_get_contents($m[1]);
+
+            return Process::result(output: 'applied');
+        },
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('traefik:setup production --context=ctx')->assertExitCode(0);
+
+    expect($manifest)
+        ->toContain('storageClassName: standard-rwo')
+        ->toContain('claimName: traefik-acme');
+});

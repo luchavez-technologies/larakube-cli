@@ -25,8 +25,6 @@ class TlsPruneCommand extends Command
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, LaraKubeOutput, ProvisionsK3sNode, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment;
 
-    private const ACME_FILE = '/acme/acme.json';
-
     protected $signature = 'tls:prune
         {environment? : The cloud environment whose unused certificates to remove}
         {--context=  : Target a specific kube-context}
@@ -61,13 +59,9 @@ class TlsPruneCommand extends Command
             return 1;
         }
 
-        if ($this->traefikIsManaged($kubectl)) {
-            $this->laraKubeError('tls:prune supports single-node (VPS) clusters for now. This is a managed cluster.');
+        $acmeFile = $this->traefikIsManaged($kubectl) ? '/data/acme.json' : '/acme/acme.json';
 
-            return 1;
-        }
-
-        $read = Process::run("{$kubectl} exec -n traefik deploy/traefik -- cat ".self::ACME_FILE);
+        $read = Process::run("{$kubectl} exec -n traefik deploy/traefik -- cat {$acmeFile}");
         // Decoded as objects: Traefik's own `{}` values must not come back as `[]`.
         $acme = $read->successful() ? json_decode($read->output()) : null;
 
@@ -103,7 +97,7 @@ class TlsPruneCommand extends Command
             return 0;
         }
 
-        if (! Process::run("{$kubectl} exec -n traefik deploy/traefik -- cp -p ".self::ACME_FILE.' '.self::ACME_FILE.'.bak')->successful()) {
+        if (! Process::run("{$kubectl} exec -n traefik deploy/traefik -- cp -p {$acmeFile} {$acmeFile}.bak")->successful()) {
             $this->laraKubeError('Could not back up acme.json. Nothing was changed.');
 
             return 1;
@@ -112,7 +106,7 @@ class TlsPruneCommand extends Command
         // Written beside the original, then swapped in; Traefik requires 0600.
         $write = Process::input((string) json_encode($acme, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE))->run(
             "{$kubectl} exec -i -n traefik deploy/traefik -- sh -c "
-            .escapeshellarg('cat > '.self::ACME_FILE.'.new && chmod 600 '.self::ACME_FILE.'.new && mv '.self::ACME_FILE.'.new '.self::ACME_FILE),
+            .escapeshellarg("cat > {$acmeFile}.new && chmod 600 {$acmeFile}.new && mv {$acmeFile}.new {$acmeFile}"),
         );
 
         if (! $write->successful()) {
@@ -128,7 +122,7 @@ class TlsPruneCommand extends Command
 
         if (! $restarted) {
             $this->laraKubeError('acme.json was pruned, but Traefik did not restart cleanly. See the output above.');
-            $this->line('  <fg=gray>The backup is at</> '.self::ACME_FILE.'.bak <fg=gray>inside the Traefik pod.</>');
+            $this->line("  <fg=gray>The backup is at</> {$acmeFile}.bak <fg=gray>inside the Traefik pod.</>");
 
             return 1;
         }

@@ -118,15 +118,22 @@ test('tls:prune stops without writing when the backup fails', function (): void 
     expect($captured['written'])->toBeNull();
 });
 
-test('tls:prune refuses managed clusters for now', function (): void {
+test('tls:prune supports managed clusters using /data/acme.json', function (): void {
     $captured = [];
     Process::fake(tlsPruneFakes($captured, overrides: [
         '*get pvc traefik-acme*' => Process::result(output: 'persistentvolumeclaim/traefik-acme'),
+        '*exec -n traefik deploy/traefik -- cat /data/acme.json' => Process::result(output: tlsPruneAcme()),
+        '*cp -p /data/acme.json /data/acme.json.bak*' => function () use (&$captured) {
+            $captured['order'][] = 'backup';
+
+            return Process::result();
+        },
     ]));
 
     $this->artisan('tls:prune production --context=ctx --force --no-interaction')
-        ->expectsOutputToContain('single-node (VPS) clusters')
-        ->assertExitCode(1);
+        ->expectsOutputToContain('gone.example.com')
+        ->expectsOutputToContain('Removed 1 unused certificate(s)')
+        ->assertExitCode(0);
 
-    expect($captured['order'])->toBe([]);
+    expect($captured['order'])->toBe(['backup', 'write', 'restart']);
 });

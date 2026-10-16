@@ -418,11 +418,14 @@ BASH;
             return true;
         }
 
-        $this->laraKubeInfo('Deploying Traefik (Single-Node Hero) to remote cluster...');
-
         $kubectl = Kubectl::forContext($contextName)->prefix();
         $namespace = 'traefik';
         $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+        $isManaged = $this->traefikIsManaged($kubectl);
+
+        $this->laraKubeInfo($isManaged
+            ? 'Deploying Traefik (Managed Ingress) to remote cluster...'
+            : 'Deploying Traefik (Single-Node Hero) to remote cluster...');
 
         $nsRes = Process::run("{$kubectl} create namespace {$namespace} --dry-run=client -o yaml | {$kubectl} apply -f -");
         if (! $nsRes->successful()) {
@@ -485,7 +488,12 @@ BASH;
             // wrong (and let anyone on those ranges spoof X-Forwarded-For).
             'trustedIps' => $provider === DnsProvider::CLOUDFLARE ? $this->cloudflareTrustedRanges($kubectl) : [],
         ];
-        if (! $isManaged) {
+        if ($isManaged) {
+            $existingStorageClass = trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'pvc', 'traefik-acme', '-n', 'traefik', '-o', 'jsonpath={.spec.storageClassName}', '--ignore-not-found'])->output);
+            if ($existingStorageClass !== '') {
+                $viewData['storageClass'] = $existingStorageClass;
+            }
+        } else {
             $viewData['ip'] = $ip;
         }
         $tmpInstall = $temporaryDirectory->path($isManaged ? 'traefik-managed.yaml' : 'traefik-cloud.yaml');

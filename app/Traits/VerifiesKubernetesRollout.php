@@ -43,13 +43,25 @@ trait VerifiesKubernetesRollout
         // crashing the command instead of returning false. Confirmed live on
         // Documenso, 2026-08-05.
         $applyFlags = $extraApplyFlags !== '' ? ' '.$extraApplyFlags : '';
-        if (! Process::timeout(70)->run("{$kubectl} apply -f ".escapeshellarg($manifestPath).' --request-timeout=60s'.$applyFlags)->successful()) {
+        $applyResult = Process::timeout(70)->run("{$kubectl} apply -f ".escapeshellarg($manifestPath).' --request-timeout=60s'.$applyFlags);
+        if (! $applyResult->successful()) {
+            if ($err = trim($applyResult->errorOutput() ?: $applyResult->output())) {
+                if (method_exists($this, 'line')) {
+                    $this->line("  <fg=red>{$err}</>");
+                }
+            }
             $this->laraKubeError("Could not apply the {$deployment} manifest — see the output above.");
 
             return false;
         }
 
-        if (! Process::timeout($timeoutSeconds + 10)->run("{$kubectl} rollout status deployment/{$deployment} -n ".escapeshellarg($namespace)." --timeout={$timeoutSeconds}s")->successful()) {
+        $rolloutResult = Process::timeout($timeoutSeconds + 10)->run("{$kubectl} rollout status deployment/{$deployment} -n ".escapeshellarg($namespace)." --timeout={$timeoutSeconds}s");
+        if (! $rolloutResult->successful()) {
+            if ($err = trim($rolloutResult->errorOutput() ?: $rolloutResult->output())) {
+                if (method_exists($this, 'line')) {
+                    $this->line("  <fg=red>{$err}</>");
+                }
+            }
             $this->laraKubeError("{$deployment} manifest applied, but the Deployment never became Ready — check `kubectl get pods -n {$namespace}`.");
 
             return false;
