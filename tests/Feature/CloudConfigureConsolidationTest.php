@@ -68,6 +68,7 @@ beforeEach(function (): void {
 
     Process::fake([
         '*kubectl *' => '',
+        '*openssl*' => '',
         'git *' => 'git@github.com:acme/consoltest.git',
     ]);
     Process::preventStrayProcesses();
@@ -90,6 +91,8 @@ function saveConsolidationConfig(string $dir, array $environments): ConfigData
     $config = ConfigData::from([
         'name' => 'consoltest',
         'database' => 'sqlite',
+        'framework' => 'laravel',
+        'serverVariation' => 'fpm-nginx',
         'environments' => $environments,
     ]);
     $config->setPath($dir);
@@ -134,6 +137,24 @@ test('--only=hosts leaves a real, already-set host untouched', function (): void
 
     $reloaded = ConfigData::loadFromFile($this->tempDir);
     expect($reloaded->getHost('production', 'web'))->toBe('consoltest.example.com');
+});
+
+test('--only=hosts regenerates the Ingress manifest so it reflects the newly-saved host', function (): void {
+    $config = saveConsolidationConfig($this->tempDir, ['local' => [], 'production' => []]);
+    $config->setHost('production', 'web', 'old.example.com');
+    $config->saveToFile($this->tempDir);
+
+    $this->artisan('cloud:configure', [
+        'environment' => 'production',
+        '--only' => 'hosts',
+        '--web-host' => 'new.example.com',
+        '--web-hosts' => '',
+        '--no-interaction' => true,
+    ])->assertExitCode(0);
+
+    $ingressPatch = file_get_contents($this->tempDir.'/.infrastructure/k8s/overlays/production/ingress-patch.yaml');
+    expect($ingressPatch)->toContain('new.example.com')
+        ->not->toContain('old.example.com');
 });
 
 test('configureBase seeds .env.{env}, gitignores it, and gathers DNA for a brand-new environment before the deploy-target prompt', function (): void {

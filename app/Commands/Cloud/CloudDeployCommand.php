@@ -66,6 +66,24 @@ class CloudDeployCommand extends Command
         if ($config->hasGithubActions() && ! $this->option('no-interaction')) {
             $this->info('💡 CI/CD DETECTED: You have GitHub Actions enabled for this project.');
             if (confirm('Would you prefer to trigger a deployment via Git push instead?', true)) {
+                // CI applies whatever's already committed — it never reads
+                // .larakube.json — so regenerate the manifests here too and
+                // warn if that leaves anything uncommitted, or a push ships
+                // the previous configuration instead of the current blueprint.
+                $this->withSpin('Regenerating manifests from your blueprint...', function () use ($config) {
+                    $this->generateK8sManifests($config);
+
+                    return true;
+                });
+
+                $dirty = trim(Process::run(['git', 'status', '--porcelain', '--', '.infrastructure', '.larakube.json'])->output());
+
+                if ($dirty !== '') {
+                    $this->laraKubeWarn('Your blueprint or manifests changed and are not committed yet:');
+                    $this->line($dirty);
+                    $this->laraKubeWarn('Commit and push these before (or with) your deploy — otherwise GitHub Actions will apply the previous configuration.');
+                }
+
                 $this->laraKubeInfo('Action cancelled. Run "git push" to deploy via GitHub.');
 
                 return 0;

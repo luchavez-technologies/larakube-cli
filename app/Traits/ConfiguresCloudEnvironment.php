@@ -209,7 +209,18 @@ trait ConfiguresCloudEnvironment
         $this->ensureHosts($config, $environment);
         $config->environments[$environment]->additionalWebHosts = $this->gatherAdditionalWebHosts($config, $environment);
         $this->saveProjectConfig($projectPath, $config);
-        $this->laraKubeInfo("✅ Hosts saved for '{$environment}'.");
+
+        // A host change must flow into the committed Ingress manifest, not
+        // just the blueprint — CI applies whatever's already on disk, it
+        // never reads .larakube.json, so the overlay has to be regenerated
+        // right here or a deploy ships the previous host.
+        $this->withSpin("Regenerating manifests for '{$environment}'...", function () use ($config) {
+            $this->generateK8sManifests($config);
+
+            return true;
+        });
+
+        $this->laraKubeInfo("✅ Hosts saved and manifests regenerated for '{$environment}'. Commit and push (or deploy) to apply this change.");
 
         return 0;
     }

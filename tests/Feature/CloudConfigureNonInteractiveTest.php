@@ -22,6 +22,7 @@ use App\Enums\IngressController;
 use App\Enums\RegistryProvider;
 use App\Exceptions\MissingFlagException;
 use App\Facades\State;
+use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Prompt;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Symfony\Component\Console\Input\ArrayInput;
@@ -87,6 +88,11 @@ function nonInteractiveConfig(array $overrides = []): ConfigData
 
 beforeEach(function (): void {
     Prompt::interactive(false);
+
+    // --only=hosts now also regenerates K8s manifests (ingress-patch.yaml),
+    // which shells out to openssl for the local dev cert chain — fake it so
+    // no test here touches a real process.
+    Process::fake(['*openssl*' => '', '*kubectl*' => '', 'git *' => '']);
 
     $this->temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
     $this->tempDir = $this->temporaryDirectory->path();
