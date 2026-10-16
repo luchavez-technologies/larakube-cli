@@ -21,7 +21,7 @@ use App\Contracts\HasVpnWiring;
  * HasCommonsRedisKeys but deliberately NOT HasCommonsDatabases. A separate,
  * optional S3-compatible "file storage" feature (disk or S3) can point at
  * Commons SeaweedFS for larger uploads, wired conditionally in
- * PasteInitCommand only when Commons offers an S3 driver — Redis is the
+ * YopassInitCommand only when Commons offers an S3 driver — Redis is the
  * one hard requirement.
  */
 final class YopassTool implements ClusterToolVendor, HasCommonsBuckets, HasCommonsRedisKeys, HasDeploymentBaseName, HasVpnWiring
@@ -34,7 +34,7 @@ final class YopassTool implements ClusterToolVendor, HasCommonsBuckets, HasCommo
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
         // The whole reason this tool exists is receiving a paste from an
-        // external, unauthenticated partner (see PasteInitCommand's
+        // external, unauthenticated partner (see YopassInitCommand's
         // --vpn-only warning) — --vpn-only is still offered for a secondary
         // internal-scratchpad use case, but blocks that primary one.
         $name = ($instance === null || $instance === '') ? 'yopass-vpn-only' : "yopass-vpn-only-{$instance}";

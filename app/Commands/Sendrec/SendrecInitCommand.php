@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Record;
+namespace App\Commands\Sendrec;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
@@ -25,7 +25,7 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class RecordInitCommand extends AbstractToolInitCommand
+abstract class SendrecInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithRecord, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 

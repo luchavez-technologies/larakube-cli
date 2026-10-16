@@ -303,7 +303,7 @@ trait DeploysClusterTool
         // is the one seam every *:init already passes through with its own
         // host in hand. Cluster tools are cluster-scoped: requiring a project
         // to get a working certificate for one is the wrong layering, and
-        // UptimeInitCommand shows what that costs — it reaches for
+        // KumaInitCommand shows what that costs — it reaches for
         // getProjectConfig(getcwd()) and silently skips the cert sync
         // entirely when there is no project.
         //

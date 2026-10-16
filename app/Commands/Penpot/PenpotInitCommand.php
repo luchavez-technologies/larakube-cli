@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Design;
+namespace App\Commands\Penpot;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
@@ -28,7 +28,7 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class DesignInitCommand extends AbstractToolInitCommand
+abstract class PenpotInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithDesign, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ReconcilesPenpotFlags, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 

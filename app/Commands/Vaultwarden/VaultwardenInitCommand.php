@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Password;
+namespace App\Commands\Vaultwarden;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
@@ -25,7 +25,7 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class PasswordsInitCommand extends AbstractToolInitCommand
+abstract class VaultwardenInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVault, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
@@ -61,7 +61,7 @@ abstract class PasswordsInitCommand extends AbstractToolInitCommand
         $dbPassword = Str::random(24);
 
         // tool:init --tool=vaultwarden doesn't know or care whether OpenBao exists on this
-        // cluster — only secrets:wire --tool=passwords may register the
+        // cluster — only secrets:wire --tool=vaultwarden may register the
         // static role and hand rotation over to it. This is a
         // READ-only exception: it defers to OpenBao's current password when
         // a PAST secrets:wire run already made it the owner, so a re-run

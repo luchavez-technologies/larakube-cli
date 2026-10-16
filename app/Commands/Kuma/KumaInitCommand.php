@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Uptime;
+namespace App\Commands\Kuma;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
@@ -23,7 +23,7 @@ use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class UptimeInitCommand extends AbstractToolInitCommand
+abstract class KumaInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithTraefik, InteractsWithUptime, InteractsWithVolumeSizing, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 

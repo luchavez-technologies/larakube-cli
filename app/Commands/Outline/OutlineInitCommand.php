@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Notes;
+namespace App\Commands\Outline;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ConfigData;
@@ -33,7 +33,7 @@ use function Laravel\Prompts\text;
 
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class NotesInitCommand extends AbstractToolInitCommand
+abstract class OutlineInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithNotes, InteractsWithPlex, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 

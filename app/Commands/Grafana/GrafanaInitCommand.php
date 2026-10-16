@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Monitor;
+namespace App\Commands\Grafana;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
@@ -30,7 +30,7 @@ use function Laravel\Prompts\multiselect;
 
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class MonitorInitCommand extends AbstractToolInitCommand
+abstract class GrafanaInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMonitoring, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, RunsKubectlSteps, StreamsProcessOutput, SyncsClusterSecrets;
 
@@ -99,7 +99,7 @@ abstract class MonitorInitCommand extends AbstractToolInitCommand
             }
 
             // Once OpenBao's database secrets engine already owns the
-            // 'grafana' static role (because `secrets:wire --tool=monitor`
+            // 'grafana' static role (because `secrets:wire --tool=grafana`
             // was run at some point), defer to ITS current password instead
             // of re-affirming a locally-cached one that may predate OpenBao's
             // own rotation — see resolveManagedDbPassword()'s docblock (the

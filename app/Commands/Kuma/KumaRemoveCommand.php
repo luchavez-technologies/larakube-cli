@@ -2,18 +2,25 @@
 
 namespace App\Commands\Kuma;
 
-use App\Commands\Uptime\UptimeRemoveCommand;
+use App\Commands\Tool\AbstractToolRemoveCommand;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 
-class KumaRemoveCommand extends UptimeRemoveCommand
+class KumaRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::KUMA;
+    }
+
+    protected function teardown(string $kubectl, string $namespace): bool
+    {
+        $names = ToolInstance::forInstance(ClusterTool::KUMA, (string) $this->resolveInstance($kubectl));
+
+        return $this->removeResources(
+            'Removing Uptime Kuma resources...',
+            "{$kubectl} delete deployment,svc,ingress,pvc {$names->deployment()} {$names->volume()} "
+            ."-n {$namespace} --ignore-not-found",
+        );
     }
 }

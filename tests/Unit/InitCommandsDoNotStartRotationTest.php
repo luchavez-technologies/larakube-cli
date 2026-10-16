@@ -12,9 +12,9 @@
  */
 dataset('tool inits that must not start rotation', [
     'sign' => 'Documenso/DocumensoInitCommand.php',
-    'record' => 'Record/RecordInitCommand.php',
+    'record' => 'Sendrec/SendrecInitCommand.php',
     'resume' => 'Resume/ResumeInitCommand.php',
-    'design' => 'Design/DesignInitCommand.php',
+    'design' => 'Penpot/PenpotInitCommand.php',
 ]);
 
 test('a tool init never registers an OpenBao static role', function (string $file): void {

@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Dashboard;
+namespace App\Commands\Headlamp;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Enums\ClusterTool;
@@ -23,7 +23,7 @@ use App\Traits\VerifiesKubernetesRollout;
 use Illuminate\Support\Facades\Process;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class DashboardInitCommand extends AbstractToolInitCommand
+abstract class HeadlampInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithDashboard, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 

@@ -190,7 +190,7 @@ trait ResolvesToolHost
     /**
      * The alternative reading of --domain=, for commands where it means "this
      * literal host, and therefore which instance" (AbstractToolRemoveCommand,
-     * AbstractToolShowCommand, ToolAliasCommand, DataInitCommand, NotesInitCommand)
+     * AbstractToolShowCommand, ToolAliasCommand, DataInitCommand, OutlineInitCommand)
      * rather than hostFromDomainOption()'s "base domain, guess the prefix".
      * Deliberately does NOT auto-prefix — a value already meaning a specific
      * instance's host would get silently mangled by hostFor()'s prefixing

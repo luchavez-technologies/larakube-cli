@@ -1,6 +1,6 @@
 <?php
 
-use App\Commands\Dashboard\DashboardTrustCommand;
+use App\Commands\Headlamp\HeadlampTrustCommand;
 use App\Data\CloudData;
 use App\Data\ConfigData;
 use Illuminate\Console\OutputStyle;
@@ -110,7 +110,7 @@ test('dashboard:trust errors when Headlamp has not been wired to Zitadel yet', f
     withDashboardTrustProject(['ip' => '1.2.3.4', 'user' => 'larakube', 'port' => 22], function (): void {
         $this->artisan('dashboard:trust', ['environment' => 'production'])
             ->assertExitCode(1)
-            ->expectsOutputToContain('sso:wire production --tool=dashboard');
+            ->expectsOutputToContain('sso:wire production --tool=headlamp');
     });
 });
 
@@ -201,7 +201,7 @@ test('dashboard:trust cancels cleanly when the operator declines the restart', f
         // not through artisan()'s Kernel::configurePrompts() fallbacks.
         Prompt::fake(['n', Key::ENTER]);
 
-        $command = app(DashboardTrustCommand::class);
+        $command = app(HeadlampTrustCommand::class);
         $input = new ArrayInput(['environment' => 'production']);
         $input->bind($command->getDefinition());
         $input->setInteractive(true);

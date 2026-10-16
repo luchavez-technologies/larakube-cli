@@ -2,18 +2,32 @@
 
 namespace App\Commands\Penpot;
 
-use App\Commands\Design\DesignRemoveCommand;
+use App\Commands\Tool\AbstractToolRemoveCommand;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
+use Illuminate\Support\Facades\Process;
 
-class PenpotRemoveCommand extends DesignRemoveCommand
+class PenpotRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::PENPOT;
+    }
+
+    protected function usesBundledStorage(string $kubectl, string $namespace): bool
+    {
+        $secret = ToolInstance::forInstance(ClusterTool::PENPOT, (string) $this->resolveInstance($kubectl))->secret();
+
+        return trim(Process::run(
+            "{$kubectl} get secret {$secret} -n {$namespace} --ignore-not-found",
+        )->output()) === '';
+    }
+
+    protected function teardown(string $kubectl, string $namespace): bool
+    {
+        return $this->removeResources(
+            'Removing Penpot resources...',
+            $this->teardownComponentsCommand($kubectl, $namespace, $this->resolveInstance($kubectl)),
+        );
     }
 }

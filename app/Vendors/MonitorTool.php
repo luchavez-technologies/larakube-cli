@@ -185,9 +185,9 @@ final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDe
 
     /**
      * Loki, Prometheus, Promtail, Tempo and kube-state-metrics are Monitor's, not free-floating infrastructure —
-     * MonitorInitCommand has always built these exact names, but they were
+     * GrafanaInitCommand has always built these exact names, but they were
      * never declared here, so forDeployment() could not map them and
-     * MonitorRemoveCommand had to hand-copy the teardown strings that this
+     * GrafanaRemoveCommand had to hand-copy the teardown strings that this
      * contract exists to replace.
      *
      * backupVolume stays false on both: metrics and logs are regenerable

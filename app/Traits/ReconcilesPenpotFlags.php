@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\Process;
  * persisting forever.
  *
  * Depends on ReadsClusterSecrets::readClusterSecretKey() being available on
- * the consuming class — every current user (DesignInitCommand via
+ * the consuming class — every current user (PenpotInitCommand via
  * InteractsWithDesign, SsoWireCommand, MailWireCommand) already has it.
  */
 trait ReconcilesPenpotFlags

@@ -2,18 +2,26 @@
 
 namespace App\Commands\Headlamp;
 
-use App\Commands\Dashboard\DashboardRemoveCommand;
+use App\Commands\Tool\AbstractToolRemoveCommand;
 use App\Enums\ClusterTool;
 
-class HeadlampRemoveCommand extends DashboardRemoveCommand
+class HeadlampRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::HEADLAMP;
+    }
+
+    protected function usesBundledStorage(string $kubectl, string $namespace): bool
+    {
+        return true;
+    }
+
+    protected function teardown(string $kubectl, string $namespace): bool
+    {
+        return $this->removeResources(
+            'Removing CNCF Headlamp Control Plane resources...',
+            $this->teardownComponentsCommand($kubectl, $namespace, $this->resolveInstance($kubectl)),
+        );
     }
 }

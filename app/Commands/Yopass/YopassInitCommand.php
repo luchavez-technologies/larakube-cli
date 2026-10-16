@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Paste;
+namespace App\Commands\Yopass;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
@@ -31,7 +31,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  * feature is wired to Commons SeaweedFS/MinIO/Garage only when one is
  * enabled, mirroring MailInitCommand's own conditional store wiring.
  */
-abstract class PasteInitCommand extends AbstractToolInitCommand
+abstract class YopassInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPaste, InteractsWithPlex, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 

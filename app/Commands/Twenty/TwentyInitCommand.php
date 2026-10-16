@@ -68,7 +68,7 @@ abstract class TwentyInitCommand extends AbstractToolInitCommand
         }
 
         // The Commons S3 backend is whatever the operator chose at
-        // `plex:init` — never assume SeaweedFS (see NotesInitCommand/
+        // `plex:init` — never assume SeaweedFS (see OutlineInitCommand/
         // DocumensoInitCommand for the same detection).
         $spec = $this->getCommonsSpec();
         $s3Service = null;

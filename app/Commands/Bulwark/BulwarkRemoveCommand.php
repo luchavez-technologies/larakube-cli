@@ -2,18 +2,21 @@
 
 namespace App\Commands\Bulwark;
 
-use App\Commands\Webmail\WebmailRemoveCommand;
+use App\Commands\Tool\AbstractToolRemoveCommand;
 use App\Enums\ClusterTool;
 
-class BulwarkRemoveCommand extends WebmailRemoveCommand
+class BulwarkRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::BULWARK;
+    }
+
+    protected function teardown(string $kubectl, string $namespace): bool
+    {
+        return $this->removeResources(
+            'Removing Bulwark webmail resources...',
+            $this->teardownComponentsCommand($kubectl, $namespace, $this->resolveInstance($kubectl)),
+        );
     }
 }

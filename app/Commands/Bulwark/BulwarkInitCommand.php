@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Webmail;
+namespace App\Commands\Bulwark;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ConfigData;
@@ -26,7 +26,7 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class WebmailInitCommand extends AbstractToolInitCommand
+abstract class BulwarkInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithBulwark, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithStalwartApi, InteractsWithVolumeSizing, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 

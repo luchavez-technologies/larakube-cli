@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Dashboard;
+namespace App\Commands\Headlamp;
 
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 use LaravelZero\Framework\Commands\Command;
 
-class DashboardTrustCommand extends Command
+class HeadlampTrustCommand extends Command
 {
     use DeploysClusterTool, InteractsWithRemoteSsh, InteractsWithSso, LaraKubeOutput;
 
@@ -83,7 +83,7 @@ class DashboardTrustCommand extends Command
             : $this->readClusterSecretKey($kubectl, $ssoNs, $this->ssoAppSecretName(ClusterTool::HEADLAMP, $instance), 'client-id');
 
         if ($ssoHost === null || $clientId === null) {
-            $this->laraKubeError('Headlamp is not wired to Zitadel yet — run `larakube sso:wire '.$environment.' --tool=dashboard` first.');
+            $this->laraKubeError('Headlamp is not wired to Zitadel yet — run `larakube sso:wire '.$environment.' --tool=headlamp` first.');
 
             return 1;
         }
@@ -154,7 +154,7 @@ class DashboardTrustCommand extends Command
         $this->line("  <fg=gray>Client ID:</> <fg=blue>{$clientId}</>");
         $this->line('  <fg=gray>Username claim:</> <fg=blue>email</>  <fg=gray>Groups claim:</> <fg=blue>groups</> <fg=gray>(both unprefixed)</>');
         $this->newLine();
-        $this->line('  <fg=gray>A team member granted a dashboard role (`sso:grant --tool=dashboard`) now gets real cluster');
+        $this->line('  <fg=gray>A team member granted a dashboard role (`sso:grant --tool=headlamp`) now gets real cluster');
         $this->line('  access through Headlamp\'s "Login with Zitadel" — no CLI or kubeconfig needed on their end.</>');
         $this->newLine();
 
