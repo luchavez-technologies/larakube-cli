@@ -49,7 +49,7 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
         // (dynamic backup discovery) matches live Deployment names against —
         // it calls components() with no instance BECAUSE it doesn't know the
         // instance yet; that's what it's trying to discover. Every real
-        // forward-facing caller (GitInitCommand, the Blade manifest) still
+        // forward-facing caller (ForgejoInitCommand, the Blade manifest) still
         // always supplies a real instance.
         $name = fn (string $n) => ($instance === null || $instance === '') ? $n : "{$n}-{$instance}";
         // ClusterTool::components() strips the category for a migrated tool;

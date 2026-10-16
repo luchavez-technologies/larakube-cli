@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Dns;
+namespace App\Commands\ExternalDns;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Enums\ClusterTool;
@@ -57,7 +57,7 @@ use function Laravel\Prompts\text;
  * State lives in the cluster, never in a project file: DNS is cluster
  * infrastructure and has nothing to do with any Laravel app.
  */
-abstract class DnsInitCommand extends AbstractToolInitCommand
+abstract class ExternalDnsInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithCloudflareApi,
         InteractsWithClusterContext, InteractsWithClusterIdentity, InteractsWithDnsZones,

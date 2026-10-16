@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Drive;
+namespace App\Commands\Ocis;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
@@ -26,7 +26,7 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class DriveInitCommand extends AbstractToolInitCommand
+abstract class OcisInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, ReadsClusterSecrets, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 

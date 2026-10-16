@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Git;
+namespace App\Commands\Forgejo;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
@@ -32,7 +32,7 @@ use function Laravel\Prompts\text;
 
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class GitInitCommand extends AbstractToolInitCommand
+abstract class ForgejoInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithGitForge, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 

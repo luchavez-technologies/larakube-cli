@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Errors;
+namespace App\Commands\GlitchTip;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
@@ -25,7 +25,7 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class ErrorsInitCommand extends AbstractToolInitCommand
+abstract class GlitchTipInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithErrors, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 

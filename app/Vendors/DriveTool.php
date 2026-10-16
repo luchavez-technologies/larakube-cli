@@ -64,7 +64,7 @@ final class DriveTool implements ClusterToolVendor, HasCommonsBuckets, HasOidcWi
                 // absent: oCIS wraps every file's encryption key with the rekey
                 // key in that Secret, so deleting it while the blobs survive
                 // leaves them permanently undecryptable. Both are removed by
-                // hand — see DriveRemoveCommand::teardown().
+                // hand — see OcisRemoveCommand::teardown().
                 resources: [
                     ['kind' => 'service', 'name' => $ocis],
                     ['kind' => 'ingress', 'name' => $ocis],

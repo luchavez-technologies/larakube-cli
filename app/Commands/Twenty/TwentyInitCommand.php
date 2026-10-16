@@ -174,7 +174,7 @@ abstract class TwentyInitCommand extends AbstractToolInitCommand
 
         // The manifest above already applied the worker Deployment too (same
         // file, one kubectl apply) — just verify its own rollout separately,
-        // same pattern GlitchTip's web+worker split uses (ErrorsInitCommand).
+        // same pattern GlitchTip's web+worker split uses (GlitchTipInitCommand).
         $workerRolledOut = $this->withSpin(
             'Waiting for the Twenty CRM worker...',
             fn () => Process::timeout(430)->run("{$kubectl} rollout status deployment/{$workerDeploymentName} -n ".escapeshellarg($ns).' --timeout=420s')->successful(),

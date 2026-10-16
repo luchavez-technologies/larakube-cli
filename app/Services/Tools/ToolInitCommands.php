@@ -7,12 +7,11 @@ use App\Commands\Bulwark\BulwarkInitCommand;
 use App\Commands\Chat\ChatInitCommand;
 use App\Commands\Chatwoot\ChatwootInitCommand;
 use App\Commands\Data\DataInitCommand;
-use App\Commands\Dns\DnsInitCommand;
 use App\Commands\Documenso\DocumensoInitCommand;
-use App\Commands\Drive\DriveInitCommand;
-use App\Commands\Errors\ErrorsInitCommand;
+use App\Commands\ExternalDns\ExternalDnsInitCommand;
 use App\Commands\Flow\FlowInitCommand;
-use App\Commands\Git\GitInitCommand;
+use App\Commands\Forgejo\ForgejoInitCommand;
+use App\Commands\GlitchTip\GlitchTipInitCommand;
 use App\Commands\Grafana\GrafanaInitCommand;
 use App\Commands\Headlamp\HeadlampInitCommand;
 use App\Commands\Kuma\KumaInitCommand;
@@ -20,6 +19,7 @@ use App\Commands\Kutt\KuttInitCommand;
 use App\Commands\Mail\MailInitCommand;
 use App\Commands\Meet\MeetInitCommand;
 use App\Commands\Metabase\MetabaseInitCommand;
+use App\Commands\Ocis\OcisInitCommand;
 use App\Commands\Outline\OutlineInitCommand;
 use App\Commands\Penpot\PenpotInitCommand;
 use App\Commands\Planka\PlankaInitCommand;
@@ -61,16 +61,16 @@ final class ToolInitCommands
                 }
             },
             PenpotInitCommand::class => new class($tool) extends PenpotInitCommand {},
-            DnsInitCommand::class => new class($tool) extends DnsInitCommand {},
+            ExternalDnsInitCommand::class => new class($tool) extends ExternalDnsInitCommand {},
             DocumensoInitCommand::class => new class($tool) extends DocumensoInitCommand {},
-            DriveInitCommand::class => new class($tool) extends DriveInitCommand
+            OcisInitCommand::class => new class($tool) extends OcisInitCommand
             {
                 protected function resolveEngine(): string
                 {
                     return $this->tool()->value;
                 }
             },
-            ErrorsInitCommand::class => new class($tool) extends ErrorsInitCommand {},
+            GlitchTipInitCommand::class => new class($tool) extends GlitchTipInitCommand {},
             FlowInitCommand::class => new class($tool) extends FlowInitCommand
             {
                 protected function resolveEngine(): string
@@ -78,7 +78,7 @@ final class ToolInitCommands
                     return $this->tool()->value;
                 }
             },
-            GitInitCommand::class => new class($tool) extends GitInitCommand {},
+            ForgejoInitCommand::class => new class($tool) extends ForgejoInitCommand {},
             ChatwootInitCommand::class => new class($tool) extends ChatwootInitCommand {},
             KuttInitCommand::class => new class($tool) extends KuttInitCommand {},
             MailInitCommand::class => new class($tool) extends MailInitCommand {},
@@ -112,9 +112,9 @@ final class ToolInitCommands
             ClusterTool::CHATWOOT => ChatwootInitCommand::class,
             ClusterTool::DIRECTUS => DataInitCommand::class,
             ClusterTool::DOCUMENSO => DocumensoInitCommand::class,
-            ClusterTool::EXTERNAL_DNS => DnsInitCommand::class,
-            ClusterTool::FORGEJO => GitInitCommand::class,
-            ClusterTool::GLITCHTIP => ErrorsInitCommand::class,
+            ClusterTool::EXTERNAL_DNS => ExternalDnsInitCommand::class,
+            ClusterTool::FORGEJO => ForgejoInitCommand::class,
+            ClusterTool::GLITCHTIP => GlitchTipInitCommand::class,
             ClusterTool::GRAFANA => GrafanaInitCommand::class,
             ClusterTool::HEADLAMP => HeadlampInitCommand::class,
             ClusterTool::KUMA => KumaInitCommand::class,
@@ -124,7 +124,7 @@ final class ToolInitCommands
             ClusterTool::METABASE => MetabaseInitCommand::class,
             ClusterTool::N8N => FlowInitCommand::class,
             ClusterTool::NETBIRD => VpnInitCommand::class,
-            ClusterTool::OCIS => DriveInitCommand::class,
+            ClusterTool::OCIS => OcisInitCommand::class,
             ClusterTool::OPENBAO => SecretsInitCommand::class,
             ClusterTool::OUTLINE => OutlineInitCommand::class,
             ClusterTool::PENPOT => PenpotInitCommand::class,
