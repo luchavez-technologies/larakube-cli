@@ -465,17 +465,27 @@ trait DeploysClusterTool
         $service = $tool->service();
         $isLocal = str_ends_with($primaryHost, '.test') || str_ends_with($primaryHost, '.localhost');
 
+        $deploymentName = $tool->deploymentName($instance === '' ? null : $instance);
         $ingressName = $instance === '' ? ($service?->value ?? $tool->value) : "{$tool->value}-{$instance}";
+        if ($tool === ClusterTool::POCKETBASE) {
+            $ingressName = "{$deploymentName}-ingress";
+        }
 
         $manifest = view($view, [
             'host' => $primaryHost,
             'aliasHosts' => $aliasHosts,
             'instance' => $instance === '' ? null : $instance,
-            'serviceName' => $tool->deploymentName($instance === '' ? null : $instance),
+            'serviceName' => $deploymentName,
+            'deployName' => $deploymentName,
+            'namespace' => $tool->namespace(),
             'isLocal' => $isLocal,
             'vpnOnly' => str_contains(Process::run("{$kubectl} get ingress {$ingressName} -n {$tool->namespace()} -o jsonpath='{.metadata.annotations}' --ignore-not-found")->output(), 'vpn-only'),
             'proxied' => str_contains(Process::run("{$kubectl} get ingress {$ingressName} -n {$tool->namespace()} -o jsonpath='{.metadata.annotations}' --ignore-not-found")->output(), 'cloudflare-proxied'),
         ])->render();
+
+        if (preg_match('/metadata:\s*\n\s*name:\s*([^\s]+)/m', $manifest, $matches)) {
+            $ingressName = $matches[1];
+        }
 
         $temporaryDirectory = TemporaryDirectory::make();
         $tmp = $temporaryDirectory->path("larakube-ingress-{$tool->value}.yaml");

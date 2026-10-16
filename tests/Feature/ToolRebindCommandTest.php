@@ -177,3 +177,28 @@ test('tool:rebind --wire-sso triggers sso:wire', function (): void {
         ->assertExitCode(0)
         ->expectsOutputToContain('now serves https://talk.newdomain.com');
 });
+
+test('tool:rebind rebinds pocketbase correctly rendering its ingress template without undefined variable errors', function (): void {
+    $registryJson = json_encode([
+        ['tool' => 'pocketbase', 'instance' => 'sidepocket-necxsoft-com', 'host' => 'sidepocket.necxsoft.com', 'installedAt' => '2026-08-01T00:00:00+00:00'],
+    ]);
+
+    $callCount = 0;
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode($registryJson)),
+        '*create secret generic larakube-tools-registry*' => Process::result(output: 'registry updated'),
+        '*create namespace*' => Process::result(output: 'namespace created'),
+        '*get ingress*' => Process::result(output: ''),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*annotate ingress*' => Process::result(output: 'annotated'),
+    ]);
+
+    $this->artisan('tool:rebind', [
+        '--tool' => 'pocketbase',
+        '--to' => 'sidepocket.larakube.app',
+        '--force' => true,
+    ])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('now serves https://sidepocket.larakube.app')
+        ->expectsOutputToContain('instance: sidepocket-necxsoft-com');
+});

@@ -1,3 +1,12 @@
+@php
+    $instance = ($instance ?? '') !== ''
+        ? $instance
+        : \App\Enums\ClusterTool::POCKETBASE->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
+    $names = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::POCKETBASE, $instance, 'pocketbase');
+    $deployName = $deployName ?? $serviceName ?? $names->deployment();
+    $namespace = $namespace ?? \App\Enums\ClusterTool::POCKETBASE->namespace();
+    $labels = $labels ?? $names->labels();
+@endphp
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
