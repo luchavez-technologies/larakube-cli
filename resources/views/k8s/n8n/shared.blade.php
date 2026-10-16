@@ -49,6 +49,12 @@ spec:
         {{ $key }}: {{ $value }}
 @endforeach
     spec:
+      securityContext:
+        # The image runs as the unprivileged 'node' user (UID/GID 1000); the
+        # mounted storage volume must be group-writable by it, or a freshly
+        # provisioned PVC (root-owned by default on most CSI drivers) fails
+        # with EACCES on /home/node/.n8n/config.
+        fsGroup: 1000
       containers:
         - name: n8n
           image: {{ $tool->image('n8n') }}
