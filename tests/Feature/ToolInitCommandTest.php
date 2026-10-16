@@ -111,7 +111,7 @@ test('a command built from the spec has the name, options and description the sp
 
 test('instructions point at tool:init, never at an old name', function (): void {
     expect(ClusterTool::OUTLINE->initInvocation('production'))->toBe('tool:init production --tool=outline')
-        ->and(ClusterTool::DATA->initInvocation())->toBe('tool:init --tool=directus');
+        ->and(ClusterTool::DIRECTUS->initInvocation())->toBe('tool:init --tool=directus');
 });
 
 test('tool:add takes every tool\'s own init options, and refuses one a chosen tool lacks before installing anything', function (): void {

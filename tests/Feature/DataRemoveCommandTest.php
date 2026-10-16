@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Process;
 test('directus:remove tears down single default instance cleanly', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'data', 'instance' => 'data-dev-test', 'host' => 'data.dev.test'],
+            ['tool' => 'directus', 'instance' => 'data-dev-test', 'host' => 'data.dev.test'],
         ]))),
         '*get deployment directus-data-dev-test*' => Process::result(output: 'directus-data-dev-test   1/1   1   1   10d'),
         '*get deployment pocketbase*' => Process::result(output: ''),
@@ -25,7 +25,7 @@ test('directus:remove tears down single default instance cleanly', function (): 
 test('directus:remove targets explicit domain instance', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'data', 'instance' => 'blog-dev-test', 'host' => 'blog.dev.test'],
+            ['tool' => 'directus', 'instance' => 'blog-dev-test', 'host' => 'blog.dev.test'],
         ]))),
         '*get deployment directus-blog-dev-test*' => Process::result(output: 'directus-blog-dev-test   1/1   1   1   10d'),
         '*get deployment pocketbase*' => Process::result(output: ''),
@@ -49,8 +49,8 @@ test('directus:remove hard-errors non-interactively when 2+ instances are regist
     // init time. Failing loudly beats guessing.
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'data', 'instance' => 'data-dev-test', 'host' => 'data.dev.test'],
-            ['tool' => 'data', 'instance' => 'blog-dev-test', 'host' => 'blog.dev.test'],
+            ['tool' => 'directus', 'instance' => 'data-dev-test', 'host' => 'data.dev.test'],
+            ['tool' => 'directus', 'instance' => 'blog-dev-test', 'host' => 'blog.dev.test'],
         ]))),
     ]);
 
@@ -64,8 +64,8 @@ test('directus:remove hard-errors non-interactively when 2+ instances are regist
 test('directus:remove --all removes all registered instances', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
-            ['tool' => 'data', 'instance' => 'data-dev-test', 'host' => 'data.dev.test'],
-            ['tool' => 'data', 'instance' => 'blog-dev-test', 'host' => 'blog.dev.test'],
+            ['tool' => 'directus', 'instance' => 'data-dev-test', 'host' => 'data.dev.test'],
+            ['tool' => 'directus', 'instance' => 'blog-dev-test', 'host' => 'blog.dev.test'],
         ]))),
         '*get deployment directus-data-dev-test*' => Process::result(output: 'directus-data-dev-test   1/1   1   1   10d'),
         '*get deployment directus-blog-dev-test*' => Process::result(output: 'directus-blog-dev-test   1/1   1   1   10d'),

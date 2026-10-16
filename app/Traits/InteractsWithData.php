@@ -13,7 +13,7 @@ trait InteractsWithData
 
     protected function dataNamespace(): string
     {
-        return ClusterTool::DATA->namespace();
+        return ClusterTool::POCKETBASE->namespace();
     }
 
     protected function readDataSecret(string $kubectl, string $ns, string $key, string $instance = '', ?string $engine = null): ?string
@@ -23,13 +23,13 @@ trait InteractsWithData
         }
 
         if ($engine !== null) {
-            $secretName = \App\Data\ToolInstance::forInstance(ClusterTool::DATA, $instance, $engine)->secret();
+            $secretName = \App\Data\ToolInstance::forInstance(ClusterTool::from($engine), $instance, $engine)->secret();
 
             return $this->readClusterSecretKey($kubectl, $ns, $secretName, $key);
         }
 
         foreach (['pocketbase', 'directus', 'wordpress'] as $eng) {
-            $secretName = \App\Data\ToolInstance::forInstance(ClusterTool::DATA, $instance, $eng)->secret();
+            $secretName = \App\Data\ToolInstance::forInstance(ClusterTool::from($eng), $instance, $eng)->secret();
             $val = $this->readClusterSecretKey($kubectl, $ns, $secretName, $key);
             if ($val !== null) {
                 return $val;

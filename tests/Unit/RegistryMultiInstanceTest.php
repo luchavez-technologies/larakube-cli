@@ -22,7 +22,7 @@ test('registering several instances of one tool keeps every one of them', functi
         ['data-second-test', 'data-second.test'],
         ['data-third-test', 'data-third.test'],
     ] as [$instance, $host]) {
-        $holder->register(ClusterTool::DATA, ['host' => $host], $instance);
+        $holder->register(ClusterTool::DIRECTUS, ['host' => $host], $instance);
     }
 
     expect($holder->stored)->toHaveCount(3)
@@ -45,10 +45,10 @@ test('a legacy sentinel row is still healed in place, not duplicated', function 
 
 test('re-registering the same instance updates in place', function (): void {
     $holder = registryHolder([
-        ['tool' => 'data', 'instance' => 'data-test', 'host' => 'data.test'],
+        ['tool' => 'directus', 'instance' => 'data-test', 'host' => 'data.test'],
     ]);
 
-    $holder->register(ClusterTool::DATA, ['host' => 'data.test', 'engine' => 'directus'], 'data-test');
+    $holder->register(ClusterTool::DIRECTUS, ['host' => 'data.test', 'engine' => 'directus'], 'data-test');
 
     expect($holder->stored)->toHaveCount(1)
         ->and($holder->stored[0]['engine'])->toBe('directus');

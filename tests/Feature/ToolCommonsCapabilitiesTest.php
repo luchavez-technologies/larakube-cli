@@ -51,15 +51,6 @@ test('specific tools report accurate commons capabilities', function (): void {
         ->and($kuma['mail'])->toBe(['smtp']);
 });
 
-test('legacy categories delegate commons capabilities to their canonical tools', function (): void {
-    expect(ClusterTool::DATA->commonsCapabilities('pocketbase'))
-        ->toBe(ClusterTool::POCKETBASE->commonsCapabilities())
-        ->and(ClusterTool::DATA->commonsCapabilities('wordpress'))
-        ->toBe(ClusterTool::WORDPRESS->commonsCapabilities())
-        ->and(ClusterTool::DATA->commonsCapabilities('directus'))
-        ->toBe(ClusterTool::DIRECTUS->commonsCapabilities());
-});
-
 test('tool:list includes commonsCapabilities in json output', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: ''),

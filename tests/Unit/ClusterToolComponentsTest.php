@@ -56,9 +56,8 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
     // {category}-{component}-{instance} like every other tool.
     expect(ClusterTool::NETBIRD->deploymentName())->toBe('netbird')
         ->and(ClusterTool::NETBIRD->deploymentName('blog-example-com'))->toBe('netbird-blog-example-com')
-        ->and(ClusterTool::DATA->deploymentName(engine: 'pocketbase'))->toBe('pocketbase')
-        ->and(ClusterTool::DATA->deploymentName(engine: 'directus'))->toBe('directus')
-        ->and(ClusterTool::DATA->deploymentName())->toBe('directus');
+        ->and(ClusterTool::POCKETBASE->deploymentName())->toBe('pocketbase')
+        ->and(ClusterTool::DIRECTUS->deploymentName())->toBe('directus');
 });
 
 test('GIT always requires a real instance — there is no bare/default deployment name', function (): void {

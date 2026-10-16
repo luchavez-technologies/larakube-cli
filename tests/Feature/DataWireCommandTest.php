@@ -10,7 +10,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 function dataWireRegistry(): string
 {
     return base64_encode((string) json_encode([
-        ['tool' => 'data', 'instance' => 'data-dev-test', 'host' => 'data.dev.test', 'engine' => 'pocketbase'],
+        ['tool' => 'pocketbase', 'instance' => 'data-dev-test', 'host' => 'data.dev.test', 'engine' => 'pocketbase'],
     ]));
 }
 
@@ -183,7 +183,7 @@ test('data:wire takes the engine from the registry rather than asking', function
     try {
         Process::fake([
             '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
-                ['tool' => 'data', 'instance' => 'cms-example-com', 'host' => 'cms.example.com', 'engine' => 'directus'],
+                ['tool' => 'directus', 'instance' => 'cms-example-com', 'host' => 'cms.example.com', 'engine' => 'directus'],
             ]))),
             '*get secret*' => Process::result(output: base64_encode('cms.example.com')),
             '*' => Process::result(output: 'cms.example.com'),

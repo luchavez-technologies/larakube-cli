@@ -44,7 +44,7 @@ test('mail:wire --tool=zitadel configures Zitadel SMTP via API', function (): vo
         ->expectsOutputToContain('Wired to Stalwart: Zitadel (Identity Provider & SSO)');
 });
 
-test('mail:wire local --tool=data configures Directus SMTP via deployment secret', function (): void {
+test('mail:wire local --tool=directus configures Directus SMTP via deployment secret', function (): void {
     Process::fake([
         '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
         '*get deployment directus*' => Process::result(output: 'directus   1/1   1   1   10d'),
@@ -55,21 +55,18 @@ test('mail:wire local --tool=data configures Directus SMTP via deployment secret
         '*rollout restart deployment/directus*' => Process::result(output: 'restarted'),
     ]);
 
-    $this->artisan('mail:wire local --tool=data')
-        ->expectsOutputToContain('Wired to Stalwart: Headless CMS & Data API (PocketBase or Directus)');
+    $this->artisan('mail:wire local --tool=directus')
+        ->expectsOutputToContain('Wired to Stalwart: Directus (Headless CMS)');
 });
 
-test('mail:wire local --tool=data configures PocketBase SMTP, not Directus, on a PocketBase-only install', function (): void {
-    // Regression test for the concrete bug this overhaul exists to fix:
-    // resolveToolEngine() used to only special-case CHAT — every other
-    // multi-engine tool (DATA) got a null $engine, and smtpEnv(null, ...)
-    // for DATA falls through to Directus's schema regardless of what's
-    // actually installed. A PocketBase-only install would previously have
-    // tried to patch a nonexistent directus Deployment.
+test('mail:wire local --tool=pocketbase configures PocketBase SMTP, not Directus', function (): void {
+    // Each Data engine is now its own real tool — no shared DATA identity
+    // left to default an unresolved engine to Directus's schema regardless
+    // of what's actually installed. --tool=pocketbase can only ever patch
+    // the pocketbase Deployment.
     Process::fake([
         '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
         '*get deployment pocketbase*' => Process::result(output: 'pocketbase   1/1   1   1   10d'),
-        '*get deployment directus*' => Process::result(output: '', exitCode: 1),
         '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*apply -f -*' => Process::result(output: 'applied'),
@@ -77,8 +74,8 @@ test('mail:wire local --tool=data configures PocketBase SMTP, not Directus, on a
         '*rollout restart deployment/pocketbase*' => Process::result(output: 'restarted'),
     ]);
 
-    $this->artisan('mail:wire local --tool=data')
-        ->expectsOutputToContain('Wired to Stalwart: Headless CMS & Data API (PocketBase or Directus)');
+    $this->artisan('mail:wire local --tool=pocketbase')
+        ->expectsOutputToContain('Wired to Stalwart: PocketBase (Embedded SQLite)');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/pocketbase')
         && str_contains($process->command, '--from=secret/pocketbase-smtp'));

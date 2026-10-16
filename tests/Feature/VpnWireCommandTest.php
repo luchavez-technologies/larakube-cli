@@ -18,7 +18,7 @@ test('vpn:wire rejects the public infrastructure tools per the VPN standardizati
     $this->artisan('vpn:wire', ['--tool' => $slug])
         ->assertExitCode(1)
         ->expectsOutputToContain("doesn't have a --vpn-only ingress mode");
-})->with(['zitadel', 'kutt', 'chatwoot', 'data', 'stalwart', 'livekit', 'netbird']);
+})->with(['zitadel', 'kutt', 'chatwoot', 'directus', 'stalwart', 'livekit', 'netbird']);
 
 test('vpn:wire rejects an unknown tool', function (): void {
     $this->artisan('vpn:wire', ['--tool' => 'not-a-real-tool'])

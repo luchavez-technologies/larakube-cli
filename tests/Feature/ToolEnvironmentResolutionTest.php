@@ -117,7 +117,7 @@ test('remote context without environment defaults to production even with --doma
         'domain' => 'pocket-test.luchtech.dev',
     ]);
 
-    expect($resolver->resolve(ClusterTool::DATA))->toBe('production')
+    expect($resolver->resolve(ClusterTool::DIRECTUS))->toBe('production')
         ->and($resolver->getResolvedToolContext())->toBe('larakube-34.27.253.31');
 });
 
@@ -127,7 +127,7 @@ test('local context without environment defaults to local even with --domain', f
         'domain' => 'pocket.test',
     ]);
 
-    expect($resolver->resolve(ClusterTool::DATA))->toBe('local')
+    expect($resolver->resolve(ClusterTool::DIRECTUS))->toBe('local')
         ->and($resolver->getResolvedToolContext())->toBe('k3s-larakube');
 });
 
@@ -136,7 +136,7 @@ test('remote context without environment defaults to production without --domain
         'context' => 'doks-sgp1-production',
     ]);
 
-    expect($resolver->resolve(ClusterTool::DATA))->toBe('production')
+    expect($resolver->resolve(ClusterTool::DIRECTUS))->toBe('production')
         ->and($resolver->getResolvedToolContext())->toBe('doks-sgp1-production');
 });
 
@@ -146,7 +146,7 @@ test('an explicit positional environment overrides --context deduction', functio
         ['context' => 'larakube-34.27.253.31', 'domain' => 'pocket-stage.luchtech.dev'],
     );
 
-    expect($resolver->resolve(ClusterTool::DATA))->toBe('staging')
+    expect($resolver->resolve(ClusterTool::DIRECTUS))->toBe('staging')
         ->and($resolver->getResolvedToolContext())->toBe('larakube-34.27.253.31');
 });
 
@@ -169,7 +169,7 @@ test('project-mapped context resolves to the matching project environment', func
         $config,
     );
 
-    expect($resolver->resolve(ClusterTool::DATA))->toBe('staging');
+    expect($resolver->resolve(ClusterTool::DIRECTUS))->toBe('staging');
 });
 
 test('DeploysClusterTool resolveToolContext seamlessly reuses resolvedToolContext', function (): void {
@@ -216,7 +216,7 @@ test('standalone interactive prompt asks for available kube context when outside
         ['larakube-34.27.253.31', 'docker-desktop'],
     );
 
-    expect($resolver->resolve(ClusterTool::DATA))->toBe('production')
+    expect($resolver->resolve(ClusterTool::DIRECTUS))->toBe('production')
         ->and($resolver->getResolvedToolContext())->toBe('larakube-34.27.253.31');
 });
 
@@ -230,7 +230,7 @@ test('standalone interactive prompt resolves to local if user selects local cont
         ['larakube-34.27.253.31', 'docker-desktop'],
     );
 
-    expect($resolver->resolve(ClusterTool::DATA))->toBe('local')
+    expect($resolver->resolve(ClusterTool::DIRECTUS))->toBe('local')
         ->and($resolver->getResolvedToolContext())->toBe('docker-desktop');
 });
 

@@ -58,43 +58,8 @@ class ToolRegistry
     {
         return array_values(array_filter($this->rows(), function (array $row) use ($tool): bool {
             $rowToolSlug = $row['tool'] ?? null;
-            if ($rowToolSlug === null) {
-                return false;
-            }
 
-            $rowTool = ClusterTool::tryFrom((string) $rowToolSlug);
-            if ($rowTool === null) {
-                return false;
-            }
-
-            if ($rowTool === $tool) {
-                return true;
-            }
-
-            if ($tool->isLegacy()) {
-                if ($rowToolSlug === $tool->value) {
-                    return true;
-                }
-
-                return $rowTool->legacyCategoryPrefix() === $tool->value;
-            }
-
-            if ($rowTool->isLegacy()) {
-                $engine = $row['engine'] ?? null;
-
-                // A legacy row with no recorded engine predates engine
-                // tracking — it's ambiguous across every real tool in that
-                // category (confirmed live 2026-08-09: a 'data' row with no
-                // engine was how a plain host collision was detected
-                // regardless of which engine --tool= picked), so it must
-                // keep matching all of them, not just canonicalTool()'s
-                // single default.
-                return $engine === null
-                    ? $tool->legacyCategoryPrefix() === $rowToolSlug
-                    : $rowTool->canonicalTool($engine) === $tool;
-            }
-
-            return $rowTool->canonicalTool($row['engine'] ?? null) === $tool;
+            return $rowToolSlug !== null && ClusterTool::tryFrom((string) $rowToolSlug) === $tool;
         }));
     }
 
@@ -219,11 +184,7 @@ class ToolRegistry
         $index = $this->matchIndex($rows, $tool, $instance, selfHeal: true);
 
         if ($index !== null) {
-            $toolSlug = $rows[$index]['tool'] ?? $tool->value;
-            if (! $tool->isLegacy()) {
-                $toolSlug = $tool->value;
-            }
-            $rows[$index] = array_merge($rows[$index], ['tool' => $toolSlug], $metadata, $instance !== null ? ['instance' => $instance] : [], ['updatedAt' => $now]);
+            $rows[$index] = array_merge($rows[$index], ['tool' => $tool->value], $metadata, $instance !== null ? ['instance' => $instance] : [], ['updatedAt' => $now]);
         } else {
             $rows[] = array_merge(['tool' => $tool->value, 'instance' => $instance, 'aliases' => [], 'installedAt' => $now], $metadata, ['updatedAt' => $now]);
         }
@@ -332,25 +293,7 @@ class ToolRegistry
             }
 
             $rowTool = ClusterTool::tryFrom((string) $rowToolSlug);
-            if ($rowTool === null) {
-                continue;
-            }
-
-            $matches = false;
             if ($rowTool === $tool) {
-                $matches = true;
-            } elseif ($tool->isLegacy()) {
-                $matches = ($rowToolSlug === $tool->value) || ($rowTool->legacyCategoryPrefix() === $tool->value);
-            } elseif ($rowTool->isLegacy()) {
-                $engine = $row['engine'] ?? null;
-                $matches = $engine === null
-                    ? $tool->legacyCategoryPrefix() === $rowToolSlug
-                    : $rowTool->canonicalTool($engine) === $tool;
-            } else {
-                $matches = ($rowTool->canonicalTool($row['engine'] ?? null) === $tool);
-            }
-
-            if ($matches) {
                 $forTool[] = $i;
             }
         }

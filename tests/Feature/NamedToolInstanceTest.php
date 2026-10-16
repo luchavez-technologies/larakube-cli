@@ -20,7 +20,7 @@ test('ClusterTool deploymentName, commonsDatabases, and dbSecretRef support name
     ssoRegistered();
     expect(ClusterTool::OUTLINE->deploymentName('sister'))->toBe('outline-sister')
         ->and(ClusterTool::OUTLINE->commonsDatabases('sister'))->toBe(['outline_sister'])
-        ->and(ClusterTool::DATA->dbSecretRef('sister'))->toBe([
+        ->and(ClusterTool::DIRECTUS->dbSecretRef('sister'))->toBe([
             'namespace' => 'larakube-shared',
             'secret' => 'directus-secrets-sister',
             'key' => 'db-password',

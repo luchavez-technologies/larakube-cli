@@ -121,9 +121,9 @@ test('only tools that can bundle their own storage advertise --no-plex', functio
 
 test('command name helpers spell the canonical tool:action shape', function (): void {
     ssoRegistered();
-    expect(ClusterTool::DATA->initInvocation())->toBe('tool:init --tool=directus')
-        ->and(ClusterTool::DATA->removeCommand())->toBe('directus:remove')
-        ->and(ClusterTool::DATA->showCommand())->toBe('directus:show')
+    expect(ClusterTool::DIRECTUS->initInvocation())->toBe('tool:init --tool=directus')
+        ->and(ClusterTool::DIRECTUS->removeCommand())->toBe('directus:remove')
+        ->and(ClusterTool::DIRECTUS->showCommand())->toBe('directus:show')
         ->and(ClusterTool::VAULTWARDEN->removeCommand())->toBe('vaultwarden:remove');
 });
 
@@ -167,12 +167,12 @@ test('directus SSO carries a license caveat, pocketbase does not', function (): 
     // June 2026) — the wiring is real (oidcEnv() vars are genuinely read by
     // Directus), but login won't work without a paid license even
     // self-hosted. sso:wire must still run and warn, not refuse.
-    expect(ClusterTool::DATA->ssoLicenseCaveat('directus'))->not->toBeNull()
-        ->and(ClusterTool::DATA->ssoLicenseCaveat('directus'))->toContain('paid')
-        ->and(ClusterTool::DATA->ssoLicenseCaveat('pocketbase'))->toBeNull();
+    expect(ClusterTool::DIRECTUS->ssoLicenseCaveat())->not->toBeNull()
+        ->and(ClusterTool::DIRECTUS->ssoLicenseCaveat())->toContain('paid')
+        ->and(ClusterTool::POCKETBASE->ssoLicenseCaveat())->toBeNull();
 });
 
-test('only DATA carries an SSO license caveat', function (): void {
+test('only DIRECTUS carries an SSO license caveat', function (): void {
     ssoRegistered();
     // Confirms the full 2026-08 SSO audit's conclusion: every other tool's
     // oidcEnv() is either free (Grafana, Vaultwarden, Outline, Documenso,
@@ -181,7 +181,7 @@ test('only DATA carries an SSO license caveat', function (): void {
     // showing up here unexpectedly means this test needs updating alongside
     // whatever tool just grew a paywalled SSO tier.
     foreach (ClusterTool::cases() as $tool) {
-        if ($tool === ClusterTool::DATA || $tool === ClusterTool::DIRECTUS) {
+        if ($tool === ClusterTool::DIRECTUS) {
             continue;
         }
 
@@ -217,8 +217,8 @@ test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance
     ssoRegistered();
     // Deliberately narrower than supportsMultipleInstances() above: that
     // method's `true` default means "no known architectural blocker", not
-    // "already built". Only DATA, NOTES, CRM, PENPOT, YOPASS, SIGN and FLOW's
-    // split engines actually resolve --domain to a specific registered
+    // "already built". Only the Data and Flow engines, NOTES, CRM, PENPOT,
+    // YOPASS and SIGN actually resolve --domain to a specific registered
     // instance before tearing it down today — every other tool's teardown()
     // hardcodes fixed resource names and would silently ignore --domain,
     // deleting the one real installation regardless of what host was
@@ -226,7 +226,7 @@ test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance
     // command grew (or lost) real per-instance teardown — a deliberate
     // capability change, not drift.
     $expectedTrue = [
-        ClusterTool::DATA, ClusterTool::POCKETBASE, ClusterTool::DIRECTUS, ClusterTool::WORDPRESS,
+        ClusterTool::POCKETBASE, ClusterTool::DIRECTUS, ClusterTool::WORDPRESS,
         ClusterTool::OUTLINE,
         ClusterTool::TWENTY,
         ClusterTool::PENPOT,
@@ -254,8 +254,8 @@ test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance
 
 test('instanceSlugFromHost() derives pure host-based slug for every host', function (): void {
     ssoRegistered();
-    expect(ClusterTool::DATA->instanceSlugFromHost('data.example.com'))->toBe('data-example-com')
-        ->and(ClusterTool::DATA->instanceSlugFromHost('data.luchtech.dev'))->toBe('data-luchtech-dev');
+    expect(ClusterTool::DIRECTUS->instanceSlugFromHost('data.example.com'))->toBe('data-example-com')
+        ->and(ClusterTool::DIRECTUS->instanceSlugFromHost('data.luchtech.dev'))->toBe('data-luchtech-dev');
 });
 
 test('instanceSlugFromHost() never collides on the leftmost label — the incident this method exists to prevent', function (): void {
@@ -264,8 +264,8 @@ test('instanceSlugFromHost() never collides on the leftmost label — the incide
     // ("blog.example.com" -> "blog"), so two different hosts sharing that
     // label collided on the same Kubernetes resource name. The generic
     // replacement must hash the FULL host instead.
-    $siteA = ClusterTool::DATA->instanceSlugFromHost('blog.example.com');
-    $siteB = ClusterTool::DATA->instanceSlugFromHost('blog.other.com');
+    $siteA = ClusterTool::DIRECTUS->instanceSlugFromHost('blog.example.com');
+    $siteB = ClusterTool::DIRECTUS->instanceSlugFromHost('blog.other.com');
 
     expect($siteA)->not->toBe($siteB)
         ->and($siteA)->not->toBe('blog')
@@ -276,8 +276,8 @@ test('instanceSlugFromHost() is deterministic and Kubernetes-resource-name-safe'
     ssoRegistered();
     $host = 'a-very-long-subdomain-that-goes-on-and-on.example.com';
 
-    $first = ClusterTool::DATA->instanceSlugFromHost($host);
-    $second = ClusterTool::DATA->instanceSlugFromHost($host);
+    $first = ClusterTool::DIRECTUS->instanceSlugFromHost($host);
+    $second = ClusterTool::DIRECTUS->instanceSlugFromHost($host);
 
     expect($first)->toBe($second)
         ->and(strlen($first))->toBeLessThanOrEqual(40)
@@ -317,7 +317,7 @@ test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifest
     // cannot create its target, so a suffix the tool's templates don't use
     // leaves the synced values reaching nothing. Live names as deployed.
     $names = [];
-    foreach ([ClusterTool::MATRIX, ClusterTool::GRAFANA, ClusterTool::VAULTWARDEN, ClusterTool::ZITADEL, ClusterTool::FORGEJO, ClusterTool::OUTLINE, ClusterTool::STALWART, ClusterTool::DOCUMENSO, ClusterTool::DATA, ClusterTool::NETBIRD] as $tool) {
+    foreach ([ClusterTool::MATRIX, ClusterTool::GRAFANA, ClusterTool::VAULTWARDEN, ClusterTool::ZITADEL, ClusterTool::FORGEJO, ClusterTool::OUTLINE, ClusterTool::STALWART, ClusterTool::DOCUMENSO, ClusterTool::DIRECTUS, ClusterTool::NETBIRD] as $tool) {
         $names[$tool->value] = [
             $tool->openbaoSyncConfig('inst')['secret'] ?? null,
             $tool->dbSecretRef('inst')['secret'] ?? null,
@@ -335,7 +335,7 @@ test('a tool\'s OpenBao sync and rotation Secret carry the name its own manifest
         'outline' => ['outline-secrets-inst', 'outline-secrets-inst'],
         'stalwart' => ['stalwart-store-inst', 'stalwart-store-inst'],
         'documenso' => [null, 'documenso-secrets-inst'],
-        'data' => [null, 'directus-secrets-inst'],
+        'directus' => [null, 'directus-secrets-inst'],
         'netbird' => ['netbird-secrets-inst', 'netbird-store-inst'],
     ]);
 });
@@ -423,8 +423,8 @@ test('a migrated tool never keeps its category on any resource name', function (
 
 test('remove and show commands name the tool, and the engine when there is more than one', function (): void {
     expect(ClusterTool::YOPASS->removeCommand())->toBe('yopass:remove')
-        ->and(ClusterTool::DATA->removeCommand())->toBe('directus:remove')
-        ->and(ClusterTool::DATA->removeCommand('pocketbase'))->toBe('pocketbase:remove')
+        ->and(ClusterTool::DIRECTUS->removeCommand())->toBe('directus:remove')
+        ->and(ClusterTool::POCKETBASE->removeCommand())->toBe('pocketbase:remove')
         ->and(ClusterTool::OUTLINE->showCommand())->toBe('outline:show');
 });
 

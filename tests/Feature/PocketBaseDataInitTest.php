@@ -112,7 +112,7 @@ test('tool:init --tool=directus without --domain errors instead of guessing when
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
-                ['tool' => 'data', 'instance' => 'main', 'aliases' => [], 'installedAt' => '2026-08-09T10:35:58+00:00', 'host' => 'pocket.luchtech.dev'],
+                ['tool' => 'pocketbase', 'instance' => 'main', 'aliases' => [], 'installedAt' => '2026-08-09T10:35:58+00:00', 'host' => 'pocket.luchtech.dev'],
             ])),
         ),
         '*' => Process::result(output: ''),
@@ -135,7 +135,7 @@ test('tool:init --tool=directus --domain re-targets an already-registered instan
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             output: base64_encode((string) json_encode([
-                ['tool' => 'data', 'instance' => 'main', 'aliases' => [], 'installedAt' => '2026-08-09T10:35:58+00:00', 'host' => 'pocket.luchtech.dev'],
+                ['tool' => 'pocketbase', 'instance' => 'main', 'aliases' => [], 'installedAt' => '2026-08-09T10:35:58+00:00', 'host' => 'pocket.luchtech.dev'],
             ])),
         ),
         '*create secret generic larakube-tools-registry*' => function ($process) use (&$captured) {

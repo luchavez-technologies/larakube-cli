@@ -20,20 +20,16 @@ test('mail:unwire unsets tool mail environment variables', function (): void {
         ->expectsOutputToContain('no longer routes mail through Stalwart');
 });
 
-test('mail:unwire --tool=data unsets PocketBase\'s own vars, not Directus\'s, on a PocketBase-only install', function (): void {
-    // Regression test: unwireTargets() used to call $tool->smtpEnv() with
-    // NO $engine argument at all — even though it had just resolved one a
-    // line above for the configuresViaConfigFile() check — so a
-    // PocketBase-only install would have its Directus env var names
-    // "unset" (which don't exist on that Deployment) instead of its own.
+test('mail:unwire --tool=pocketbase unsets PocketBase\'s own vars, never Directus\'s', function (): void {
+    // Each Data engine is its own real tool now — --tool=pocketbase can
+    // only ever target the pocketbase Deployment's own env var names.
     Process::fake([
         '*get deployment pocketbase*' => Process::result(output: 'pocketbase   1/1   1   1   10d'),
-        '*get deployment directus*' => Process::result(output: '', exitCode: 1),
         '*set env deployment/pocketbase*' => Process::result(output: 'env updated'),
         '*rollout restart*' => Process::result(output: 'restarted'),
     ]);
 
-    $this->artisan('mail:unwire', ['--tool' => 'data'])
+    $this->artisan('mail:unwire', ['--tool' => 'pocketbase'])
         ->assertExitCode(0)
         ->expectsOutputToContain('no longer routes mail through Stalwart');
 

@@ -12,7 +12,7 @@ use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasSsoLicenseCaveat;
 
-/** The vendor enum backing ClusterTool::DATA — 'Headless CMS & Data API'. */
+/** The vendor enum backing POCKETBASE/DIRECTUS/WORDPRESS — 'Headless CMS & Data API'. */
 enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasRotatableDatabasePassword, HasSmtpWiring, HasSsoLicenseCaveat
 {
     public function getLabel(): string
@@ -44,8 +44,9 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
 
     public function smtpEnv(?string $instance = null): ?array
     {
-        $names = ($instance === null || $instance === '') ? null : \App\Data\ToolInstance::forInstance(ClusterTool::DATA, $instance, $this->value);
-        $base = ClusterTool::DATA->deploymentName(engine: $this->value);
+        $tool = ClusterTool::from($this->value);
+        $names = ($instance === null || $instance === '') ? null : \App\Data\ToolInstance::forInstance($tool, $instance, $this->value);
+        $base = $tool->deploymentName();
 
         return match ($this) {
             self::POCKETBASE => [
@@ -96,8 +97,9 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
     /** @see self::smtpEnv() for the same ToolInstance derivation. */
     public function oidcEnv(?string $instance = null): ?array
     {
-        $names = ($instance === null || $instance === '') ? null : \App\Data\ToolInstance::forInstance(ClusterTool::DATA, $instance, $this->value);
-        $base = ClusterTool::DATA->deploymentName(engine: $this->value);
+        $tool = ClusterTool::from($this->value);
+        $names = ($instance === null || $instance === '') ? null : \App\Data\ToolInstance::forInstance($tool, $instance, $this->value);
+        $base = $tool->deploymentName();
 
         return match ($this) {
             self::POCKETBASE => [

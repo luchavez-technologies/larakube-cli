@@ -1084,7 +1084,7 @@ test('sso:wire registers a new OIDC client and wires it to Kutt (link)', functio
         && $request->body()->get('name') === "kutt-{$expectedSlug}");
 });
 
-test('sso:wire registers a new OIDC client and wires it to Directus (data)', function (): void {
+test('sso:wire registers a new OIDC client and wires it to Directus', function (): void {
     ssoRegistered();
     Process::fake([
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
@@ -1104,10 +1104,10 @@ test('sso:wire registers a new OIDC client and wires it to Directus (data)', fun
         CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-data', 'clientId' => 'cid-data', 'clientSecret' => 'csecret-data']),
     ]);
 
-    $this->artisan('sso:wire', ['--tool' => 'data', '--no-interaction' => true, '--context' => 'ctx'])
+    $this->artisan('sso:wire', ['--tool' => 'directus', '--no-interaction' => true, '--context' => 'ctx'])
         ->assertExitCode(0)
-        ->expectsOutputToContain('Registering Headless CMS & Data API (PocketBase or Directus) as an OIDC client in Zitadel')
-        ->expectsOutputToContain('Headless CMS & Data API (PocketBase or Directus) is wired to Zitadel SSO');
+        ->expectsOutputToContain('Registering Directus (Headless CMS) as an OIDC client in Zitadel')
+        ->expectsOutputToContain('Directus (Headless CMS) is wired to Zitadel SSO');
 
     Saloon::assertSent(fn ($request) => $request instanceof CreateOidcAppRequest
         && $request->body()->get('redirectUris')[0] === 'https://data.'.GlobalConfigData::load()->getLocalTld().'/auth/login/zitadel/callback');
@@ -1115,7 +1115,7 @@ test('sso:wire registers a new OIDC client and wires it to Directus (data)', fun
     Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/directus'));
 });
 
-test('sso:wire registers a new OIDC client and wires it to PocketBase (data)', function (): void {
+test('sso:wire registers a new OIDC client and wires it to PocketBase', function (): void {
     ssoRegistered();
     Process::fake([
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
@@ -1157,10 +1157,10 @@ test('sso:wire registers a new OIDC client and wires it to PocketBase (data)', f
         ]));
         chdir($dir);
 
-        $this->artisan('sso:wire', ['environment' => 'production', '--context' => 'ctx', '--tool' => 'data', '--engine' => 'pocketbase', '--no-interaction' => true])
+        $this->artisan('sso:wire', ['environment' => 'production', '--context' => 'ctx', '--tool' => 'pocketbase', '--no-interaction' => true])
             ->assertExitCode(0)
-            ->expectsOutputToContain('Registering Headless CMS & Data API (PocketBase or Directus) as an OIDC client in Zitadel')
-            ->expectsOutputToContain('Headless CMS & Data API (PocketBase or Directus) is wired to Zitadel SSO');
+            ->expectsOutputToContain('Registering PocketBase (Embedded SQLite) as an OIDC client in Zitadel')
+            ->expectsOutputToContain('PocketBase (Embedded SQLite) is wired to Zitadel SSO');
 
         Saloon::assertSent(fn ($request) => $request instanceof CreateOidcAppRequest
             && $request->body()->get('redirectUris')[0] === 'https://pocket.luchtech.dev/api/oauth2-callback');
@@ -1191,46 +1191,6 @@ test('sso:wire --remove deregisters the app and unsets the tool\'s env vars', fu
 
     Saloon::assertSent(fn ($request) => $request instanceof DeleteProjectAppRequest
         && $request->resolveEndpoint() === 'management/v1/projects/proj-1/apps/app-1');
-});
-
-test('sso:wire resolves the main DATA instance\'s own engine, not contaminated by a second instance\'s', function (): void {
-    ssoRegistered();
-    // Regression test: the OLD resolveToolEngine() queried ALL data
-    // Deployments in the namespace by label selector with no instance
-    // scoping, so a second PocketBase instance's Deployment name containing
-    // "pocketbase" would make sso:wire wrongly conclude the MAIN
-    // (Directus) instance was PocketBase too. The new instance-scoped
-    // resolution checks directus specifically, never confused
-    // by a second pocketbase-blog-example-com Deployment coexisting.
-    Process::fake([
-        '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
-        '*get deployment directus*' => Process::result(output: 'directus   1/1   1   1   10d'),
-        '*get deployment pocketbase-blog-example-com*' => Process::result(output: 'pocketbase-blog-example-com   1/1   1   1   1d'),
-        '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
-        '*get secret directus-oidc*' => Process::result(output: ''),
-        '*create secret generic*' => Process::result(output: 'secret created'),
-        '*apply -f -*' => Process::result(output: 'applied'),
-        '*set env deployment/directus*' => Process::result(output: 'deployment.apps/directus env updated'),
-        '*rollout restart*' => Process::result(output: 'deployment.apps/directus restarted'),
-    ]);
-
-    Saloon::fake([
-        SearchProjectAppsRequest::class => MockResponse::make(['result' => []]),
-        SearchProjectsRequest::class => MockResponse::make(['result' => []]),
-        CreateProjectRequest::class => MockResponse::make(['id' => 'proj-1']),
-        CreateOidcAppRequest::class => MockResponse::make(['appId' => 'app-data', 'clientId' => 'cid-data', 'clientSecret' => 'csecret-data']),
-    ]);
-
-    $this->artisan('sso:wire', ['--tool' => 'data', '--no-interaction' => true, '--context' => 'ctx'])
-        ->assertExitCode(0)
-        ->expectsOutputToContain('is wired to Zitadel SSO');
-
-    // Directus's schema, not PocketBase's — proves the main instance's own
-    // engine was resolved, not the OTHER instance's.
-    Saloon::assertSent(fn ($request) => $request instanceof CreateOidcAppRequest
-        && $request->body()->get('redirectUris')[0] === 'https://data.'.GlobalConfigData::load()->getLocalTld().'/auth/login/zitadel/callback');
-    Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/directus'));
-    Process::assertNotRan(fn ($process) => str_contains($process->command, 'set env deployment/pocketbase'));
 });
 
 test('sso:wire also patches Penpot\'s frontend deployment with the same OIDC secret (also_patch)', function (): void {

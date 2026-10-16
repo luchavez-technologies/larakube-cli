@@ -43,9 +43,8 @@ class DataWireCommand extends Command
         $picked = $this->pickRegisteredTool(
             kubectl: $kubectl,
             label: 'Data / Headless CMS',
-            capable: fn (ClusterTool $tool) => in_array($tool, [ClusterTool::DATA, ClusterTool::POCKETBASE, ClusterTool::DIRECTUS, ClusterTool::WORDPRESS], true),
+            capable: fn (ClusterTool $tool) => in_array($tool, [ClusterTool::POCKETBASE, ClusterTool::DIRECTUS, ClusterTool::WORDPRESS], true),
             emptyMessage: "No Data / Headless CMS instance is registered for '{$env}'.",
-            only: ClusterTool::DATA,
             domain: $this->option('domain'),
         );
 
@@ -166,9 +165,11 @@ class DataWireCommand extends Command
             return $explicit;
         }
 
-        foreach ($this->getAllToolInstanceData($kubectl, ClusterTool::DATA) as $instance) {
-            if ($instance->host === $host && in_array($instance->engine, ['pocketbase', 'directus', 'wordpress'], true)) {
-                return $instance->engine;
+        foreach ([ClusterTool::POCKETBASE, ClusterTool::DIRECTUS, ClusterTool::WORDPRESS] as $tool) {
+            foreach ($this->getAllToolInstanceData($kubectl, $tool) as $instance) {
+                if ($instance->host === $host && in_array($instance->engine, ['pocketbase', 'directus', 'wordpress'], true)) {
+                    return $instance->engine;
+                }
             }
         }
 

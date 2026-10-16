@@ -55,7 +55,7 @@ trait SupportedDriversTrait
             ClusterTool::MATRIX => [DatabaseDriver::POSTGRESQL],
             ClusterTool::PLANKA, ClusterTool::OUTLINE,
             ClusterTool::TWENTY, ClusterTool::DOCUMENSO, ClusterTool::CHATWOOT,
-            ClusterTool::KUTT, ClusterTool::DATA, ClusterTool::UMAMI,
+            ClusterTool::KUTT, ClusterTool::UMAMI,
             ClusterTool::N8N, ClusterTool::WINDMILL, ClusterTool::TEABLE, ClusterTool::GLITCHTIP,
             ClusterTool::FORGEJO, ClusterTool::METABASE, ClusterTool::ZITADEL => [DatabaseDriver::POSTGRESQL, DatabaseDriver::MYSQL],
             default => DatabaseDriver::cases(),

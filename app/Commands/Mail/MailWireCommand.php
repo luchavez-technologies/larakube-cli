@@ -165,7 +165,7 @@ class MailWireCommand extends Command
             if ($this->refuseUnshippedTool($tool)) {
                 return [];
             }
-            if ($tool->smtpEnv() === null && $tool->category() !== ClusterTool::ZITADEL) {
+            if ($tool->smtpEnv() === null && $tool !== ClusterTool::ZITADEL) {
                 $this->laraKubeError("'{$slug}' is not an SMTP-capable tool.");
 
                 return [];

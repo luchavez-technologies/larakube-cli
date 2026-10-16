@@ -25,7 +25,7 @@ test('the longest component name wins, so a WORKER is not mistaken for its prima
 
 test('resolves an instance-suffixed Deployment to its base component', function (): void {
     $match = ClusterTool::forDeployment('pocketbase-blog-example-com');
-    expect($match['tool'])->toBe(ClusterTool::DATA)
+    expect($match['tool'])->toBe(ClusterTool::POCKETBASE)
         ->and($match['component']->key)->toBe('app');
 });
 

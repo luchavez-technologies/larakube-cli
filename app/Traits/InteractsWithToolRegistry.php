@@ -200,7 +200,7 @@ trait InteractsWithToolRegistry
         $multiEngineTools = [
             ClusterTool::N8N, ClusterTool::WINDMILL,
             ClusterTool::UMAMI, ClusterTool::PLAUSIBLE,
-            ClusterTool::DATA, ClusterTool::POCKETBASE, ClusterTool::DIRECTUS,
+            ClusterTool::POCKETBASE, ClusterTool::DIRECTUS, ClusterTool::WORDPRESS,
         ];
 
         if (! in_array($tool, $multiEngineTools, true)) {
@@ -233,7 +233,6 @@ trait InteractsWithToolRegistry
             }
 
             $matchesTool = ($hit['tool'] === $tool)
-                || ($hit['tool']->canonicalTool() === $tool->canonicalTool())
                 || ($hit['tool']->legacyCategoryPrefix() === $tool->value)
                 || ($tool->legacyCategoryPrefix() === $hit['tool']->value);
 

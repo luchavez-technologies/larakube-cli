@@ -10,8 +10,8 @@ function toolRegistryRows(): array
 {
     return [
         ['tool' => 'n8n', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'aliases' => []],
-        ['tool' => 'data', 'instance' => 'data-example-com', 'host' => 'data.example.com'],
-        ['tool' => 'data', 'instance' => 'cms-example-com', 'host' => 'cms.example.com'],
+        ['tool' => 'directus', 'instance' => 'data-example-com', 'host' => 'data.example.com'],
+        ['tool' => 'directus', 'instance' => 'cms-example-com', 'host' => 'cms.example.com'],
     ];
 }
 
@@ -21,7 +21,7 @@ test('reads the registry Secret and parses its list', function (): void {
     $registry = ToolRegistry::on('kubectl');
 
     expect($registry->rows())->toHaveCount(3)
-        ->and($registry->hosts(ClusterTool::DATA))->toBe(['data.example.com', 'cms.example.com']);
+        ->and($registry->hosts(ClusterTool::DIRECTUS))->toBe(['data.example.com', 'cms.example.com']);
     Process::assertRan(fn (PendingProcess $p) => $p->command === "kubectl get secret larakube-tools-registry -n larakube-shared -o jsonpath='{.data.registry\\.json}'");
 });
 
@@ -35,16 +35,16 @@ test('no instance given means the tool\'s sole row, never a guess between severa
     $registry = FakeToolRegistry::install(toolRegistryRows());
 
     expect($registry->host(ClusterTool::N8N))->toBe('flow.example.com')
-        ->and($registry->entry(ClusterTool::DATA))->toBeNull()
-        ->and($registry->host(ClusterTool::DATA, 'cms-example-com'))->toBe('cms.example.com');
+        ->and($registry->entry(ClusterTool::DIRECTUS))->toBeNull()
+        ->and($registry->host(ClusterTool::DIRECTUS, 'cms-example-com'))->toBe('cms.example.com');
 });
 
 test('a host resolves to its registered instance, or derives one when unregistered', function (): void {
     $registry = FakeToolRegistry::install(toolRegistryRows());
 
-    expect($registry->instanceForHost(ClusterTool::DATA, 'https://CMS.example.com/'))->toBe('cms-example-com')
-        ->and($registry->instanceForHost(ClusterTool::DATA, 'new.example.com'))->toBe('new-example-com')
-        ->and($registry->targetsForHost(ClusterTool::DATA, ''))->toBe(['data-example-com', 'cms-example-com'])
+    expect($registry->instanceForHost(ClusterTool::DIRECTUS, 'https://CMS.example.com/'))->toBe('cms-example-com')
+        ->and($registry->instanceForHost(ClusterTool::DIRECTUS, 'new.example.com'))->toBe('new-example-com')
+        ->and($registry->targetsForHost(ClusterTool::DIRECTUS, ''))->toBe(['data-example-com', 'cms-example-com'])
         ->and($registry->targetsForHost(ClusterTool::DOCUMENSO, ''))->toBe(['']);
 });
 
@@ -64,9 +64,9 @@ test('aliases and unregistering change only the matched row', function (): void 
     $registry = FakeToolRegistry::install(toolRegistryRows());
 
     $registry->addAlias(ClusterTool::N8N, 'n8n.example.com');
-    $registry->unregister(ClusterTool::DATA, 'cms-example-com');
+    $registry->unregister(ClusterTool::DIRECTUS, 'cms-example-com');
 
     expect($registry->aliases(ClusterTool::N8N))->toBe(['n8n.example.com'])
-        ->and($registry->instanceSlugs(ClusterTool::DATA))->toBe(['data-example-com'])
+        ->and($registry->instanceSlugs(ClusterTool::DIRECTUS))->toBe(['data-example-com'])
         ->and($registry->writes)->toHaveCount(2);
 });

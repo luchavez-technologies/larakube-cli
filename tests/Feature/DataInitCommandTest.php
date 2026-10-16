@@ -231,7 +231,7 @@ test('tool:init --tool=directus includes zitadel in AUTH_PROVIDERS once sso:wire
 
 test('directus:show displays status table for Directus', function (): void {
     $registry = json_encode([
-        ['tool' => 'data', 'instance' => 'data-dev-test', 'host' => 'data.dev.test', 'aliases' => [], 'engine' => 'directus'],
+        ['tool' => 'directus', 'instance' => 'data-dev-test', 'host' => 'data.dev.test', 'aliases' => [], 'engine' => 'directus'],
     ]);
 
     Process::fake([
@@ -246,14 +246,14 @@ test('directus:show displays status table for Directus', function (): void {
         ->assertExitCode(0);
 });
 
-test('directus:show reads a legacy data-tagged registry row', function (): void {
+test('directus:show reads its own registry row and shows the host', function (): void {
     // Split per engine (directus:show always means Directus, never an
-    // ambiguous "which engine" lookup), so this only needs to confirm a
-    // pre-split registry row (generic 'data' tool, 'engine' metadata) still
-    // resolves — not re-display the engine as its own row, which would be
-    // tautological once the command's own identity already says Directus.
+    // ambiguous "which engine" lookup), so this only needs to confirm the
+    // registry row resolves — not re-display the engine as its own row,
+    // which would be tautological once the command's own identity already
+    // says Directus.
     $registry = json_encode([
-        ['tool' => 'data', 'instance' => 'data-dev-test', 'host' => 'data.dev.test', 'aliases' => [], 'engine' => 'directus'],
+        ['tool' => 'directus', 'instance' => 'data-dev-test', 'host' => 'data.dev.test', 'aliases' => [], 'engine' => 'directus'],
     ]);
 
     Process::fake([
@@ -271,8 +271,8 @@ test('directus:show reads a legacy data-tagged registry row', function (): void 
 
 test('directus:show --domain=all lists every registered instance', function (): void {
     $registry = json_encode([
-        ['tool' => 'data', 'instance' => 'main', 'host' => 'data.example.test', 'aliases' => []],
-        ['tool' => 'data', 'instance' => 'blog', 'host' => 'data-blog.example.test', 'aliases' => []],
+        ['tool' => 'directus', 'instance' => 'main', 'host' => 'data.example.test', 'aliases' => []],
+        ['tool' => 'directus', 'instance' => 'blog', 'host' => 'data-blog.example.test', 'aliases' => []],
     ]);
 
     Process::fake([

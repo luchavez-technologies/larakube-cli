@@ -85,15 +85,15 @@ test('findToolInstanceEntry does an exact match when an instance is given', func
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             base64_encode(json_encode([
-                ['tool' => 'data', 'host' => 'data.example.com', 'instance' => 'data-example-com'],
-                ['tool' => 'data', 'host' => 'blog.example.com', 'instance' => 'blog-example-com'],
+                ['tool' => 'directus', 'host' => 'data.example.com', 'instance' => 'data-example-com'],
+                ['tool' => 'directus', 'host' => 'blog.example.com', 'instance' => 'blog-example-com'],
                 ['tool' => 'zitadel', 'host' => 'sso.example.com', 'instance' => 'sso-example-com'],
             ])),
         ),
     ]);
 
-    expect($trait->find('kubectl', ClusterTool::DATA, 'blog-example-com')['host'])->toBe('blog.example.com')
-        ->and($trait->find('kubectl', ClusterTool::DATA, 'data-example-com')['host'])->toBe('data.example.com')
+    expect($trait->find('kubectl', ClusterTool::DIRECTUS, 'blog-example-com')['host'])->toBe('blog.example.com')
+        ->and($trait->find('kubectl', ClusterTool::DIRECTUS, 'data-example-com')['host'])->toBe('data.example.com')
         ->and($trait->find('kubectl', ClusterTool::ZITADEL, 'blog-example-com'))->toBeNull();
 });
 
@@ -108,13 +108,13 @@ test('findToolInstanceEntry with no instance resolves the tool\'s sole entry reg
                 // no special stored value being recognized, just "there's
                 // exactly one entry for this tool."
                 ['tool' => 'zitadel', 'host' => 'sso.example.com', 'instance' => 'main'],
-                ['tool' => 'data', 'host' => 'data.example.com', 'instance' => 'data-example-com'],
+                ['tool' => 'directus', 'host' => 'data.example.com', 'instance' => 'data-example-com'],
             ])),
         ),
     ]);
 
     expect($trait->find('kubectl', ClusterTool::ZITADEL)['host'])->toBe('sso.example.com')
-        ->and($trait->find('kubectl', ClusterTool::DATA)['host'])->toBe('data.example.com');
+        ->and($trait->find('kubectl', ClusterTool::DIRECTUS)['host'])->toBe('data.example.com');
 });
 
 test('findToolInstanceEntry with no instance refuses to guess when 2+ entries exist', function (): void {
@@ -277,13 +277,13 @@ test('two different tools coexist in the same flat list without colliding', func
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
             base64_encode(json_encode([
-                ['tool' => 'data', 'host' => 'data.example.com', 'instance' => 'data-example-com'],
-                ['tool' => 'data', 'host' => 'blog.example.com', 'instance' => 'blog-example-com'],
+                ['tool' => 'directus', 'host' => 'data.example.com', 'instance' => 'data-example-com'],
+                ['tool' => 'directus', 'host' => 'blog.example.com', 'instance' => 'blog-example-com'],
                 ['tool' => 'zitadel', 'host' => 'sso.example.com', 'instance' => 'sso-example-com'],
             ])),
         ),
     ]);
 
-    expect($trait->all('kubectl', ClusterTool::DATA))->toBe(['data-example-com', 'blog-example-com'])
+    expect($trait->all('kubectl', ClusterTool::DIRECTUS))->toBe(['data-example-com', 'blog-example-com'])
         ->and($trait->all('kubectl', ClusterTool::ZITADEL))->toBe(['sso-example-com']);
 });

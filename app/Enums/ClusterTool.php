@@ -16,7 +16,6 @@ use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
-use App\Contracts\HasSsoLicenseCaveat;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWhiteLabel;
 use App\Contracts\HasWorkloadComponents;
@@ -140,8 +139,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::SENDREC => 'Sendrec (Screen Recording & Sharing)',
             self::EXTERNAL_DNS => 'ExternalDNS (Cloudflare Sync)',
 
-            // Legacy Categories
-            self::DATA => 'Headless CMS & Data API (PocketBase or Directus)',
         };
     }
 
@@ -191,9 +188,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::YOPASS => '🔥',
             self::SENDREC => '🎥',
             self::EXTERNAL_DNS => '🌐',
-
-            // Legacy categories
-            self::DATA => '🗄️',
         };
     }
 
@@ -241,9 +235,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::YOPASS => 'Yopass',
             self::SENDREC => 'Sendrec',
             self::EXTERNAL_DNS => 'ExternalDNS',
-
-            // Legacy categories
-            self::DATA => 'Data',
         };
     }
 
@@ -275,7 +266,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function service(): ?SharedClusterService
     {
         return match ($this) {
-            self::POCKETBASE, self::DIRECTUS, self::WORDPRESS, self::DATA => SharedClusterService::DATA,
+            self::POCKETBASE, self::DIRECTUS, self::WORDPRESS => SharedClusterService::DATA,
             self::N8N, self::WINDMILL => SharedClusterService::FLOW,
             self::FORGEJO => SharedClusterService::FORGEJO,
             self::MATRIX => SharedClusterService::CHAT,
@@ -574,7 +565,6 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         return match ($this) {
             self::MATRIX => ['matrix' => 'Matrix (Synapse + Element)'],
-            self::DATA => ['pocketbase' => 'PocketBase', 'directus' => 'Directus', 'wordpress' => 'WordPress'],
             self::OCIS => ['ocis' => 'oCIS'],
             self::PLANKA => ['planka' => 'Planka'],
             default => [],
@@ -655,55 +645,22 @@ enum ClusterTool: string implements HasWorkloadComponents
 
     /**
      * Whether this case represents a deprecated legacy category verb rather than an
-     * individual tool.
+     * individual tool. No case does anymore (DATA, the last one, was deleted once
+     * the live cluster had nothing registered under it to migrate) — kept as a
+     * method, not inlined to `false`, because canonicalTool()/category() below
+     * still read it and a future multi-engine category would need it again.
      */
     public function isLegacy(): bool
     {
-        return match ($this) {
-            self::DATA => true,
-            default => false,
-        };
+        return false;
     }
 
     /**
      * Resolve a legacy category or canonical case to its canonical individual tool.
+     * Always itself now that no case is legacy.
      */
     public function canonicalTool(?string $engine = null): self
     {
-        return match ($this) {
-            self::DATA => match ($engine) {
-                'pocketbase' => self::POCKETBASE,
-                'wordpress' => self::WORDPRESS,
-                default => self::DIRECTUS,
-            },
-            default => $this,
-        };
-    }
-
-    /**
-     * The category case a tool-named case belongs to (POCKETBASE → DATA); a
-     * category case, or one with no category, is its own. For code that
-     * branches on "which kind of tool is this" and must give the same answer for
-     * `--tool=data` and `--tool=pocketbase`.
-     */
-    public function category(): self
-    {
-        if ($this->isLegacy()) {
-            return $this;
-        }
-
-        foreach (self::cases() as $case) {
-            if (! $case->isLegacy()) {
-                continue;
-            }
-
-            foreach ([null, 'pocketbase', 'wordpress'] as $engine) {
-                if ($case->canonicalTool($engine) === $this) {
-                    return $case;
-                }
-            }
-        }
-
         return $this;
     }
 
@@ -713,7 +670,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function legacyCategoryPrefix(): ?string
     {
         return match ($this) {
-            self::POCKETBASE, self::DIRECTUS, self::WORDPRESS, self::DATA => 'data',
+            self::POCKETBASE, self::DIRECTUS, self::WORDPRESS => 'data',
             self::N8N, self::WINDMILL => null,
             self::FORGEJO => 'git',
             self::MATRIX => 'chat',
@@ -1549,7 +1506,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function hasInstanceAwareRemoval(): bool
     {
         return match ($this) {
-            self::DATA, self::POCKETBASE, self::DIRECTUS, self::WORDPRESS, self::OUTLINE, self::TWENTY,
+            self::POCKETBASE, self::DIRECTUS, self::WORDPRESS, self::OUTLINE, self::TWENTY,
             self::PENPOT, self::YOPASS, self::DOCUMENSO,
             self::N8N, self::WINDMILL, self::KUTT, self::UMAMI, self::PLAUSIBLE,
             self::TEABLE, self::PLANKA, self::KUMA, self::METABASE,
@@ -1588,22 +1545,7 @@ enum ClusterTool: string implements HasWorkloadComponents
      */
     public function ssoLicenseCaveat(?string $engine = null): ?string
     {
-        if ($this === self::DIRECTUS) {
-            return DataTool::DIRECTUS->ssoLicenseCaveat();
-        }
-
-        if ($this !== self::DATA) {
-            return null;
-        }
-
-        // Unlike vendor()'s tryFrom()-then-Directus-fallback (which treats
-        // an unspecified engine as "not pocketbase"), a null $engine here
-        // means "caller didn't resolve one" and defaults to DATA's actual
-        // default engine (pocketbase) — preserving the original's
-        // `$engine ?? $this->defaultEngine()` semantics exactly.
-        $vendor = DataTool::tryFrom($engine ?? $this->defaultEngine() ?? '') ?? DataTool::DIRECTUS;
-
-        return $vendor instanceof HasSsoLicenseCaveat ? $vendor->ssoLicenseCaveat() : null;
+        return $this === self::DIRECTUS ? DataTool::DIRECTUS->ssoLicenseCaveat() : null;
     }
 
     /**
@@ -1884,7 +1826,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         return match ($this) {
             self::GRAFANA, self::FORGEJO, self::OUTLINE,
-            self::N8N, self::WINDMILL, self::DOCUMENSO, self::DATA, self::POCKETBASE,
+            self::N8N, self::WINDMILL, self::DOCUMENSO, self::POCKETBASE,
             self::DIRECTUS, self::WORDPRESS, self::KUTT, self::UMAMI, self::PLAUSIBLE,
             self::TEABLE, self::PLANKA, self::HEADLAMP,
             self::LIVEKIT, self::BULWARK, self::OCIS, self::NETBIRD,
@@ -1912,10 +1854,6 @@ enum ClusterTool: string implements HasWorkloadComponents
 
     public function dbSecretRef(?string $instance = null, ?string $engine = null): ?array
     {
-        if ($this === self::DATA && $engine === null) {
-            $engine = 'directus';
-        }
-
         $vendor = $this->vendor($engine);
         if ($vendor instanceof HasDbSecretRef) {
             $ref = $vendor->dbSecretRef();
@@ -2021,10 +1959,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             return substr($name, strlen($prefix) + 1);
         }
 
-        if ($this->isLegacy() && str_starts_with($name, "{$this->value}-")) {
-            return substr($name, strlen($this->value) + 1);
-        }
-
         return $name;
     }
 
@@ -2108,9 +2042,6 @@ enum ClusterTool: string implements HasWorkloadComponents
 
         return [];
     }
-
-    // Legacy Category Cases (Retained as deprecated aliases for backwards compatibility with production clusters)
-    case DATA = 'data';
 
     // Canonical Individual Tool Cases
     case POCKETBASE = 'pocketbase';

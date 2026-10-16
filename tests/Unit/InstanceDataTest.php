@@ -9,7 +9,7 @@ test('InstanceData round-trips a raw registry entry onto its properties', functi
     // ConfigData/GlobalConfigData's convention of no name translation
     // between the Data class and its persisted JSON.
     $data = InstanceData::from([
-        'tool' => 'data',
+        'tool' => 'directus',
         'host' => 'data.example.com',
         'instance' => 'main',
         'aliases' => ['alt.example.com'],
@@ -21,8 +21,8 @@ test('InstanceData round-trips a raw registry entry onto its properties', functi
         'updatedAt' => '2026-08-09T12:00:00+00:00',
     ]);
 
-    expect($data->tool)->toBe('data')
-        ->and($data->getTool())->toBe(ClusterTool::DATA)
+    expect($data->tool)->toBe('directus')
+        ->and($data->getTool())->toBe(ClusterTool::DIRECTUS)
         ->and($data->host)->toBe('data.example.com')
         ->and($data->instance)->toBe('main')
         ->and($data->aliases)->toBe(['alt.example.com'])
