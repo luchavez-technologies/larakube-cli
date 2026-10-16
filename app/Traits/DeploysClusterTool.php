@@ -477,6 +477,8 @@ trait DeploysClusterTool
             'instance' => $instance === '' ? null : $instance,
             'serviceName' => $deploymentName,
             'deployName' => $deploymentName,
+            'deploymentName' => $deploymentName,
+            'ingressName' => $ingressName,
             'namespace' => $tool->namespace(),
             'isLocal' => $isLocal,
             'vpnOnly' => str_contains(Process::run("{$kubectl} get ingress {$ingressName} -n {$tool->namespace()} -o jsonpath='{.metadata.annotations}' --ignore-not-found")->output(), 'vpn-only'),
