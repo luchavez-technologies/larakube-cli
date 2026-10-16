@@ -79,7 +79,7 @@ abstract class PlankaInitCommand extends AbstractToolInitCommand
             Kubectl::fromPrefix($kubectl)->putSecret($ns, $names->secret(), ['db-password' => $dbPassword, 'secret-key' => $secretKey], $names->labels());
         });
 
-        $manifest = view('k8s.tasks.shared', [
+        $manifest = view('k8s.planka.shared', [
             'engine' => 'planka',
             'host' => $host,
             'dbName' => $dbName,

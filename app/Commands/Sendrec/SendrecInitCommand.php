@@ -132,7 +132,7 @@ abstract class SendrecInitCommand extends AbstractToolInitCommand
             }
         });
 
-        $manifest = view('k8s.record.shared', [
+        $manifest = view('k8s.sendrec.shared', [
             'host' => $host,
             'instance' => $names->instance,
             'plexNamespace' => $this->plexNamespace(),

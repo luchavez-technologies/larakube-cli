@@ -6,7 +6,7 @@ use App\Enums\SecretKind;
 use Illuminate\Support\Facades\Process;
 
 test('sheets manifest carries canonical resource naming and identity labels', function (): void {
-    $manifest = view('k8s.sheet.teable', [
+    $manifest = view('k8s.teable.teable', [
         'host' => 'sheet.example.test',
         'plexNamespace' => 'larakube-plex',
         'redisIndex' => 2,
@@ -29,7 +29,7 @@ test('sheets manifest carries canonical resource naming and identity labels', fu
 });
 
 test('sheets ingress carries canonical naming and proxy annotations', function (): void {
-    $cloud = view('k8s.sheet.teable', [
+    $cloud = view('k8s.teable.teable', [
         'host' => 'sheet.luchtech.dev',
         'plexNamespace' => 'larakube-plex',
         'redisIndex' => 2,

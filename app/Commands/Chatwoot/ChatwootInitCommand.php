@@ -89,7 +89,7 @@ abstract class ChatwootInitCommand extends AbstractToolInitCommand
 
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::CHATWOOT, ClusterTool::CHATWOOT->instanceSlugFromHost($host));
 
-        $manifest = view('k8s.support.shared', [
+        $manifest = view('k8s.chatwoot.shared', [
             'host' => $host,
             'instance' => $names->instance,
             'appName' => $branding['appName'],

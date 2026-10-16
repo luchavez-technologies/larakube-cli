@@ -127,4 +127,4 @@ spec:
       targetPort: 8080
       name: http
 ---
-@include('k8s.record.ingress', ['instance' => $instance])
+@include('k8s.sendrec.ingress', ['instance' => $instance])

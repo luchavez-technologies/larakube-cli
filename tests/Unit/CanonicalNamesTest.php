@@ -46,7 +46,7 @@ test('a Cluster Tool manifest pack takes its names from ToolInstance', function 
     // its init) and `dns` (keyed by zone group) are the only packs that do not read it.
     $exempt = ['data', 'external-dns'];
     $packs = ['umami', 'matrix', 'twenty', 'dashboard', 'penpot', 'ocis', 'glitchtip', 'n8n', 'windmill', 'forgejo', 'metabase', 'kutt', 'mail',
-        'livekit', 'monitoring', 'outline', 'yopass', 'record', 'resume', 'openbao', 'sheet', 'sign', 'zitadel', 'support', 'tasks',
+        'livekit', 'monitoring', 'outline', 'yopass', 'sendrec', 'resume', 'openbao', 'teable', 'documenso', 'zitadel', 'chatwoot', 'planka',
         'uptime', 'vault', 'netbird', 'webmail', ...$exempt];
 
     foreach (array_diff($packs, $exempt) as $pack) {

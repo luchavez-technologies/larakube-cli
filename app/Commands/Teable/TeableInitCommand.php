@@ -92,7 +92,7 @@ abstract class TeableInitCommand extends AbstractToolInitCommand
             Kubectl::fromPrefix($kubectl)->putSecret($ns, $names->secret(), ['db-password' => $dbPassword, 'secret-key' => $secretKey, 's3-access-key' => $storage['access'], 's3-secret-key' => $storage['secret'], 'database-url' => $dbUrl], $names->labels());
         });
 
-        $manifest = view('k8s.sheet.teable', [
+        $manifest = view('k8s.teable.teable', [
             'host' => $host,
             'plexNamespace' => $this->plexNamespace(),
             'redisIndex' => $redisIndex,

@@ -147,7 +147,7 @@ abstract class DocumensoInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $manifest = view('k8s.sign.shared', [
+        $manifest = view('k8s.documenso.shared', [
             'names' => $names,
             'host' => $host,
             'plexNamespace' => $this->plexNamespace(),

@@ -6,7 +6,7 @@ use App\Enums\SecretKind;
 use Illuminate\Support\Facades\Process;
 
 test('tasks manifest carries canonical resource naming and identity labels', function (): void {
-    $manifest = view('k8s.tasks.shared', [
+    $manifest = view('k8s.planka.shared', [
         'host' => 'tasks.example.test',
         'plexNamespace' => 'larakube-plex',
         'vpnOnly' => false,
@@ -23,7 +23,7 @@ test('tasks manifest carries canonical resource naming and identity labels', fun
 });
 
 test('tasks ingress carries canonical naming and proxy annotations', function (): void {
-    $cloud = view('k8s.tasks.shared', [
+    $cloud = view('k8s.planka.shared', [
         'host' => 'tasks.luchtech.dev',
         'plexNamespace' => 'larakube-plex',
         'vpnOnly' => false,

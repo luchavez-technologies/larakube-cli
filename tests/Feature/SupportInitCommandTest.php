@@ -9,7 +9,7 @@ test('support manifest declares SMTP_ENABLE_STARTTLS_AUTO as a literal, not valu
     // the two are mutually exclusive (the exact bug confirmed live on
     // Documenso, 2026-08-05). Chatwoot's manifest declares its containers
     // (web + worker) with the same env block, so this must hold for both.
-    $manifest = view('k8s.support.shared', [
+    $manifest = view('k8s.chatwoot.shared', [
         'host' => 'support.example.test',
         'appName' => 'Support',
         'logoUrl' => null,

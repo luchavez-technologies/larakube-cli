@@ -240,4 +240,4 @@ spec:
       targetPort: 3000
   type: ClusterIP
 ---
-@include('k8s.sign.ingress', ['labels' => $labels])
+@include('k8s.documenso.ingress', ['labels' => $labels])
