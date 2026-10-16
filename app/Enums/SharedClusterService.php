@@ -54,7 +54,7 @@ enum SharedClusterService: string
             self::SUPPORT => 'k8s.chatwoot.ingress',
             self::LINK => 'k8s.kutt.ingress',
             self::CRM => 'k8s.twenty.ingress',
-            self::DATA => 'k8s.data.ingress',
+            self::DATA => 'k8s.directus.ingress',
             self::RECORD => 'k8s.sendrec.ingress',
             self::DASHBOARD => 'k8s.headlamp.ingress',
             self::MEET => 'k8s.livekit.ingress',

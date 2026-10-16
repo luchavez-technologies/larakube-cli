@@ -42,9 +42,9 @@ test('every Cluster Tool is on the canonical naming, so a new one has to choose 
 });
 
 test('a Cluster Tool manifest pack takes its names from ToolInstance', function (): void {
-    // Hand-built names are how init and remove drift apart. `data` (names passed in by
-    // its init) and `dns` (keyed by zone group) are the only packs that do not read it.
-    $exempt = ['data', 'external-dns'];
+    // Hand-built names are how init and remove drift apart. Pocketbase/directus/wordpress (names passed in by
+    // their init) and `external-dns` (keyed by zone group) are the only packs that do not read it.
+    $exempt = ['external-dns', 'pocketbase', 'directus', 'wordpress'];
     $packs = ['umami', 'matrix', 'twenty', 'headlamp', 'penpot', 'ocis', 'glitchtip', 'n8n', 'windmill', 'forgejo', 'metabase', 'kutt', 'stalwart',
         'livekit', 'grafana', 'outline', 'yopass', 'sendrec', 'resume', 'openbao', 'teable', 'documenso', 'zitadel', 'chatwoot', 'planka',
         'kuma', 'vaultwarden', 'netbird', 'bulwark', ...$exempt];

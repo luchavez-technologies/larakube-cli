@@ -47,7 +47,7 @@ test('tool:init deploys 1-click WordPress with Commons MySQL when --db=mysql', f
 });
 
 test('wordpress manifest view renders valid resources for sqlite and mysql', function (): void {
-    $sqliteManifest = view('k8s.data.wordpress', [
+    $sqliteManifest = view('k8s.wordpress.wordpress', [
         'volumeSize' => fn ($name, $default) => $default,
         'deployName' => 'data-wordpress-test',
         'namespace' => 'larakube-shared',
@@ -75,7 +75,7 @@ test('wordpress manifest view renders valid resources for sqlite and mysql', fun
         ->and($sqliteManifest)->toContain('kind: Service')
         ->and($sqliteManifest)->toContain('kind: Ingress');
 
-    $mysqlManifest = view('k8s.data.wordpress', [
+    $mysqlManifest = view('k8s.wordpress.wordpress', [
         'volumeSize' => fn ($name, $default) => $default,
         'deployName' => 'data-wordpress-test',
         'namespace' => 'larakube-shared',

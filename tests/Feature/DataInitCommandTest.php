@@ -76,7 +76,7 @@ test('data manifest wires the Commons Redis via the generic REDIS var, not CACHE
     // never read at all, so every namespace silently fell back to ioredis's
     // localhost default. Non-fatal (WARN, not ERROR) but every single HTTP
     // request paid a ~3.6s doomed-connection retry tax, confirmed live.
-    $manifest = view('k8s.data.shared', [
+    $manifest = view('k8s.directus.directus', [
         'engine' => 'directus',
         'deployName' => 'directus-data-example-test',
         'secretName' => 'directus-secrets-data-example-test',
@@ -135,7 +135,7 @@ test('data manifest declares the mail:wire/sso:wire static keys as literals, not
     // tool:init --tool=directus re-run fail — kubectl apply's merge re-adds valueFrom on top
     // of the live literal value already set, and the two are mutually
     // exclusive (the exact bug confirmed live on Documenso, 2026-08-05).
-    $manifest = view('k8s.data.shared', [
+    $manifest = view('k8s.directus.directus', [
         'deployName' => 'directus-data-example-test',
         'secretName' => 'directus-secrets-data-example-test',
         'smtpSecretName' => 'directus-smtp-data-example-test',

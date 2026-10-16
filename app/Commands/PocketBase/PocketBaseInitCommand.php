@@ -136,7 +136,7 @@ abstract class PocketBaseInitCommand extends AbstractToolInitCommand
 
         $ssoWired = $this->readClusterSecretKey($kubectl, $ns, $oidcSecretName, 'POCKETBASE_OIDC_CLIENT_ID') !== null;
 
-        $manifest = view('k8s.data.shared', [
+        $manifest = view('k8s.pocketbase.pocketbase', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'engine' => $engine,
             'dbEngine' => 'sqlite',

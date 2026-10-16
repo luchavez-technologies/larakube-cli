@@ -151,7 +151,7 @@ abstract class DirectusInitCommand extends AbstractToolInitCommand
 
         $ssoWired = $this->readClusterSecretKey($kubectl, $ns, $oidcSecretName, 'AUTH_ZITADEL_CLIENT_ID') !== null;
 
-        $manifest = view('k8s.data.shared', [
+        $manifest = view('k8s.directus.directus', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'engine' => $engine,
             'dbEngine' => 'postgresql',

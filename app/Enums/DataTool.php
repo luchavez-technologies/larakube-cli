@@ -177,7 +177,7 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
         return match ($this) {
             // PocketBase's storage is a PersistentVolumeClaim (embedded
             // SQLite + local disk) — its manifest has no S3 config wired in
-            // at all (verified against resources/views/k8s/data/pocketbase.blade.php),
+            // at all (verified against resources/views/k8s/pocketbase/pocketbase.blade.php),
             // so it owns no Commons bucket.
             self::POCKETBASE => [],
             self::DIRECTUS => ['data-directus-storage'],

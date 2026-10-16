@@ -1,5 +1,7 @@
 # Phase B: rename legacy Blade view folders to match their real tool, 1:1
 
+## Status: COMPLETED — All 6 batches complete and verified against test suite
+
 ## Context (read this before touching anything)
 
 Over the last two sessions, every `ClusterTool` PHP command was collapsed from

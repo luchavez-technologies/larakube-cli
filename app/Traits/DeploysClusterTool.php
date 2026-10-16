@@ -457,14 +457,7 @@ trait DeploysClusterTool
      */
     protected function reapplyToolIngress(string $kubectl, ClusterTool $tool, string $primaryHost, array $aliasHosts, string $instance, bool $recordCurrentHost = false): bool
     {
-        // Blade view folders are still named after the legacy category word
-        // (k8s/mail/, k8s/git/) even for a canonical case like STALWART/
-        // FORGEJO — legacyCategoryPrefix() maps either spelling to the same
-        // folder; $tool->value alone would silently 404 for a canonical tool
-        // whose value differs from its folder name.
-        $view = view()->exists("k8s.{$tool->value}.ingress")
-            ? "k8s.{$tool->value}.ingress"
-            : 'k8s.'.($tool->legacyCategoryPrefix() ?? $tool->value).'.ingress';
+        $view = "k8s.{$tool->value}.ingress";
         if (! view()->exists($view)) {
             return false;
         }

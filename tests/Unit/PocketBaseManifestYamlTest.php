@@ -4,7 +4,7 @@ use Symfony\Component\Yaml\Yaml;
 
 function pocketbaseManifest(array $overrides = []): string
 {
-    return view('k8s.data.pocketbase', array_merge([
+    return view('k8s.pocketbase.pocketbase', array_merge([
         'deployName' => 'data-pocketbase',
         'namespace' => 'larakube-shared',
         'instance' => 'main',

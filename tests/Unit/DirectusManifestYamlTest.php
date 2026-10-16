@@ -4,7 +4,7 @@ use Symfony\Component\Yaml\Yaml;
 
 function directusManifest(array $overrides = []): string
 {
-    return view('k8s.data.directus', array_merge([
+    return view('k8s.directus.directus', array_merge([
         'deployName' => 'data-directus',
         'secretName' => 'data-secrets',
         'smtpSecretName' => 'data-smtp',
@@ -60,7 +60,7 @@ test('directus main instance keeps the original unsuffixed resource names', func
 
 test('directus named instance gets distinct Deployment/Service/Ingress names, not shared "data"', function (): void {
     // Regression guard: before this fix, directus.blade.php and its shared
-    // k8s.data.ingress partial hardcoded "data-directus"/"data"/"data_directus"
+    // k8s.directus.ingress partial hardcoded "data-directus"/"data"/"data_directus"
     // regardless of instance — two Directus instances collided on Deployment,
     // Service, Secret, DB, bucket, and Ingress name, independent of the host
     // question the rest of this pass fixed.

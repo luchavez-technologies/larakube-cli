@@ -158,4 +158,4 @@ spec:
       targetPort: 80
   type: ClusterIP
 ---
-@include('k8s.data.ingress', ['ingressName' => $deployName, 'serviceName' => $deployName, 'labels' => $labels ?? []])
+@include('k8s.wordpress.ingress', ['ingressName' => $deployName, 'serviceName' => $deployName, 'labels' => $labels ?? []])
