@@ -9,7 +9,7 @@ use Tests\Support\FakeToolRegistry;
 function toolRegistryRows(): array
 {
     return [
-        ['tool' => 'flow', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'aliases' => []],
+        ['tool' => 'n8n', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'aliases' => []],
         ['tool' => 'data', 'instance' => 'data-example-com', 'host' => 'data.example.com'],
         ['tool' => 'data', 'instance' => 'cms-example-com', 'host' => 'cms.example.com'],
     ];
@@ -34,7 +34,7 @@ test('a missing Secret reads as an empty registry', function (): void {
 test('no instance given means the tool\'s sole row, never a guess between several', function (): void {
     $registry = FakeToolRegistry::install(toolRegistryRows());
 
-    expect($registry->host(ClusterTool::FLOW))->toBe('flow.example.com')
+    expect($registry->host(ClusterTool::N8N))->toBe('flow.example.com')
         ->and($registry->entry(ClusterTool::DATA))->toBeNull()
         ->and($registry->host(ClusterTool::DATA, 'cms-example-com'))->toBe('cms.example.com');
 });
@@ -63,10 +63,10 @@ test('register heals a legacy row but never overwrites a different instance', fu
 test('aliases and unregistering change only the matched row', function (): void {
     $registry = FakeToolRegistry::install(toolRegistryRows());
 
-    $registry->addAlias(ClusterTool::FLOW, 'n8n.example.com');
+    $registry->addAlias(ClusterTool::N8N, 'n8n.example.com');
     $registry->unregister(ClusterTool::DATA, 'cms-example-com');
 
-    expect($registry->aliases(ClusterTool::FLOW))->toBe(['n8n.example.com'])
+    expect($registry->aliases(ClusterTool::N8N))->toBe(['n8n.example.com'])
         ->and($registry->instanceSlugs(ClusterTool::DATA))->toBe(['data-example-com'])
         ->and($registry->writes)->toHaveCount(2);
 });

@@ -198,7 +198,7 @@ trait InteractsWithToolRegistry
         // must never probe the generic shared service (like larakube-tool=flow) because that causes
         // false positives where one installed engine makes the other engine appear installed.
         $multiEngineTools = [
-            ClusterTool::FLOW, ClusterTool::N8N, ClusterTool::WINDMILL,
+            ClusterTool::N8N, ClusterTool::WINDMILL,
             ClusterTool::UMAMI, ClusterTool::PLAUSIBLE,
             ClusterTool::DATA, ClusterTool::POCKETBASE, ClusterTool::DIRECTUS,
         ];

@@ -57,9 +57,7 @@ test('legacy categories delegate commons capabilities to their canonical tools',
         ->and(ClusterTool::DATA->commonsCapabilities('wordpress'))
         ->toBe(ClusterTool::WORDPRESS->commonsCapabilities())
         ->and(ClusterTool::DATA->commonsCapabilities('directus'))
-        ->toBe(ClusterTool::DIRECTUS->commonsCapabilities())
-        ->and(ClusterTool::FLOW->commonsCapabilities('n8n'))
-        ->toBe(ClusterTool::N8N->commonsCapabilities());
+        ->toBe(ClusterTool::DIRECTUS->commonsCapabilities());
 });
 
 test('tool:list includes commonsCapabilities in json output', function (): void {

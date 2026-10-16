@@ -46,7 +46,7 @@ function proxyGuardCluster(bool $dnsChallenge = true, string $sslMode = 'strict'
     ]);
 }
 
-function guardProxy(object $command, string $host, ClusterTool $tool = ClusterTool::FLOW): void
+function guardProxy(object $command, string $host, ClusterTool $tool = ClusterTool::N8N): void
 {
     (new ReflectionMethod($command, 'guardRequestedProxy'))->invoke($command, $tool, 'production', 'kubectl', $host);
 }

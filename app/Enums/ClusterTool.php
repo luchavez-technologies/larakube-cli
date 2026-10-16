@@ -141,7 +141,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::EXTERNAL_DNS => 'ExternalDNS (Cloudflare Sync)',
 
             // Legacy Categories
-            self::FLOW => 'Workflow Automation (N8N or Windmill)',
             self::DATA => 'Headless CMS & Data API (PocketBase or Directus)',
         };
     }
@@ -195,7 +194,6 @@ enum ClusterTool: string implements HasWorkloadComponents
 
             // Legacy categories
             self::DATA => '🗄️',
-            self::FLOW => '⚡',
         };
     }
 
@@ -246,7 +244,6 @@ enum ClusterTool: string implements HasWorkloadComponents
 
             // Legacy categories
             self::DATA => 'Data',
-            self::FLOW => 'Automation',
         };
     }
 
@@ -279,7 +276,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         return match ($this) {
             self::POCKETBASE, self::DIRECTUS, self::WORDPRESS, self::DATA => SharedClusterService::DATA,
-            self::N8N, self::WINDMILL, self::FLOW => SharedClusterService::FLOW,
+            self::N8N, self::WINDMILL => SharedClusterService::FLOW,
             self::FORGEJO => SharedClusterService::FORGEJO,
             self::MATRIX => SharedClusterService::CHAT,
             self::TWENTY => SharedClusterService::CRM,
@@ -579,7 +576,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::MATRIX => ['matrix' => 'Matrix (Synapse + Element)'],
             self::DATA => ['pocketbase' => 'PocketBase', 'directus' => 'Directus', 'wordpress' => 'WordPress'],
             self::OCIS => ['ocis' => 'oCIS'],
-            self::FLOW => ['n8n' => 'n8n', 'windmill' => 'Windmill'],
             self::PLANKA => ['planka' => 'Planka'],
             default => [],
         };
@@ -601,7 +597,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         return match ($this) {
             self::MATRIX, self::OCIS, self::GLITCHTIP,
-            self::FLOW, self::N8N, self::WINDMILL, self::FORGEJO,
+            self::N8N, self::WINDMILL, self::FORGEJO,
             self::METABASE, self::ZITADEL,
             self::GRAFANA, self::NETBIRD => true,
             default => false,
@@ -664,8 +660,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function isLegacy(): bool
     {
         return match ($this) {
-            self::DATA,
-            self::FLOW => true,
+            self::DATA => true,
             default => false,
         };
     }
@@ -681,16 +676,15 @@ enum ClusterTool: string implements HasWorkloadComponents
                 'wordpress' => self::WORDPRESS,
                 default => self::DIRECTUS,
             },
-            self::FLOW => ($engine === 'windmill') ? self::WINDMILL : self::N8N,
             default => $this,
         };
     }
 
     /**
-     * The category case a tool-named case belongs to (N8N → FLOW, POCKETBASE →
-     * DATA); a category case, or one with no category, is its own. For code that
+     * The category case a tool-named case belongs to (POCKETBASE → DATA); a
+     * category case, or one with no category, is its own. For code that
      * branches on "which kind of tool is this" and must give the same answer for
-     * `--tool=flow` and `--tool=n8n`.
+     * `--tool=data` and `--tool=pocketbase`.
      */
     public function category(): self
     {
@@ -703,7 +697,7 @@ enum ClusterTool: string implements HasWorkloadComponents
                 continue;
             }
 
-            foreach ([null, 'pocketbase', 'wordpress', 'windmill', 'plausible'] as $engine) {
+            foreach ([null, 'pocketbase', 'wordpress'] as $engine) {
                 if ($case->canonicalTool($engine) === $this) {
                     return $case;
                 }
@@ -720,7 +714,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         return match ($this) {
             self::POCKETBASE, self::DIRECTUS, self::WORDPRESS, self::DATA => 'data',
-            self::N8N, self::WINDMILL, self::FLOW => 'flow',
+            self::N8N, self::WINDMILL => null,
             self::FORGEJO => 'git',
             self::MATRIX => 'chat',
             self::TWENTY => 'crm',
@@ -738,7 +732,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::TEABLE => 'sheets',
             self::DOCUMENSO => 'sign',
             self::CHATWOOT => 'support',
-            self::UMAMI, self::PLAUSIBLE => 'analytics',
+            self::UMAMI, self::PLAUSIBLE => null,
             self::HEADLAMP => 'dashboard',
             self::STALWART => 'mail',
             self::BULWARK => 'webmail',
@@ -1557,7 +1551,7 @@ enum ClusterTool: string implements HasWorkloadComponents
         return match ($this) {
             self::DATA, self::POCKETBASE, self::DIRECTUS, self::WORDPRESS, self::OUTLINE, self::TWENTY,
             self::PENPOT, self::YOPASS, self::DOCUMENSO,
-            self::FLOW, self::N8N, self::WINDMILL, self::KUTT, self::UMAMI, self::PLAUSIBLE,
+            self::N8N, self::WINDMILL, self::KUTT, self::UMAMI, self::PLAUSIBLE,
             self::TEABLE, self::PLANKA, self::KUMA, self::METABASE,
             self::GLITCHTIP, self::CHATWOOT, self::SENDREC, self::RESUME, self::PENPOT => true,
             default => false,
@@ -1890,7 +1884,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         return match ($this) {
             self::GRAFANA, self::FORGEJO, self::OUTLINE,
-            self::FLOW, self::N8N, self::WINDMILL, self::DOCUMENSO, self::DATA, self::POCKETBASE,
+            self::N8N, self::WINDMILL, self::DOCUMENSO, self::DATA, self::POCKETBASE,
             self::DIRECTUS, self::WORDPRESS, self::KUTT, self::UMAMI, self::PLAUSIBLE,
             self::TEABLE, self::PLANKA, self::HEADLAMP,
             self::LIVEKIT, self::BULWARK, self::OCIS, self::NETBIRD,
@@ -2092,18 +2086,6 @@ enum ClusterTool: string implements HasWorkloadComponents
     /** @return list<string> */
     private function commonsDatabaseList(?string $engine = null): array
     {
-        // FLOW with no resolved engine reports BOTH engines' tenants, so a
-        // caller that can't tell which engine an instance ran still covers
-        // it. Must run before vendor(), which defaults a null engine to n8n.
-        if ($this === self::FLOW && $engine === null) {
-            $canonical = $this->resourceNaming() === ResourceNaming::CANONICAL;
-
-            return array_merge(...array_map(
-                fn (FlowTool $c) => $canonical ? $c->tool()->canonicalDatabaseList() : $c->tool()->commonsDatabaseList(),
-                FlowTool::cases(),
-            ));
-        }
-
         $vendor = $this->vendor($engine);
         if ($vendor instanceof HasCommonsDatabases) {
             return $this->resourceNaming() === ResourceNaming::CANONICAL
@@ -2129,7 +2111,6 @@ enum ClusterTool: string implements HasWorkloadComponents
 
     // Legacy Category Cases (Retained as deprecated aliases for backwards compatibility with production clusters)
     case DATA = 'data';
-    case FLOW = 'flow';
 
     // Canonical Individual Tool Cases
     case POCKETBASE = 'pocketbase';

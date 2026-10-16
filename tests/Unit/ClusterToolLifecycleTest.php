@@ -75,14 +75,6 @@ test('tool services are unique so two tools never claim the same host', function
     expect(array_values($services))->toEqual(array_values(array_unique($services)));
 });
 
-test('engine-switchable tools drop every engine database, not just the active one', function (): void {
-    ssoRegistered();
-    // Switching engines between installs used to strand the previous engine's
-    // Commons tenant, which then collided on the next init.
-    expect(ClusterTool::FLOW->commonsDatabases())->toEqualCanonicalizing(['n8n', 'windmill'])
-        ->and(ClusterTool::TEABLE->commonsDatabases())->toEqualCanonicalizing(['teable']);
-});
-
 test('every tool with engines declares a default that is one of them', function (): void {
     ssoRegistered();
     foreach (ClusterTool::cases() as $tool) {
@@ -111,7 +103,6 @@ test('only tools that can bundle their own storage advertise --no-plex', functio
     );
 
     expect($noPlex)->toEqualCanonicalizing([
-        'flow',
         'matrix', 'ocis', 'glitchtip', 'n8n', 'windmill', 'forgejo', 'metabase', 'zitadel',
         'grafana', 'netbird',
     ]);
@@ -130,9 +121,9 @@ test('only tools that can bundle their own storage advertise --no-plex', functio
 
 test('command name helpers spell the canonical tool:action shape', function (): void {
     ssoRegistered();
-    expect(ClusterTool::FLOW->initInvocation())->toBe('tool:init --tool=n8n')
-        ->and(ClusterTool::FLOW->removeCommand())->toBe('n8n:remove')
-        ->and(ClusterTool::FLOW->showCommand())->toBe('n8n:show')
+    expect(ClusterTool::DATA->initInvocation())->toBe('tool:init --tool=directus')
+        ->and(ClusterTool::DATA->removeCommand())->toBe('directus:remove')
+        ->and(ClusterTool::DATA->showCommand())->toBe('directus:show')
         ->and(ClusterTool::VAULTWARDEN->removeCommand())->toBe('vaultwarden:remove');
 });
 
@@ -226,13 +217,14 @@ test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance
     ssoRegistered();
     // Deliberately narrower than supportsMultipleInstances() above: that
     // method's `true` default means "no known architectural blocker", not
-    // "already built". Only DATA, NOTES, CRM, PENPOT, YOPASS, SIGN and FLOW actually resolve
-    // --domain to a specific registered instance before tearing it down
-    // today — every other tool's teardown() hardcodes fixed resource names
-    // and would silently ignore --domain, deleting the one real installation
-    // regardless of what host was passed. A tool moving in or out of this
-    // list means its :remove command grew (or lost) real per-instance
-    // teardown — a deliberate capability change, not drift.
+    // "already built". Only DATA, NOTES, CRM, PENPOT, YOPASS, SIGN and FLOW's
+    // split engines actually resolve --domain to a specific registered
+    // instance before tearing it down today — every other tool's teardown()
+    // hardcodes fixed resource names and would silently ignore --domain,
+    // deleting the one real installation regardless of what host was
+    // passed. A tool moving in or out of this list means its :remove
+    // command grew (or lost) real per-instance teardown — a deliberate
+    // capability change, not drift.
     $expectedTrue = [
         ClusterTool::DATA, ClusterTool::POCKETBASE, ClusterTool::DIRECTUS, ClusterTool::WORDPRESS,
         ClusterTool::OUTLINE,
@@ -240,7 +232,7 @@ test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance
         ClusterTool::PENPOT,
         ClusterTool::YOPASS,
         ClusterTool::DOCUMENSO,
-        ClusterTool::FLOW, ClusterTool::N8N, ClusterTool::WINDMILL,
+        ClusterTool::N8N, ClusterTool::WINDMILL,
         ClusterTool::KUTT,
         ClusterTool::UMAMI, ClusterTool::PLAUSIBLE,
         ClusterTool::TEABLE,

@@ -36,7 +36,7 @@ test('deploymentName() is unchanged by delegating to primaryComponent()', functi
     $expected = [
         'umami' => 'umami', 'twenty' => 'twenty',
         'ocis' => 'ocis', 'glitchtip' => 'glitchtip',
-        'flow' => 'n8n', 'metabase' => 'metabase',
+        'n8n' => 'n8n', 'metabase' => 'metabase',
         'kutt' => 'kutt', 'stalwart' => 'stalwart', 'grafana' => 'grafana',
         'outline' => 'outline', 'vaultwarden' => 'vaultwarden', 'sendrec' => 'sendrec',
         'openbao' => 'openbao', 'teable' => 'teable', 'documenso' => 'documenso',

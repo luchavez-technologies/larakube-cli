@@ -52,7 +52,7 @@ function toolProxyCluster(?array &$annotations, bool $vpnOnly = false, bool $dns
 function toolProxyRegistry(?bool $proxied = null): FakeToolRegistry
 {
     return FakeToolRegistry::install([array_filter([
-        'tool' => 'flow', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'engine' => 'n8n', 'proxied' => $proxied,
+        'tool' => 'n8n', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'engine' => 'n8n', 'proxied' => $proxied,
     ], fn ($value) => $value !== null)]);
 }
 
@@ -68,7 +68,7 @@ test('tool:proxy annotates the instance\'s Ingress and remembers it', function (
 
     expect($annotations)->toHaveCount(1)
         ->and($annotations[0])->toContain('annotate ingress n8n-flow-example-com -n larakube-shared external-dns.alpha.kubernetes.io/cloudflare-proxied=true --overwrite')
-        ->and($registry->entryForHost(App\Enums\ClusterTool::FLOW, 'flow.example.com')['proxied'])->toBeTrue();
+        ->and($registry->entryForHost(App\Enums\ClusterTool::N8N, 'flow.example.com')['proxied'])->toBeTrue();
 });
 
 test('tool:unproxy removes the annotation and remembers DNS-only', function (): void {
@@ -78,7 +78,7 @@ test('tool:unproxy removes the annotation and remembers DNS-only', function (): 
     $this->artisan('tool:unproxy production --domain=flow.example.com --context=ctx')->assertExitCode(0);
 
     expect($annotations[0])->toContain('external-dns.alpha.kubernetes.io/cloudflare-proxied- --overwrite')
-        ->and($registry->entryForHost(App\Enums\ClusterTool::FLOW, 'flow.example.com')['proxied'])->toBeFalse();
+        ->and($registry->entryForHost(App\Enums\ClusterTool::N8N, 'flow.example.com')['proxied'])->toBeFalse();
 });
 
 test('tool:proxy runs the same checks as --proxied and changes nothing when they fail', function (): void {
@@ -118,7 +118,7 @@ test('re-running {tool}:init without --proxied keeps the remembered choice', fun
     $command->setInput($input);
     $command->setOutput(new Illuminate\Console\OutputStyle($input, new Symfony\Component\Console\Output\BufferedOutput));
 
-    (new ReflectionMethod($command, 'guardRequestedProxy'))->invoke($command, App\Enums\ClusterTool::FLOW, 'production', 'kubectl', 'flow.example.com');
+    (new ReflectionMethod($command, 'guardRequestedProxy'))->invoke($command, App\Enums\ClusterTool::N8N, 'production', 'kubectl', 'flow.example.com');
 
     expect($command->resolveProxied(false))->toBeTrue();
 });

@@ -178,7 +178,7 @@ test('mail:wire --domain targets that host\'s instance, even pasted as a URL', f
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([
             ssoRegistryRow(),
-            ['tool' => 'flow', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'engine' => 'n8n'],
+            ['tool' => 'n8n', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'engine' => 'n8n'],
         ]))),
         '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@example.com')),
         '*get deployment n8n-flow-example-com*' => Process::result(output: 'n8n-flow-example-com   1/1   1   1   1d'),
@@ -188,7 +188,7 @@ test('mail:wire --domain targets that host\'s instance, even pasted as a URL', f
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('mail:wire local --tool=flow --domain=https://Flow.Example.com/')
+    $this->artisan('mail:wire local --tool=n8n --domain=https://Flow.Example.com/')
         ->expectsOutputToContain('Wired to Stalwart');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'set env deployment/n8n-flow-example-com')
@@ -209,10 +209,10 @@ function mailWireRegistryFakes(array $rows): array
 
 test('mail:wire --domain for a host with no instance names the hosts that have one', function (): void {
     Process::fake(mailWireRegistryFakes([
-        ['tool' => 'flow', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'engine' => 'n8n'],
+        ['tool' => 'n8n', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'engine' => 'n8n'],
     ]));
 
-    $this->artisan('mail:wire production --tool=flow --domain=typo.example.com')
+    $this->artisan('mail:wire production --tool=n8n --domain=typo.example.com')
         ->expectsOutputToContain('has no instance at typo.example.com')
         ->expectsOutputToContain('flow.example.com');
 });
@@ -220,6 +220,6 @@ test('mail:wire --domain for a host with no instance names the hosts that have o
 test('mail:wire for a tool with no instance at all says how to install it', function (): void {
     Process::fake(mailWireRegistryFakes([]));
 
-    $this->artisan('mail:wire production --tool=flow --domain=flow.example.com')
+    $this->artisan('mail:wire production --tool=n8n --domain=flow.example.com')
         ->expectsOutputToContain('is not installed. Run `larakube tool:init production --tool=n8n` first.');
 });

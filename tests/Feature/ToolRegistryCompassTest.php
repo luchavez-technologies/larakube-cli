@@ -53,7 +53,7 @@ test('re-registering a tool never wipes metadata a previous write recorded', fun
 
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
-            output: registrySecret([['tool' => 'flow', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'flow.example.com']]),
+            output: registrySecret([['tool' => 'n8n', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'flow.example.com']]),
         ),
         '*' => function ($process) use (&$saved) {
             $entries = capturedRegistryEntries($process->command);
@@ -66,10 +66,10 @@ test('re-registering a tool never wipes metadata a previous write recorded', fun
     ]);
 
     // Re-register with NO metadata, exactly as tool:add does.
-    registryProbe()->add('kubectl', ClusterTool::FLOW);
+    registryProbe()->add('kubectl', ClusterTool::N8N);
 
     expect($saved)->not->toBeNull('the registry was never written');
-    $flowEntry = collect($saved)->firstWhere('tool', 'flow');
+    $flowEntry = collect($saved)->firstWhere('tool', 'n8n');
     expect($flowEntry['host'])->toBe('flow.example.com');
 });
 
@@ -78,7 +78,7 @@ test('installedAt survives re-registration but updatedAt moves', function (): vo
 
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
-            output: registrySecret([['tool' => 'flow', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'flow.example.com']]),
+            output: registrySecret([['tool' => 'n8n', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'flow.example.com']]),
         ),
         '*' => function ($process) use (&$saved) {
             $entries = capturedRegistryEntries($process->command);
@@ -90,9 +90,9 @@ test('installedAt survives re-registration but updatedAt moves', function (): vo
         },
     ]);
 
-    registryProbe()->add('kubectl', ClusterTool::FLOW, ['host' => 'flow.example.com']);
+    registryProbe()->add('kubectl', ClusterTool::N8N, ['host' => 'flow.example.com']);
 
-    $flowEntry = collect($saved)->firstWhere('tool', 'flow');
+    $flowEntry = collect($saved)->firstWhere('tool', 'n8n');
     expect($flowEntry['installedAt'])->toBe('2026-08-01T00:00:00+00:00')
         ->and($flowEntry['host'])->toBe('flow.example.com')
         ->and($flowEntry['updatedAt'])->not->toBe('2026-08-01T00:00:00+00:00');
@@ -102,7 +102,7 @@ test('an empty host in metadata cannot overwrite a known one', function (): void
     $saved = null;
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(
-            output: registrySecret([['tool' => 'flow', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'flow.example.com']]),
+            output: registrySecret([['tool' => 'n8n', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'flow.example.com']]),
         ),
         '*' => function ($process) use (&$saved) {
             $entries = capturedRegistryEntries($process->command);
@@ -114,9 +114,9 @@ test('an empty host in metadata cannot overwrite a known one', function (): void
         },
     ]);
 
-    registryProbe()->add('kubectl', ClusterTool::FLOW, ['host' => '']);
+    registryProbe()->add('kubectl', ClusterTool::N8N, ['host' => '']);
 
-    $flowEntry = collect($saved)->firstWhere('tool', 'flow');
+    $flowEntry = collect($saved)->firstWhere('tool', 'n8n');
     expect($flowEntry['host'])->toBe('flow.example.com');
 });
 
