@@ -329,4 +329,4 @@ spec:
   type: ClusterIP
 ---
 @endif
-@include('k8s.errors.ingress', ['instance' => $instance])
+@include('k8s.glitchtip.ingress', ['instance' => $instance])

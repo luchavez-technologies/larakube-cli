@@ -1,7 +1,7 @@
 <?php
 
 test('paste manifest wires Yopass to the Commons Redis at the allocated index, one-time-read, one-day default expiry, no PVC', function (): void {
-    $manifest = view('k8s.paste.shared', [
+    $manifest = view('k8s.yopass.shared', [
         'host' => 'paste.example.test',
         'plexNamespace' => 'larakube-plex',
         'redisIndex' => 7,
@@ -23,7 +23,7 @@ test('paste manifest wires Yopass to the Commons Redis at the allocated index, o
 });
 
 test('paste manifest wires optional S3 file storage to Commons SeaweedFS only when given a fileStorage array', function (): void {
-    $manifest = view('k8s.paste.shared', [
+    $manifest = view('k8s.yopass.shared', [
         'host' => 'paste.example.test',
         'plexNamespace' => 'larakube-plex',
         'redisIndex' => 7,
@@ -47,7 +47,7 @@ test('paste manifest wires optional S3 file storage to Commons SeaweedFS only wh
 });
 
 test('paste ingress applies the vpn-only middleware referencing the exact name PasteTool declares', function (): void {
-    $manifest = view('k8s.paste.shared', [
+    $manifest = view('k8s.yopass.shared', [
         'host' => 'paste.example.test',
         'plexNamespace' => 'larakube-plex',
         'redisIndex' => 7,

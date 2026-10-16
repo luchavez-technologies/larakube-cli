@@ -99,7 +99,7 @@ abstract class GlitchTipInitCommand extends AbstractToolInitCommand
 
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::GLITCHTIP, ClusterTool::GLITCHTIP->instanceSlugFromHost($host));
 
-        $manifest = view('k8s.errors.shared', [
+        $manifest = view('k8s.glitchtip.shared', [
             'dbName' => $dbName,
             'instance' => $names->instance,
             'redisIndex' => $redisIndex,

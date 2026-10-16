@@ -156,7 +156,7 @@ abstract class OutlineInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $manifest = view('k8s.notes.shared', [
+        $manifest = view('k8s.outline.shared', [
             'host' => $host,
             'aliasHosts' => $aliasHosts,
             'deploymentName' => $deploymentName,

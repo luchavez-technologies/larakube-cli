@@ -174,4 +174,4 @@ spec:
       targetPort: 3000
   type: ClusterIP
 ---
-@include('k8s.notes.ingress')
+@include('k8s.outline.ingress')

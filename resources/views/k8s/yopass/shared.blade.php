@@ -101,4 +101,4 @@ spec:
       targetPort: 1337
   type: ClusterIP
 ---
-@include('k8s.paste.ingress', ['instance' => $instance])
+@include('k8s.yopass.ingress', ['instance' => $instance])

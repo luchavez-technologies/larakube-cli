@@ -90,7 +90,7 @@ abstract class YopassInitCommand extends AbstractToolInitCommand
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));
 
-        $manifest = view('k8s.paste.shared', [
+        $manifest = view('k8s.yopass.shared', [
             'host' => $host,
             'instance' => $instance,
             'plexNamespace' => $plexNs,

@@ -136,4 +136,4 @@ spec:
       targetPort: 3000
   type: ClusterIP
 ---
-@include('k8s.insights.ingress', ['instance' => $instance])
+@include('k8s.metabase.ingress', ['instance' => $instance])

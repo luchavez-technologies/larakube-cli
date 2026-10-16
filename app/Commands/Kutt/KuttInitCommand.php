@@ -85,7 +85,7 @@ abstract class KuttInitCommand extends AbstractToolInitCommand
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::KUTT, $instance);
         $deploymentName = $names->deployment();
 
-        $manifest = view('k8s.link.shared', [
+        $manifest = view('k8s.kutt.shared', [
             'names' => $names,
             'instance' => $instance,
             'host' => $host,

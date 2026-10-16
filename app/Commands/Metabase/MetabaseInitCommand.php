@@ -82,7 +82,7 @@ abstract class MetabaseInitCommand extends AbstractToolInitCommand
 
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::METABASE, ClusterTool::METABASE->instanceSlugFromHost($host));
 
-        $manifest = view('k8s.insights.shared', [
+        $manifest = view('k8s.metabase.shared', [
             'dbName' => $dbName,
             'instance' => $names->instance,
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),

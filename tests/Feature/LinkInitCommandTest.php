@@ -30,7 +30,7 @@ test('tool:init --tool=kutt deploys Kutt using the Commons postgres and redis', 
 });
 
 test('link manifest pins Kutt to the Commons postgres client and enables redis', function (): void {
-    $manifest = view('k8s.link.shared', [
+    $manifest = view('k8s.kutt.shared', [
         'host' => 'link.example.test',
         'plexNamespace' => 'larakube-plex',
         'redisIndex' => 3,
@@ -46,7 +46,7 @@ test('link manifest pins Kutt to the Commons postgres client and enables redis',
 });
 
 test('link manifest carries canonical resource naming and identity labels', function (): void {
-    $manifest = view('k8s.link.shared', [
+    $manifest = view('k8s.kutt.shared', [
         'host' => 'link.example.test',
         'plexNamespace' => 'larakube-plex',
         'redisIndex' => 3,
@@ -72,7 +72,7 @@ test('link manifest declares MAIL_SECURE as a literal, not valueFrom, so a futur
     // kubectl apply's merge re-adds valueFrom on top of the live literal
     // value mail:wire already set, and the two are mutually exclusive
     // (the exact bug confirmed live on Documenso, 2026-08-05).
-    $manifest = view('k8s.link.shared', [
+    $manifest = view('k8s.kutt.shared', [
         'host' => 'link.example.test',
         'plexNamespace' => 'larakube-plex',
         'redisIndex' => 3,
@@ -87,7 +87,7 @@ test('link manifest declares MAIL_SECURE as a literal, not valueFrom, so a futur
 });
 
 test('link ingress proxies through Cloudflare on cloud deploys when proxied, so Kutt receives the cf-ipcountry header', function (): void {
-    $cloud = view('k8s.link.shared', [
+    $cloud = view('k8s.kutt.shared', [
         'host' => 'link.luchtech.dev',
         'plexNamespace' => 'larakube-plex',
         'redisIndex' => 3,
@@ -96,7 +96,7 @@ test('link ingress proxies through Cloudflare on cloud deploys when proxied, so 
         'proxied' => true,
     ])->render();
 
-    $cloudDnsOnly = view('k8s.link.shared', [
+    $cloudDnsOnly = view('k8s.kutt.shared', [
         'host' => 'link.luchtech.dev',
         'plexNamespace' => 'larakube-plex',
         'redisIndex' => 3,
@@ -105,7 +105,7 @@ test('link ingress proxies through Cloudflare on cloud deploys when proxied, so 
         'proxied' => false,
     ])->render();
 
-    $local = view('k8s.link.shared', [
+    $local = view('k8s.kutt.shared', [
         'host' => 'link.test',
         'plexNamespace' => 'larakube-plex',
         'redisIndex' => 3,

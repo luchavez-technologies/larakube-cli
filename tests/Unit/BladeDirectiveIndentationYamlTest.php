@@ -161,7 +161,7 @@ test('static-site ingress proxies only when the environment is proxied', functio
 });
 
 test('errors (Glitchtip) secret manifest parses as valid YAML across noPlex branches', function (bool $noPlex): void {
-    $rendered = view('k8s.errors.shared', [
+    $rendered = view('k8s.glitchtip.shared', [
         'adminPassword' => 'x', 'noPlex' => $noPlex, 'dbPassword' => 'y', 'plexNamespace' => 'larakube-plex',
         'appName' => 'Errors', 'host' => 'errors.example.com', 'redisIndex' => $noPlex ? null : 3,
     ])->render();
