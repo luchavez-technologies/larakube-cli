@@ -103,7 +103,7 @@ test('pocketbase:remove --all --purge deletes every PocketBase instance and its 
 
     foreach (['data-test', 'data-second-test'] as $instance) {
         Process::assertRan(fn ($process) => str_contains($process->command, "delete deployment/pocketbase-{$instance} "));
-        Process::assertRan(fn ($process) => str_contains($process->command, "delete pvc/pocketbase-storage-{$instance} "));
+        Process::assertRan(fn ($process) => str_contains($process->command, "delete persistentvolumeclaim/pocketbase-storage-{$instance} "));
     }
 });
 

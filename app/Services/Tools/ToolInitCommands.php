@@ -4,7 +4,7 @@ namespace App\Services\Tools;
 
 use App\Commands\Bulwark\BulwarkInitCommand;
 use App\Commands\Chatwoot\ChatwootInitCommand;
-use App\Commands\Data\DataInitCommand;
+use App\Commands\Directus\DirectusInitCommand;
 use App\Commands\Documenso\DocumensoInitCommand;
 use App\Commands\ExternalDns\ExternalDnsInitCommand;
 use App\Commands\Forgejo\ForgejoInitCommand;
@@ -24,6 +24,7 @@ use App\Commands\Outline\OutlineInitCommand;
 use App\Commands\Penpot\PenpotInitCommand;
 use App\Commands\Planka\PlankaInitCommand;
 use App\Commands\Plausible\PlausibleInitCommand;
+use App\Commands\PocketBase\PocketBaseInitCommand;
 use App\Commands\Resume\ResumeInitCommand;
 use App\Commands\Sendrec\SendrecInitCommand;
 use App\Commands\Stalwart\StalwartInitCommand;
@@ -33,6 +34,7 @@ use App\Commands\Twenty\TwentyInitCommand;
 use App\Commands\Umami\UmamiInitCommand;
 use App\Commands\Vaultwarden\VaultwardenInitCommand;
 use App\Commands\Windmill\WindmillInitCommand;
+use App\Commands\Wordpress\WordpressInitCommand;
 use App\Commands\Yopass\YopassInitCommand;
 use App\Commands\Zitadel\ZitadelInitCommand;
 use App\Enums\ClusterTool;
@@ -56,13 +58,9 @@ final class ToolInitCommands
             PlausibleInitCommand::class => new class($tool) extends PlausibleInitCommand {},
             MatrixInitCommand::class => new class($tool) extends MatrixInitCommand {},
             HeadlampInitCommand::class => new class($tool) extends HeadlampInitCommand {},
-            DataInitCommand::class => new class($tool) extends DataInitCommand
-            {
-                protected function resolveEngine(): string
-                {
-                    return $this->tool()->value;
-                }
-            },
+            PocketBaseInitCommand::class => new class($tool) extends PocketBaseInitCommand {},
+            DirectusInitCommand::class => new class($tool) extends DirectusInitCommand {},
+            WordpressInitCommand::class => new class($tool) extends WordpressInitCommand {},
             PenpotInitCommand::class => new class($tool) extends PenpotInitCommand {},
             ExternalDnsInitCommand::class => new class($tool) extends ExternalDnsInitCommand {},
             DocumensoInitCommand::class => new class($tool) extends DocumensoInitCommand {},
@@ -108,7 +106,7 @@ final class ToolInitCommands
         return match ($tool->canonicalTool()) {
             ClusterTool::BULWARK => BulwarkInitCommand::class,
             ClusterTool::CHATWOOT => ChatwootInitCommand::class,
-            ClusterTool::DIRECTUS => DataInitCommand::class,
+            ClusterTool::DIRECTUS => DirectusInitCommand::class,
             ClusterTool::DOCUMENSO => DocumensoInitCommand::class,
             ClusterTool::EXTERNAL_DNS => ExternalDnsInitCommand::class,
             ClusterTool::FORGEJO => ForgejoInitCommand::class,
@@ -128,8 +126,8 @@ final class ToolInitCommands
             ClusterTool::PENPOT => PenpotInitCommand::class,
             ClusterTool::PLANKA => PlankaInitCommand::class,
             ClusterTool::PLAUSIBLE => PlausibleInitCommand::class,
-            ClusterTool::POCKETBASE => DataInitCommand::class,
-            ClusterTool::WORDPRESS => DataInitCommand::class,
+            ClusterTool::POCKETBASE => PocketBaseInitCommand::class,
+            ClusterTool::WORDPRESS => WordpressInitCommand::class,
             ClusterTool::RESUME => ResumeInitCommand::class,
             ClusterTool::SENDREC => SendrecInitCommand::class,
             ClusterTool::STALWART => StalwartInitCommand::class,

@@ -80,7 +80,18 @@ class ToolRegistry
             }
 
             if ($rowTool->isLegacy()) {
-                return $rowTool->canonicalTool($row['engine'] ?? null) === $tool;
+                $engine = $row['engine'] ?? null;
+
+                // A legacy row with no recorded engine predates engine
+                // tracking — it's ambiguous across every real tool in that
+                // category (confirmed live 2026-08-09: a 'data' row with no
+                // engine was how a plain host collision was detected
+                // regardless of which engine --tool= picked), so it must
+                // keep matching all of them, not just canonicalTool()'s
+                // single default.
+                return $engine === null
+                    ? $tool->legacyCategoryPrefix() === $rowToolSlug
+                    : $rowTool->canonicalTool($engine) === $tool;
             }
 
             return $rowTool->canonicalTool($row['engine'] ?? null) === $tool;
@@ -330,6 +341,11 @@ class ToolRegistry
                 $matches = true;
             } elseif ($tool->isLegacy()) {
                 $matches = ($rowToolSlug === $tool->value) || ($rowTool->legacyCategoryPrefix() === $tool->value);
+            } elseif ($rowTool->isLegacy()) {
+                $engine = $row['engine'] ?? null;
+                $matches = $engine === null
+                    ? $tool->legacyCategoryPrefix() === $rowToolSlug
+                    : $rowTool->canonicalTool($engine) === $tool;
             } else {
                 $matches = ($rowTool->canonicalTool($row['engine'] ?? null) === $tool);
             }

@@ -246,7 +246,12 @@ test('directus:show displays status table for Directus', function (): void {
         ->assertExitCode(0);
 });
 
-test('directus:show displays which engine the instance runs, read from the registry', function (): void {
+test('directus:show reads a legacy data-tagged registry row', function (): void {
+    // Split per engine (directus:show always means Directus, never an
+    // ambiguous "which engine" lookup), so this only needs to confirm a
+    // pre-split registry row (generic 'data' tool, 'engine' metadata) still
+    // resolves — not re-display the engine as its own row, which would be
+    // tautological once the command's own identity already says Directus.
     $registry = json_encode([
         ['tool' => 'data', 'instance' => 'data-dev-test', 'host' => 'data.dev.test', 'aliases' => [], 'engine' => 'directus'],
     ]);
@@ -261,8 +266,7 @@ test('directus:show displays which engine the instance runs, read from the regis
     $output = Artisan::output();
 
     expect($exit)->toBe(0)
-        ->and($output)->toContain('Engine')
-        ->and($output)->toContain('Directus');
+        ->and($output)->toContain('https://data.dev.test');
 });
 
 test('directus:show --domain=all lists every registered instance', function (): void {

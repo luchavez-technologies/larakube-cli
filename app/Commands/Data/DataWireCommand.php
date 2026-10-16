@@ -22,11 +22,11 @@ class DataWireCommand extends Command
 
     protected $signature = 'data:wire
         {environment=local : Environment whose Data engine host to wire}
-        {--engine=         : Data engine to target ("pocketbase" or "directus")}
+        {--engine=         : Data engine to target ("pocketbase", "directus", or "wordpress")}
         {--domain=         : Base domain OR full host for Data}
         {--context=        : Target a specific kube-context}';
 
-    protected $description = 'Inject PocketBase or Directus API URL into the current project .env';
+    protected $description = 'Inject PocketBase, Directus, or WordPress API URL into the current project .env';
 
     public function handle(): int
     {
@@ -43,7 +43,7 @@ class DataWireCommand extends Command
         $picked = $this->pickRegisteredTool(
             kubectl: $kubectl,
             label: 'Data / Headless CMS',
-            capable: fn (ClusterTool $tool) => in_array($tool, [ClusterTool::DATA, ClusterTool::POCKETBASE, ClusterTool::DIRECTUS], true),
+            capable: fn (ClusterTool $tool) => in_array($tool, [ClusterTool::DATA, ClusterTool::POCKETBASE, ClusterTool::DIRECTUS, ClusterTool::WORDPRESS], true),
             emptyMessage: "No Data / Headless CMS instance is registered for '{$env}'.",
             only: ClusterTool::DATA,
             domain: $this->option('domain'),
@@ -134,7 +134,11 @@ class DataWireCommand extends Command
             return 1;
         }
 
-        $engineLabel = $engine === 'pocketbase' ? 'PocketBase' : 'Directus';
+        $engineLabel = match ($engine) {
+            'pocketbase' => 'PocketBase',
+            'wordpress' => 'WordPress',
+            default => 'Directus',
+        };
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo("✅ Wired {$engineLabel} API URL into ".basename($envFilePath));
@@ -158,12 +162,12 @@ class DataWireCommand extends Command
     {
         $explicit = strtolower((string) $this->option('engine'));
 
-        if (in_array($explicit, ['pocketbase', 'directus'], true)) {
+        if (in_array($explicit, ['pocketbase', 'directus', 'wordpress'], true)) {
             return $explicit;
         }
 
         foreach ($this->getAllToolInstanceData($kubectl, ClusterTool::DATA) as $instance) {
-            if ($instance->host === $host && in_array($instance->engine, ['pocketbase', 'directus'], true)) {
+            if ($instance->host === $host && in_array($instance->engine, ['pocketbase', 'directus', 'wordpress'], true)) {
                 return $instance->engine;
             }
         }
