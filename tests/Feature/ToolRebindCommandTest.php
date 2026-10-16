@@ -122,3 +122,58 @@ test('tool:rebind requires --force when running non-interactively', function ():
 
     $this->artisan('tool:rebind', ['--tool' => 'stalwart', '--to' => 'mail.newdomain.com']);
 })->throws(App\Exceptions\MissingFlagException::class, 'Missing required --force');
+
+test('tool:rebind --no-wire-sso skips sso:wire and prints manual reminder', function (): void {
+    $registryJson = json_encode([
+        ['tool' => 'matrix', 'instance' => 'chat-luchtech-dev', 'host' => 'chat.luchtech.dev', 'installedAt' => '2026-08-01T00:00:00+00:00'],
+        ['tool' => 'zitadel', 'instance' => 'sso-luchtech-dev', 'host' => 'sso.luchtech.dev', 'installedAt' => '2026-08-01T00:00:00+00:00'],
+    ]);
+
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode($registryJson)),
+        '*create secret generic larakube-tools-registry*' => Process::result(output: 'registry updated'),
+        '*create namespace*' => Process::result(output: 'namespace created'),
+        '*get ingress*' => Process::result(output: ''),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*annotate ingress*' => Process::result(output: 'annotated'),
+    ]);
+
+    $this->artisan('tool:rebind', [
+        '--tool' => 'matrix',
+        '--to' => 'talk.newdomain.com',
+        '--no-wire-sso' => true,
+        '--force' => true,
+    ])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('now serves https://talk.newdomain.com')
+        ->expectsOutputToContain('Re-register its OIDC client under the SAME Zitadel project:');
+});
+
+test('tool:rebind --wire-sso triggers sso:wire', function (): void {
+    $registryJson = json_encode([
+        ['tool' => 'matrix', 'instance' => 'chat-luchtech-dev', 'host' => 'chat.luchtech.dev', 'installedAt' => '2026-08-01T00:00:00+00:00'],
+        ['tool' => 'zitadel', 'instance' => 'sso-luchtech-dev', 'host' => 'sso.luchtech.dev', 'installedAt' => '2026-08-01T00:00:00+00:00'],
+    ]);
+
+    $callCount = 0;
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode($registryJson)),
+        '*create secret generic larakube-tools-registry*' => Process::result(output: 'registry updated'),
+        '*create namespace*' => Process::result(output: 'namespace created'),
+        '*get ingress*' => Process::result(output: ''),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*annotate ingress*' => Process::result(output: 'annotated'),
+        '*get deployment*zitadel*' => Process::result(output: 'NAME\nzitadel'),
+        '*get secret*machine-pat*' => Process::result(output: base64_encode('fake-pat')),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('tool:rebind', [
+        '--tool' => 'matrix',
+        '--to' => 'talk.newdomain.com',
+        '--wire-sso' => true,
+        '--force' => true,
+    ])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('now serves https://talk.newdomain.com');
+});

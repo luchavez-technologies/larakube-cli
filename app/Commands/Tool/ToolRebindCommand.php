@@ -41,6 +41,8 @@ class ToolRebindCommand extends Command
         {--domain= : The CURRENT host identifying which registered instance to target. Omit for the tool\'s sole instance}
         {--to= : The NEW host this instance should be served under}
         {--context= : Target a specific kube-context}
+        {--wire-sso : Automatically re-wire Zitadel SSO to the new domain if the tool is SSO-capable}
+        {--no-wire-sso : Do not re-wire Zitadel SSO}
         {--force : Skip the confirmation prompt; required together with --to when non-interactive}';
 
     protected $description = "Re-point an already-installed Cluster Tool's live host without changing its resource identity";
@@ -158,7 +160,14 @@ class ToolRebindCommand extends Command
         $this->line("  <fg=gray>Resource names (Deployment/PVC/Secret/DB) are unchanged — instance:</> <fg=blue>{$instance}</>");
         $this->newLine();
 
-        if ($tool->hasSsoWire()) {
+        if ($this->shouldWireSso($tool, $kubectl)) {
+            $this->call('sso:wire', array_filter([
+                'environment' => $env,
+                '--tool' => $tool->value,
+                '--domain' => $newHost,
+                '--context' => $this->option('context') ?: null,
+            ]));
+        } elseif ($tool->hasSsoWire()) {
             $this->line('  <fg=yellow>⚠ SSO-wired — redirect URIs changed.</> Re-register its OIDC client under the SAME Zitadel project:');
             $this->line("    <fg=blue>larakube sso:wire {$env} --tool={$tool->value} --domain={$newHost}</>");
             $this->newLine();
@@ -173,6 +182,31 @@ class ToolRebindCommand extends Command
         $this->newLine();
 
         return 0;
+    }
+
+    protected function shouldWireSso(ClusterTool $tool, string $kubectl): bool
+    {
+        if (! $tool->hasSsoWire()) {
+            return false;
+        }
+
+        if (! $this->isToolRegistered($kubectl, ClusterTool::ZITADEL)) {
+            return false;
+        }
+
+        if ($this->option('wire-sso')) {
+            return true;
+        }
+
+        if ($this->option('no-wire-sso')) {
+            return false;
+        }
+
+        if ($this->cannotPrompt()) {
+            return false;
+        }
+
+        return confirm("Re-wire {$tool->getLabel()} to Zitadel SSO under the new host now?", default: true);
     }
 
     /**
