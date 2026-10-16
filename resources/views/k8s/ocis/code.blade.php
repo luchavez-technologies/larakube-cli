@@ -92,4 +92,4 @@ spec:
     - port: 80
       targetPort: 9980
 ---
-@include('k8s.drive.ingress', ['names' => $names, 'component' => 'code', 'host' => $officeHost])
+@include('k8s.ocis.ingress', ['names' => $names, 'component' => 'code', 'host' => $officeHost])

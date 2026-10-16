@@ -297,4 +297,4 @@ spec:
       targetPort: 3000
   type: ClusterIP
 ---
-@include('k8s.crm.ingress')
+@include('k8s.twenty.ingress')

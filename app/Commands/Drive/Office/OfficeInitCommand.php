@@ -32,7 +32,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  *   2. oCIS's own `collaboration` service — the WOPI bridge between the two.
  *      It is NOT deployed here: it ships in the same oCIS image and has to share
  *      oCIS's network namespace (see the sidecar comment in
- *      k8s/drive/ocis.blade.php), so `tool:init --tool=ocis` owns rendering it and this
+ *      k8s/ocis/ocis.blade.php), so `tool:init --tool=ocis` owns rendering it and this
  *      command re-runs that command once CODE exists. That keeps one source of
  *      truth for the oCIS manifest and means a later plain `tool:init --tool=ocis`
  *      preserves the office layer instead of silently stripping it.
@@ -101,7 +101,7 @@ class OfficeInitCommand extends Command
             $this->applyTraefikCertResources('traefik');
         }
 
-        $manifest = view('k8s.drive.code', [
+        $manifest = view('k8s.ocis.code', [
             'host' => $host,
             'instance' => $names->instance,
             'officeHost' => $officeHost,

@@ -2,7 +2,7 @@
      exists only while `meet:wire --tool=matrix` says the two are connected, which
      is why it lives here rather than in either tool's own manifest. --}}
 @php
-    $__tplHash = substr(hash_file('sha256', resource_path('views/k8s/meet/lk-jwt.blade.php')), 0, 12);
+    $__tplHash = substr(hash_file('sha256', resource_path('views/k8s/livekit/lk-jwt.blade.php')), 0, 12);
     // Every name comes from ToolInstance (ADR 0021). The bridge is always
     // applied for the Meet install serving $meetHost, so that host is the
     // instance when the caller didn't thread one through.

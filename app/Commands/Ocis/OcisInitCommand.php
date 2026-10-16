@@ -112,7 +112,7 @@ abstract class OcisInitCommand extends AbstractToolInitCommand
         // drive:office:init added.
         $office = $this->driveOfficeInstalled($kubectl, $ns);
 
-        $manifest = view('k8s.drive.ocis', [
+        $manifest = view('k8s.ocis.ocis', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'instance' => $instance,

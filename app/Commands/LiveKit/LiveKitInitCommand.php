@@ -67,14 +67,14 @@ abstract class LiveKitInitCommand extends AbstractToolInitCommand
             $registry = $this->writeMeetKeys($kubectl, $names, $registry);
         });
 
-        $manifest = view('k8s.meet.livekit', [
+        $manifest = view('k8s.livekit.livekit', [
             'host' => $host,
             'instance' => $instance,
             'consumers' => $registry,
             'hostPort' => ! $this->option('no-host-port'),
         ])->render()
             ."\n---\n"
-            .view('k8s.meet.ingress', [
+            .view('k8s.livekit.ingress', [
                 'host' => $host,
                 'instance' => $instance,
                 'isLocal' => $env === 'local',

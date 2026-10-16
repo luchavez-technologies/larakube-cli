@@ -130,7 +130,7 @@ abstract class TwentyInitCommand extends AbstractToolInitCommand
             Kubectl::fromPrefix($kubectl)->putSecret($ns, $secretName, ['db-password' => $dbPassword, 'access-token-secret' => $accessTokenSecret, 'login-token-secret' => $loginTokenSecret, 'refresh-token-secret' => $refreshTokenSecret, 'file-token-secret' => $fileTokenSecret, 'encryption-key' => $encryptionKey, 's3-key' => $s3Key, 's3-secret' => $s3Secret]);
         });
 
-        $manifest = view('k8s.crm.shared', [
+        $manifest = view('k8s.twenty.shared', [
             'host' => $host,
             'plexNamespace' => $this->plexNamespace(),
             'vpnOnly' => $vpnOnly,

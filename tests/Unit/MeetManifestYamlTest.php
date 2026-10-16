@@ -15,7 +15,7 @@ function meetNames(): ToolInstance
 /** @param array<string, array<string, mixed>> $consumers */
 function meetManifest(array $consumers = [], array $overrides = []): string
 {
-    return view('k8s.meet.livekit', array_merge([
+    return view('k8s.livekit.livekit', array_merge([
         'host' => 'meet.example.com',
         'consumers' => $consumers,
         'hostPort' => true,
@@ -170,7 +170,7 @@ test('webhooks are omitted when two consumers want them — only one signing key
 
 test('the ingress exposes the Matrix bridge only once it is wired', function (): void {
     $paths = function (bool $wired): array {
-        $ingress = Yaml::parse(view('k8s.meet.ingress', [
+        $ingress = Yaml::parse(view('k8s.livekit.ingress', [
             'host' => 'meet.example.com',
             'isLocal' => false,
             'jwtWired' => $wired,
@@ -184,7 +184,7 @@ test('the ingress exposes the Matrix bridge only once it is wired', function ():
 });
 
 test('a cloud meet ingress requests a real ACME cert, a local one never does', function (): void {
-    $render = fn (bool $isLocal) => view('k8s.meet.ingress', [
+    $render = fn (bool $isLocal) => view('k8s.livekit.ingress', [
         'host' => 'meet.example.com',
         'isLocal' => $isLocal,
         'jwtWired' => false,
@@ -196,12 +196,12 @@ test('a cloud meet ingress requests a real ACME cert, a local one never does', f
 
 test('every Meet resource is named from its component, never the category', function (): void {
     $rendered = meetManifest()
-        ."\n---\n".view('k8s.meet.ingress', [
+        ."\n---\n".view('k8s.livekit.ingress', [
             'host' => 'meet.example.com',
             'isLocal' => false,
             'jwtWired' => true,
         ])->render()
-        ."\n---\n".view('k8s.meet.lk-jwt', [
+        ."\n---\n".view('k8s.livekit.lk-jwt', [
             'meetHost' => 'meet.example.com',
             'chatHost' => 'chat.example.com',
             'livekitApiKey' => 'k',
@@ -225,13 +225,13 @@ test('every Meet resource is named from its component, never the category', func
 test('the Ingress references the bridge Middleware Traefik actually has', function (): void {
     // The annotation is namespace-qualified and instance-scoped; a literal here
     // would break the whole router the moment the Middleware's name moved.
-    $ingress = collect(meetDocuments(view('k8s.meet.ingress', [
+    $ingress = collect(meetDocuments(view('k8s.livekit.ingress', [
         'host' => 'meet.example.com',
         'isLocal' => false,
         'jwtWired' => true,
     ])->render()))->first();
 
-    $middleware = collect(meetDocuments(view('k8s.meet.lk-jwt', [
+    $middleware = collect(meetDocuments(view('k8s.livekit.lk-jwt', [
         'meetHost' => 'meet.example.com',
         'chatHost' => 'chat.example.com',
         'livekitApiKey' => 'k',

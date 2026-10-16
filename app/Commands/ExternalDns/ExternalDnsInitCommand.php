@@ -157,7 +157,7 @@ abstract class ExternalDnsInitCommand extends AbstractToolInitCommand
 
         $this->withSpin("Syncing the {$provider->label()} credential for {$groupSlug}...", fn () => Kubectl::fromPrefix($kubectl)->putSecret($ns, $provider->credentialSecretName($groupSlug), $credential));
 
-        $manifest = view('k8s.dns.zone', [
+        $manifest = view('k8s.external-dns.zone', [
             'namespace' => $ns,
             'zones' => $zones,
             'slug' => $groupSlug,

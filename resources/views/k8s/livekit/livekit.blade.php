@@ -3,7 +3,7 @@
      Secrets don't hot-reload, and hashing only the input variables misses
      changes to literal strings in this file. --}}
 @php
-    $__tplHash = substr(hash_file('sha256', resource_path('views/k8s/meet/livekit.blade.php')), 0, 12);
+    $__tplHash = substr(hash_file('sha256', resource_path('views/k8s/livekit/livekit.blade.php')), 0, 12);
     // Every name comes from ToolInstance (ADR 0021). Rendered both by
     // tool:init --tool=livekit/meet:wire (which pass the instance) and by the shared
     // reconcile path (which passes only the host), so derive what is missing.

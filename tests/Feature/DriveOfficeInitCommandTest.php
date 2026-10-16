@@ -43,7 +43,7 @@ test('drive:office:init refuses when Drive itself is not installed', function ()
 });
 
 test('the oCIS manifest is unchanged when the office layer is absent', function (): void {
-    $rendered = view('k8s.drive.ocis', driveOfficeViewData(office: false))->render();
+    $rendered = view('k8s.ocis.ocis', driveOfficeViewData(office: false))->render();
 
     // The whole point of the @if gates: a plain tool:init --tool=ocis must not gain a
     // sidecar, a second Service, or any Collabora wiring.
@@ -54,7 +54,7 @@ test('the oCIS manifest is unchanged when the office layer is absent', function 
 });
 
 test('the office layer adds the WOPI bridge as a sidecar sharing the oCIS pod', function (): void {
-    $rendered = view('k8s.drive.ocis', driveOfficeViewData(office: true))->render();
+    $rendered = view('k8s.ocis.ocis', driveOfficeViewData(office: true))->render();
 
     expect($rendered)
         // Loopback, not a Service DNS name: every oCIS service binds 127.0.0.1,
@@ -70,7 +70,7 @@ test('the office layer adds the WOPI bridge as a sidecar sharing the oCIS pod', 
 });
 
 test('the bridge signs WOPI tokens with its own secret, never oCIS internal JWT', function (): void {
-    $rendered = view('k8s.drive.ocis', driveOfficeViewData(office: true))->render();
+    $rendered = view('k8s.ocis.ocis', driveOfficeViewData(office: true))->render();
 
     // drive-secrets' jwt-secret is oCIS's service-to-service JWT — a different
     // trust domain despite the similar name.
@@ -79,7 +79,7 @@ test('the bridge signs WOPI tokens with its own secret, never oCIS internal JWT'
 });
 
 test('the CODE manifest pins an exact image and terminates TLS at Traefik', function (): void {
-    $rendered = view('k8s.drive.code', [
+    $rendered = view('k8s.ocis.code', [
         'host' => 'drive.test',
         'officeHost' => 'office.drive.test',
         'codeImage' => OfficeInitCommand::CODE_IMAGE,
@@ -100,8 +100,8 @@ test('the CODE manifest pins an exact image and terminates TLS at Traefik', func
 });
 
 test('the CSP lets the parent page frame the editor only when office is enabled', function (): void {
-    $with = view('k8s.drive.ocis', driveOfficeViewData(office: true))->render();
-    $without = view('k8s.drive.ocis', driveOfficeViewData(office: false))->render();
+    $with = view('k8s.ocis.ocis', driveOfficeViewData(office: true))->render();
+    $without = view('k8s.ocis.ocis', driveOfficeViewData(office: false))->render();
 
     // oCIS's default frame-src is 'self' blob: embed.diagrams.net — the editor
     // host missing from it renders "This content is blocked" in the document
@@ -111,8 +111,8 @@ test('the CSP lets the parent page frame the editor only when office is enabled'
 });
 
 test('a CSP change rolls the pod instead of applying silently', function (): void {
-    $with = view('k8s.drive.ocis', driveOfficeViewData(office: true))->render();
-    $without = view('k8s.drive.ocis', driveOfficeViewData(office: false))->render();
+    $with = view('k8s.ocis.ocis', driveOfficeViewData(office: true))->render();
+    $without = view('k8s.ocis.ocis', driveOfficeViewData(office: false))->render();
 
     // csp.yaml is a subPath mount: it never picks up a ConfigMap update, and the
     // running pod keeps serving the old policy until something changes the pod

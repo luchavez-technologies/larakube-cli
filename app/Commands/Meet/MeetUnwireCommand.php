@@ -96,14 +96,14 @@ class MeetUnwireCommand extends Command
             $this->withSpin('Reloading LiveKit without the Chat key...', function () use ($kubectl, $meetHost, $registry, $env, $instance): void {
                 // 'instance' MUST be passed to both views — see the identical
                 // note in MeetWireCommand::reapplyMeet().
-                $manifest = view('k8s.meet.livekit', [
+                $manifest = view('k8s.livekit.livekit', [
                     'host' => $meetHost,
                     'instance' => $instance,
                     'consumers' => $registry,
                     'hostPort' => true,
                 ])->render()
                     ."\n---\n"
-                    .view('k8s.meet.ingress', [
+                    .view('k8s.livekit.ingress', [
                         'host' => $meetHost,
                         'instance' => $instance,
                         'isLocal' => $env === 'local',

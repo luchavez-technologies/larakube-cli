@@ -5,7 +5,7 @@ use Symfony\Component\Yaml\Yaml;
 
 function renderOcisManifest(array $overrides = []): string
 {
-    return view('k8s.drive.ocis', array_merge([
+    return view('k8s.ocis.ocis', array_merge([
         'engine' => 'ocis',
         'host' => 'drive.example.com',
         'dbPassword' => null,

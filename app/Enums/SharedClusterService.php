@@ -46,19 +46,19 @@ enum SharedClusterService: string
             self::SSO => 'k8s.zitadel.ingress',
             self::WEBMAIL => 'k8s.webmail.ingress',
             self::NOTES => 'k8s.notes.ingress',
-            self::DRIVE => 'k8s.drive.ingress',
+            self::DRIVE => 'k8s.ocis.ingress',
             self::ANALYTICS => 'k8s.umami.ingress',
             self::TASKS => 'k8s.tasks.ingress',
 
             self::SIGN => 'k8s.sign.ingress',
             self::SUPPORT => 'k8s.support.ingress',
             self::LINK => 'k8s.link.ingress',
-            self::CRM => 'k8s.crm.ingress',
+            self::CRM => 'k8s.twenty.ingress',
             self::DATA => 'k8s.data.ingress',
             self::RECORD => 'k8s.record.ingress',
             self::DASHBOARD => 'k8s.dashboard.ingress',
-            self::MEET => 'k8s.meet.ingress',
-            self::DESIGN => 'k8s.design.ingress',
+            self::MEET => 'k8s.livekit.ingress',
+            self::DESIGN => 'k8s.penpot.ingress',
             self::RESUME => 'k8s.resume.ingress',
             self::PASTE => 'k8s.paste.ingress',
         };
@@ -301,7 +301,7 @@ enum SharedClusterService: string
             self::CHAT => [3478, '3478/udp', '49160-49179/udp'],
             // LiveKit's single-port RTC mux (UDP) and its TCP fallback for
             // clients on networks that block UDP. Must match rtc.udp_port /
-            // rtc.tcp_port in resources/views/k8s/meet/livekit.blade.php.
+            // rtc.tcp_port in resources/views/k8s/livekit/livekit.blade.php.
             self::MEET => [7881, '7882/udp'],
             default => [],
         };

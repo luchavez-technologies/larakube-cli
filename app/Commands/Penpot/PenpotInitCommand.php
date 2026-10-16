@@ -142,7 +142,7 @@ abstract class PenpotInitCommand extends AbstractToolInitCommand
             fn () => $this->ensureDesignBaselineFlags($kubectl, $ns, $oidcSecretName, $smtpSecretName, $backendName, $frontendName),
         );
 
-        $manifest = view('k8s.design.shared', [
+        $manifest = view('k8s.penpot.shared', [
             'host' => $host,
             'instance' => $instance,
             'dbUser' => $dbUser,

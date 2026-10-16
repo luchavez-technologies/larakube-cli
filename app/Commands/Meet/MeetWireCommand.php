@@ -93,7 +93,7 @@ class MeetWireCommand extends Command
         // 2. Deploy the bridge, then re-apply LiveKit so it actually loads the
         //    new key — the config-checksum changes, forcing the rollout.
         $ok = $this->withSpin('Deploying the Matrix bridge...', function () use ($kubectl, $meetHost, $chatHost, $creds, $instance) {
-            $manifest = view('k8s.meet.lk-jwt', [
+            $manifest = view('k8s.livekit.lk-jwt', [
                 'meetHost' => $meetHost,
                 'chatHost' => $chatHost,
                 'livekitApiKey' => $creds['key'],
@@ -146,14 +146,14 @@ class MeetWireCommand extends Command
             // renders a SECOND, instance-less set of objects beside the real
             // ones on every wire/unwire — and the running Deployment never
             // picks up the fresh Secret, so the new key silently never works.
-            $manifest = view('k8s.meet.livekit', [
+            $manifest = view('k8s.livekit.livekit', [
                 'host' => $meetHost,
                 'instance' => $instance,
                 'consumers' => $registry,
                 'hostPort' => true,
             ])->render()
                 ."\n---\n"
-                .view('k8s.meet.ingress', [
+                .view('k8s.livekit.ingress', [
                     'host' => $meetHost,
                     'instance' => $instance,
                     'isLocal' => $env === 'local',

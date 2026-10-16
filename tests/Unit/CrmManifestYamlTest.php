@@ -4,7 +4,7 @@ use Symfony\Component\Yaml\Yaml;
 
 function crmManifest(array $overrides = []): string
 {
-    return view('k8s.crm.shared', array_merge([
+    return view('k8s.twenty.shared', array_merge([
         'host' => 'crm.example.com',
         'plexNamespace' => 'larakube-plex',
         'vpnOnly' => false,
@@ -115,7 +115,7 @@ test('the Ingress routes to the Service by the same name and attaches the --vpn-
 });
 
 test('the Ingress renders from the host alone, the way the shared-service reconcile does', function (): void {
-    $rendered = view('k8s.crm.ingress', ['host' => 'crm.example.com'])->render();
+    $rendered = view('k8s.twenty.ingress', ['host' => 'crm.example.com'])->render();
 
     expect($rendered)->toContain('name: twenty-crm-example-com')
         ->and($rendered)->toContain('larakube.io/instance: crm-example-com');

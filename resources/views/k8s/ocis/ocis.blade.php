@@ -16,7 +16,7 @@
     $bucket = $names->bucket();
     $labels = $names->labels();
 
-    $cspYaml = view('k8s.drive.csp', ['office' => $office ?? false, 'officeHost' => $officeHost ?? ''])->render();
+    $cspYaml = view('k8s.ocis.csp', ['office' => $office ?? false, 'officeHost' => $officeHost ?? ''])->render();
     // Indent here rather than in the partial: rendering drops the leading
     // whitespace of its first line, which silently empties the block scalar.
     $cspYaml = implode("\n", array_map(fn ($l) => $l === '' ? '' : '    '.$l, explode("\n", rtrim($cspYaml))));
@@ -423,4 +423,4 @@ spec:
     requests:
       storage: {{ $volumeSize($volume, '10Gi', true) }}
 ---
-@include('k8s.drive.ingress', ['names' => $names])
+@include('k8s.ocis.ingress', ['names' => $names])
