@@ -63,7 +63,7 @@ abstract class KumaInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $manifest = view('k8s.uptime.shared', [
+        $manifest = view('k8s.kuma.shared', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'instance' => $names->instance,

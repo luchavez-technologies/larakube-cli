@@ -163,4 +163,4 @@ spec:
       port: 4466
       targetPort: 4466
 ---
-@include('k8s.dashboard.ingress', ['names' => $names, 'labels' => $labels])
+@include('k8s.headlamp.ingress', ['names' => $names, 'labels' => $labels])

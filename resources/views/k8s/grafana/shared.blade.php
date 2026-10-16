@@ -1008,4 +1008,4 @@ spec:
      standalone by ensureGrafanaIngress() so a `config:tld` change re-points the
      host on the next `up` (when the monitoring stack is active) instead of
      leaving it stale on the old host. --}}
-@include('k8s.monitoring.grafana-ingress')
+@include('k8s.grafana.ingress')

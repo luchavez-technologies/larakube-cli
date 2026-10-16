@@ -127,4 +127,4 @@ spec:
       targetPort: 80
   type: ClusterIP
 ---
-@include('k8s.vault.ingress')
+@include('k8s.vaultwarden.ingress')

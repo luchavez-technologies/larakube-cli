@@ -10,7 +10,7 @@ test('stalwart probes hit /healthz/{ready,live}, never a bare tcpSocket check', 
     // silently stopped answering with no crash, no restart, and no signal
     // until a human hit the login page — the exact failure Stalwart's own
     // /healthz endpoints exist to catch (each returns non-200 when stuck).
-    $rendered = view('k8s.mail.stalwart', [
+    $rendered = view('k8s.stalwart.stalwart', [
         'host' => 'send.example.com',
         'vpnOnly' => false,
         'isLocal' => false,
@@ -44,7 +44,7 @@ test('storeBootstrap renders a config.json ConfigMap and mounts it, referencing 
     // EXPERIMENTAL local-only wizard-skip: config.json must never embed the
     // actual password — authSecret references STALWART_STORE_PASSWORD by
     // NAME so Stalwart reads it from its own process env at boot.
-    $rendered = view('k8s.mail.stalwart', [
+    $rendered = view('k8s.stalwart.stalwart', [
         'host' => 'send.luchtech.dev',
         'vpnOnly' => false,
         'isLocal' => true,
@@ -102,7 +102,7 @@ test('storeBootstrap renders a config.json ConfigMap and mounts it, referencing 
 });
 
 test('storeBootstrap with blob + meilisearch wires STALWART_S3_* and STALWART_SEARCH_MEILI_KEY from the credentials Secret', function (): void {
-    $rendered = view('k8s.mail.stalwart', [
+    $rendered = view('k8s.stalwart.stalwart', [
         'host' => 'send.test',
         'vpnOnly' => false,
         'isLocal' => true,
@@ -156,7 +156,7 @@ test('storeBootstrap with blob + meilisearch wires STALWART_S3_* and STALWART_SE
 });
 
 test('without storeBootstrap, STALWART_STORE_PASSWORD still falls back to the optional OpenBao-synced store Secret', function (): void {
-    $rendered = view('k8s.mail.stalwart', [
+    $rendered = view('k8s.stalwart.stalwart', [
         'host' => 'send.luchtech.dev',
         'vpnOnly' => false,
         'isLocal' => false,

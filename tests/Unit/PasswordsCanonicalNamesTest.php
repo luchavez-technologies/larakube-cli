@@ -8,7 +8,7 @@ use Symfony\Component\Yaml\Yaml;
 
 function vaultManifest(array $overrides = []): array
 {
-    $rendered = view('k8s.vault.shared', array_merge([
+    $rendered = view('k8s.vaultwarden.shared', array_merge([
         'host' => 'vault.example.com',
         'instance' => 'vault-example-com',
         'adminToken' => 'plain',
@@ -97,7 +97,7 @@ test('--vpn-only attaches the Middleware named for its instance', function (): v
 });
 
 test('the Ingress renders from the host alone, the way the shared-service reconcile does', function (): void {
-    $rendered = view('k8s.vault.ingress', ['host' => 'vault.example.com'])->render();
+    $rendered = view('k8s.vaultwarden.ingress', ['host' => 'vault.example.com'])->render();
 
     expect($rendered)->toContain('name: vaultwarden-vault-example-com')
         ->and($rendered)->toContain('larakube.io/instance: vault-example-com');

@@ -37,7 +37,7 @@ function n8nRenderedManifest(): string
 
 function monitoringRenderedManifest(): string
 {
-    return view('k8s.monitoring.shared', [
+    return view('k8s.grafana.shared', [
         'volumeSize' => fn (string $claim, string $default, bool $growth = false) => $default,
         'host' => 'monitor.luchtech.dev',
         'instance' => 'monitor-luchtech-dev',

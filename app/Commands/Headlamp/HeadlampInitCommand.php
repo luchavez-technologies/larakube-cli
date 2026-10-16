@@ -61,7 +61,7 @@ abstract class HeadlampInitCommand extends AbstractToolInitCommand
         $oidc = $this->readDashboardWiredOidc($kubectl, $ns, $instance);
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::HEADLAMP, ClusterTool::HEADLAMP->instanceSlugFromHost($host));
 
-        $manifest = view('k8s.dashboard.headlamp', [
+        $manifest = view('k8s.headlamp.headlamp', [
             'host' => $host,
             'instance' => $instance,
             'appName' => $branding['appName'],

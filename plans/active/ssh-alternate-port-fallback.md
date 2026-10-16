@@ -1,6 +1,6 @@
 # SSH-over-443 fallback — port-22 egress blocked by a client network
 
-## Status: NOT STARTED — scoped for a fresh agent to implement
+## Status: COMPLETED — Implemented and committed in CLI (commit a14ffead) and Desktop (commit 105b0c1)
 
 ## Why this exists
 

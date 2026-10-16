@@ -90,4 +90,4 @@ spec:
       targetPort: 3001
   type: ClusterIP
 ---
-@include('k8s.uptime.ingress', ['instance' => $instance])
+@include('k8s.kuma.ingress', ['instance' => $instance])

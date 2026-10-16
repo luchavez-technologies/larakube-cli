@@ -91,7 +91,7 @@ abstract class VaultwardenInitCommand extends AbstractToolInitCommand
 
         $deploymentName = $names->deployment();
 
-        $manifest = view('k8s.vault.shared', [
+        $manifest = view('k8s.vaultwarden.shared', [
             'instance' => $instance,
             'host' => $host,
             'adminToken' => $adminToken,

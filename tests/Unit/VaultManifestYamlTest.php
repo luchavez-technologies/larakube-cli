@@ -3,7 +3,7 @@
 use Symfony\Component\Yaml\Yaml;
 
 test('vaultwarden manifest renders valid multi-document YAML', function (): void {
-    $rendered = view('k8s.vault.shared', [
+    $rendered = view('k8s.vaultwarden.shared', [
         'host' => 'vault.luchtech.dev',
         'adminToken' => 'd7ec8024f301823b687b6e9ad6ba797c',
         'hashedAdminToken' => password_hash('d7ec8024f301823b687b6e9ad6ba797c', PASSWORD_ARGON2ID),

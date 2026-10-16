@@ -257,4 +257,4 @@ spec:
     - { protocol: TCP, port: 4190, targetPort: 4190, name: sieve }
   type: {{ $hostPort ? 'ClusterIP' : 'LoadBalancer' }}
 ---
-@include('k8s.mail.ingress')
+@include('k8s.stalwart.ingress')

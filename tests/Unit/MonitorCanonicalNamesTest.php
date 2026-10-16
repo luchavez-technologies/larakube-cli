@@ -7,7 +7,7 @@ use Symfony\Component\Yaml\Yaml;
 /** @return Illuminate\Support\Collection<int, array<string, mixed>> */
 function monitorDocuments(array $overrides = []): Illuminate\Support\Collection
 {
-    $rendered = view('k8s.monitoring.shared', array_merge([
+    $rendered = view('k8s.grafana.shared', array_merge([
         'host' => 'grafana.example.com',
         'instance' => 'monitor-example-com',
         'grafanaPassword' => 'secret123',

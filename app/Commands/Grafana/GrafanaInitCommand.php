@@ -133,7 +133,7 @@ abstract class GrafanaInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $manifest = view('k8s.monitoring.shared', [
+        $manifest = view('k8s.grafana.shared', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'instance' => $instance,

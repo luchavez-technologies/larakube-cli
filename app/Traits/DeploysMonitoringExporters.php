@@ -28,7 +28,7 @@ trait DeploysMonitoringExporters
         $db = $config->getDatabase();
         if ($db && $db->exporterImage()) {
             $this->applyExporterManifest(
-                view('k8s.monitoring.exporters.database', [
+                view('k8s.grafana.exporters.database', [
                     'config' => $config,
                     'driver' => $db,
                     'namespace' => $namespace,
@@ -41,7 +41,7 @@ trait DeploysMonitoringExporters
         foreach ($config->getCacheDrivers() as $cache) {
             if ($cache->exporterImage()) {
                 $this->applyExporterManifest(
-                    view('k8s.monitoring.exporters.cache', [
+                    view('k8s.grafana.exporters.cache', [
                         'config' => $config,
                         'driver' => $cache,
                         'namespace' => $namespace,

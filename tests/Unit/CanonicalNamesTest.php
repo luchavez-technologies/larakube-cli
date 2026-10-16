@@ -45,9 +45,9 @@ test('a Cluster Tool manifest pack takes its names from ToolInstance', function 
     // Hand-built names are how init and remove drift apart. `data` (names passed in by
     // its init) and `dns` (keyed by zone group) are the only packs that do not read it.
     $exempt = ['data', 'external-dns'];
-    $packs = ['umami', 'matrix', 'twenty', 'dashboard', 'penpot', 'ocis', 'glitchtip', 'n8n', 'windmill', 'forgejo', 'metabase', 'kutt', 'mail',
-        'livekit', 'monitoring', 'outline', 'yopass', 'sendrec', 'resume', 'openbao', 'teable', 'documenso', 'zitadel', 'chatwoot', 'planka',
-        'uptime', 'vault', 'netbird', 'webmail', ...$exempt];
+    $packs = ['umami', 'matrix', 'twenty', 'headlamp', 'penpot', 'ocis', 'glitchtip', 'n8n', 'windmill', 'forgejo', 'metabase', 'kutt', 'stalwart',
+        'livekit', 'grafana', 'outline', 'yopass', 'sendrec', 'resume', 'openbao', 'teable', 'documenso', 'zitadel', 'chatwoot', 'planka',
+        'kuma', 'vaultwarden', 'netbird', 'bulwark', ...$exempt];
 
     foreach (array_diff($packs, $exempt) as $pack) {
         $source = '';

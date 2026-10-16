@@ -160,7 +160,7 @@ abstract class StalwartInitCommand extends AbstractToolInitCommand
         // have one instance anyway.
         $aliasHosts = $this->resolveToolAliasHosts($kubectl, ClusterTool::STALWART, $resourceInstance);
 
-        $manifest = view('k8s.mail.stalwart', [
+        $manifest = view('k8s.stalwart.stalwart', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'instance' => $resourceInstance,
@@ -330,7 +330,7 @@ abstract class StalwartInitCommand extends AbstractToolInitCommand
      * (stalwartEnsureApiKey, stalwartTrustReverseProxy, etc.) silently no-ops
      * until a human finishes the web wizard. Pre-seeding a config.json that
      * declares the Postgres DataStore before the pod's first boot skips
-     * bootstrap mode entirely — see resources/views/k8s/mail/stalwart.blade.php.
+     * bootstrap mode entirely — see resources/views/k8s/stalwart/stalwart.blade.php.
      *
      * Deliberately does NOT touch OpenBao/secrets:wire at all — that
      * redesign is a separate, explicitly deferred piece of work

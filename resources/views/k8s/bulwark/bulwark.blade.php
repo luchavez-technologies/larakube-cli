@@ -140,4 +140,4 @@ spec:
       name: http
   type: ClusterIP
 ---
-@include('k8s.webmail.ingress')
+@include('k8s.bulwark.ingress')

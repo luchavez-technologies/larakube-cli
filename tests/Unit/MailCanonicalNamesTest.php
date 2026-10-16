@@ -8,7 +8,7 @@ use Symfony\Component\Yaml\Yaml;
 
 function stalwartDocuments(array $overrides = []): array
 {
-    $rendered = view('k8s.mail.stalwart', array_merge([
+    $rendered = view('k8s.stalwart.stalwart', array_merge([
         'host' => 'send.example.com',
         'instance' => 'send-example-com',
         'vpnOnly' => false,
@@ -92,7 +92,7 @@ test('the manifest names every object from ToolInstance and the claim matches th
 });
 
 test('the Ingress renders from the host alone, the way the local re-point does', function (): void {
-    $rendered = view('k8s.mail.ingress', ['host' => 'send.example.com'])->render();
+    $rendered = view('k8s.stalwart.ingress', ['host' => 'send.example.com'])->render();
 
     expect($rendered)->toContain('name: stalwart-send-example-com')
         ->and($rendered)->toContain('larakube.io/instance: send-example-com');

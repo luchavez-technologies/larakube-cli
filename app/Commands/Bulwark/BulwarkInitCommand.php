@@ -112,7 +112,7 @@ abstract class BulwarkInitCommand extends AbstractToolInitCommand
             }
         });
 
-        $manifest = view('k8s.webmail.bulwark', [
+        $manifest = view('k8s.bulwark.bulwark', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'instance' => $instance,

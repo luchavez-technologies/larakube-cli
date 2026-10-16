@@ -48,7 +48,7 @@ test('tool:init --tool=bulwark deploys Bulwark and enables CORS when Stalwart is
 });
 
 test('webmail bulwark manifest references standard secret keys', function (): void {
-    $manifest = view('k8s.webmail.bulwark', [
+    $manifest = view('k8s.bulwark.bulwark', [
         'volumeSize' => fn (string $claim, string $default) => $default,
         'host' => 'mail.example.com',
         'mailHost' => 'send.example.com',

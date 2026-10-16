@@ -326,7 +326,7 @@ test('tool:init --tool=grafana --no-plex skips Commons Postgres entirely and use
 });
 
 test('monitoring shared blade view conditionally renders optional components based on withLogs and withTraces', function (): void {
-    $metricsOnlyManifest = view('k8s.monitoring.shared', [
+    $metricsOnlyManifest = view('k8s.grafana.shared', [
         'host' => 'grafana.dev.test',
         'instance' => 'grafana-dev-test',
         'grafanaPassword' => 'secret123',
@@ -355,7 +355,7 @@ test('monitoring shared blade view conditionally renders optional components bas
         ->not->toContain('uid: tempo-ds')
         ->not->toContain('metrics_generator');
 
-    $fullManifest = view('k8s.monitoring.shared', [
+    $fullManifest = view('k8s.grafana.shared', [
         'host' => 'grafana.dev.test',
         'instance' => 'grafana-dev-test',
         'grafanaPassword' => 'secret123',
@@ -384,7 +384,7 @@ test('monitoring shared blade view conditionally renders optional components bas
 });
 
 test('every monitoring PVC carries the instance, and the claims mount the PVCs the manifest creates', function (): void {
-    $manifest = view('k8s.monitoring.shared', [
+    $manifest = view('k8s.grafana.shared', [
         'host' => 'grafana.dev.test',
         'instance' => 'grafana-dev-test',
         'grafanaPassword' => 'secret123',
@@ -417,7 +417,7 @@ test('every monitoring PVC carries the instance, and the claims mount the PVCs t
 });
 
 test('Grafana restarts when its rotated Commons password changes, and only when it uses one', function (): void {
-    $render = fn (bool $noPlex) => view('k8s.monitoring.shared', [
+    $render = fn (bool $noPlex) => view('k8s.grafana.shared', [
         'host' => 'grafana.dev.test',
         'instance' => 'grafana-dev-test',
         'grafanaPassword' => 'secret123',

@@ -1,5 +1,7 @@
 # Alternate SSH Port (Port 22 Firewall Fallback) — Desktop Implementation Plan
 
+## Status: COMPLETED — Implemented and committed in Desktop (commit 105b0c1)
+
 ## Context & Motivation
 
 During a workshop on a school campus, outbound traffic on **port 22** was blocked by the campus firewall. While cloud VPS creation succeeded via cloud API calls, all subsequent orchestration steps requiring SSH (k3s installation, server hardening, `dashboard:trust`, image sideloading, dev box shells) timed out and failed.

@@ -51,7 +51,7 @@ test('dashboard manifest uses Headlamp\'s real listen port 4466, not 4686', func
     // address: :4466" and never binds 4686 at all, so kubelet's liveness
     // probe correctly (if uselessly) killed an otherwise-healthy container
     // every ~10s forever (23 restarts observed live).
-    $manifest = view('k8s.dashboard.headlamp', [
+    $manifest = view('k8s.headlamp.headlamp', [
         'host' => 'dashboard.example.test',
         'appName' => 'Dashboard',
         'logoUrl' => null,
@@ -72,7 +72,7 @@ test('dashboard manifest sets Headlamp\'s OIDC env vars with the HEADLAMP_CONFIG
     // loader strips a HEADLAMP_CONFIG_ prefix before matching its flag names
     // (oidc-client-id etc.), so the unprefixed vars were silently ignored: no
     // crash, no error, just the plain token-paste login screen forever.
-    $manifest = view('k8s.dashboard.headlamp', [
+    $manifest = view('k8s.headlamp.headlamp', [
         'host' => 'dashboard.example.test',
         'appName' => 'Dashboard',
         'logoUrl' => null,
@@ -116,7 +116,7 @@ test('dashboard manifest binds cluster-admin to the OIDC-authenticated -dashboar
     //      "-dashboard-admin"], confirmed via SelfSubjectReview and
     //      SubjectAccessReview, so the binding must name "-dashboard-admin"
     //      to actually match.
-    $manifest = view('k8s.dashboard.headlamp', [
+    $manifest = view('k8s.headlamp.headlamp', [
         'host' => 'dashboard.example.test',
         'appName' => 'Dashboard',
         'logoUrl' => null,
