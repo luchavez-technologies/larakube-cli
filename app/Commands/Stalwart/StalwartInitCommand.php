@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Mail;
+namespace App\Commands\Stalwart;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ConfigData;
@@ -38,7 +38,7 @@ use function Laravel\Prompts\confirm;
 
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class MailInitCommand extends AbstractToolInitCommand
+abstract class StalwartInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithRemoteSsh, InteractsWithSecrets, InteractsWithStalwartApi, InteractsWithTraefik, InteractsWithVolumeSizing, LaraKubeOutput, ManagesCloudFirewall, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 

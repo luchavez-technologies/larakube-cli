@@ -16,7 +16,6 @@ use App\Commands\Grafana\GrafanaInitCommand;
 use App\Commands\Headlamp\HeadlampInitCommand;
 use App\Commands\Kuma\KumaInitCommand;
 use App\Commands\Kutt\KuttInitCommand;
-use App\Commands\Mail\MailInitCommand;
 use App\Commands\Meet\MeetInitCommand;
 use App\Commands\Metabase\MetabaseInitCommand;
 use App\Commands\Ocis\OcisInitCommand;
@@ -27,6 +26,7 @@ use App\Commands\Resume\ResumeInitCommand;
 use App\Commands\Secrets\SecretsInitCommand;
 use App\Commands\Sendrec\SendrecInitCommand;
 use App\Commands\Sso\SsoInitCommand;
+use App\Commands\Stalwart\StalwartInitCommand;
 use App\Commands\Teable\TeableInitCommand;
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Commands\Twenty\TwentyInitCommand;
@@ -81,7 +81,7 @@ final class ToolInitCommands
             ForgejoInitCommand::class => new class($tool) extends ForgejoInitCommand {},
             ChatwootInitCommand::class => new class($tool) extends ChatwootInitCommand {},
             KuttInitCommand::class => new class($tool) extends KuttInitCommand {},
-            MailInitCommand::class => new class($tool) extends MailInitCommand {},
+            StalwartInitCommand::class => new class($tool) extends StalwartInitCommand {},
             MeetInitCommand::class => new class($tool) extends MeetInitCommand {},
             MetabaseInitCommand::class => new class($tool) extends MetabaseInitCommand {},
             GrafanaInitCommand::class => new class($tool) extends GrafanaInitCommand {},
@@ -134,7 +134,7 @@ final class ToolInitCommands
             ClusterTool::WORDPRESS => DataInitCommand::class,
             ClusterTool::RESUME => ResumeInitCommand::class,
             ClusterTool::SENDREC => SendrecInitCommand::class,
-            ClusterTool::STALWART => MailInitCommand::class,
+            ClusterTool::STALWART => StalwartInitCommand::class,
             ClusterTool::TEABLE => TeableInitCommand::class,
             ClusterTool::TWENTY => TwentyInitCommand::class,
             ClusterTool::UMAMI => AnalyticsInitCommand::class,

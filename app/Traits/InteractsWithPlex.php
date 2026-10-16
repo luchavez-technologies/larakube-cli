@@ -927,7 +927,7 @@ trait InteractsWithPlex
             // already pre-seeded into config.json before first boot, so there
             // is no wizard step for it and nothing was ever on an empty/
             // RocksDB directory to begin with — see
-            // MailInitCommand::bootstrapStalwartStoreForLocal().
+            // StalwartInitCommand::bootstrapStalwartStoreForLocal().
             $this->line('  <fg=yellow>7. Configure remaining stores</> — the Data (main) store is');
             $this->line('     <fg=green>already configured</> (Commons Postgres, set automatically at deploy).');
             $this->line("     Open <fg=blue>https://{$host}/admin</> → Settings → Storage for the rest:");

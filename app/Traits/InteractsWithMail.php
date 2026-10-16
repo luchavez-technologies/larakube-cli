@@ -69,7 +69,7 @@ trait InteractsWithMail
      * it in hand — keeps every existing readMailSecret()/storeMailSecret()
      * call site correct without each one needing to independently resolve
      * $env/$host/$instance itself.
-     * Callers that already computed it (MailInitCommand mid-deploy, before
+     * Callers that already computed it (StalwartInitCommand mid-deploy, before
      * it's even registered) should pass it explicitly instead.
      */
     protected function resolveMailInstance(string $kubectl): string

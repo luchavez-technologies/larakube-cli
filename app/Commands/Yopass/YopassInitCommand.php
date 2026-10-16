@@ -29,7 +29,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  * only other option is bundling a dedicated Memcached, which would defeat
  * the whole point of reusing the Commons); the optional S3 file-storage
  * feature is wired to Commons SeaweedFS/MinIO/Garage only when one is
- * enabled, mirroring MailInitCommand's own conditional store wiring.
+ * enabled, mirroring StalwartInitCommand's own conditional store wiring.
  */
 abstract class YopassInitCommand extends AbstractToolInitCommand
 {
