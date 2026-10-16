@@ -38,7 +38,7 @@ enum SharedClusterService: string
             self::ERRORS => 'k8s.errors.ingress',
             self::SECRETS => 'k8s.secrets.ingress',
             self::FORGEJO => 'k8s.git.ingress',
-            self::FLOW => 'k8s.flow.ingress',
+            self::FLOW => 'k8s.n8n.ingress',
             self::SHEET => 'k8s.sheet.ingress',
             self::INSIGHTS => 'k8s.insights.ingress',
             self::MAIL => 'k8s.mail.ingress',
@@ -47,7 +47,7 @@ enum SharedClusterService: string
             self::WEBMAIL => 'k8s.webmail.ingress',
             self::NOTES => 'k8s.notes.ingress',
             self::DRIVE => 'k8s.drive.ingress',
-            self::ANALYTICS => 'k8s.analytics.ingress',
+            self::ANALYTICS => 'k8s.umami.ingress',
             self::TASKS => 'k8s.tasks.ingress',
 
             self::SIGN => 'k8s.sign.ingress',

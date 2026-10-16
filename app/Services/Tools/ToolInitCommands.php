@@ -2,13 +2,11 @@
 
 namespace App\Services\Tools;
 
-use App\Commands\Analytics\AnalyticsInitCommand;
 use App\Commands\Bulwark\BulwarkInitCommand;
 use App\Commands\Chatwoot\ChatwootInitCommand;
 use App\Commands\Data\DataInitCommand;
 use App\Commands\Documenso\DocumensoInitCommand;
 use App\Commands\ExternalDns\ExternalDnsInitCommand;
-use App\Commands\Flow\FlowInitCommand;
 use App\Commands\Forgejo\ForgejoInitCommand;
 use App\Commands\GlitchTip\GlitchTipInitCommand;
 use App\Commands\Grafana\GrafanaInitCommand;
@@ -18,19 +16,23 @@ use App\Commands\Kutt\KuttInitCommand;
 use App\Commands\LiveKit\LiveKitInitCommand;
 use App\Commands\Matrix\MatrixInitCommand;
 use App\Commands\Metabase\MetabaseInitCommand;
+use App\Commands\N8n\N8nInitCommand;
 use App\Commands\NetBird\NetBirdInitCommand;
 use App\Commands\Ocis\OcisInitCommand;
 use App\Commands\OpenBao\OpenBaoInitCommand;
 use App\Commands\Outline\OutlineInitCommand;
 use App\Commands\Penpot\PenpotInitCommand;
 use App\Commands\Planka\PlankaInitCommand;
+use App\Commands\Plausible\PlausibleInitCommand;
 use App\Commands\Resume\ResumeInitCommand;
 use App\Commands\Sendrec\SendrecInitCommand;
 use App\Commands\Stalwart\StalwartInitCommand;
 use App\Commands\Teable\TeableInitCommand;
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Commands\Twenty\TwentyInitCommand;
+use App\Commands\Umami\UmamiInitCommand;
 use App\Commands\Vaultwarden\VaultwardenInitCommand;
+use App\Commands\Windmill\WindmillInitCommand;
 use App\Commands\Yopass\YopassInitCommand;
 use App\Commands\Zitadel\ZitadelInitCommand;
 use App\Enums\ClusterTool;
@@ -50,7 +52,8 @@ final class ToolInitCommands
         $base = self::family($tool);
 
         return match ($base) {
-            AnalyticsInitCommand::class => new class($tool) extends AnalyticsInitCommand {},
+            UmamiInitCommand::class => new class($tool) extends UmamiInitCommand {},
+            PlausibleInitCommand::class => new class($tool) extends PlausibleInitCommand {},
             MatrixInitCommand::class => new class($tool) extends MatrixInitCommand {},
             HeadlampInitCommand::class => new class($tool) extends HeadlampInitCommand {},
             DataInitCommand::class => new class($tool) extends DataInitCommand
@@ -71,13 +74,8 @@ final class ToolInitCommands
                 }
             },
             GlitchTipInitCommand::class => new class($tool) extends GlitchTipInitCommand {},
-            FlowInitCommand::class => new class($tool) extends FlowInitCommand
-            {
-                protected function resolveEngine(): string
-                {
-                    return $this->tool()->value;
-                }
-            },
+            N8nInitCommand::class => new class($tool) extends N8nInitCommand {},
+            WindmillInitCommand::class => new class($tool) extends WindmillInitCommand {},
             ForgejoInitCommand::class => new class($tool) extends ForgejoInitCommand {},
             ChatwootInitCommand::class => new class($tool) extends ChatwootInitCommand {},
             KuttInitCommand::class => new class($tool) extends KuttInitCommand {},
@@ -122,14 +120,14 @@ final class ToolInitCommands
             ClusterTool::LIVEKIT => LiveKitInitCommand::class,
             ClusterTool::MATRIX => MatrixInitCommand::class,
             ClusterTool::METABASE => MetabaseInitCommand::class,
-            ClusterTool::N8N => FlowInitCommand::class,
+            ClusterTool::N8N => N8nInitCommand::class,
             ClusterTool::NETBIRD => NetBirdInitCommand::class,
             ClusterTool::OCIS => OcisInitCommand::class,
             ClusterTool::OPENBAO => OpenBaoInitCommand::class,
             ClusterTool::OUTLINE => OutlineInitCommand::class,
             ClusterTool::PENPOT => PenpotInitCommand::class,
             ClusterTool::PLANKA => PlankaInitCommand::class,
-            ClusterTool::PLAUSIBLE => AnalyticsInitCommand::class,
+            ClusterTool::PLAUSIBLE => PlausibleInitCommand::class,
             ClusterTool::POCKETBASE => DataInitCommand::class,
             ClusterTool::WORDPRESS => DataInitCommand::class,
             ClusterTool::RESUME => ResumeInitCommand::class,
@@ -137,9 +135,9 @@ final class ToolInitCommands
             ClusterTool::STALWART => StalwartInitCommand::class,
             ClusterTool::TEABLE => TeableInitCommand::class,
             ClusterTool::TWENTY => TwentyInitCommand::class,
-            ClusterTool::UMAMI => AnalyticsInitCommand::class,
+            ClusterTool::UMAMI => UmamiInitCommand::class,
             ClusterTool::VAULTWARDEN => VaultwardenInitCommand::class,
-            ClusterTool::WINDMILL => FlowInitCommand::class,
+            ClusterTool::WINDMILL => WindmillInitCommand::class,
             ClusterTool::YOPASS => YopassInitCommand::class,
             ClusterTool::ZITADEL => ZitadelInitCommand::class,
             default => throw new LogicException("{$tool->value} has no init command family."),

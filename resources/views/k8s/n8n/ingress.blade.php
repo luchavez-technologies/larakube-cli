@@ -1,5 +1,5 @@
 @php
-    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::FLOW, $host, $engine ?? 'n8n');
+    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::from($engine ?? 'n8n'), $host, $engine ?? 'n8n');
     $servicePort ??= ($names->engine === 'windmill' ? 8000 : 5678);
     $labels ??= $names->labels();
 @endphp

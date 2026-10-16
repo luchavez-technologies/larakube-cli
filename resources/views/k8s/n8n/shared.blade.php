@@ -148,4 +148,4 @@ spec:
       targetPort: 5678
   type: ClusterIP
 ---
-@include('k8s.flow.ingress', ['names' => $names, 'labels' => $labels, 'servicePort' => 5678])
+@include('k8s.n8n.ingress', ['names' => $names, 'labels' => $labels, 'servicePort' => 5678])

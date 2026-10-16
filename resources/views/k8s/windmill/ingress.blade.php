@@ -1,0 +1,41 @@
+@php
+    $names ??= \App\Data\ToolInstance::forHost(\App\Enums\ClusterTool::from($engine ?? 'windmill'), $host, $engine ?? 'windmill');
+    $servicePort ??= ($names->engine === 'windmill' ? 8000 : 5678);
+    $labels ??= $names->labels();
+@endphp
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $names->deployment() }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+@unless($isLocal ?? false)
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+@if($proxied ?? false)
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+@endif
+@endunless
+@if($vpnOnly ?? false)
+    traefik.ingress.kubernetes.io/router.middlewares: {{ $names->vpnMiddleware()->traefikMiddleware() }}
+@endif
+spec:
+  rules:
+    - host: {{ $host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $names->deployment() }}
+                port:
+                  number: {{ $servicePort }}
+  tls:
+    - hosts:
+        - {{ $host }}

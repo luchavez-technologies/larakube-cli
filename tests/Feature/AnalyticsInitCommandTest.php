@@ -10,7 +10,7 @@ test('tool:init --tool=umami refuses because Umami is unshipped', function (): v
 });
 
 test('analytics manifest carries canonical resource naming and identity labels', function (): void {
-    $manifest = view('k8s.analytics.shared', [
+    $manifest = view('k8s.umami.shared', [
         'host' => 'analytics.example.test',
         'plexNamespace' => 'larakube-plex',
         'vpnOnly' => false,
@@ -27,7 +27,7 @@ test('analytics manifest carries canonical resource naming and identity labels',
 });
 
 test('analytics ingress carries canonical naming and proxy annotations', function (): void {
-    $cloud = view('k8s.analytics.shared', [
+    $cloud = view('k8s.umami.shared', [
         'host' => 'analytics.luchtech.dev',
         'plexNamespace' => 'larakube-plex',
         'vpnOnly' => false,

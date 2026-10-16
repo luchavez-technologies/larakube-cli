@@ -23,7 +23,7 @@ function forgejoRenderedManifest(): string
 
 function n8nRenderedManifest(): string
 {
-    return view('k8s.flow.n8n', [
+    return view('k8s.n8n.shared', [
         'host' => 'flow.luchtech.dev',
         'engine' => 'n8n',
         'volumeSize' => fn (string $claim, string $default, bool $growth = false) => $default,

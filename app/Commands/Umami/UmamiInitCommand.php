@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Analytics;
+namespace App\Commands\Umami;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
@@ -24,7 +24,7 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class AnalyticsInitCommand extends AbstractToolInitCommand
+abstract class UmamiInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithAnalytics, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
@@ -79,7 +79,7 @@ abstract class AnalyticsInitCommand extends AbstractToolInitCommand
             'app-secret' => $appSecret,
         ], $names->labels()));
 
-        $manifest = view('k8s.analytics.shared', [
+        $manifest = view('k8s.umami.shared', [
             'names' => $names,
             'host' => $host,
             'dbName' => $dbName,

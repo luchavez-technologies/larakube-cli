@@ -63,7 +63,7 @@ test('each FLOW engine names its resources per instance through ToolInstance', f
 });
 
 test('FLOW templates take every image from the engine class, never a literal tag', function (string $template): void {
-    $source = (string) file_get_contents(base_path("resources/views/k8s/flow/{$template}.blade.php"));
+    $source = (string) file_get_contents(base_path("resources/views/k8s/{$template}/shared.blade.php"));
 
     preg_match_all('/^\s*image:\s*(.+)$/m', $source, $m);
 

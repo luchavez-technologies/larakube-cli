@@ -347,7 +347,7 @@ enum ClusterTool: string implements HasWorkloadComponents
      * Multi-entry lists are engine-switchable tools (flow: n8n|windmill)
      * where either engine's database may exist — the
      * teardown drops both to guarantee a clean slate, matching the existing
-     * hand-written behaviour in FlowInitCommand::removeFlow().
+     * hand-written behaviour in N8nRemoveCommand/WindmillRemoveCommand's teardown().
      * Empty for tools with no Commons tenant (they bundle storage or are
      * stateless controllers).
      *

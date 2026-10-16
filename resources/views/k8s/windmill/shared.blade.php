@@ -176,4 +176,4 @@ spec:
       name: lsp
   type: ClusterIP
 ---
-@include('k8s.flow.ingress', ['names' => $names, 'labels' => $labels, 'servicePort' => 8000])
+@include('k8s.windmill.ingress', ['names' => $names, 'labels' => $labels, 'servicePort' => 8000])

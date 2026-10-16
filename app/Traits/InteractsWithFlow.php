@@ -13,7 +13,7 @@ trait InteractsWithFlow
     /** The namespace the flow stack lives in. */
     protected function flowNamespace(): string
     {
-        return ClusterTool::FLOW->namespace();
+        return ClusterTool::N8N->namespace();
     }
 
     /**
@@ -27,7 +27,7 @@ trait InteractsWithFlow
                 continue;
             }
 
-            $names = ToolInstance::forHost(ClusterTool::FLOW, $host, $candidate->value);
+            $names = ToolInstance::forHost(ClusterTool::from($candidate->value), $host, $candidate->value);
             if ($kubectl->exists(new ResourceRef('Deployment', $names->deployment(), $names->namespace()))) {
                 return $candidate;
             }
