@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Chat;
+namespace App\Commands\Matrix;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
@@ -32,7 +32,7 @@ use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class ChatInitCommand extends AbstractToolInitCommand
+abstract class MatrixInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSso, InteractsWithVolumeSizing, InteractsWithZitadelApi, LaraKubeOutput, ManagesToolFirewallPorts, RequiresFlagsWhenNonInteractive, ResolvesToolBranding, ResolvesToolEnvironment, ResolvesToolHost, SchedulesCronJobs, StreamsProcessOutput, SyncsClusterSecrets;
 

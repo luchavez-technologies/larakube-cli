@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Vpn;
+namespace App\Commands\NetBird;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ConfigData;
@@ -37,7 +37,7 @@ use Saloon\Exceptions\Request\FatalRequestException;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 use Throwable;
 
-abstract class VpnInitCommand extends AbstractToolInitCommand
+abstract class NetBirdInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithPlex, InteractsWithProjectConfig, InteractsWithVolumeSizing, InteractsWithVpn, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 

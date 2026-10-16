@@ -36,7 +36,7 @@ enum SecretsBackend: string implements HasDockerImage, HasLabel
     /**
      * The three OpenBao ACL policies shared by every auth method that can
      * reach it — OIDC roles (SsoWireCommand::wireOpenBaoOidc()) and the
-     * baseline userpass admin (SecretsInitCommand) both write these same
+     * baseline userpass admin (OpenBaoInitCommand) both write these same
      * definitions, rather than each keeping their own copy that could drift
      * out of sync and leave "SSO admin" and "local admin" with silently
      * different actual permissions.

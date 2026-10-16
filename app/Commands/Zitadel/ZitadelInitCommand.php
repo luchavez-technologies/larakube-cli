@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Commands\Sso;
+namespace App\Commands\Zitadel;
 
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\GlobalConfigData;
@@ -33,7 +33,7 @@ use function Laravel\Prompts\text;
 
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
-abstract class SsoInitCommand extends AbstractToolInitCommand
+abstract class ZitadelInitCommand extends AbstractToolInitCommand
 {
     use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithSecrets, InteractsWithSso, InteractsWithVolumeSizing, InteractsWithZitadelApi, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 

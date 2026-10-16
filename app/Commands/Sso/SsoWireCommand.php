@@ -1352,7 +1352,7 @@ class SsoWireCommand extends Command
             .'BAO_TOKEN='.escapeshellarg($rootToken).' '
             .'BAO_ADDR=http://127.0.0.1:8200';
 
-        // Shared with SecretsInitCommand's baseline userpass admin — see
+        // Shared with OpenBaoInitCommand's baseline userpass admin — see
         // SecretsBackend::policies()'s docblock for why these must not be
         // two independently-maintained copies.
         $policies = SecretsBackend::OPENBAO->policies();

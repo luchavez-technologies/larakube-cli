@@ -50,7 +50,7 @@ use Throwable;
 /**
  * Zitadel's v2 User Service API, reached directly over HTTPS via its public
  * ingress with the bootstrapped machine PAT — same shape as
- * VpnInitCommand::bootstrapVpnAuth()'s calls to NetBird's /api/setup, not a
+ * NetBirdInitCommand::bootstrapVpnAuth()'s calls to NetBird's /api/setup, not a
  * kubectl-exec proxy like Stalwart's JMAP (Zitadel's API is meant to be
  * reached externally). Method shapes verified against Zitadel's own API
  * reference docs (user_service_v2), not inferred — but without a live

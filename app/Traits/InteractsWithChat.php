@@ -132,7 +132,7 @@ trait InteractsWithChat
      * the two concerns share the single `extra_well_known_client_content:`
      * top-level key (Synapse ignores unknown top-level keys, so they cannot
      * each own a separate one), so this method is the SOLE owner of that key
-     * and every caller (meet:wire/unwire, ChatInitCommand's own
+     * and every caller (meet:wire/unwire, MatrixInitCommand's own
      * activateMasAuthMode()) must read back and pass through the OTHER
      * concern's current state or it
      * will silently clobber it — same discipline as renderSynapseConfig()'s
@@ -199,7 +199,7 @@ trait InteractsWithChat
      * Synapse cannot run classic oidc_providers: and MAS-delegated auth
      * (matrix_authentication_service:) at the same time for the same users.
      * When both are somehow present (should never happen — $oidc's presence
-     * is what gates ChatInitCommand from ever activating $mas in the first
+     * is what gates MatrixInitCommand from ever activating $mas in the first
      * place), `$mas` wins, since it represents the more recently activated
      * state.
      *
@@ -234,7 +234,7 @@ trait InteractsWithChat
      * ChatTool's own components() method for why chat isn't exempt from
      * the naming convention despite never having a real second instance),
      * so this is what every MAS resource name is built from. Cheap when
-     * $host is already known (every ChatInitCommand call site has it —
+     * $host is already known (every MatrixInitCommand call site has it —
      * pass it); falls back to a live registry/ingress lookup of chat's own
      * registered host for the handful of OTHER commands (sso:wire/unwire,
      * meet:wire/unwire, mail:unwire) that read MAS state back without
@@ -264,7 +264,7 @@ trait InteractsWithChat
      * The precedence invariant that keeps an ALREADY-live install (with an
      * existing chat-oidc from classic Zitadel wiring) from silently
      * flipping to MAS out from under its real users lives in the CALLER
-     * (ChatInitCommand::deployChat()), not here: it only ever passes this
+     * (MatrixInitCommand::deployChat()), not here: it only ever passes this
      * method's result into rendering when readChatWiredOidc() is null. A
      * fresh install has no chat-oidc to begin with, so it activates MAS
      * immediately, in the same tool:init --tool=matrix run that first deploys it — no

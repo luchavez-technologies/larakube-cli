@@ -9,7 +9,7 @@ use Saloon\Traits\Plugins\AcceptsJson;
 /**
  * Host is per-instance (each cluster's own NetBird management), so it's a
  * constructor argument, same as MatrixConnector. $pat is optional: the
- * one-time owner-bootstrap call (POST /api/setup, VpnInitCommand's
+ * one-time owner-bootstrap call (POST /api/setup, NetBirdInitCommand's
  * bootstrapVpnAuth()) happens before any PAT exists — it's what PRODUCES
  * the token every other call authenticates with.
  *

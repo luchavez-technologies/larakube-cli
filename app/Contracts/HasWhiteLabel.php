@@ -7,7 +7,7 @@ namespace App\Contracts;
  * (app name / logo) via environment variables, Nginx sub_filter injection,
  * or its own Blade template variables baked directly into a rendered
  * ConfigMap/Secret (e.g. Chat's Element Web config.json, applied by
- * ChatInitCommand itself rather than any generic env/sub_filter mechanism).
+ * MatrixInitCommand itself rather than any generic env/sub_filter mechanism).
  *
  * None of these keys are consumed by shared branding-application code
  * today — every :init command applies its own tool's branding directly.

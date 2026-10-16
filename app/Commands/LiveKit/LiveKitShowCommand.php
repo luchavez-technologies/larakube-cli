@@ -2,13 +2,53 @@
 
 namespace App\Commands\LiveKit;
 
-use App\Commands\Meet\MeetShowCommand;
+use App\Commands\Tool\AbstractToolShowCommand;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
+use App\Traits\InteractsWithMeet;
 
-class LiveKitShowCommand extends MeetShowCommand
+class LiveKitShowCommand extends AbstractToolShowCommand
 {
+    use InteractsWithMeet;
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::LIVEKIT;
+    }
+
+    /**
+     * Adds the wired consumers. Which apps hold a key is the thing you actually
+     * need when debugging "my app can't connect" — secrets stay masked.
+     *
+     * @return array<int, array<int, string>>
+     */
+    protected function rows(?string $host, string $env, string $kubectl, string $instance = ''): array
+    {
+        $rows = parent::rows($host, $env, $kubectl, $instance);
+
+        if ($host !== null) {
+            $rows[] = ['Signaling', "wss://{$host}"];
+        }
+
+        // The bootstrap key is an implementation detail of "LiveKit refuses to
+        // start with no keys" — listing it would read as a consumer you wired.
+        $names = $instance !== '' ? ToolInstance::forInstance(ClusterTool::LIVEKIT, $instance) : $this->meetInstance($kubectl);
+        $registry = $names !== null ? $this->meetConsumers($this->readMeetKeys($kubectl, $names)) : [];
+
+        if ($registry === []) {
+            $rows[] = ['Consumers', "<fg=gray>none — run meet:wire {$env} --tool=matrix</>"];
+
+            return $rows;
+        }
+
+        foreach ($registry as $consumer => $creds) {
+            $rows[] = [
+                "Consumer: {$consumer}",
+                "key {$creds['key']} · rooms {$creds['roomPrefix']}*"
+                    .(($creds['webhookUrl'] ?? null) !== null ? " · webhook {$creds['webhookUrl']}" : ''),
+            ];
+        }
+
+        return $rows;
     }
 }

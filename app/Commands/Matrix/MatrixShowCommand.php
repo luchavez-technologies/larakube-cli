@@ -2,16 +2,11 @@
 
 namespace App\Commands\Matrix;
 
-use App\Commands\Chat\ChatShowCommand;
+use App\Commands\Tool\AbstractToolShowCommand;
 use App\Enums\ClusterTool;
 
-class MatrixShowCommand extends ChatShowCommand
+class MatrixShowCommand extends AbstractToolShowCommand
 {
-    public function handle(): int
-    {
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::MATRIX;

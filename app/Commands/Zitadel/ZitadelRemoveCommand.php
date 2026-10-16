@@ -2,18 +2,39 @@
 
 namespace App\Commands\Zitadel;
 
-use App\Commands\Sso\SsoRemoveCommand;
+use App\Commands\Tool\AbstractToolRemoveCommand;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 
-class ZitadelRemoveCommand extends SsoRemoveCommand
+class ZitadelRemoveCommand extends AbstractToolRemoveCommand
 {
-    public function handle(): int
-    {
-        return parent::handle();
-    }
-
     protected function tool(): ClusterTool
     {
         return ClusterTool::ZITADEL;
+    }
+
+    protected function usesBundledStorage(string $kubectl, string $namespace): bool
+    {
+        $names = ToolInstance::first($kubectl, ClusterTool::ZITADEL);
+
+        return $names !== null && $this->deploymentExists($kubectl, $namespace, $names->deployment('db'));
+    }
+
+    protected function teardownWarning(string $env): array
+    {
+        return array_merge(parent::teardownWarning($env), [
+            'Every tool wired to this Zitadel will lose SSO login — run sso:wire --remove first if you want them left clean.',
+        ]);
+    }
+
+    protected function teardown(string $kubectl, string $namespace): bool
+    {
+        // Whole dedicated namespace, matching Vaultwarden/OpenBao/NetBird —
+        // nothing else lives in larakube-sso.
+        return $this->removeNamespace(
+            'Removing Zitadel namespace...',
+            $kubectl,
+            $namespace,
+        );
     }
 }

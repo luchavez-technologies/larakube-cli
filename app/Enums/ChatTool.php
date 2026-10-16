@@ -149,7 +149,7 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
             // Element Admin — a static SPA with no data of its own (it acts
             // entirely through the logged-in operator's own session against
             // Synapse's/MAS's Admin APIs), so no DB/PVC entry. Deployed only
-            // once MAS is active (see ChatInitCommand's admin deploy step).
+            // once MAS is active (see MatrixInitCommand's admin deploy step).
             new ClusterToolComponentData(
                 key: 'admin',
                 role: ClusterToolComponentRole::WORKER,
@@ -226,7 +226,7 @@ enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, Has
     {
         // Element Web takes brand/auth_header_logo_url directly in its own
         // config.json (rendered in matrix.blade.php's chat-web-config, via
-        // $appName/$logoUrl already threaded through ChatInitCommand) — no
+        // $appName/$logoUrl already threaded through MatrixInitCommand) — no
         // nginx sub_filter injection needed, unlike Cinny before it.
         return ['blade_variables' => true];
     }

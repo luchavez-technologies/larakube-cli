@@ -4,7 +4,6 @@ namespace App\Services\Tools;
 
 use App\Commands\Analytics\AnalyticsInitCommand;
 use App\Commands\Bulwark\BulwarkInitCommand;
-use App\Commands\Chat\ChatInitCommand;
 use App\Commands\Chatwoot\ChatwootInitCommand;
 use App\Commands\Data\DataInitCommand;
 use App\Commands\Documenso\DocumensoInitCommand;
@@ -16,23 +15,24 @@ use App\Commands\Grafana\GrafanaInitCommand;
 use App\Commands\Headlamp\HeadlampInitCommand;
 use App\Commands\Kuma\KumaInitCommand;
 use App\Commands\Kutt\KuttInitCommand;
-use App\Commands\Meet\MeetInitCommand;
+use App\Commands\LiveKit\LiveKitInitCommand;
+use App\Commands\Matrix\MatrixInitCommand;
 use App\Commands\Metabase\MetabaseInitCommand;
+use App\Commands\NetBird\NetBirdInitCommand;
 use App\Commands\Ocis\OcisInitCommand;
+use App\Commands\OpenBao\OpenBaoInitCommand;
 use App\Commands\Outline\OutlineInitCommand;
 use App\Commands\Penpot\PenpotInitCommand;
 use App\Commands\Planka\PlankaInitCommand;
 use App\Commands\Resume\ResumeInitCommand;
-use App\Commands\Secrets\SecretsInitCommand;
 use App\Commands\Sendrec\SendrecInitCommand;
-use App\Commands\Sso\SsoInitCommand;
 use App\Commands\Stalwart\StalwartInitCommand;
 use App\Commands\Teable\TeableInitCommand;
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Commands\Twenty\TwentyInitCommand;
 use App\Commands\Vaultwarden\VaultwardenInitCommand;
-use App\Commands\Vpn\VpnInitCommand;
 use App\Commands\Yopass\YopassInitCommand;
+use App\Commands\Zitadel\ZitadelInitCommand;
 use App\Enums\ClusterTool;
 use LogicException;
 
@@ -51,7 +51,7 @@ final class ToolInitCommands
 
         return match ($base) {
             AnalyticsInitCommand::class => new class($tool) extends AnalyticsInitCommand {},
-            ChatInitCommand::class => new class($tool) extends ChatInitCommand {},
+            MatrixInitCommand::class => new class($tool) extends MatrixInitCommand {},
             HeadlampInitCommand::class => new class($tool) extends HeadlampInitCommand {},
             DataInitCommand::class => new class($tool) extends DataInitCommand
             {
@@ -82,7 +82,7 @@ final class ToolInitCommands
             ChatwootInitCommand::class => new class($tool) extends ChatwootInitCommand {},
             KuttInitCommand::class => new class($tool) extends KuttInitCommand {},
             StalwartInitCommand::class => new class($tool) extends StalwartInitCommand {},
-            MeetInitCommand::class => new class($tool) extends MeetInitCommand {},
+            LiveKitInitCommand::class => new class($tool) extends LiveKitInitCommand {},
             MetabaseInitCommand::class => new class($tool) extends MetabaseInitCommand {},
             GrafanaInitCommand::class => new class($tool) extends GrafanaInitCommand {},
             OutlineInitCommand::class => new class($tool) extends OutlineInitCommand {},
@@ -91,12 +91,12 @@ final class ToolInitCommands
             PlankaInitCommand::class => new class($tool) extends PlankaInitCommand {},
             SendrecInitCommand::class => new class($tool) extends SendrecInitCommand {},
             ResumeInitCommand::class => new class($tool) extends ResumeInitCommand {},
-            SecretsInitCommand::class => new class($tool) extends SecretsInitCommand {},
+            OpenBaoInitCommand::class => new class($tool) extends OpenBaoInitCommand {},
             TeableInitCommand::class => new class($tool) extends TeableInitCommand {},
-            SsoInitCommand::class => new class($tool) extends SsoInitCommand {},
+            ZitadelInitCommand::class => new class($tool) extends ZitadelInitCommand {},
             TwentyInitCommand::class => new class($tool) extends TwentyInitCommand {},
             KumaInitCommand::class => new class($tool) extends KumaInitCommand {},
-            VpnInitCommand::class => new class($tool) extends VpnInitCommand {},
+            NetBirdInitCommand::class => new class($tool) extends NetBirdInitCommand {},
             BulwarkInitCommand::class => new class($tool) extends BulwarkInitCommand {},
             default => throw new LogicException("No init command is registered for {$base}."),
         };
@@ -119,13 +119,13 @@ final class ToolInitCommands
             ClusterTool::HEADLAMP => HeadlampInitCommand::class,
             ClusterTool::KUMA => KumaInitCommand::class,
             ClusterTool::KUTT => KuttInitCommand::class,
-            ClusterTool::LIVEKIT => MeetInitCommand::class,
-            ClusterTool::MATRIX => ChatInitCommand::class,
+            ClusterTool::LIVEKIT => LiveKitInitCommand::class,
+            ClusterTool::MATRIX => MatrixInitCommand::class,
             ClusterTool::METABASE => MetabaseInitCommand::class,
             ClusterTool::N8N => FlowInitCommand::class,
-            ClusterTool::NETBIRD => VpnInitCommand::class,
+            ClusterTool::NETBIRD => NetBirdInitCommand::class,
             ClusterTool::OCIS => OcisInitCommand::class,
-            ClusterTool::OPENBAO => SecretsInitCommand::class,
+            ClusterTool::OPENBAO => OpenBaoInitCommand::class,
             ClusterTool::OUTLINE => OutlineInitCommand::class,
             ClusterTool::PENPOT => PenpotInitCommand::class,
             ClusterTool::PLANKA => PlankaInitCommand::class,
@@ -141,7 +141,7 @@ final class ToolInitCommands
             ClusterTool::VAULTWARDEN => VaultwardenInitCommand::class,
             ClusterTool::WINDMILL => FlowInitCommand::class,
             ClusterTool::YOPASS => YopassInitCommand::class,
-            ClusterTool::ZITADEL => SsoInitCommand::class,
+            ClusterTool::ZITADEL => ZitadelInitCommand::class,
             default => throw new LogicException("{$tool->value} has no init command family."),
         };
     }
