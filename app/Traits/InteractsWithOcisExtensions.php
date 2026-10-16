@@ -96,10 +96,10 @@ trait InteractsWithOcisExtensions
                 'download_url' => 'https://github.com/owncloud/marketplace/releases/download/3dviewer/3dviewer-0.1.0.zip',
             ],
             [
-                'id' => 'com.github.owncloud.web-extensions.dicom-viewer',
+                'id' => 'com.github.owncloud.web-app-dicom-viewer',
                 'name' => 'DICOM Viewer',
                 'description' => 'Preview DICOM medical image files',
-                'version' => 'v0.1.0',
+                'version' => 'v1.0.0',
                 'download_url' => 'https://github.com/owncloud/marketplace/releases/download/dicom-viewer/dicom-viewer-0.1.0.zip',
             ],
             [
@@ -145,7 +145,11 @@ trait InteractsWithOcisExtensions
 
         $lines = array_map('trim', explode("\n", $res->output));
 
-        return array_values(array_filter($lines, fn ($line) => $line !== '' && ! str_contains($line, 'No such file')));
+        return array_values(array_filter($lines, fn ($line) => $line !== ''
+            && ! str_contains($line, 'No such file')
+            && ! str_starts_with($line, '.')
+            && $line !== '__MACOSX',
+        ));
     }
 
     /**
@@ -208,7 +212,7 @@ trait InteractsWithOcisExtensions
             .'unzip -o -q "$TMP_FILE" -d /var/lib/ocis/web/apps/; '
             .'else '
             ."mkdir -p \"/var/lib/ocis/web/apps/{$folder}\" && tar -xzf \"\$TMP_FILE\" -C \"/var/lib/ocis/web/apps/{$folder}\"; "
-            .'fi && rm -f "$TMP_FILE"';
+            .'fi && rm -rf "$TMP_FILE" /var/lib/ocis/web/apps/__MACOSX /var/lib/ocis/web/apps/._*';
 
         return Kubectl::fromPrefix($kubectl)->exec($ns, 'deploy/'.$this->driveDeployment($kubectl), ['sh', '-c', $script])->ok;
     }
@@ -220,9 +224,19 @@ trait InteractsWithOcisExtensions
     {
         $parts = explode('.', $extension);
         $folder = end($parts);
+        $cleanFolder = str_replace(['web-app-', 'web-extensions-'], '', $folder);
+
+        $targets = array_unique(array_filter([
+            "/var/lib/ocis/web/apps/{$extension}",
+            "/var/lib/ocis/web/apps/{$folder}",
+            "/var/lib/ocis/web/apps/{$cleanFolder}",
+            "/var/lib/ocis/web/apps/._{$extension}",
+            "/var/lib/ocis/web/apps/._{$folder}",
+            "/var/lib/ocis/web/apps/._{$cleanFolder}",
+        ]));
 
         return Kubectl::fromPrefix($kubectl)->exec($ns, 'deploy/'.$this->driveDeployment($kubectl), [
-            'rm', '-rf', "/var/lib/ocis/web/apps/{$extension}", "/var/lib/ocis/web/apps/{$folder}",
+            'rm', '-rf', ...$targets,
         ])->ok;
     }
 }

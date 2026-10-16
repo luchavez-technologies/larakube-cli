@@ -51,11 +51,20 @@ class DriveExtShowCommand extends Command
         foreach ($catalog as $item) {
             $parts = explode('.', $item['id']);
             $short = end($parts);
-            $isInstalled = in_array($item['id'], $installed, true) || in_array($short, $installed, true);
+            $cleanShort = str_replace(['web-app-', 'web-extensions-'], '', $short);
+
+            $isInstalled = in_array($item['id'], $installed, true)
+                || in_array($short, $installed, true)
+                || in_array($cleanShort, $installed, true)
+                || in_array(str_replace('web-extensions.', 'web-app-', $item['id']), $installed, true)
+                || in_array(str_replace('web-app-', 'web-extensions.', $item['id']), $installed, true);
 
             if ($isInstalled) {
                 $matchedInstalled[] = $item['id'];
                 $matchedInstalled[] = $short;
+                $matchedInstalled[] = $cleanShort;
+                $matchedInstalled[] = str_replace('web-extensions.', 'web-app-', $item['id']);
+                $matchedInstalled[] = str_replace('web-app-', 'web-extensions.', $item['id']);
             }
 
             $extensions[] = [
