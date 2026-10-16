@@ -3,7 +3,7 @@
 use Symfony\Component\Yaml\Yaml;
 
 test('vpn shared manifest renders as valid multi-document YAML', function (): void {
-    $rendered = view('k8s.vpn.shared', ['host' => 'vpn.example.com', 'noPlex' => false,
+    $rendered = view('k8s.netbird.shared', ['host' => 'vpn.example.com', 'noPlex' => false,
         'plexNamespace' => 'larakube-plex',
         'storeDb' => 'netbird',
         'ssoDomain' => 'example.com'])->render();
@@ -32,11 +32,11 @@ test('vpn shared manifest renders as valid multi-document YAML', function (): vo
 });
 
 test('vpn ingress requests a real ACME cert for a cloud install, never a local one', function (): void {
-    $cloud = view('k8s.vpn.shared', ['host' => 'vpn.example.com', 'isLocal' => false, 'noPlex' => false,
+    $cloud = view('k8s.netbird.shared', ['host' => 'vpn.example.com', 'isLocal' => false, 'noPlex' => false,
         'plexNamespace' => 'larakube-plex',
         'storeDb' => 'netbird',
         'ssoDomain' => 'example.com'])->render();
-    $local = view('k8s.vpn.shared', ['host' => 'vpn.dev.test', 'isLocal' => true, 'noPlex' => false,
+    $local = view('k8s.netbird.shared', ['host' => 'vpn.dev.test', 'isLocal' => true, 'noPlex' => false,
         'plexNamespace' => 'larakube-plex',
         'storeDb' => 'netbird',
         'ssoDomain' => 'dev.test'])->render();
@@ -46,7 +46,7 @@ test('vpn ingress requests a real ACME cert for a cloud install, never a local o
 });
 
 test('vpn management and signal Services both request h2c backend proxying — both serve gRPC', function (): void {
-    $rendered = view('k8s.vpn.shared', ['host' => 'vpn.example.com', 'noPlex' => false,
+    $rendered = view('k8s.netbird.shared', ['host' => 'vpn.example.com', 'noPlex' => false,
         'plexNamespace' => 'larakube-plex',
         'storeDb' => 'netbird',
         'ssoDomain' => 'example.com'])->render();
@@ -67,7 +67,7 @@ test('vpn management and signal Services both request h2c backend proxying — b
 });
 
 test('vpn client manifest renders as valid multi-document YAML wired to the bootstrapped setup key', function (): void {
-    $rendered = view('k8s.vpn.client', ['instance' => 'vpn-example-com'])->render();
+    $rendered = view('k8s.netbird.client', ['instance' => 'vpn-example-com'])->render();
 
     $documents = array_values(array_filter(
         array_map('trim', preg_split('/^---$/m', $rendered)),
@@ -94,7 +94,7 @@ test('the ingress routes every management-owned path explicitly, not via the cat
     // to it breaks peer connectivity silently — the gRPC prefixes carry the
     // client's control channel and /oauth2 is the embedded IdP's issuer.
     foreach ([true, false] as $dashboard) {
-        $rendered = view('k8s.vpn.ingress', ['host' => 'vpn.example.com', 'isLocal' => false, 'dashboard' => $dashboard])->render();
+        $rendered = view('k8s.netbird.ingress', ['host' => 'vpn.example.com', 'isLocal' => false, 'dashboard' => $dashboard])->render();
 
         foreach ([
             '/management.ManagementService/',
@@ -112,7 +112,7 @@ test('the dashboard authenticates against the embedded IdP, not the external one
     // Dex using its static `netbird-dashboard` public client, and Dex federates
     // to whatever /api/identity-providers has registered. Pointing the dashboard
     // straight at the external IdP is the retired standalone setup.
-    $rendered = view('k8s.vpn.shared', [
+    $rendered = view('k8s.netbird.shared', [
         'host' => 'vpn.example.com',
         'isLocal' => false,
         'noPlex' => false,
@@ -132,7 +132,7 @@ test('management.json always uses the embedded IdP and never an HttpConfig block
     // The two are mutually exclusive ("HttpConfig is ignored when EmbeddedIdP is
     // enabled"), and shipping both silently leaves login working while every
     // dashboard API call fails.
-    $config = json_decode(view('k8s.vpn.management-config', [
+    $config = json_decode(view('k8s.netbird.management-config', [
         'host' => 'vpn.example.com',
         'relaySecret' => 'rs',
         'dataStoreEncryptionKey' => 'dk',
@@ -144,7 +144,7 @@ test('management.json always uses the embedded IdP and never an HttpConfig block
 });
 
 test('the ingress always routes / to the dashboard', function (): void {
-    $rendered = view('k8s.vpn.ingress', ['host' => 'vpn.example.com', 'isLocal' => false])->render();
+    $rendered = view('k8s.netbird.ingress', ['host' => 'vpn.example.com', 'isLocal' => false])->render();
 
     expect($rendered)->toContain('name: netbird-dashboard');
 });
@@ -153,13 +153,13 @@ test('the embedded IdP registers the dashboard redirect URI it will actually rec
     // Dex's static netbird-dashboard client only knows the URIs configured here.
     // A mismatch with AUTH_REDIRECT_URI fails at authorize with "Unregistered
     // redirect_uri", before any login form renders.
-    $config = json_decode(view('k8s.vpn.management-config', [
+    $config = json_decode(view('k8s.netbird.management-config', [
         'host' => 'vpn.example.com',
         'relaySecret' => 'rs',
         'dataStoreEncryptionKey' => 'dk',
     ])->render(), true);
 
-    $manifest = view('k8s.vpn.shared', [
+    $manifest = view('k8s.netbird.shared', [
         'host' => 'vpn.example.com',
         'isLocal' => false,
         'noPlex' => false,

@@ -138,7 +138,7 @@ abstract class MatrixInitCommand extends AbstractToolInitCommand
         $meetJwtUrl = $this->readChatWiredMeet($kubectl, $ns, $host);
         $branding = $this->resolveToolBranding($kubectl, ClusterTool::MATRIX, ClusterTool::MATRIX->instanceSlugFromHost($host));
 
-        $manifest = view('k8s.chat.matrix', [
+        $manifest = view('k8s.matrix.matrix', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'instance' => $instance,
@@ -329,7 +329,7 @@ abstract class MatrixInitCommand extends AbstractToolInitCommand
             }
         }
         // The bundled --no-plex Postgres (chat-mas-db) is rendered as part
-        // of the k8s.chat.mas view below, same posture as chat-synapse-db
+        // of the k8s.matrix.mas view below, same posture as chat-synapse-db
         // above — applied together with everything else in one
         // kubectl apply -f, not a separate ad-hoc manifest.
 
@@ -468,7 +468,7 @@ abstract class MatrixInitCommand extends AbstractToolInitCommand
         $temporaryDirectory->delete();
 
         // 5. Apply the chat-mas Deployment/Service/Ingress.
-        $manifest = view('k8s.chat.mas', [
+        $manifest = view('k8s.matrix.mas', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'instance' => $instance,
@@ -531,7 +531,7 @@ abstract class MatrixInitCommand extends AbstractToolInitCommand
             return false;
         }
 
-        $manifest = view('k8s.chat.admin', [
+        $manifest = view('k8s.matrix.admin', [
             'instance' => $names->instance,
             'host' => $host,
             'isLocal' => $env === 'local',

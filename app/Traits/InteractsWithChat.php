@@ -123,7 +123,7 @@ trait InteractsWithChat
      * wire command has no business reading.
      *
      * This must stay in lockstep with the `@if($meetJwtUrl)` block in
-     * resources/views/k8s/chat/matrix.blade.php — five top-level concerns, not
+     * resources/views/k8s/matrix/matrix.blade.php — five top-level concerns, not
      * just the focus URL. Writing only the focus would point Element Call at a
      * working SFU while leaving MSC4140 off, which is the exact configuration
      * that made every client rejoin on a ~15s loop.
@@ -157,7 +157,7 @@ trait InteractsWithChat
         // bookkeeping a non-issue by construction — the exact class of bug
         // the hand-built version of this had (missing newline between the
         // stripped YAML and whichever block ran first).
-        return $yaml.view('k8s.chat.partials.calling-block', [
+        return $yaml.view('k8s.matrix.partials.calling-block', [
             'meetJwtUrl' => $meetJwtUrl,
             'masPublicIssuer' => $masPublicIssuer,
         ])->render();
@@ -221,10 +221,10 @@ trait InteractsWithChat
         // comment for why: it removes the "does this need a leading newline"
         // bookkeeping that produced a real, previously-undetected bug
         // (missing newline whenever $smtp was null and $oidc/$mas wasn't).
-        $yaml .= view('k8s.chat.partials.email-block', ['smtp' => $smtp])->render();
+        $yaml .= view('k8s.matrix.partials.email-block', ['smtp' => $smtp])->render();
         $yaml .= $mas !== null
-            ? view('k8s.chat.partials.mas-auth-block', ['mas' => $mas])->render()
-            : view('k8s.chat.partials.oidc-providers-block', ['oidc' => $oidc])->render();
+            ? view('k8s.matrix.partials.mas-auth-block', ['mas' => $mas])->render()
+            : view('k8s.matrix.partials.oidc-providers-block', ['oidc' => $oidc])->render();
 
         return $yaml;
     }
@@ -385,7 +385,7 @@ trait InteractsWithChat
         // registers (OIDC_AUTH_METHOD_TYPE_BASIC) for confidential clients —
         // verify this is valid for the pinned MAS version before relying on
         // it; some MAS doc versions only show client_secret_post in examples.
-        return $yaml.view('k8s.chat.partials.mas-config-sections', [
+        return $yaml.view('k8s.matrix.partials.mas-config-sections', [
             'database' => $database,
             'matrixTrust' => $matrixTrust,
             'upstream' => $upstream,

@@ -45,7 +45,7 @@ test('the PAT sync targets a different Secret than the database rotation', funct
 test('the ExternalSecret maps the KV key onto the Secret key', function (): void {
     $config = ClusterTool::NETBIRD->openbaoSyncConfig('vpn-luchtech-dev');
 
-    $manifest = view('k8s.secrets.tool-es', [
+    $manifest = view('k8s.openbao.tool-es', [
         'namespace' => 'larakube-vpn',
         'secretName' => $config['secret'],
         'keys' => [],
@@ -60,7 +60,7 @@ test('the ExternalSecret maps the KV key onto the Secret key', function (): void
 });
 
 test('the plain keys form still renders, for every tool that has not moved', function (): void {
-    $manifest = view('k8s.secrets.tool-es', [
+    $manifest = view('k8s.openbao.tool-es', [
         'namespace' => 'larakube-shared',
         'secretName' => 'monitor-secrets',
         'keys' => ['GRAFANA_DB_PASSWORD'],

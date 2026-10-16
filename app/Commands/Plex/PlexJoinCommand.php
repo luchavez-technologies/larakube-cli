@@ -563,7 +563,7 @@ class PlexJoinCommand extends Command
     {
         $refreshTimeBefore = $this->externalSecretRefreshTime($kubectl, $namespace, 'laravel-secrets-db');
 
-        $manifest = view('k8s.secrets.eso-db-static', [
+        $manifest = view('k8s.openbao.eso-db-static', [
             'namespace' => $namespace,
             'openbaoServer' => $this->openBaoServerUrl($kubectl),
             'secretName' => 'laravel-secrets',

@@ -381,4 +381,4 @@ spec:
       targetPort: 33080
   type: ClusterIP
 ---
-@include('k8s.vpn.ingress')
+@include('k8s.netbird.ingress')

@@ -731,7 +731,7 @@ class SsoWireCommand extends Command
 
         $ok = true;
         $this->withSpin('Deploying the shared SSO proxy...', function () use ($kubectl, $sso, $proxy, $ssoHost, $authHost, $app, $cookieSecret, $cookieDomain, $env, $rbacRole, &$ok) {
-            $ok = $this->applyManifest($kubectl, view('k8s.sso.proxy', [
+            $ok = $this->applyManifest($kubectl, view('k8s.zitadel.proxy', [
                 'namespace' => $this->proxyNamespace(),
                 'names' => $sso,
                 'ssoHost' => $ssoHost,
@@ -760,7 +760,7 @@ class SsoWireCommand extends Command
 
         if ($ok) {
             $this->withSpin("Attaching the ForwardAuth middleware to {$tool->getLabel()}...", function () use ($kubectl, $schema, $proxy, &$ok) {
-                $ok = $this->applyManifest($kubectl, view('k8s.sso.forwardauth-middleware', [
+                $ok = $this->applyManifest($kubectl, view('k8s.zitadel.forwardauth-middleware', [
                     'namespace' => $schema['namespace'],
                     'proxyService' => $proxy,
                     'proxyNamespace' => $this->proxyNamespace(),
@@ -935,7 +935,9 @@ class SsoWireCommand extends Command
         // View folders are still named after the legacy category word
         // (k8s/record/, k8s/dashboard/) even for a canonical-only case like
         // SENDREC/HEADLAMP, whose ->value differs from its folder.
-        $view = 'k8s.'.($tool->legacyCategoryPrefix() ?? $tool->value).'.ingress';
+        $view = view()->exists("k8s.{$tool->value}.ingress")
+            ? "k8s.{$tool->value}.ingress"
+            : 'k8s.'.($tool->legacyCategoryPrefix() ?? $tool->value).'.ingress';
         if (! view()->exists($view)) {
             $this->laraKubeError("No ingress template for '{$tool->value}' — cannot toggle its SSO middleware.");
 

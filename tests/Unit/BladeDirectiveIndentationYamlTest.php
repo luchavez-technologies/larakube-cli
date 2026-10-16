@@ -9,7 +9,7 @@ use Symfony\Component\Yaml\Yaml;
  * Blade::render() on minimal fixtures: an indented `@if`/`@endif` (or
  * `@else`) nested inside another Blade directive leaks its own leading
  * whitespace onto the line immediately after the OUTER directive closes.
- * `resources/views/k8s/vpn/ingress.blade.php`'s `spec:` (column 0 in the
+ * `resources/views/k8s/netbird/ingress.blade.php`'s `spec:` (column 0 in the
  * source) rendered with 4 stray leading spaces, making it a child of
  * `metadata.annotations` instead of a sibling of `metadata` — Kubernetes
  * rejected the document outright. The same exact source pattern existed in 3
@@ -36,7 +36,7 @@ function bladeYamlDocuments(string $rendered): array
 }
 
 test('vpn ingress manifest parses as valid YAML across isLocal/proxied branches', function (bool $isLocal, bool $proxied): void {
-    $rendered = view('k8s.vpn.shared', ['host' => 'vpn.example.com', 'isLocal' => $isLocal, 'noPlex' => false,
+    $rendered = view('k8s.netbird.shared', ['host' => 'vpn.example.com', 'isLocal' => $isLocal, 'noPlex' => false,
         'plexNamespace' => 'larakube-plex',
         'storeDb' => 'netbird',
         'ssoDomain' => 'example.com'])->render();
@@ -56,7 +56,7 @@ test('vpn ingress manifest parses as valid YAML across isLocal/proxied branches'
 ]);
 
 test('sso oauth2-proxy ingress manifest parses as valid YAML across isLocal/proxied branches', function (bool $isLocal, bool $proxied): void {
-    $rendered = view('k8s.sso.proxy', [
+    $rendered = view('k8s.zitadel.proxy', [
         'names' => App\Data\ToolInstance::forInstance(App\Enums\ClusterTool::ZITADEL, 'sso-example-com'),
         'namespace' => 'larakube-sso', 'authHost' => 'sso.example.com', 'isLocal' => $isLocal, 'proxied' => $proxied,
         'clientId' => 'cid', 'clientSecret' => 'csecret', 'cookieDomain' => 'example.com', 'cookieSecret' => 'cookiesecret',

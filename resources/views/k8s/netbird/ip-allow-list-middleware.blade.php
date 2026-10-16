@@ -7,7 +7,7 @@ spec:
   ipAllowList:
     sourceRange:
       # NetBird's default peer overlay CIDR — confirmed no override in
-      # k8s/vpn/management-config.blade.php, so this is what LaraKube's own
+      # k8s/netbird/management-config.blade.php, so this is what LaraKube's own
       # NetBird deployment actually assigns to connected peers.
       - 100.64.0.0/10
       # In-cluster pod/service network CIDRs (so in-cluster vpn-client gateway

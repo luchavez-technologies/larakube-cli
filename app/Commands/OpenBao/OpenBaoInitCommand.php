@@ -60,7 +60,7 @@ abstract class OpenBaoInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $manifest = view('k8s.secrets.openbao', [
+        $manifest = view('k8s.openbao.openbao', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'namespace' => $ns,
             'image' => SecretsBackend::OPENBAO->getDockerImage(),
@@ -84,10 +84,10 @@ abstract class OpenBaoInitCommand extends AbstractToolInitCommand
             'autoUnseal' => true,
         ])->render();
 
-        $crdsManifest = view('k8s.secrets.eso-crds')->render();
-        $generatorCrdsManifest = view('k8s.secrets.eso-crds-generators')->render();
+        $crdsManifest = view('k8s.openbao.eso-crds')->render();
+        $generatorCrdsManifest = view('k8s.openbao.eso-crds-generators')->render();
 
-        $esoManifest = view('k8s.secrets.eso', [
+        $esoManifest = view('k8s.openbao.eso', [
             'namespace' => $ns,
         ])->render();
 
@@ -263,7 +263,7 @@ abstract class OpenBaoInitCommand extends AbstractToolInitCommand
         }
 
         $this->withSpin('Wiring External Secrets Operator to OpenBao...', function () use ($kubectl, $ns, $token): void {
-            $clusterStore = view('k8s.secrets.cluster-store', [
+            $clusterStore = view('k8s.openbao.cluster-store', [
                 'namespace' => $ns,
                 'token' => base64_encode($token),
                 'hostAPI' => $this->openBaoServerUrl($kubectl),
@@ -275,7 +275,7 @@ abstract class OpenBaoInitCommand extends AbstractToolInitCommand
             Process::run("{$kubectl} apply -f ".escapeshellarg($tmp));
             $temporaryDirectory->delete();
 
-            $reloader = view('k8s.secrets.reloader', [
+            $reloader = view('k8s.openbao.reloader', [
                 'namespace' => $ns,
             ])->render();
 
@@ -324,7 +324,7 @@ abstract class OpenBaoInitCommand extends AbstractToolInitCommand
             }
 
             $this->withSpin("Syncing OpenBao secrets to {$config['secret']} in {$config['namespace']}...", function () use ($kubectl, $config): void {
-                $es = view('k8s.secrets.tool-es', [
+                $es = view('k8s.openbao.tool-es', [
                     'namespace' => $config['namespace'],
                     'secretName' => $config['secret'],
                     'keys' => $config['keys'] ?? [],

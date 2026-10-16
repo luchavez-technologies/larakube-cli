@@ -16,7 +16,7 @@
     not blind trust, more than the other pinned images here.
 --}}
 @php
-    $__tplHash = substr(hash_file('sha256', resource_path('views/k8s/chat/admin.blade.php')), 0, 12);
+    $__tplHash = substr(hash_file('sha256', resource_path('views/k8s/matrix/admin.blade.php')), 0, 12);
     $instance = ($instance ?? '') !== ''
         ? $instance
         : \App\Enums\ClusterTool::MATRIX->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));

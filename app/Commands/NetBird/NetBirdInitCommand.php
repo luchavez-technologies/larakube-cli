@@ -116,7 +116,7 @@ abstract class NetBirdInitCommand extends AbstractToolInitCommand
             $this->withSpin('Syncing store credentials...', fn () => Kubectl::fromPrefix($kubectl)->putSecret($ns, $storeSecret, ['db-password' => $dbPassword]));
         }
 
-        $manifest = view('k8s.vpn.shared', [
+        $manifest = view('k8s.netbird.shared', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'isLocal' => $env === 'local',
@@ -215,7 +215,7 @@ abstract class NetBirdInitCommand extends AbstractToolInitCommand
         // a ConfigMap that is waiting for the pod.
         $this->seedVpnResolverConfig($kubectl, $ns, $host);
 
-        $clientManifest = view('k8s.vpn.client', [
+        $clientManifest = view('k8s.netbird.client', [
             'instance' => ClusterTool::NETBIRD->instanceSlugFromHost($host),
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
         ])->render();
@@ -360,7 +360,7 @@ abstract class NetBirdInitCommand extends AbstractToolInitCommand
             $this->registerSecret($dataStoreEncryptionKey);
         }
 
-        $managementConfig = view('k8s.vpn.management-config', [
+        $managementConfig = view('k8s.netbird.management-config', [
             'host' => $host,
             'relaySecret' => $relaySecret,
             'dataStoreEncryptionKey' => $dataStoreEncryptionKey,
@@ -906,7 +906,7 @@ abstract class NetBirdInitCommand extends AbstractToolInitCommand
      */
     protected function forceFreshAcmeAttempt(string $kubectl, string $ns, string $host, bool $isLocal): void
     {
-        $manifest = view('k8s.vpn.ingress', ['host' => $host, 'isLocal' => $isLocal, 'instance' => ClusterTool::NETBIRD->instanceSlugFromHost($host)])->render();
+        $manifest = view('k8s.netbird.ingress', ['host' => $host, 'isLocal' => $isLocal, 'instance' => ClusterTool::NETBIRD->instanceSlugFromHost($host)])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();
         $tmp = $temporaryDirectory->path('larakube-vpn-ingress-retry.yaml');

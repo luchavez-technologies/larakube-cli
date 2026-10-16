@@ -3,7 +3,7 @@
 use Symfony\Component\Yaml\Yaml;
 
 test('eso-crds-generators manifest renders valid multi-document YAML with all three generator CRDs', function (): void {
-    $rendered = view('k8s.secrets.eso-crds-generators')->render();
+    $rendered = view('k8s.openbao.eso-crds-generators')->render();
 
     $documents = array_values(array_filter(
         array_map('trim', preg_split('/^---$/m', $rendered)),
@@ -49,7 +49,7 @@ test('neither generator CRD points its conversion strategy at an undeployed webh
     // a `conversion` block for either CRD at all — Kubernetes treats an
     // absent conversion strategy as None implicitly, which is the same safe
     // outcome this guard originally had to enforce by hand.
-    $rendered = view('k8s.secrets.eso-crds-generators')->render();
+    $rendered = view('k8s.openbao.eso-crds-generators')->render();
 
     $documents = array_values(array_filter(
         array_map('trim', preg_split('/^---$/m', $rendered)),

@@ -19,7 +19,7 @@ use Symfony\Component\Yaml\Yaml;
  * name → 500 on first registration.
  */
 test('forgejo manifest renders valid multi-document YAML with public registration disabled but OIDC auto-registration on', function (): void {
-    $rendered = view('k8s.git.forgejo', [
+    $rendered = view('k8s.forgejo.forgejo', [
         'host' => 'git.luchtech.dev',
         'instance' => 'git-luchtech-dev',
         'tenant' => 'forgejo_git_luchtech_dev',
@@ -68,7 +68,7 @@ test('forgejo manifest renders valid multi-document YAML with public registratio
 });
 
 test('the forgejo data PVC carries the instance and the Deployment mounts that same claim', function (): void {
-    $rendered = view('k8s.git.forgejo', [
+    $rendered = view('k8s.forgejo.forgejo', [
         'host' => 'git.example.com',
         'instance' => 'git-example-com',
         'tenant' => 'forgejo_git_example_com',
@@ -98,7 +98,7 @@ test('the forgejo data PVC carries the instance and the Deployment mounts that s
 });
 
 test('runner config mounts the Podman socket into jobs and maps every label to the job image', function (): void {
-    $rendered = view('k8s.git.forgejo', [
+    $rendered = view('k8s.forgejo.forgejo', [
         'host' => 'git.example.com',
         'instance' => 'git-example-com',
         'tenant' => 'forgejo_git_example_com',
@@ -148,7 +148,7 @@ test('runner config mounts the Podman socket into jobs and maps every label to t
 
 test('changing the runner config changes the runner pod checksum, so the pod restarts to read it', function (): void {
     $checksum = function (string $jobImage): string {
-        $rendered = view('k8s.git.forgejo', [
+        $rendered = view('k8s.forgejo.forgejo', [
             'host' => 'git.example.com',
             'instance' => 'git-example-com',
             'tenant' => 'forgejo_git_example_com',

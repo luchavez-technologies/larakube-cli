@@ -249,7 +249,7 @@ trait DeploysClusterTool
             return true;
         }
 
-        $manifest = view('k8s.vpn.ip-allow-list-middleware', [
+        $manifest = view('k8s.netbird.ip-allow-list-middleware', [
             'name' => $target['name'],
             'namespace' => $target['namespace'],
         ])->render();
@@ -462,7 +462,9 @@ trait DeploysClusterTool
         // FORGEJO — legacyCategoryPrefix() maps either spelling to the same
         // folder; $tool->value alone would silently 404 for a canonical tool
         // whose value differs from its folder name.
-        $view = 'k8s.'.($tool->legacyCategoryPrefix() ?? $tool->value).'.ingress';
+        $view = view()->exists("k8s.{$tool->value}.ingress")
+            ? "k8s.{$tool->value}.ingress"
+            : 'k8s.'.($tool->legacyCategoryPrefix() ?? $tool->value).'.ingress';
         if (! view()->exists($view)) {
             return false;
         }

@@ -168,7 +168,7 @@ abstract class ZitadelInitCommand extends AbstractToolInitCommand
             }
         });
 
-        $manifest = view('k8s.sso.zitadel', [
+        $manifest = view('k8s.zitadel.zitadel', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
             'instance' => $names->instance,

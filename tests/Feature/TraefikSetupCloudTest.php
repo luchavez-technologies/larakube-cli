@@ -103,7 +103,7 @@ test('an HTTP-challenge cluster trusts no forwarded headers', function (): void 
 test('the VPN allow-list matches the real connection address, never a forwarded header', function (): void {
     // With Cloudflare trusted for X-Forwarded-For, an ipStrategy here would let
     // anyone claim a VPN address in a header.
-    $middleware = view('k8s.vpn.ip-allow-list-middleware', ['name' => 'x-vpn-only', 'namespace' => 'larakube-shared'])->render();
+    $middleware = view('k8s.netbird.ip-allow-list-middleware', ['name' => 'x-vpn-only', 'namespace' => 'larakube-shared'])->render();
 
     expect($middleware)->toContain('ipAllowList')->not->toContain('ipStrategy');
 });

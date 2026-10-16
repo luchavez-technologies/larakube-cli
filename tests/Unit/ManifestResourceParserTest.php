@@ -5,7 +5,7 @@ use App\Services\K8s\ManifestResourceParser;
 
 function forgejoRenderedManifest(): string
 {
-    return view('k8s.git.forgejo', [
+    return view('k8s.forgejo.forgejo', [
         'host' => 'git.luchtech.dev',
         'instance' => 'git-luchtech-dev',
         'tenant' => 'forgejo_git_luchtech_dev',

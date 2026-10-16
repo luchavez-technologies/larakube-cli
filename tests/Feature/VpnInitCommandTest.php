@@ -39,7 +39,7 @@ function vpnInitKubectl(): string
  */
 function vpnManagementConfigFixture(string $host, string $relaySecret = 'existing-relay-secret', string $encryptionKey = 'existing-encryption-key'): string
 {
-    return base64_encode(view('k8s.vpn.management-config', [
+    return base64_encode(view('k8s.netbird.management-config', [
         'host' => $host,
         'relaySecret' => $relaySecret,
         'dataStoreEncryptionKey' => $encryptionKey,
@@ -470,7 +470,7 @@ test('the management manifest always carries a single-account domain we chose', 
     // absent var substitutes NetBird's domain for ours rather than disabling
     // anything. Confirmed live 2026-08-29: an empty value still logged
     // "single account mode enabled".
-    $manifest = view('k8s.vpn.shared', [
+    $manifest = view('k8s.netbird.shared', [
         'host' => 'vpn.example.com',
         'isLocal' => false,
         'ssoDomain' => 'example.com',
@@ -673,7 +673,7 @@ test('the management manifest puts the store on Commons Postgres, engine include
     // NETBIRD_STORE_ENGINE and the DSN are BOTH required: with the engine unset
     // NetBird silently falls back to SQLite on the PVC, which looks identical
     // until the node dies and takes the whole control plane with it.
-    $manifest = view('k8s.vpn.shared', [
+    $manifest = view('k8s.netbird.shared', [
         'host' => 'vpn.example.com',
         'isLocal' => false,
         'ssoDomain' => 'example.com',
@@ -693,7 +693,7 @@ test('the management manifest puts the store on Commons Postgres, engine include
 });
 
 test('--no-plex leaves NetBird on its own SQLite store', function (): void {
-    $manifest = view('k8s.vpn.shared', [
+    $manifest = view('k8s.netbird.shared', [
         'host' => 'vpn.example.com',
         'isLocal' => false,
         'ssoDomain' => 'example.com',
@@ -1015,7 +1015,7 @@ test('tool:init --tool=netbird allocates exactly the database netbird:remove --p
     expect($purgeTarget)->toBe('netbird_vpn_luchtech_dev');
 
     // And what tool:init --tool=netbird renders into the DSN must be the same string.
-    $manifest = view('k8s.vpn.shared', [
+    $manifest = view('k8s.netbird.shared', [
         'host' => 'vpn.luchtech.dev',
         'isLocal' => false,
         'ssoDomain' => 'luchtech.dev',

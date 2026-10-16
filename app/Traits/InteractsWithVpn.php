@@ -908,7 +908,7 @@ trait InteractsWithVpn
             return true;
         }
 
-        return Kubectl::fromPrefix($kubectl)->apply(view('k8s.vpn.resolver-config', [
+        return Kubectl::fromPrefix($kubectl)->apply(view('k8s.netbird.resolver-config', [
             'hosts' => [],
             'gatewayIp' => '',
             'instance' => $instance,
@@ -918,7 +918,7 @@ trait InteractsWithVpn
     /** Write the resolver's Corefile and restart it — CoreDNS reads the file once, at startup. */
     protected function applyVpnResolverConfig(string $kubectl, string $vpnHost, string $ns, array $hosts, string $gatewayIp): bool
     {
-        $manifest = view('k8s.vpn.resolver-config', [
+        $manifest = view('k8s.netbird.resolver-config', [
             'hosts' => $hosts,
             'gatewayIp' => $gatewayIp,
             // The NetBird host, not one of $hosts: the ConfigMap is named for

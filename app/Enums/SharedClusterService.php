@@ -34,16 +34,16 @@ enum SharedClusterService: string
             self::GRAFANA => 'k8s.monitoring.grafana-ingress',
             self::UPTIME_KUMA => 'k8s.uptime.ingress',
             self::VAULT => 'k8s.vault.ingress',
-            self::VPN => 'k8s.vpn.ingress',
+            self::VPN => 'k8s.netbird.ingress',
             self::ERRORS => 'k8s.errors.ingress',
-            self::SECRETS => 'k8s.secrets.ingress',
-            self::FORGEJO => 'k8s.git.ingress',
+            self::SECRETS => 'k8s.openbao.ingress',
+            self::FORGEJO => 'k8s.forgejo.ingress',
             self::FLOW => 'k8s.n8n.ingress',
             self::SHEET => 'k8s.sheet.ingress',
             self::INSIGHTS => 'k8s.insights.ingress',
             self::MAIL => 'k8s.mail.ingress',
-            self::CHAT => 'k8s.chat.ingress',
-            self::SSO => 'k8s.sso.ingress',
+            self::CHAT => 'k8s.matrix.ingress',
+            self::SSO => 'k8s.zitadel.ingress',
             self::WEBMAIL => 'k8s.webmail.ingress',
             self::NOTES => 'k8s.notes.ingress',
             self::DRIVE => 'k8s.drive.ingress',
@@ -296,7 +296,7 @@ enum SharedClusterService: string
             // Coturn's STUN/TURN listener (both transports) + its relay range,
             // backing Synapse's legacy 1:1 turn_uris. Keep this in lockstep with
             // turnserver.conf's min-port/max-port in
-            // resources/views/k8s/chat/matrix.blade.php. The SFU's own ports
+            // resources/views/k8s/matrix/matrix.blade.php. The SFU's own ports
             // belong to MEET below — chat no longer runs one.
             self::CHAT => [3478, '3478/udp', '49160-49179/udp'],
             // LiveKit's single-port RTC mux (UDP) and its TCP fallback for

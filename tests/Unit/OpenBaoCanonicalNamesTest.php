@@ -9,7 +9,7 @@ use Symfony\Component\Yaml\Yaml;
 /** @return list<array<string, mixed>> */
 function openBaoDocuments(array $overrides = []): array
 {
-    $rendered = view('k8s.secrets.openbao', array_merge([
+    $rendered = view('k8s.openbao.openbao', array_merge([
         'namespace' => 'larakube-secrets',
         'host' => 'secrets.example.com',
         'instance' => 'secrets-example-com',
@@ -91,14 +91,14 @@ test('the manifest derives the instance from the host when none is passed', func
 });
 
 test('the Ingress renders from the host alone, the way the local re-point does', function (): void {
-    $rendered = view('k8s.secrets.ingress', ['host' => 'secrets.example.com'])->render();
+    $rendered = view('k8s.openbao.ingress', ['host' => 'secrets.example.com'])->render();
 
     expect($rendered)->toContain('name: openbao-secrets-example-com')
         ->and($rendered)->toContain('larakube.io/instance: secrets-example-com');
 });
 
 test('the VPN-only Ingress points at the instance Middleware', function (): void {
-    $rendered = view('k8s.secrets.ingress', ['host' => 'secrets.example.com', 'vpnOnly' => true])->render();
+    $rendered = view('k8s.openbao.ingress', ['host' => 'secrets.example.com', 'vpnOnly' => true])->render();
 
     expect($rendered)->toContain('larakube-secrets-openbao-vpn-only-secrets-example-com@kubernetescrd');
 });

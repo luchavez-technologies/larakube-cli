@@ -9,7 +9,7 @@ use Symfony\Component\Yaml\Yaml;
 /** @return list<array<string, mixed>> */
 function zitadelDocuments(array $overrides = []): array
 {
-    $rendered = view('k8s.sso.zitadel', array_merge([
+    $rendered = view('k8s.zitadel.zitadel', array_merge([
         'host' => 'sso.example.com',
         'instance' => 'sso-example-com',
         'adminEmail' => 'admin@example.com',
@@ -97,14 +97,14 @@ test('the manifest derives the instance from the host when none is passed', func
 });
 
 test('the Ingress renders from the host alone, the way the local re-point does', function (): void {
-    $rendered = view('k8s.sso.ingress', ['host' => 'sso.example.com'])->render();
+    $rendered = view('k8s.zitadel.ingress', ['host' => 'sso.example.com'])->render();
 
     expect($rendered)->toContain('name: zitadel-sso-example-com')
         ->and($rendered)->toContain('larakube.io/instance: sso-example-com');
 });
 
 test('the shared proxy names its Deployment, Service, Ingress and Secret from the Zitadel instance', function (): void {
-    $rendered = view('k8s.sso.proxy', [
+    $rendered = view('k8s.zitadel.proxy', [
         'names' => ToolInstance::forInstance(ClusterTool::ZITADEL, 'sso-example-com'),
         'namespace' => 'larakube-shared', 'authHost' => 'auth.example.com', 'ssoHost' => 'sso.example.com',
         'isLocal' => false, 'proxied' => false, 'clientId' => 'cid', 'clientSecret' => 'csecret',

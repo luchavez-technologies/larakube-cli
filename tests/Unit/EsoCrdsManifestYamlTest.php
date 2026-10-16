@@ -3,7 +3,7 @@
 use Symfony\Component\Yaml\Yaml;
 
 test('eso-crds manifest renders valid multi-document YAML', function (): void {
-    $rendered = view('k8s.secrets.eso-crds')->render();
+    $rendered = view('k8s.openbao.eso-crds')->render();
 
     $documents = array_values(array_filter(
         array_map('trim', preg_split('/^---$/m', $rendered)),
@@ -40,7 +40,7 @@ test('every ESO CRD declares a status subresource', function (): void {
     // made the whole stack look broken when it wasn't. Kept as a guard even
     // now that the source is official/verbatim, in case a future re-vendor
     // pulls from a source that regresses this.
-    $rendered = view('k8s.secrets.eso-crds')->render();
+    $rendered = view('k8s.openbao.eso-crds')->render();
 
     $documents = array_values(array_filter(
         array_map('trim', preg_split('/^---$/m', $rendered)),

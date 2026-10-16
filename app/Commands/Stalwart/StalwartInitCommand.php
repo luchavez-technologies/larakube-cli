@@ -605,7 +605,7 @@ abstract class StalwartInitCommand extends AbstractToolInitCommand
         // manifest-apply step exactly, since it's the same underlying need.
         if ($this->databaseEngineMounted($kubectl)) {
             $this->withSpin("Wiring OpenBao rotation into {$openBaoSyncedSecretName}...", function () use ($kubectl, $ns, $tenant, $openBaoSyncedSecretName): void {
-                $manifest = view('k8s.secrets.eso-db-static', [
+                $manifest = view('k8s.openbao.eso-db-static', [
                     'namespace' => $ns,
                     'openbaoServer' => $this->openBaoServerUrl($kubectl),
                     'secretName' => $openBaoSyncedSecretName,

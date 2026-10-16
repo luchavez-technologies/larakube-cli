@@ -30,7 +30,7 @@ enum SecretsBackend: string implements HasDockerImage, HasLabel
 
     public function getCrdTemplateName(): string
     {
-        return 'k8s.secrets.eso-sync';
+        return 'k8s.openbao.eso-sync';
     }
 
     /**

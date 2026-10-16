@@ -281,4 +281,4 @@ spec:
       targetPort: 8080
   type: ClusterIP
 ---
-@include('k8s.sso.ingress', ['instance' => $instance])
+@include('k8s.zitadel.ingress', ['instance' => $instance])

@@ -4,7 +4,7 @@ use Symfony\Component\Yaml\Yaml;
 
 function chatManifest(array $overrides = []): string
 {
-    return view('k8s.chat.matrix', array_merge([
+    return view('k8s.matrix.matrix', array_merge([
         'host' => 'chat.example.com',
         'instance' => 'chat-example-com',
         'appName' => 'Chat',

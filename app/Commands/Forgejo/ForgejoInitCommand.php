@@ -38,7 +38,7 @@ abstract class ForgejoInitCommand extends AbstractToolInitCommand
 
     /**
      * Labels the Actions runner advertises, server-side. Kept in sync by hand
-     * with the `runner.labels` block in k8s/git/forgejo.blade.php, which maps
+     * with the `runner.labels` block in k8s/forgejo/forgejo.blade.php, which maps
      * each to its container image — a label present on one side only means jobs
      * either never dispatch or dispatch to a runner that cannot execute them.
      *
@@ -258,7 +258,7 @@ abstract class ForgejoInitCommand extends AbstractToolInitCommand
         ];
 
         // 1. Initial deployment with Forgejo Core only (runner token placeholder)
-        $manifest = view('k8s.git.forgejo', [
+        $manifest = view('k8s.forgejo.forgejo', [
             ...$manifestParams,
             // Carry the existing token through the first pass — 'pending' here
             // would overwrite it before the read-back above could be used.
@@ -359,7 +359,7 @@ abstract class ForgejoInitCommand extends AbstractToolInitCommand
         });
 
         // 3. Re-apply final configuration containing real tokens
-        $manifestFinal = view('k8s.git.forgejo', [
+        $manifestFinal = view('k8s.forgejo.forgejo', [
             ...$manifestParams,
             'registryToken' => $registryToken ?? 'pending',
             'runnerSecret' => $runnerSecret,

@@ -4,7 +4,7 @@ use Symfony\Component\Yaml\Yaml;
 
 test('zitadel manifest renders as valid multi-doc YAML with a working env anchor', function (): void {
     foreach ([false, true] as $noPlex) {
-        $rendered = view('k8s.sso.zitadel', [
+        $rendered = view('k8s.zitadel.zitadel', [
             'host' => 'sso.example.com',
             'adminEmail' => 'ops@example.com',
             'plexNamespace' => 'larakube-plex',

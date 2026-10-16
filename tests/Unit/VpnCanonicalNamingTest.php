@@ -17,7 +17,7 @@ function vpnRenderedResources(): array
     $instance = vpnNames()->instance;
 
     $manifests = [
-        view('k8s.vpn.shared', [
+        view('k8s.netbird.shared', [
             'host' => 'vpn.example.com',
             'isLocal' => false,
             'noPlex' => false,
@@ -26,8 +26,8 @@ function vpnRenderedResources(): array
             'ssoDomain' => 'example.com',
             'instance' => $instance,
         ])->render(),
-        view('k8s.vpn.client', ['instance' => $instance])->render(),
-        view('k8s.vpn.resolver-config', [
+        view('k8s.netbird.client', ['instance' => $instance])->render(),
+        view('k8s.netbird.resolver-config', [
             'hosts' => ['admin.example.com'],
             'gatewayIp' => '100.84.155.135',
             'instance' => $instance,

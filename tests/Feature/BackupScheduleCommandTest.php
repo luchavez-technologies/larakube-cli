@@ -270,7 +270,7 @@ test('the backup and the media prune do not run at the same time', function (): 
     // chat-media-prune uploads media INTO SeaweedFS; the backup tars
     // SeaweedFS's data directory. Overlapping risks archiving that volume
     // mid-write — and both are I/O heavy on a single node.
-    $chat = view('k8s.chat.matrix', [
+    $chat = view('k8s.matrix.matrix', [
         'host' => 'chat.example.com', 'appName' => 'Chat', 'logoUrl' => '',
         'plexNamespace' => 'larakube-plex', 'noPlex' => false, 'vpnOnly' => false,
         'isLocal' => false, 'proxied' => false,

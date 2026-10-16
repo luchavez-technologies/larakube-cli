@@ -3,7 +3,7 @@
      subPath-mounted Secrets/ConfigMaps don't hot-reload, and hashing only the
      input variables misses changes to literal strings in this file. --}}
 @php
-    $__tplHash = substr(hash_file('sha256', resource_path('views/k8s/chat/matrix.blade.php')), 0, 12);
+    $__tplHash = substr(hash_file('sha256', resource_path('views/k8s/matrix/matrix.blade.php')), 0, 12);
     // Every name comes from ToolInstance (ADR 0021). ChatInitCommand always
     // passes a real $instance; a bare render derives it from the host.
     $instance = ($instance ?? '') !== ''
@@ -633,7 +633,7 @@ spec:
 {{--  MAS's own ingress (its own subdomain — OAuth authorize/token,
       discovery, account-management UI, GraphQL, assets) is a SEPARATE
       resource applied by ChatInitCommand::deployMas() from its own
-      resources/views/k8s/chat/mas.blade.php, not this file — this file's
+      resources/views/k8s/matrix/mas.blade.php, not this file — this file's
       own main render has no business generating MAS's DB password/
       encryption keys, so it never renders MAS's own component here. Only
       the compat-endpoint carve-out above (gated on $mas, the active-auth

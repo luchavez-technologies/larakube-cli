@@ -320,7 +320,9 @@ class SsoUnwireCommand extends Command
         // View folders are still named after the legacy category word
         // (k8s/record/, k8s/dashboard/) even for a canonical-only case like
         // SENDREC/HEADLAMP, whose ->value differs from its folder.
-        $view = 'k8s.'.($tool->legacyCategoryPrefix() ?? $tool->value).'.ingress';
+        $view = view()->exists("k8s.{$tool->value}.ingress")
+            ? "k8s.{$tool->value}.ingress"
+            : 'k8s.'.($tool->legacyCategoryPrefix() ?? $tool->value).'.ingress';
         if (! view()->exists($view)) {
             $this->laraKubeError("No ingress template for '{$tool->value}' — cannot toggle its SSO middleware.");
 

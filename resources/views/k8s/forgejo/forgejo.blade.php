@@ -540,4 +540,4 @@ spec:
             name: {{ $runnerConfigMapName }}
 ---
 @endif
-@include('k8s.git.ingress')
+@include('k8s.forgejo.ingress')

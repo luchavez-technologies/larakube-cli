@@ -4,7 +4,7 @@ use Symfony\Component\Yaml\Yaml;
 
 test('openbao manifest renders valid multi-document YAML', function (): void {
     openBaoRegistered();
-    $rendered = view('k8s.secrets.openbao', [
+    $rendered = view('k8s.openbao.openbao', [
         'namespace' => 'larakube-secrets',
         'image' => 'openbao/openbao:2.6.1',
         'port' => 8200,
@@ -37,7 +37,7 @@ test('openbao data volume is a PersistentVolumeClaim, not emptyDir', function ()
     // any pod restart/reschedule, with nothing to restore from. Found live
     // 2026-07-31, zero restarts so far, but a landmine. Fixed by adding a
     // dedicated PVC; this test locks the fix in.
-    $rendered = view('k8s.secrets.openbao', [
+    $rendered = view('k8s.openbao.openbao', [
         'namespace' => 'larakube-secrets',
         'image' => 'openbao/openbao:2.6.1',
         'port' => 8200,
@@ -78,7 +78,7 @@ test('openbao runs under its own ServiceAccount with a system:auth-delegator bin
     // pods' ServiceAccount tokens via the TokenReview API — without this,
     // auth/kubernetes/login rejects every request. Dedicated SA (not the
     // implicit "default") so this permission is scoped to OpenBao alone.
-    $rendered = view('k8s.secrets.openbao', [
+    $rendered = view('k8s.openbao.openbao', [
         'namespace' => 'larakube-secrets',
         'image' => 'openbao/openbao:2.6.1',
         'port' => 8200,
@@ -116,7 +116,7 @@ test('openbao runs under its own ServiceAccount with a system:auth-delegator bin
 
 test('openbao has no auto-unseal hook when autoUnseal is omitted (safe default for other callers of this view — the openbao init always passes it explicitly)', function (): void {
     openBaoRegistered();
-    $rendered = view('k8s.secrets.openbao', [
+    $rendered = view('k8s.openbao.openbao', [
         'namespace' => 'larakube-secrets',
         'image' => 'openbao/openbao:2.6.1',
         'port' => 8200,
@@ -130,7 +130,7 @@ test('openbao has no auto-unseal hook when autoUnseal is omitted (safe default f
 
 test('openbao gets an auto-unseal postStart hook when autoUnseal is true', function (): void {
     openBaoRegistered();
-    $rendered = view('k8s.secrets.openbao', [
+    $rendered = view('k8s.openbao.openbao', [
         'namespace' => 'larakube-secrets',
         'image' => 'openbao/openbao:2.6.1',
         'port' => 8200,

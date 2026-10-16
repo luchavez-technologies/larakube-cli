@@ -90,7 +90,7 @@ test('only VPN-gated hosts are collected, never the rest of the zone', function 
 });
 
 test('the resolver answers VPN-only hosts with the gateway address and still forwards everything else', function (): void {
-    $manifest = view('k8s.vpn.resolver-config', [
+    $manifest = view('k8s.netbird.resolver-config', [
         'hosts' => ['admin.chat.example.com'],
         'gatewayIp' => '100.84.155.135',
         'instance' => 'vpn-example-com',
@@ -250,7 +250,7 @@ test('the client PVC is mounted where NetBird actually keeps peer identity', fun
     // /etc/netbird was empty on a live pod: the PVC persisted nothing, so every
     // restart registered a NEW peer with a NEW overlay address and orphaned the
     // old one. Identity lives in /var/lib/netbird (default.json + state.json).
-    $manifest = view('k8s.vpn.client', ['instance' => 'vpn-example-com', 'isLocal' => false])->render();
+    $manifest = view('k8s.netbird.client', ['instance' => 'vpn-example-com', 'isLocal' => false])->render();
 
     expect($manifest)
         ->toContain('mountPath: /var/lib/netbird')

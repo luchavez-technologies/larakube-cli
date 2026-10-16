@@ -1,7 +1,7 @@
 <?php
 
 test('vpn management-config renders valid JSON wired to the external host', function (): void {
-    $json = view('k8s.vpn.management-config', [
+    $json = view('k8s.netbird.management-config', [
         'host' => 'vpn.example.com',
         'relaySecret' => 'super-secret-value',
         'dataStoreEncryptionKey' => 'super-secret-key',

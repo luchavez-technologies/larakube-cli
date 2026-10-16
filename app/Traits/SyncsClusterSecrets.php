@@ -67,7 +67,7 @@ trait SyncsClusterSecrets
         string $ns,
         string $secretName,
         string $environment = 'production',
-        string $view = 'k8s.secrets.eso-sync',
+        string $view = 'k8s.openbao.eso-sync',
         ?string $prefix = null,
     ): bool {
         return $this->syncOpenBaoToNamespace($kubectl, $ns, $secretName, $environment, $prefix);
@@ -157,7 +157,7 @@ trait SyncsClusterSecrets
 
         // Apply ESO SecretStore & ExternalSecret CRDs if ESO is present
         $authName = "{$secretName}-openbao-auth";
-        $esoManifest = view('k8s.secrets.eso-sync', [
+        $esoManifest = view('k8s.openbao.eso-sync', [
             'namespace' => $ns,
             'authName' => $authName,
             'secretName' => $secretName,

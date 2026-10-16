@@ -17,7 +17,7 @@
     this file only declares the Deployment/Service that mount it by name.
 --}}
 @php
-    $__tplHash = substr(hash_file('sha256', resource_path('views/k8s/chat/mas.blade.php')), 0, 12);
+    $__tplHash = substr(hash_file('sha256', resource_path('views/k8s/matrix/mas.blade.php')), 0, 12);
     $instance = ($instance ?? '') !== ''
         ? $instance
         : \App\Enums\ClusterTool::MATRIX->instanceSlugFromHost(\App\Data\ToolInstance::normalizeHost((string) $host));
