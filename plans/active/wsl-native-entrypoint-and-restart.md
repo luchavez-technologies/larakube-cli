@@ -72,7 +72,18 @@ restart) from a process that lives outside the VM, so restarting WSL to
 apply a config change doesn't require killing the very process asking for
 the restart.
 
-## Phase 1 (small, do this first): wire up what Desktop already has
+## Phase 1 — DONE (desktop `9a7ba2d`)
+
+`LocalSetupController::store()` now restarts WSL automatically the first
+time mirrored networking is freshly written to `~/.wslconfig`, but only
+when no other WSL distro is currently running (checked via a new
+`Wsl::otherRunningDistros()`/`distroIsRunning()`/`restartForNetworkingChange()`).
+If another distro is running, the restart is skipped and the CLI's own
+reminder remains the fallback — unchanged from before. 607/607 desktop
+tests pass. See the original Phase 1 description below for the full
+reasoning; kept for reference.
+
+### Original Phase 1 description (small, do this first): wire up what Desktop already has
 
 Desktop is *already* a native-Windows process sitting outside WSL, and it
 already has the one capability needed here —
