@@ -125,7 +125,7 @@ final readonly class InitOption
      *
      * @return array<string, mixed>
      */
-    public function field(): array
+    public function field(bool $isLocal = false): array
     {
         $field = [
             'key' => lcfirst(str_replace(' ', '', ucwords(str_replace('-', ' ', $this->name)))),
@@ -163,7 +163,9 @@ final readonly class InitOption
             $field['visibleWhen'] = $this->visibleWhen;
         }
 
-        if ($this->default !== null && $this->default !== '') {
+        if ($this->name === 'proxied' && $isLocal) {
+            $field['default'] = $this->kind === self::FLAG ? false : '0';
+        } elseif ($this->default !== null && $this->default !== '') {
             $field['default'] = $this->default;
         }
 

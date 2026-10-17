@@ -360,10 +360,10 @@ final class ToolInitSpec
      *
      * @return list<array<string, mixed>>
      */
-    public static function fields(ClusterTool $tool, ?string $engine = null): array
+    public static function fields(ClusterTool $tool, ?string $engine = null, bool $isLocal = false): array
     {
         return array_values(array_map(
-            fn (InitOption $option): array => $option->field(),
+            fn (InitOption $option): array => $option->field($isLocal),
             array_filter(self::for($tool, $engine), fn (InitOption $option): bool => ! $option->isMechanics()),
         ));
     }

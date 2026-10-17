@@ -104,6 +104,16 @@ test('a proxied that defaults on is still a checkbox, not a bare text field', fu
         ->and($pocketbase['default'])->toBe('1');
 });
 
+test('proxied defaults to off for local clusters', function (): void {
+    $outline = collect(ToolInitSpec::fields(ClusterTool::OUTLINE, isLocal: true))->keyBy('key')['proxied'];
+    $pocketbase = collect(ToolInitSpec::fields(ClusterTool::POCKETBASE, isLocal: true))->keyBy('key')['proxied'];
+    $wordpress = collect(ToolInitSpec::fields(ClusterTool::WORDPRESS, isLocal: true))->keyBy('key')['proxied'];
+
+    expect($outline['default'])->toBeFalse()
+        ->and($pocketbase['default'])->toBe('0')
+        ->and($wordpress['default'])->toBe('0');
+});
+
 test('an option builds the signature fragment the init commands use', function (): void {
     expect(InitOption::flag('force', 'Skip it')->signature())->toBe('{--force : Skip it}')
         ->and(InitOption::value('domain', 'A host')->signature())->toBe('{--domain= : A host}')
