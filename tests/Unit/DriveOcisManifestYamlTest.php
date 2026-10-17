@@ -228,3 +228,24 @@ test('ocis proxy verifies opaque access tokens against the IdP userinfo endpoint
         // it is documented as incompatible with 'none'.
         ->and($static)->not->toHaveKey('PROXY_OIDC_SKIP_USER_INFO');
 });
+
+test('ocis sets fsGroup so a freshly provisioned PVC is writable by its non-root user', function (): void {
+    // A fresh PVC on most CSI drivers (GKE's pd.csi.storage.gke.io included)
+    // is root-owned by default. oCIS's image runs as the unprivileged 'ocis'
+    // user (UID/GID 1000) and creates /var/lib/ocis/nats at startup —
+    // without fsGroup it fails with
+    // "Can't start JetStream: could not create storage directory - mkdir /var/lib/ocis/nats: permission denied"
+    // and the pod never becomes ready. Confirmed live on GKE hello-gke-test.
+    $documents = fn (string $rendered): array => array_map(
+        fn (string $doc) => Yaml::parse($doc),
+        array_values(array_filter(
+            array_map('trim', preg_split('/^---$/m', $rendered)),
+            fn (string $doc) => $doc !== '',
+        )),
+    );
+
+    $deployment = collect($documents(renderOcisManifest()))
+        ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment' && ($doc['metadata']['name'] ?? null) === 'ocis-drive-example-com');
+
+    expect($deployment['spec']['template']['spec']['securityContext']['fsGroup'])->toBe(1000);
+});

@@ -63,6 +63,10 @@ just copy the UIDs below blind)
   **UID/GID 991, sourced** — a specifically well-documented, long-standing
   permission gotcha for this exact image (Synapse's own image docs state
   the 991 default explicitly).
+- **oCIS (ownCloud Infinite Scale)** (`resources/views/k8s/ocis/ocis.blade.php`):
+  **UID/GID 1000, confirmed live and fixed** — hit live on GKE (`hello-gke-test`)
+  failing with `Can't start JetStream: could not create storage directory - mkdir /var/lib/ocis/nats: permission denied`.
+  The image runs as `ocis:ocis` (UID/GID 1000) and mounts `/var/lib/ocis`. Fixed with `fsGroup: 1000`.
 
 ### Tier 2 — confirmed non-root, exact UID needs one more check first
 
@@ -105,7 +109,7 @@ Every other tool that mounts a PVC without `fsGroup` today (full list
 pulled via `grep -rl "PersistentVolumeClaim\|volumeMounts" resources/views/k8s/`
 minus `fsGroup` minus app-infra patches that inherit `securityContext` from
 `base/deployment.blade.php`, which already has it): GlitchTip, Metabase,
-oCIS, PocketBase, Documenso, Bulwark, Netbird, Windmill, LiveKit, WordPress,
+PocketBase, Documenso, Bulwark, Netbird, Windmill, LiveKit, WordPress,
 Meilisearch, Typesense, SeaweedFS, MinIO, Garage, `system-dashboard`
 (Headlamp).
 

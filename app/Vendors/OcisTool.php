@@ -13,8 +13,8 @@ use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
 
-/** The single vendor backing the DRIVE category — 'Cloud Storage & Sync'. Only oCIS. */
-final class DriveTool implements ClusterToolVendor, HasCommonsBuckets, HasOidcWiring, HasSmtpWiring, HasVpnWiring, HasWorkloadComponents
+/** The vendor implementation for oCIS (ownCloud Infinite Scale). */
+final class OcisTool implements ClusterToolVendor, HasCommonsBuckets, HasOidcWiring, HasSmtpWiring, HasVpnWiring, HasWorkloadComponents
 {
     public function getLabel(): string
     {

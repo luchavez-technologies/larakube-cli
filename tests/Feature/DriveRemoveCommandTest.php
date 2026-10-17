@@ -30,3 +30,14 @@ test('ocis:remove --purge removes workloads while preserving drive-secrets encry
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'secret/drive-secrets'));
 });
+
+test('ocis:remove accepts --domain for instance-aware teardown', function (): void {
+    Process::fake([...registeredToolRemoveFakes('ocis:remove', 'drive-example-com', 'drive.example.com'),
+        '*delete *' => Process::result(output: 'deleted'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('ocis:remove local --domain=drive.example.com --force')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('Removing Drive resources...');
+});

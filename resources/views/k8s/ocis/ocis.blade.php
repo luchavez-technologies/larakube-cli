@@ -48,6 +48,12 @@ spec:
         # CSP change applies silently and the running pod keeps the old policy.
         larakube.io/csp-checksum: "{{ substr(md5($cspYaml), 0, 10) }}"
     spec:
+      securityContext:
+        # The image runs as the unprivileged 'ocis' user (UID/GID 1000); the
+        # mounted storage volume must be group-writable by it, or a freshly
+        # provisioned PVC (root-owned by default on most CSI drivers like GKE)
+        # fails with EACCES / "mkdir /var/lib/ocis/nats: permission denied".
+        fsGroup: 1000
       containers:
         - name: ocis
           image: {{ $ocisImage }}

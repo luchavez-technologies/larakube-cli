@@ -243,6 +243,7 @@ test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance
         ClusterTool::CHATWOOT,
         ClusterTool::SENDREC,
         ClusterTool::RESUME,
+        ClusterTool::OCIS,
     ];
 
     foreach (ClusterTool::cases() as $tool) {

@@ -27,7 +27,6 @@ use App\Vendors\AnalyticsTool;
 use App\Vendors\CrmTool;
 use App\Vendors\DashboardTool;
 use App\Vendors\DnsTool;
-use App\Vendors\DriveTool;
 use App\Vendors\ErrorTool;
 use App\Vendors\InsightTool;
 use App\Vendors\LinkTool;
@@ -35,6 +34,7 @@ use App\Vendors\MailTool;
 use App\Vendors\MeetTool;
 use App\Vendors\MonitorTool;
 use App\Vendors\NoteTool;
+use App\Vendors\OcisTool;
 use App\Vendors\PasswordTool;
 use App\Vendors\RecordTool;
 use App\Vendors\ResumeTool;
@@ -75,7 +75,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::PLANKA => TaskTool::PLANKA,
             self::STALWART => new MailTool,
             self::OPENBAO => new SecretTool,
-            self::OCIS => new DriveTool,
+            self::OCIS => new OcisTool,
             self::VAULTWARDEN => new PasswordTool,
             self::DOCUMENSO => new SignTool,
             self::SENDREC => new RecordTool,
@@ -1510,7 +1510,8 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::PENPOT, self::YOPASS, self::DOCUMENSO,
             self::N8N, self::WINDMILL, self::KUTT, self::UMAMI, self::PLAUSIBLE,
             self::TEABLE, self::PLANKA, self::KUMA, self::METABASE,
-            self::GLITCHTIP, self::CHATWOOT, self::SENDREC, self::RESUME, self::PENPOT => true,
+            self::GLITCHTIP, self::CHATWOOT, self::SENDREC, self::RESUME,
+            self::OCIS => true,
             default => false,
         };
     }
