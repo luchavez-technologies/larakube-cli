@@ -114,3 +114,29 @@ test('a tool whose proxy is on by default falls back to DNS-only instead of fail
 
     expect($command->resolveProxied(false))->toBeFalse();
 });
+
+test('a token that cannot read the zone\'s SSL mode still passes the guard (warning only, never a refusal)', function (): void {
+    Process::fake([
+        '*get secret traefik-acme-cloudflare -n traefik -o name*' => Process::result(output: 'secret/traefik-acme-cloudflare'),
+        '*get secret traefik-acme-cloudflare -n traefik -o jsonpath*' => Process::result(output: base64_encode('cf-token-123')),
+        '*-l app.kubernetes.io/name=external-dns*' => Process::result(output: (string) json_encode(['items' => [[
+            'metadata' => [
+                'annotations' => ['larakube.io/dns-domain' => 'example.com', 'larakube.io/dns-owner-id' => 'owner'],
+                'labels' => ['larakube.io/dns-zone' => 'example-com'],
+            ],
+            'status' => ['readyReplicas' => 1],
+        ]]])),
+        '*' => Process::result(output: ''),
+    ]);
+    Saloon::fake([
+        ListZonesRequest::class => MockResponse::make(['success' => true, 'result' => [['id' => 'zone-1', 'name' => 'example.com']], 'result_info' => ['total_pages' => 1]]),
+        // 9109: the token lacks Zone → Zone Settings → Read, so this leaf fails even though DNS writes still work.
+        GetZoneSettingRequest::class => MockResponse::make(['success' => false, 'errors' => [['code' => 9109]]], 403),
+    ]);
+
+    $command = proxyGuardCommand(['--proxied' => true]);
+
+    guardProxy($command, 'flow.example.com');
+
+    expect($command->resolveProxied(false))->toBeTrue();
+});

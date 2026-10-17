@@ -162,7 +162,7 @@ trait ChecksCloudflareProxy
             match ($mode) {
                 'strict' => null,
                 'full' => $this->laraKubeWarn("{$zone} uses Cloudflare's Full SSL mode. Full (strict) also verifies the origin certificate; switch to it when you can."),
-                null => $this->laraKubeWarn("Couldn't read {$zone}'s SSL mode (the token needs Zone → Zone Settings → Read). Check it's Full (strict) in Cloudflare."),
+                null => $this->warnMissingZoneSettingsRead($zone),
                 default => null,
             };
 
@@ -175,5 +175,12 @@ trait ChecksCloudflareProxy
         }
 
         return true;
+    }
+
+    /** Actionable version of the "can't read SSL mode" warning — names the exact missing scope and where to add it. */
+    private function warnMissingZoneSettingsRead(string $zone): void
+    {
+        $this->laraKubeWarn("Couldn't read {$zone}'s SSL mode — the Cloudflare token is missing Zone → Zone Settings → Read (not part of the \"Edit zone DNS\" template).");
+        $this->line('  <fg=gray>Add that permission to the existing token at</> <fg=blue>https://dash.cloudflare.com/profile/api-tokens</> <fg=gray>, then re-run this command. Until then, manually confirm SSL/TLS → Overview is set to</> <fg=blue>Full (strict)</> <fg=gray>in Cloudflare.</>');
     }
 }

@@ -257,7 +257,9 @@ class TlsInitCommand extends Command
         }
         $this->newLine();
         $this->line('  <fg=gray>Create a Cloudflare API token with the "Edit zone DNS" template, covering every</>');
-        $this->line('  <fg=gray>zone this cluster serves (Zone → Zone → Read, Zone → DNS → Edit):</>');
+        $this->line('  <fg=gray>zone this cluster serves (Zone → Zone → Read, Zone → DNS → Edit), plus</>');
+        $this->line('  <fg=gray>Zone → Zone Settings → Read (not in that template) so a later --proxied run</>');
+        $this->line('  <fg=gray>can confirm the zone\'s SSL mode before proxying a host:</>');
         $this->line('  <fg=blue>https://dash.cloudflare.com/profile/api-tokens</>');
         $this->newLine();
 
