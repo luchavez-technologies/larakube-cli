@@ -29,6 +29,8 @@ final class StdinRelay
                     return;
                 }
 
+                usleep(50_000);
+
                 yield '';
 
                 continue;
