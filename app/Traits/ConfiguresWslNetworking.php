@@ -120,7 +120,8 @@ trait ConfiguresWslNetworking
 
         try {
             $base64 = base64_encode($newContent);
-            $command = 'powershell.exe -NoProfile -NonInteractive -Command "[System.IO.File]::WriteAllText(\"$HOME\\.wslconfig\", [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String(\''.$base64.'\')))"';
+            $powershell = $this->windowsCommand('powershell.exe');
+            $command = $powershell.' -NoProfile -NonInteractive -Command "[System.IO.File]::WriteAllText(\"$HOME\\.wslconfig\", [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String(\''.$base64.'\')))"';
             $result = \Illuminate\Support\Facades\Process::path('/mnt/c')->run($command);
 
             return $result->successful();

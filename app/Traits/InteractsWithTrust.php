@@ -453,8 +453,9 @@ trait InteractsWithTrust
      */
     protected function windowsNrptCoveredTlds(): array
     {
+        $powershell = $this->windowsCommand('powershell.exe');
         $output = trim(Process::run(
-            'powershell.exe -NoProfile -Command "Get-DnsClientNrptRule | Select-Object -ExpandProperty Namespace | ConvertTo-Json -Compress"',
+            "{$powershell} -NoProfile -Command \"Get-DnsClientNrptRule | Select-Object -ExpandProperty Namespace | ConvertTo-Json -Compress\"",
         )->output());
 
         if ($output === '') {
@@ -511,7 +512,8 @@ trait InteractsWithTrust
         // `setup`/`up` hung.
         $this->line('  <fg=gray>Look for a Windows security prompt (it may be behind this window or on another monitor)...</>');
 
-        $ok = Process::run('powershell.exe -NoProfile -Command '.escapeshellarg($startProcess))->successful();
+        $powershell = $this->windowsCommand('powershell.exe');
+        $ok = Process::run("{$powershell} -NoProfile -Command ".escapeshellarg($startProcess))->successful();
 
         $temporaryDirectory->delete();
 

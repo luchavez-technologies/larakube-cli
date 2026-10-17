@@ -491,7 +491,8 @@ trait InteractsWithHosts
         // window/monitor — without this line it just looks like `up` hung.
         $this->line('  <fg=gray>Look for a Windows security prompt (it may be behind this window or on another monitor)...</>');
 
-        $ok = Process::run('powershell.exe -NoProfile -Command '.escapeshellarg($startProcess))->successful();
+        $powershell = $this->windowsCommand('powershell.exe');
+        $ok = Process::run("{$powershell} -NoProfile -Command ".escapeshellarg($startProcess))->successful();
 
         $temporaryDirectory->delete();
 

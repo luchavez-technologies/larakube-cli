@@ -72,6 +72,11 @@ function wslDetector(): object
             return $this->toWslPath($path);
         }
 
+        public function resolveWindowsCommand(string $binary): string
+        {
+            return $this->windowsCommand($binary);
+        }
+
         // Tests only ever simulate "is WSL" via WSL_DISTRO_NAME (see forceWsl()
         // below); stub out the /proc/version fallback so "not WSL" cases don't
         // depend on whether the machine running this suite is itself WSL2.
@@ -254,4 +259,14 @@ test('wslUserProfilePath and wslDownloadsPath resolve Windows paths via cmd and 
 
     expect(wslDetector()->userProfilePath())->toBe($dir->path())
         ->and(wslDetector()->downloadsPath())->toBe($dir->path().'/Downloads');
+});
+
+test('windowsCommand returns binary if resolvable on PATH or falls back to system32', function (): void {
+    Process::fake([
+        'command -v cmd.exe' => '/usr/bin/cmd.exe',
+        'command -v powershell.exe' => '',
+    ]);
+
+    expect(wslDetector()->resolveWindowsCommand('cmd.exe'))->toBe('cmd.exe')
+        ->and(wslDetector()->resolveWindowsCommand('powershell.exe'))->toBe('powershell.exe');
 });

@@ -96,6 +96,28 @@ trait DetectsWsl
     }
 
     /**
+     * Resolves the full path to a Windows command from inside WSL if not available on PATH.
+     * E.g. cmd.exe -> /mnt/c/Windows/System32/cmd.exe, powershell.exe -> /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe.
+     */
+    protected function windowsCommand(string $binary): string
+    {
+        if (trim((string) Process::run("command -v {$binary}")->output()) !== '') {
+            return $binary;
+        }
+
+        $system32 = '/mnt/c/Windows/System32';
+        if (strtolower($binary) === 'powershell.exe' && is_file("{$system32}/WindowsPowerShell/v1.0/powershell.exe")) {
+            return "{$system32}/WindowsPowerShell/v1.0/powershell.exe";
+        }
+
+        if (is_file("{$system32}/{$binary}")) {
+            return "{$system32}/{$binary}";
+        }
+
+        return $binary;
+    }
+
+    /**
      * Path to the Windows user profile directory as seen from inside WSL (e.g.
      * /mnt/c/Users/<you>), or null if the Windows profile can't be resolved.
      */
@@ -103,7 +125,8 @@ trait DetectsWsl
     {
         // Run cmd.exe from a Windows cwd so it doesn't emit the "UNC paths are
         // not supported" warning it prints when the cwd is a \\wsl$ path.
-        $winProfile = trim(Process::path('/mnt/c')->run('cmd.exe /c echo %USERPROFILE%')->output());
+        $cmd = $this->windowsCommand('cmd.exe');
+        $winProfile = trim(Process::path('/mnt/c')->run("{$cmd} /c echo %USERPROFILE%")->output());
         if ($winProfile !== '' && str_contains($winProfile, ':\\')) {
             $wslProfile = trim(Process::run('wslpath -u '.escapeshellarg($winProfile))->output());
             if ($wslProfile !== '' && is_dir($wslProfile)) {
