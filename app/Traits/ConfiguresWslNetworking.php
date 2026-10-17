@@ -4,6 +4,8 @@ namespace App\Traits;
 
 use function Laravel\Prompts\confirm;
 
+use Throwable;
+
 /**
  * Offer to enable WSL2 mirrored networking during `setup`. Mirrored mode makes
  * Windows and WSL share localhost, so the cluster ingress is reachable from the
@@ -105,8 +107,25 @@ trait ConfiguresWslNetworking
             return false;
         }
 
-        $current = is_file($path) ? (string) file_get_contents($path) : '';
+        $current = is_file($path) ? (string) @file_get_contents($path) : '';
+        $newContent = $this->withMirroredNetworking($current);
 
-        return file_put_contents($path, $this->withMirroredNetworking($current)) !== false;
+        try {
+            if (@file_put_contents($path, $newContent) !== false) {
+                return true;
+            }
+        } catch (Throwable) {
+            // Permission denied or 9P mount issue; fall through to PowerShell
+        }
+
+        try {
+            $base64 = base64_encode($newContent);
+            $command = 'powershell.exe -NoProfile -NonInteractive -Command "[System.IO.File]::WriteAllText(\"$HOME\\.wslconfig\", [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String(\''.$base64.'\')))"';
+            $result = \Illuminate\Support\Facades\Process::path('/mnt/c')->run($command);
+
+            return $result->successful();
+        } catch (Throwable) {
+            return false;
+        }
     }
 }
