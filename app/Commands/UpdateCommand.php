@@ -2,6 +2,7 @@
 
 namespace App\Commands;
 
+use App\Services\WslBridge;
 use App\Traits\LaraKubeOutput;
 use App\Traits\StreamsProcessOutput;
 use Exception;
@@ -120,11 +121,15 @@ class UpdateCommand extends Command
     protected function downloadAndInstall(string $version): int
     {
         // 1. Detect OS and Architecture
-        $os = strtolower(PHP_OS_FAMILY) === 'darwin' ? 'mac' : 'linux';
+        $os = match (strtolower(PHP_OS_FAMILY)) {
+            'darwin' => 'mac',
+            'windows' => 'windows',
+            default => 'linux',
+        };
         $machine = php_uname('m');
 
         $arch = match ($machine) {
-            'x86_64' => 'x64',
+            'x86_64', 'amd64' => 'x64',
             'arm64', 'aarch64' => 'arm',
             default => null,
         };
@@ -136,7 +141,8 @@ class UpdateCommand extends Command
         }
 
         $repo = $this->getGithubRepository();
-        $binaryName = "larakube-$os-$arch";
+        $ext = $os === 'windows' ? '.exe' : '';
+        $binaryName = "larakube-$os-$arch$ext";
         $downloadUrl = $this->getGithubUrl()."/{$repo}/releases/download/$version/$binaryName";
 
         $this->laraKubeInfo("Downloading $binaryName for $os ($arch)...");
@@ -166,6 +172,51 @@ class UpdateCommand extends Command
             $this->laraKubeError("Failed to download binary from $downloadUrl");
 
             return 1;
+        }
+
+        if ($os === 'windows') {
+            $userProfile = (string) (getenv('USERPROFILE') ?: (getenv('HOMEDRIVE') && getenv('HOMEPATH') ? getenv('HOMEDRIVE').getenv('HOMEPATH') : ''));
+            $targetDir = $userProfile !== '' ? $userProfile.'/.larakube/bin' : '';
+            $target = $targetDir !== '' ? "{$targetDir}/larakube.exe" : (realpath($_SERVER['argv'][0]) ?: 'larakube.exe');
+
+            if ($targetDir !== '' && ! is_dir($targetDir)) {
+                @mkdir($targetDir, 0755, true);
+            }
+
+            $this->laraKubeInfo("🚚 Installing to {$target}...");
+
+            $oldExe = $target.'.old';
+            if (file_exists($oldExe)) {
+                @unlink($oldExe);
+            }
+            if (file_exists($target)) {
+                @rename($target, $oldExe);
+            }
+
+            if (! @copy($tempPath, $target)) {
+                if (file_exists($oldExe)) {
+                    @rename($oldExe, $target);
+                }
+                $temporaryDirectory->delete();
+                $this->laraKubeError("Installation failed. Could not copy new binary to {$target}.");
+
+                return 1;
+            }
+
+            if (file_exists($oldExe)) {
+                @unlink($oldExe);
+            }
+            $temporaryDirectory->delete();
+
+            $this->laraKubeInfo("✅ LaraKube Windows binary updated successfully to $version!");
+
+            $bridge = app(WslBridge::class);
+            if ($bridge->distroExists()) {
+                $this->laraKubeInfo("🔄 Updating LaraKube CLI inside Linux ({$bridge->distroName()})...");
+                $bridge->dispatchToWsl(['larakube', 'update', ...($version === 'canary' ? ['--canary'] : []), '--yes']);
+            }
+
+            return 0;
         }
 
         $this->laraKubeInfo('🚚 Installing to /usr/local/bin/larakube (requires sudo)...');

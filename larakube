@@ -69,6 +69,30 @@ $app = require_once __DIR__.'/bootstrap/app.php';
 
 /*
 |--------------------------------------------------------------------------
+| Dispatch into WSL2 on Native Windows
+|--------------------------------------------------------------------------
+|
+| When running natively on Windows outside WSL, operational commands
+| (up, down, art, tool:*, etc.) are dispatched transparently into the
+| bundled WSL2 Linux environment (larakube-ubuntu). Native lifecycle
+| commands (setup, update, wsl:*) continue to run locally.
+|
+*/
+
+if (\App\Services\WslBridge::isNativeWindows()) {
+    /** @var \App\Services\WslBridge $wslBridge */
+    $wslBridge = $app->make(\App\Services\WslBridge::class);
+    if ($wslBridge->shouldDispatchToWsl($_SERVER['argv'] ?? [])) {
+        if ($wslBridge->mirroredRestartPending() && $wslBridge->otherRunningDistros() === []) {
+            $wslBridge->shutdown();
+        }
+        $status = $wslBridge->dispatchToWsl($_SERVER['argv'] ?? []);
+        exit($status);
+    }
+}
+
+/*
+|--------------------------------------------------------------------------
 | Run The Artisan Application
 |--------------------------------------------------------------------------
 |

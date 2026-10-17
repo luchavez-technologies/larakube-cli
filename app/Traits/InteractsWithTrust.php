@@ -90,6 +90,15 @@ trait InteractsWithTrust
                 $this->runInteractive('sudo cp '.escapeshellarg($tmpCa).' /etc/pki/ca-trust/source/anchors/larakube-local-ca.crt');
                 $this->runInteractive('sudo update-ca-trust extract');
             }
+        } elseif ($this->isWindows()) {
+            $this->info('  🔒 Windows host detected. Adding to Windows Root store...');
+            $code = $this->runStreaming('certutil.exe -user -addstore -f "Root" '.escapeshellarg($tmpCa));
+            if ($code !== 0) {
+                $this->laraKubeWarn('Could not add the CA to the Windows user store automatically.');
+                $this->line("  👉 Run in an elevated PowerShell terminal: certutil -addstore -f Root \"{$caPath}\"");
+            } else {
+                $this->laraKubeInfo('✅ CA added to the Windows current-user store. Restart your browser.');
+            }
         } else {
             $this->warn("  ⚠ Automatic trust installation not supported for {$os}.");
             $this->info("  👉 Manually trust: {$caPath}");
@@ -146,6 +155,9 @@ trait InteractsWithTrust
                 $this->runInteractive('sudo rm -f /etc/pki/ca-trust/source/anchors/larakube-local-ca.crt');
                 $this->runInteractive('sudo update-ca-trust extract');
             }
+        } elseif ($this->isWindows()) {
+            $this->info('  🔓 Windows host detected. Removing from Windows Root Store...');
+            $this->runStreaming('certutil.exe -delstore "Root" "LaraKube Local CA"');
         } else {
             $this->warn("  ⚠ Automatic trust removal is not supported for {$os}.");
         }

@@ -2,20 +2,22 @@
 
 namespace App\Traits;
 
+use App\Support\Os;
+
 trait InteractsWithOs
 {
     protected function isDarwin(): bool
     {
-        return PHP_OS_FAMILY === 'Darwin';
+        return Os::isDarwin();
     }
 
     protected function isLinux(): bool
     {
-        return PHP_OS_FAMILY === 'Linux';
+        return Os::isLinux();
     }
 
     protected function isWindows(): bool
     {
-        return PHP_OS_FAMILY === 'Windows';
+        return Os::isWindows();
     }
 }

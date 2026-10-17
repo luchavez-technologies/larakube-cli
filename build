@@ -83,6 +83,9 @@ case $BUILD_TYPE in
         # Detect Local Arch
         OS=$(uname -s | tr '[:upper:]' '[:lower:]')
         [ "$OS" == "darwin" ] && OS="mac"
+        case "$OS" in
+            msys*|mingw*|cygwin*) OS="windows" ;;
+        esac
 
         ARCH=$(uname -m)
         [ "$ARCH" == "arm64" ] && ARCH="arm"
@@ -91,15 +94,24 @@ case $BUILD_TYPE in
         build_standalone $OS $ARCH
 
         if [ "$NO_INSTALL" = false ]; then
-            echo "🚚 Installing local binary to /usr/local/bin/larakube (requires sudo)..."
-            sudo mv builds/standalone/$OS/$OS-$ARCH /usr/local/bin/larakube
-            sudo chmod +x /usr/local/bin/larakube
-            if [ -d "$HOME/.larakube/bin" ]; then
-                cp /usr/local/bin/larakube "$HOME/.larakube/bin/larakube"
-                echo "📋 Synced local binary to $HOME/.larakube/bin/larakube"
+            if [ "$OS" == "windows" ]; then
+                TARGET_DIR="${USERPROFILE:-$HOME}/.larakube/bin"
+                mkdir -p "$TARGET_DIR"
+                cp "builds/standalone/windows/windows-x64.exe" "$TARGET_DIR/larakube.exe"
+                echo "📋 Installed local binary to $TARGET_DIR/larakube.exe"
+                echo -e "✅ LaraKube ${BOLD}[$VERSION]${RESET} is now live on your system!"
+                echo "👉 Verify by running: larakube --version"
+            else
+                echo "🚚 Installing local binary to /usr/local/bin/larakube (requires sudo)..."
+                sudo mv builds/standalone/$OS/$OS-$ARCH /usr/local/bin/larakube
+                sudo chmod +x /usr/local/bin/larakube
+                if [ -d "$HOME/.larakube/bin" ]; then
+                    cp /usr/local/bin/larakube "$HOME/.larakube/bin/larakube"
+                    echo "📋 Synced local binary to $HOME/.larakube/bin/larakube"
+                fi
+                echo -e "✅ LaraKube ${BOLD}[$VERSION]${RESET} is now live on your system!"
+                echo "👉 Verify by running: larakube --version"
             fi
-            echo -e "✅ LaraKube ${BOLD}[$VERSION]${RESET} is now live on your system!"
-            echo "👉 Verify by running: larakube --version"
         else
             echo -e "✅ LaraKube ${BOLD}[$VERSION]${RESET} built successfully (skipped installation)."
             echo "👉 Run locally with: php builds/larakube.phar"
@@ -112,6 +124,7 @@ case $BUILD_TYPE in
         build_standalone linux arm
         build_standalone mac x64
         build_standalone mac arm
+        build_standalone windows x64
 
         # Cleanup
         run_php -r "unlink('builds/larakube.phar');"

@@ -158,6 +158,7 @@ jobs:
           cp builds/standalone/linux/linux-arm artifacts/larakube-linux-arm
           cp builds/standalone/mac/mac-x64 artifacts/larakube-mac-x64
           cp builds/standalone/mac/mac-arm artifacts/larakube-mac-arm
+          cp builds/standalone/windows/windows-x64.exe artifacts/larakube-windows-x64.exe
           chmod +x artifacts/*
 
       # `gh` ships on the runner, so there is no third-party release action to

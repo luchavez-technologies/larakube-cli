@@ -1,14 +1,8 @@
 # Let LaraKube manage WSL's own lifecycle from outside it
 
-**Status: Phase 1 DONE (desktop `9a7ba2d`). Phase 2 is unstarted and
-explicitly handed off — ready for Antigravity to pick up.** Saved so work
-can resume cold — whoever picks this up next (human or another agent)
-should be able to work from this file alone, without needing prior
-conversation context.
-
-**Phase 2 size unknown** — a real feature with an unverified build step
-(phpacker's Windows cross-compile has never been exercised on this
-project). Budget discovery time, don't assume it's quick.
+**Status: Phase 1 DONE (desktop `9a7ba2d`). Phase 2 DONE (cli + desktop).**
+- Phase 1: Desktop WSL lifecycle safety and automatic mirrored-networking restart when safe.
+- Phase 2: CLI native Windows lifecycle layer (`WslBridge`, `SetupCommand::handleWindowsSetup()`, `UpdateCommand` Windows support, `wsl:status`, `wsl:restart`, `wsl:shutdown`, and desktop `CliInstaller` Windows support). All tests passing. Build targets added to `cli/build`. Ready for `./build` execution by user.
 
 **Related but distinct plans already in this directory** — read this file
 first, but these are relevant background, not duplicates:

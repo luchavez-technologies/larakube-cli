@@ -4,6 +4,7 @@ namespace App\Commands;
 
 use App\Enums\CliTool;
 use App\Services\Kubectl;
+use App\Services\WslBridge;
 use App\Traits\CollectsReminders;
 use App\Traits\ConfiguresWslNetworking;
 use App\Traits\DetectsWsl;
@@ -39,6 +40,10 @@ class SetupCommand extends Command
     {
         $this->renderHeader();
         $this->laraKubeInfo('LaraKube Environment Setup');
+
+        if ($this->isWindows()) {
+            return $this->handleWindowsSetup();
+        }
 
         $requestedTools = $this->resolveRequestedTools();
         if ($requestedTools !== null) {
@@ -702,5 +707,82 @@ class SetupCommand extends Command
         $res2 = $kubectl->raw(['get', 'svc', '-A', '-l', 'app.kubernetes.io/name=traefik', '-o', 'name']);
 
         return $res2->ok && trim($res2->output) !== '';
+    }
+
+    protected function handleWindowsSetup(): int
+    {
+        $this->laraKubeInfo('Windows host detected — configuring WSL2 environment...');
+        $this->newLine();
+
+        $bridge = app(WslBridge::class);
+
+        if (! $bridge->isWslInstalled()) {
+            $this->laraKubeError('Windows Subsystem for Linux (WSL2) is not installed or enabled yet.');
+            $this->newLine();
+            $this->line('  Run this in PowerShell as Administrator to install WSL:');
+            $this->line('    <fg=cyan>wsl --install --no-distribution</>');
+            $this->newLine();
+
+            return 1;
+        }
+
+        // Configure mirrored networking in %USERPROFILE%\.wslconfig
+        $this->laraKubeInfo('WSL networking: mirrored mode is recommended.');
+        $this->line('  <fg=gray>It shares localhost between Windows and WSL, so your Windows browser reaches the cluster at a stable</> <fg=cyan>127.0.0.1</><fg=gray>.</>');
+        $this->line('  <fg=gray>Without it, WSL\'s IP changes on every reboot and the Windows hosts entry goes stale.</>');
+
+        $restartNeeded = false;
+        if (! $bridge->mirroredNetworkingRequested()) {
+            if (confirm('Enable WSL mirrored networking now? (writes ~/.wslconfig)', default: true)) {
+                if ($bridge->ensureMirroredNetworking()) {
+                    $this->laraKubeInfo('✅ Enabled mirrored networking in ~/.wslconfig.');
+                    $restartNeeded = true;
+                } else {
+                    $this->laraKubeWarn('Could not write ~/.wslconfig automatically.');
+                }
+            }
+        } else {
+            $this->line('  <fg=green>✓</> Mirrored networking is already configured in ~/.wslconfig.');
+            if ($bridge->mirroredRestartPending()) {
+                $restartNeeded = true;
+            }
+        }
+
+        // If a restart is needed to activate mirrored networking, do it cleanly from outside WSL
+        if ($restartNeeded && $bridge->mirroredRestartPending()) {
+            $others = $bridge->otherRunningDistros();
+            if ($others === []) {
+                $this->laraKubeInfo('🔄 Restarting WSL to activate mirrored networking...');
+                $bridge->shutdown();
+                $this->laraKubeInfo('✅ WSL restarted with mirrored networking active.');
+            } else {
+                $names = implode(', ', $others);
+                if (confirm("Other WSL distros are currently running ({$names}). Restart WSL now to activate mirrored networking?", default: false)) {
+                    $this->laraKubeInfo('🔄 Restarting WSL...');
+                    $bridge->shutdown();
+                    $this->laraKubeInfo('✅ WSL restarted with mirrored networking active.');
+                } else {
+                    $this->laraKubeWarn('Mirrored networking is configured but not active yet.');
+                    $this->line('  Run <fg=cyan>wsl --shutdown</> from Windows PowerShell when convenient to activate it.');
+                }
+            }
+        }
+
+        // Check distro
+        if (! $bridge->distroExists()) {
+            $this->newLine();
+            $this->laraKubeWarn("LaraKube Linux distro ('{$bridge->distroName()}') is not yet installed.");
+            $this->line('  LaraKube Desktop can install the distro automatically, or you can import it.');
+            $this->line('  If you are using a standard Ubuntu distro, set <fg=cyan>LARAKUBE_WSL_DISTRO=Ubuntu</>.');
+            $this->newLine();
+
+            return 1;
+        }
+
+        $this->newLine();
+        $this->laraKubeInfo('🚀 Dispatching setup into LaraKube Linux...');
+        $this->newLine();
+
+        return $bridge->dispatchToWsl($_SERVER['argv']);
     }
 }
