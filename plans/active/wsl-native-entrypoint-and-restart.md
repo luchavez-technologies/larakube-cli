@@ -1,12 +1,14 @@
 # Let LaraKube manage WSL's own lifecycle from outside it
 
-**Status:** Design only, not started. Saved so work can resume cold —
-whoever picks this up next (human or another agent) should be able to work
-from this file alone, without needing prior conversation context.
+**Status: Phase 1 DONE (desktop `9a7ba2d`). Phase 2 is unstarted and
+explicitly handed off — ready for Antigravity to pick up.** Saved so work
+can resume cold — whoever picks this up next (human or another agent)
+should be able to work from this file alone, without needing prior
+conversation context.
 
-**Size unknown.** Phase 1 is small (a few files, same-day sized). Phase 2 is
-a real feature with an unverified build step — budget discovery time, don't
-assume it's quick.
+**Phase 2 size unknown** — a real feature with an unverified build step
+(phpacker's Windows cross-compile has never been exercised on this
+project). Budget discovery time, don't assume it's quick.
 
 **Related but distinct plans already in this directory** — read this file
 first, but these are relevant background, not duplicates:
