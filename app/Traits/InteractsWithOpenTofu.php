@@ -435,17 +435,27 @@ HCL;
         $log = (string) tempnam(sys_get_temp_dir(), 'larakube-tofu-');
         $offset = 0;
         $interrupted = false;
+        $pendingSigint = false;
 
         $process = null;
 
         // Handlers go in BEFORE the spawn: a handled signal resets to default
         // across exec, an ignored one would stay ignored and untrappable in tofu.
-        $restoreHandlers = $this->forwardInterruptsToTofu($process, $interrupted);
+        $restoreHandlers = $this->forwardInterruptsToTofu($process, $interrupted, $pendingSigint);
         // `exec` makes tofu itself the signalled PID rather than an `sh -c` wrapper.
         $process = Process::forever()->env($env)->start('exec '.$command.' > '.escapeshellarg($log).' 2>&1');
 
+        if ($pendingSigint) {
+            $pendingSigint = false;
+            $process->signal(SIGINT);
+        }
+
         try {
             while ($process->running()) {
+                if ($pendingSigint) {
+                    $pendingSigint = false;
+                    $process->signal(SIGINT);
+                }
                 $offset = $this->relayTofuLog($log, $offset);
                 Sleep::usleep(200_000);
             }
@@ -514,7 +524,7 @@ HCL;
     /**
      * @return Closure(): void restores the previous handlers
      */
-    private function forwardInterruptsToTofu(?InvokedProcess &$process, bool &$interrupted): Closure
+    private function forwardInterruptsToTofu(?InvokedProcess &$process, bool &$interrupted, bool &$pendingSigint): Closure
     {
         if (! function_exists('pcntl_signal') || ! function_exists('pcntl_async_signals')) {
             return static function (): void {};
@@ -523,12 +533,16 @@ HCL;
         $previous = [SIGINT => pcntl_signal_get_handler(SIGINT), SIGTERM => pcntl_signal_get_handler(SIGTERM)];
         $previousAsync = pcntl_async_signals(true);
 
-        $handler = function (int $signal) use (&$process, &$interrupted): void {
+        $handler = function (int $signal) use (&$process, &$interrupted, &$pendingSigint): void {
             if (! $interrupted) {
                 $this->writeTofuStream(PHP_EOL.'Stopping — waiting for OpenTofu to finish its current step and save state...'.PHP_EOL);
 
                 if ($signal === SIGTERM) {
-                    $process?->signal(SIGINT);
+                    if ($process !== null) {
+                        $process->signal(SIGINT);
+                    } else {
+                        $pendingSigint = true;
+                    }
                 }
             }
 

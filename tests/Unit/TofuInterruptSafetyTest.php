@@ -84,14 +84,27 @@ test('under --json the tofu stream stays off stdout', function (): void {
 
 test('SIGTERM becomes one graceful SIGINT to tofu, which is waited for', function (): void {
     $directory = TemporaryDirectory::make();
-    $bin = tofuInterruptStub($directory, <<<'SH'
-trap 'echo "Interrupt received. Gracefully shutting down..."; sleep 0.2; echo "state saved"; exit 1' INT
-kill -TERM "$LARAKUBE_TEST_PARENT_PID"
-i=0
-while [ $i -lt 100 ]; do sleep 0.05; i=$((i+1)); done
-echo "never interrupted"
-exit 0
-SH);
+    $path = $directory->path().'/tofu';
+    $php = PHP_BINARY;
+    file_put_contents($path, <<<PHP
+#!{$php}
+<?php
+pcntl_async_signals(true);
+pcntl_signal(SIGINT, function (): void {
+    echo "Interrupt received. Gracefully shutting down...\\n";
+    usleep(50_000);
+    echo "state saved\\n";
+    exit(1);
+});
+posix_kill((int) getenv('LARAKUBE_TEST_PARENT_PID'), SIGTERM);
+for (\$i = 0; \$i < 100; \$i++) {
+    usleep(50_000);
+}
+echo "never interrupted\\n";
+exit(0);
+PHP);
+    chmod($path, 0755);
+    $bin = ['path' => $path, 'isOpenTofu' => true];
     $originalHandler = pcntl_signal_get_handler(SIGTERM);
 
     ob_start();
@@ -107,4 +120,4 @@ SH);
         ->and(pcntl_signal_get_handler(SIGTERM))->toBe($originalHandler);
 
     $directory->delete();
-})->skip(! function_exists('pcntl_signal'), 'pcntl is not available in this PHP build');
+})->skip(! function_exists('pcntl_signal') || ! function_exists('posix_kill'), 'pcntl/posix is not available in this PHP build');
