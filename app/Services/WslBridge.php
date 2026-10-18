@@ -257,6 +257,19 @@ class WslBridge
     public function dispatchToWsl(array $argv, ?string $cwd = null): int
     {
         $args = array_slice($argv, 1);
+
+        // Without this, project-aware commands (`up`, `trust`, ...) always land
+        // in the distro's default home directory, not wherever the invoking
+        // Windows terminal actually was — confirmed live: dispatching `up`
+        // from a native PowerShell window with no --cd at all silently fails
+        // isLaraKubeProject() even with a real project sitting one level down
+        // (project files live under ~/projects/<name>, never directly at ~ —
+        // see ToolLocator::defaultProjectsPath() on the Desktop side). Falls
+        // back to today's behavior (no --cd, lands at home) when the cwd isn't
+        // a translatable WSL/Windows path — e.g. a plain Windows path with no
+        // drive letter, which shouldn't happen but isn't worth guessing at.
+        $linuxCwd = $this->translateCwdToWsl($cwd ?? (getcwd() ?: null));
+
         // --user larakube is required: the distro's default login user has no
         // systemd lingering entry (only /var/lib/systemd/linger/larakube does,
         // per larakube-ubuntu's own Dockerfile), so running as whichever user
@@ -267,7 +280,11 @@ class WslBridge
         // being driven by a native-Windows host that's still waiting on it —
         // see InteractsWithHosts::syncWindowsHostsFile() and
         // applyPendingWindowsHostsSync() below for what that unlocks.
-        $command = ['wsl.exe', '-d', $this->distroName(), '--user', self::DEFAULT_USER, '--', 'env', 'LARAKUBE_NATIVE_DISPATCH=1', 'larakube', ...$args];
+        $command = [
+            'wsl.exe', '-d', $this->distroName(), '--user', self::DEFAULT_USER,
+            ...($linuxCwd !== null ? ['--cd', $linuxCwd] : []),
+            '--', 'env', 'LARAKUBE_NATIVE_DISPATCH=1', 'larakube', ...$args,
+        ];
 
         if ($this->customDispatcher !== null) {
             return ($this->customDispatcher)($command, $cwd);
@@ -472,6 +489,41 @@ class WslBridge
     {
         return $this->pendingWindowsHostsPathOverride
             ?? '\\\\wsl.localhost\\'.$this->distroName().'\\home\\'.self::DEFAULT_USER.'\\.larakube\\pending-windows-hosts';
+    }
+
+    /**
+     * Translates a native-Windows working directory into the equivalent path
+     * inside WSL, so dispatchToWsl() can pass --cd and land the dispatched
+     * command where the invoking terminal actually was. Mirrors Desktop's
+     * own WslDistro::toLinux() (desktop/app/Services/Runtime/WslDistro.php) —
+     * not reused directly since this is a different repo, but intentionally
+     * the same two cases: a \\wsl.localhost\<distro>\... (or legacy \\wsl$\)
+     * UNC path drops its prefix, and a Windows drive path becomes
+     * /mnt/<drive>/.... Returns null for anything else (already a Linux
+     * path, a UNC path into a DIFFERENT distro, or unrecognized) rather than
+     * guessing — callers fall back to no --cd at all in that case.
+     */
+    private function translateCwdToWsl(?string $cwd): ?string
+    {
+        if ($cwd === null || $cwd === '') {
+            return null;
+        }
+
+        if (preg_match('#^\\\\\\\\(?:wsl\.localhost|wsl\$)\\\\([^\\\\]+)(.*)$#i', $cwd, $unc) === 1) {
+            if (strcasecmp($unc[1], $this->distroName()) !== 0) {
+                return null;
+            }
+
+            return str_replace('\\', '/', $unc[2]) ?: '/';
+        }
+
+        if (preg_match('#^([A-Za-z]):[\\\\/]?(.*)$#', $cwd, $drive) === 1) {
+            $rest = trim(str_replace('\\', '/', $drive[2]), '/');
+
+            return '/mnt/'.strtolower($drive[1]).($rest !== '' ? '/'.$rest : '');
+        }
+
+        return null;
     }
 
     /**

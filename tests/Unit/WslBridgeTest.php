@@ -287,6 +287,71 @@ test('applyPendingWindowsHostsSync clears an empty handoff file without elevatin
     Process::assertNothingRan();
 });
 
+test('dispatchToWsl passes --cd when invoked from a \\\\wsl.localhost path into the target distro', function (): void {
+    // Without this, project-aware commands (up, trust, ...) always land in
+    // the distro's default home directory, never the project the invoking
+    // terminal was actually sitting in -- confirmed as a real gap: project
+    // files live under ~/projects/<name>, never directly at ~.
+    $bridge = new WslBridge(nativeWindows: true);
+
+    $dispatchedCommand = null;
+    $bridge->setCustomDispatcher(function (array $cmd, ?string $cwd = null) use (&$dispatchedCommand): int {
+        $dispatchedCommand = $cmd;
+
+        return 0;
+    });
+
+    $bridge->dispatchToWsl(['larakube', 'up'], '\\\\wsl.localhost\\larakube-ubuntu\\home\\larakube\\projects\\myapp');
+
+    expect($dispatchedCommand)->toBe(['wsl.exe', '-d', 'larakube-ubuntu', '--user', 'larakube', '--cd', '/home/larakube/projects/myapp', '--', 'env', 'LARAKUBE_NATIVE_DISPATCH=1', 'larakube', 'up']);
+});
+
+test('dispatchToWsl passes --cd translated from a Windows drive path', function (): void {
+    $bridge = new WslBridge(nativeWindows: true);
+
+    $dispatchedCommand = null;
+    $bridge->setCustomDispatcher(function (array $cmd, ?string $cwd = null) use (&$dispatchedCommand): int {
+        $dispatchedCommand = $cmd;
+
+        return 0;
+    });
+
+    $bridge->dispatchToWsl(['larakube', 'up'], 'C:\\Users\\jsluc\\projects\\myapp');
+
+    expect($dispatchedCommand)->toContain('--cd')
+        ->and($dispatchedCommand[array_search('--cd', $dispatchedCommand, true) + 1])->toBe('/mnt/c/Users/jsluc/projects/myapp');
+});
+
+test('dispatchToWsl omits --cd when the cwd is a UNC path into a different distro', function (): void {
+    $bridge = new WslBridge(nativeWindows: true);
+
+    $dispatchedCommand = null;
+    $bridge->setCustomDispatcher(function (array $cmd, ?string $cwd = null) use (&$dispatchedCommand): int {
+        $dispatchedCommand = $cmd;
+
+        return 0;
+    });
+
+    $bridge->dispatchToWsl(['larakube', 'up'], '\\\\wsl.localhost\\Ubuntu\\home\\someone\\projects\\myapp');
+
+    expect($dispatchedCommand)->not->toContain('--cd');
+});
+
+test('dispatchToWsl omits --cd when the cwd is not a translatable Windows path', function (): void {
+    $bridge = new WslBridge(nativeWindows: true);
+
+    $dispatchedCommand = null;
+    $bridge->setCustomDispatcher(function (array $cmd, ?string $cwd = null) use (&$dispatchedCommand): int {
+        $dispatchedCommand = $cmd;
+
+        return 0;
+    });
+
+    $bridge->dispatchToWsl(['larakube', 'up'], '/home/larakube/projects/myapp');
+
+    expect($dispatchedCommand)->not->toContain('--cd');
+});
+
 test('windowsQuoteArgument leaves plain tokens unquoted and quotes only when needed', function (): void {
     // proc_open()'s own array-form escaping on Windows is what broke dispatch
     // (confirmed live — identical argv worked via PowerShell/Start-Process,
