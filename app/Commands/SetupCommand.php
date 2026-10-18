@@ -2,6 +2,7 @@
 
 namespace App\Commands;
 
+use App\Data\GlobalConfigData;
 use App\Enums\CliTool;
 use App\Services\Kubectl;
 use App\Services\WslBridge;
@@ -777,6 +778,29 @@ class SetupCommand extends Command
             $this->newLine();
 
             return 1;
+        }
+
+        // The Windows DNS rule dnsmasq needs is applied here, natively, before
+        // dispatching into WSL — one direct elevation hop instead of bridging
+        // out from inside WSL and back (see WslBridge::applyNrptRule()'s own
+        // docblock for why that two-hop path doesn't reliably show the UAC
+        // prompt). configureDnsmasq() still re-checks this once setup
+        // continues inside WSL, so it's a no-op there once this succeeds —
+        // never a double prompt.
+        if ($bridge->mirroredNetworkingActive()) {
+            $tld = GlobalConfigData::load()->getLocalTld();
+
+            if (! in_array(strtolower($tld), $bridge->windowsNrptCoveredTlds(), true)) {
+                $this->laraKubeInfo("Windows DNS needs a one-time rule so your browser resolves *.{$tld} via dnsmasq.");
+                $this->line('  <fg=gray>Look for a Windows security prompt (it may be behind this window or on another monitor)...</>');
+
+                if ($bridge->applyNrptRule([$tld])) {
+                    $this->laraKubeInfo("✅ Windows DNS rule added: *.{$tld} → 127.0.0.1 (dnsmasq).");
+                } else {
+                    $this->laraKubeWarn('Could not add the Windows DNS rule automatically. From an elevated PowerShell, run:');
+                    $this->line("     Add-DnsClientNrptRule -Namespace \".{$tld}\" -NameServers \"127.0.0.1\"");
+                }
+            }
         }
 
         $this->newLine();

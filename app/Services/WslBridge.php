@@ -298,6 +298,78 @@ class WslBridge
     }
 
     /**
+     * Every TLD namespace an existing Windows NRPT rule already routes to a
+     * nameserver — a rule from a previous run or set up by hand is still
+     * recognised as "covered" and left alone.
+     *
+     * Native-Windows counterpart to InteractsWithTrust::windowsNrptCoveredTlds()
+     * (CLI/app/Traits/InteractsWithTrust.php) — that one bridges out from
+     * inside WSL via windowsCommand()'s interop path; running natively, this
+     * calls powershell.exe directly, no bridge needed.
+     *
+     * @return list<string>
+     */
+    public function windowsNrptCoveredTlds(): array
+    {
+        $output = trim(Process::run(
+            'powershell.exe -NoProfile -Command "Get-DnsClientNrptRule | Select-Object -ExpandProperty Namespace | ConvertTo-Json -Compress"',
+        )->output());
+
+        if ($output === '') {
+            return [];
+        }
+
+        $decoded = json_decode($output, true);
+        $namespaces = is_array($decoded) ? $decoded : [$decoded];
+
+        return array_values(array_filter(array_map(
+            fn (mixed $ns): string => is_string($ns) ? strtolower(ltrim($ns, '.')) : '',
+            $namespaces,
+        )));
+    }
+
+    /**
+     * Add a Windows NRPT rule for each given TLD via a directly-elevated
+     * PowerShell (the standard UAC prompt) — one hop, since we're already
+     * native Windows. The WSL-side equivalent (applyWindowsNrptRule() in
+     * InteractsWithTrust) needs two: bridge out to a non-elevated
+     * powershell.exe via WSL interop, which then requests elevation for a
+     * second, child powershell.exe — a UAC prompt spawned at the end of
+     * that chain doesn't reliably attach to the interactive desktop
+     * session. Confirmed live: that path silently failed with no visible
+     * prompt during this session's own Windows testing.
+     *
+     * @param  list<string>  $tlds
+     */
+    public function applyNrptRule(array $tlds): bool
+    {
+        $tempDir = sys_get_temp_dir();
+        $scriptPath = $tempDir.DIRECTORY_SEPARATOR.'larakube-nrpt-'.bin2hex(random_bytes(6)).'.ps1';
+
+        $lines = array_map(
+            fn (string $tld): string => "Add-DnsClientNrptRule -Namespace \".{$tld}\" -NameServers \"127.0.0.1\"",
+            $tlds,
+        );
+        file_put_contents($scriptPath, implode("\n", $lines)."\n");
+
+        $startProcess = 'Start-Process -FilePath powershell -Verb RunAs -Wait '
+            ."-ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{$scriptPath}'";
+
+        $ok = Process::run(['powershell.exe', '-NoProfile', '-Command', $startProcess])->successful();
+
+        @unlink($scriptPath);
+
+        if (! $ok) {
+            return false;
+        }
+
+        // Trust, but verify: a declined/dismissed UAC prompt still exits the
+        // outer powershell.exe "successfully" — only re-querying the actual
+        // rule table confirms the rule exists now.
+        return array_diff(array_map('strtolower', $tlds), $this->windowsNrptCoveredTlds()) === [];
+    }
+
+    /**
      * Quotes a single argument for a Windows command line, using the same
      * backslash/quote-doubling rules the MSVCRT argv parser (and therefore
      * wsl.exe) expects. Only wraps in quotes when actually needed, so a

@@ -58,6 +58,7 @@ test('setup on Windows configures mirrored networking and dispatches into WSL', 
         '*--status*' => Process::result(output: "Default Version: 2\n"),
         '*wslinfo*--networking-mode*' => Process::result(output: "mirrored\n"),
         '*--list*--quiet*' => Process::result(output: "larakube-ubuntu\n"),
+        '*Get-DnsClientNrptRule*' => Process::result(output: '["kube"]'),
     ]);
 
     $dispatched = false;
@@ -75,6 +76,104 @@ test('setup on Windows configures mirrored networking and dispatches into WSL', 
             ->expectsOutputToContain('Dispatching setup into LaraKube Linux');
 
         expect($dispatched)->toBeTrue();
+    } finally {
+        putenv('USERPROFILE');
+    }
+});
+
+test('setup on Windows applies the NRPT rule natively, one hop, before dispatching', function (): void {
+    // Confirmed live: the old WSL-side path (bridge out via interop, then
+    // elevate a second, child powershell.exe) silently failed to show a UAC
+    // prompt. This is the replacement -- a single, direct elevation request
+    // from the native process, same shape as the already-proven
+    // Wsl::enable() pattern.
+    Os::setForcedFamily('Windows');
+    WslBridge::setForceNativeWindows(true);
+
+    $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
+    putenv('USERPROFILE='.$dir->path());
+    file_put_contents($dir->path().'/.wslconfig', "[wsl2]\nnetworkingMode=mirrored\n");
+
+    Process::fake([
+        '*--status*' => Process::result(output: "Default Version: 2\n"),
+        '*wslinfo*--networking-mode*' => Process::result(output: "mirrored\n"),
+        '*--list*--quiet*' => Process::result(output: "larakube-ubuntu\n"),
+        '*Get-DnsClientNrptRule*' => Process::sequence()
+            ->push(Process::result(output: '[]'))
+            ->push(Process::result(output: '["kube"]')),
+        '*Start-Process*-Verb*RunAs*' => Process::result(),
+    ]);
+
+    $bridge = new WslBridge(nativeWindows: true);
+    $bridge->setCustomDispatcher(fn (array $cmd, ?string $cwd = null): int => 0);
+    app()->instance(WslBridge::class, $bridge);
+
+    try {
+        $this->artisan('setup')
+            ->assertExitCode(0)
+            ->expectsOutputToContain('Windows DNS needs a one-time rule')
+            ->expectsOutputToContain('Windows DNS rule added');
+
+        Process::assertRan(fn ($process) => str_contains(implode(' ', (array) $process->command), 'Start-Process')
+            && str_contains(implode(' ', (array) $process->command), '-Verb'));
+    } finally {
+        putenv('USERPROFILE');
+    }
+});
+
+test('setup on Windows skips the NRPT prompt entirely when already covered', function (): void {
+    Os::setForcedFamily('Windows');
+    WslBridge::setForceNativeWindows(true);
+
+    $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
+    putenv('USERPROFILE='.$dir->path());
+    file_put_contents($dir->path().'/.wslconfig', "[wsl2]\nnetworkingMode=mirrored\n");
+
+    Process::fake([
+        '*--status*' => Process::result(output: "Default Version: 2\n"),
+        '*wslinfo*--networking-mode*' => Process::result(output: "mirrored\n"),
+        '*--list*--quiet*' => Process::result(output: "larakube-ubuntu\n"),
+        '*Get-DnsClientNrptRule*' => Process::result(output: '["kube"]'),
+    ]);
+
+    $bridge = new WslBridge(nativeWindows: true);
+    $bridge->setCustomDispatcher(fn (array $cmd, ?string $cwd = null): int => 0);
+    app()->instance(WslBridge::class, $bridge);
+
+    try {
+        $this->artisan('setup')->assertExitCode(0);
+
+        Process::assertNotRan(fn ($process) => str_contains(implode(' ', (array) $process->command), 'Start-Process'));
+    } finally {
+        putenv('USERPROFILE');
+    }
+});
+
+test('setup on Windows warns with the manual command when the NRPT elevation fails', function (): void {
+    Os::setForcedFamily('Windows');
+    WslBridge::setForceNativeWindows(true);
+
+    $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
+    putenv('USERPROFILE='.$dir->path());
+    file_put_contents($dir->path().'/.wslconfig', "[wsl2]\nnetworkingMode=mirrored\n");
+
+    Process::fake([
+        '*--status*' => Process::result(output: "Default Version: 2\n"),
+        '*wslinfo*--networking-mode*' => Process::result(output: "mirrored\n"),
+        '*--list*--quiet*' => Process::result(output: "larakube-ubuntu\n"),
+        '*Get-DnsClientNrptRule*' => Process::result(output: '[]'),
+        '*Start-Process*-Verb*RunAs*' => Process::result(exitCode: 1),
+    ]);
+
+    $bridge = new WslBridge(nativeWindows: true);
+    $bridge->setCustomDispatcher(fn (array $cmd, ?string $cwd = null): int => 0);
+    app()->instance(WslBridge::class, $bridge);
+
+    try {
+        $this->artisan('setup')
+            ->assertExitCode(0)
+            ->expectsOutputToContain('Could not add the Windows DNS rule automatically')
+            ->expectsOutputToContain('Add-DnsClientNrptRule');
     } finally {
         putenv('USERPROFILE');
     }
