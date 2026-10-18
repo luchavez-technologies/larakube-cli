@@ -207,3 +207,20 @@ test('dispatchToWsl always pins --user larakube, never the distro\'s own default
     expect($dispatchedCommand)->toContain('--user')
         ->and($dispatchedCommand[array_search('--user', $dispatchedCommand, true) + 1])->toBe('larakube');
 });
+
+test('windowsQuoteArgument leaves plain tokens unquoted and quotes only when needed', function (): void {
+    // proc_open()'s own array-form escaping on Windows is what broke dispatch
+    // (confirmed live — identical argv worked via PowerShell/Start-Process,
+    // only proc_open()'s array form failed). dispatchToWsl() now builds the
+    // command line itself instead; this is the quoting rule it relies on.
+    $bridge = new WslBridge(nativeWindows: true);
+    $quote = fn (string $arg): string => (new ReflectionMethod($bridge, 'windowsQuoteArgument'))->invoke($bridge, $arg);
+
+    expect($quote('wsl.exe'))->toBe('wsl.exe')
+        ->and($quote('larakube-ubuntu'))->toBe('larakube-ubuntu')
+        ->and($quote('--user'))->toBe('--user')
+        ->and($quote(''))->toBe('""')
+        ->and($quote('has space'))->toBe('"has space"')
+        ->and($quote('say "hi"'))->toBe('"say \\"hi\\""')
+        ->and($quote('trailing\\'))->toBe('trailing\\');
+});

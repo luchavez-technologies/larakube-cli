@@ -265,23 +265,26 @@ class WslBridge
             2 => STDERR,
         ];
 
-        // Temporary diagnostic: confirmed manually (wsl.exe invoked directly
-        // with this exact argv) that the distro, the larakube user, and wsl.exe
-        // itself are all healthy -- the bug is specifically in how PHP's
-        // proc_open() passes this array through on Windows, not in WSL. Print
-        // the exact array so it can be compared byte-for-byte against the
-        // known-working manual invocation, instead of guessing a third fix.
+        // Confirmed live on real Windows hardware, with this exact argv: wsl.exe,
+        // the larakube user, and the distro are all healthy -- PowerShell typing
+        // it directly and .NET's Start-Process (bare 'wsl.exe' AND the full
+        // System32 path) both ran it correctly. Only proc_open() with the array
+        // form failed, every time, despite the array content being verified
+        // identical. Per PHP's own docs, an array command on Windows is already
+        // shell-free, with PHP handling the argument escaping internally — that
+        // internal escaping is what broke, not anything bypass_shell controls.
+        // Building the command line ourselves removes PHP's own escaping from
+        // the equation. None of this command's own values need quoting (no
+        // spaces/quotes in any of them), but windowsQuoteArgument() stays
+        // correct if a future argument ever does.
+        $commandLine = implode(' ', array_map($this->windowsQuoteArgument(...), $command));
+
         if (getenv('LARAKUBE_DEBUG_DISPATCH') !== false) {
             fwrite(STDERR, '[dispatch debug] PHP_VERSION = '.PHP_VERSION.PHP_EOL);
-            fwrite(STDERR, '[dispatch debug] command = '.var_export($command, true).PHP_EOL);
+            fwrite(STDERR, '[dispatch debug] command line = '.$commandLine.PHP_EOL);
         }
 
-        // bypass_shell is required on Windows: without it, proc_open() silently
-        // routes the command through cmd.exe /c, which re-tokenizes the already
-        // -built argv array using its own quoting rules and can mangle flags
-        // (confirmed live: --user larakube was present in $command but never
-        // reached wsl.exe intact — it still ran as the distro's default user).
-        $process = @proc_open($command, $descriptors, $pipes, $cwd, null, ['bypass_shell' => true]);
+        $process = @proc_open($commandLine, $descriptors, $pipes, $cwd, null, ['bypass_shell' => true]);
 
         if (getenv('LARAKUBE_DEBUG_DISPATCH') !== false) {
             fwrite(STDERR, '[dispatch debug] proc_open returned: '.(is_resource($process) ? 'resource' : var_export($process, true)).PHP_EOL);
@@ -292,5 +295,23 @@ class WslBridge
         }
 
         return 1;
+    }
+
+    /**
+     * Quotes a single argument for a Windows command line, using the same
+     * backslash/quote-doubling rules the MSVCRT argv parser (and therefore
+     * wsl.exe) expects. Only wraps in quotes when actually needed, so a
+     * plain token like 'larakube-ubuntu' passes through unchanged.
+     */
+    private function windowsQuoteArgument(string $arg): string
+    {
+        if ($arg !== '' && preg_match('/[\s"]/', $arg) !== 1) {
+            return $arg;
+        }
+
+        $escaped = (string) preg_replace('/(\\\\*)"/', '$1$1\\"', $arg);
+        $escaped = (string) preg_replace('/(\\\\+)$/', '$1$1', $escaped);
+
+        return '"'.$escaped.'"';
     }
 }
