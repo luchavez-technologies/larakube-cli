@@ -184,5 +184,26 @@ test('dispatchToWsl uses custom dispatcher when set', function (): void {
 
     $exit = $bridge->dispatchToWsl(['larakube', 'up', '--no-test']);
     expect($exit)->toBe(42)
-        ->and($dispatchedCommand)->toBe(['wsl.exe', '-d', 'larakube-ubuntu', '--', 'larakube', 'up', '--no-test']);
+        ->and($dispatchedCommand)->toBe(['wsl.exe', '-d', 'larakube-ubuntu', '--user', 'larakube', '--', 'larakube', 'up', '--no-test']);
+});
+
+test('dispatchToWsl always pins --user larakube, never the distro\'s own default login user', function (): void {
+    // Confirmed live on real Windows hardware: without --user, wsl.exe runs as
+    // whichever user the distro happens to default to (not necessarily
+    // 'larakube'), and larakube-ubuntu's image only grants systemd lingering
+    // to the larakube user -- any other user fails to start a systemd user
+    // session at all ("Failed to start the systemd user session for '<user>'").
+    $bridge = new WslBridge(nativeWindows: true, distro: 'custom-distro');
+
+    $dispatchedCommand = null;
+    $bridge->setCustomDispatcher(function (array $cmd, ?string $cwd = null) use (&$dispatchedCommand): int {
+        $dispatchedCommand = $cmd;
+
+        return 0;
+    });
+
+    $bridge->dispatchToWsl(['larakube', 'tool:list']);
+
+    expect($dispatchedCommand)->toContain('--user')
+        ->and($dispatchedCommand[array_search('--user', $dispatchedCommand, true) + 1])->toBe('larakube');
 });

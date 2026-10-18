@@ -11,6 +11,8 @@ class WslBridge
 
     public const string DEFAULT_DISTRO = 'larakube-ubuntu';
 
+    public const string DEFAULT_USER = 'larakube';
+
     private static ?bool $forceNativeWindows = null;
 
     /**
@@ -246,7 +248,12 @@ class WslBridge
     public function dispatchToWsl(array $argv, ?string $cwd = null): int
     {
         $args = array_slice($argv, 1);
-        $command = ['wsl.exe', '-d', $this->distroName(), '--', 'larakube', ...$args];
+        // --user larakube is required: the distro's default login user has no
+        // systemd lingering entry (only /var/lib/systemd/linger/larakube does,
+        // per larakube-ubuntu's own Dockerfile), so running as whichever user
+        // the distro happens to default to fails the systemd user session
+        // outright ("Failed to start the systemd user session for '<user>'").
+        $command = ['wsl.exe', '-d', $this->distroName(), '--user', self::DEFAULT_USER, '--', 'larakube', ...$args];
 
         if ($this->customDispatcher !== null) {
             return ($this->customDispatcher)($command, $cwd);
