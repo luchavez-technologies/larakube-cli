@@ -440,6 +440,19 @@ trait InteractsWithHosts
      */
     protected function syncWindowsHostsFile(string $content, string $entry): bool
     {
+        // Dispatched from native Windows (see WslBridge::dispatchToWsl()): hand
+        // the merged content off to the native process instead of attempting
+        // the two-hop bridge-then-elevate below -- confirmed live to silently
+        // drop the UAC prompt (same root cause as
+        // InteractsWithTrust::applyWindowsNrptRule(); see
+        // WslBridge::applyNrptRule()'s docblock). That native process is
+        // already waiting on this very command, so it's in the right place
+        // to finish the job in one hop once this command exits -- see
+        // WslBridge::applyPendingWindowsHostsSync().
+        if (getenv('LARAKUBE_NATIVE_DISPATCH') !== false) {
+            return $this->queuePendingWindowsHostsSync($content, $entry);
+        }
+
         // CRITICAL: stage on the WINDOWS filesystem, not WSL's /tmp. The elevated
         // PowerShell below (`Start-Process -Verb RunAs`) runs in the Administrator
         // logon session, which does NOT have WSL's per-user 9P share
@@ -510,6 +523,27 @@ trait InteractsWithHosts
         }
 
         return $ok;
+    }
+
+    /**
+     * Handoff file for WslBridge::applyPendingWindowsHostsSync(): the native
+     * Windows dispatcher reads this via its \\wsl.localhost UNC path once
+     * dispatchToWsl() returns, so applying it never needs an elevated
+     * process to read back across the WSL boundary — the actual cause of
+     * the two-hop bug this sidesteps.
+     */
+    protected function queuePendingWindowsHostsSync(string $content, string $entry): bool
+    {
+        $dir = home_path('.larakube');
+        @mkdir($dir, 0755, true);
+
+        if (@file_put_contents($dir.'/pending-windows-hosts', $content) === false) {
+            $this->printWindowsHostsManualHelp($entry);
+
+            return false;
+        }
+
+        return true;
     }
 
     /** Path to the Windows hosts file, as seen from inside WSL2. */

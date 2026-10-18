@@ -44,6 +44,16 @@ function hostsProcessHelper(): object
         {
             return $this->dnsmasqFullyCoversKube($tld);
         }
+
+        public function syncFile(string $content, string $entry): bool
+        {
+            return $this->syncWindowsHostsFile($content, $entry);
+        }
+
+        public function queueSync(string $content, string $entry): bool
+        {
+            return $this->queuePendingWindowsHostsSync($content, $entry);
+        }
     };
 }
 
@@ -157,6 +167,29 @@ test('windowsTempDir returns null when %TEMP% cannot be resolved', function (): 
 test('dnsmasqFullyCoversKube is false off WSL when dnsmasq itself does not cover the TLD (no NRPT check needed)', function (): void {
     $tld = 'nonexistent-tld-'.uniqid();
     expect(hostsProcessHelper()->fullyCovers($tld))->toBeFalse();
+});
+
+test('queuePendingWindowsHostsSync writes the merged content to the handoff file under home_path', function (): void {
+    expect(hostsProcessHelper()->queueSync("127.0.0.1 app.kube\n", 'app'))->toBeTrue()
+        ->and(file_get_contents($_SERVER['HOME'].'/.larakube/pending-windows-hosts'))->toBe("127.0.0.1 app.kube\n");
+});
+
+test('syncWindowsHostsFile queues a handoff file instead of self-elevating when dispatched from native Windows', function (): void {
+    // LARAKUBE_NATIVE_DISPATCH=1 is set by WslBridge::dispatchToWsl() -- see its
+    // own docblock. Confirms this path never attempts the two-hop
+    // wslpath+Start-Process bridge that's confirmed live to silently drop the
+    // UAC prompt (same root cause as applyWindowsNrptRule()).
+    putenv('LARAKUBE_NATIVE_DISPATCH=1');
+    Process::fake([]);
+
+    try {
+        expect(hostsProcessHelper()->syncFile("127.0.0.1 app.kube\n", 'app.kube'))->toBeTrue()
+            ->and(file_get_contents($_SERVER['HOME'].'/.larakube/pending-windows-hosts'))->toBe("127.0.0.1 app.kube\n");
+
+        Process::assertNothingRan();
+    } finally {
+        putenv('LARAKUBE_NATIVE_DISPATCH');
+    }
 });
 
 test('dnsmasqFullyCoversKube on WSL requires the Windows NRPT rule too, even once dnsmasq itself resolves the TLD', function (): void {

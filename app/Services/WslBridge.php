@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Data\GlobalConfigData;
 use App\Traits\ConfiguresWslNetworking;
 use Illuminate\Support\Facades\Process;
 
@@ -19,6 +20,8 @@ class WslBridge
      * @var (callable(list<string>, ?string=): int)|null Custom process dispatcher for tests
      */
     private $customDispatcher = null;
+
+    private ?string $pendingWindowsHostsPathOverride = null;
 
     public function __construct(
         private ?bool $nativeWindows = null,
@@ -240,6 +243,12 @@ class WslBridge
         $this->customDispatcher = $dispatcher;
     }
 
+    /** Test seam: overrides the handoff file applyPendingWindowsHostsSync() reads from. */
+    public function setPendingWindowsHostsPathForTesting(?string $path): void
+    {
+        $this->pendingWindowsHostsPathOverride = $path;
+    }
+
     /**
      * Dispatches command invocation to WSL2 distro.
      *
@@ -253,7 +262,12 @@ class WslBridge
         // per larakube-ubuntu's own Dockerfile), so running as whichever user
         // the distro happens to default to fails the systemd user session
         // outright ("Failed to start the systemd user session for '<user>'").
-        $command = ['wsl.exe', '-d', $this->distroName(), '--user', self::DEFAULT_USER, '--', 'larakube', ...$args];
+        //
+        // `env LARAKUBE_NATIVE_DISPATCH=1` tells the dispatched process it's
+        // being driven by a native-Windows host that's still waiting on it —
+        // see InteractsWithHosts::syncWindowsHostsFile() and
+        // applyPendingWindowsHostsSync() below for what that unlocks.
+        $command = ['wsl.exe', '-d', $this->distroName(), '--user', self::DEFAULT_USER, '--', 'env', 'LARAKUBE_NATIVE_DISPATCH=1', 'larakube', ...$args];
 
         if ($this->customDispatcher !== null) {
             return ($this->customDispatcher)($command, $cwd);
@@ -290,11 +304,11 @@ class WslBridge
             fwrite(STDERR, '[dispatch debug] proc_open returned: '.(is_resource($process) ? 'resource' : var_export($process, true)).PHP_EOL);
         }
 
-        if (is_resource($process)) {
-            return proc_close($process);
-        }
+        $status = is_resource($process) ? proc_close($process) : 1;
 
-        return 1;
+        $this->applyPendingWindowsHostsSync();
+
+        return $status;
     }
 
     /**
@@ -367,6 +381,97 @@ class WslBridge
         // outer powershell.exe "successfully" — only re-querying the actual
         // rule table confirms the rule exists now.
         return array_diff(array_map('strtolower', $tlds), $this->windowsNrptCoveredTlds()) === [];
+    }
+
+    /**
+     * Applies the Windows NRPT rule for the globally configured TLD before
+     * dispatching into WSL — generalizes SetupCommand::handleWindowsSetup()'s
+     * own native, one-hop check (which only ran for `setup`) to every
+     * dispatched command. trust/up/hosts all reach the WSL-side
+     * InteractsWithTrust::ensureWindowsNrptRule() too (via
+     * configureDnsmasq()), which still uses the old two-hop bridge
+     * confirmed live to silently drop the UAC prompt — this makes that
+     * WSL-side call a no-op in practice by the time it runs. Cheap once
+     * already covered: a single PowerShell query, no elevation attempted.
+     */
+    public function ensureNrptRuleForLocalTld(): void
+    {
+        $tld = strtolower(GlobalConfigData::load()->getLocalTld());
+
+        if (in_array($tld, $this->windowsNrptCoveredTlds(), true)) {
+            return;
+        }
+
+        fwrite(STDERR, "Windows DNS needs a one-time rule so your browser resolves *.{$tld} via dnsmasq.".PHP_EOL);
+        fwrite(STDERR, 'Look for a Windows security prompt (it may be behind this window or on another monitor)...'.PHP_EOL);
+
+        if ($this->applyNrptRule([$tld])) {
+            fwrite(STDERR, "Windows DNS rule added: *.{$tld} -> 127.0.0.1 (dnsmasq).".PHP_EOL);
+        } else {
+            fwrite(STDERR, 'Could not add the Windows DNS rule automatically. From an elevated PowerShell, run:'.PHP_EOL);
+            fwrite(STDERR, "  Add-DnsClientNrptRule -Namespace \".{$tld}\" -NameServers \"127.0.0.1\"".PHP_EOL);
+        }
+    }
+
+    /**
+     * Native-Windows counterpart to InteractsWithHosts::syncWindowsHostsFile().
+     * When dispatchToWsl() marks the dispatched process with
+     * LARAKUBE_NATIVE_DISPATCH=1, that WSL-side sync queues its merged
+     * content into a handoff file instead of attempting its own two-hop
+     * self-elevation (unreliable for the same reason applyNrptRule() exists
+     * — see its docblock). This runs right after dispatchToWsl()'s real
+     * process exits, reads that file via its \\wsl.localhost UNC path (a
+     * plain, non-elevated read — no WSL interop bridging needed, since
+     * we're already native Windows), and applies it with one direct
+     * elevation hop, same shape as applyNrptRule(). No-op when nothing
+     * queued a sync.
+     */
+    public function applyPendingWindowsHostsSync(): void
+    {
+        $uncPath = $this->pendingWindowsHostsUncPath();
+
+        if (! is_file($uncPath)) {
+            return;
+        }
+
+        $content = (string) @file_get_contents($uncPath);
+        @unlink($uncPath);
+
+        if (trim($content) === '') {
+            return;
+        }
+
+        $tempDir = sys_get_temp_dir();
+        $contentPath = $tempDir.DIRECTORY_SEPARATOR.'larakube-win-hosts-'.bin2hex(random_bytes(6));
+        $scriptPath = $tempDir.DIRECTORY_SEPARATOR.'larakube-win-hosts-'.bin2hex(random_bytes(6)).'.ps1';
+
+        file_put_contents($contentPath, $content);
+        file_put_contents(
+            $scriptPath,
+            "Copy-Item -LiteralPath '{$contentPath}' -Destination 'C:\\Windows\\System32\\drivers\\etc\\hosts' -Force\n",
+        );
+
+        fwrite(STDERR, 'Windows hosts file needs a one-time update -- look for a Windows security prompt (it may be behind this window or on another monitor)...'.PHP_EOL);
+
+        $startProcess = 'Start-Process -FilePath powershell -Verb RunAs -Wait '
+            ."-ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{$scriptPath}'";
+
+        Process::run(['powershell.exe', '-NoProfile', '-Command', $startProcess]);
+
+        @unlink($contentPath);
+        @unlink($scriptPath);
+    }
+
+    /**
+     * Where applyPendingWindowsHostsSync() looks for a handoff file written
+     * by InteractsWithHosts::queuePendingWindowsHostsSync() inside WSL —
+     * always under the pinned --user larakube's home (see dispatchToWsl()),
+     * so this never needs to guess which user's home the distro defaults to.
+     */
+    private function pendingWindowsHostsUncPath(): string
+    {
+        return $this->pendingWindowsHostsPathOverride
+            ?? '\\\\wsl.localhost\\'.$this->distroName().'\\home\\'.self::DEFAULT_USER.'\\.larakube\\pending-windows-hosts';
     }
 
     /**

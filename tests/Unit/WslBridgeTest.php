@@ -184,7 +184,7 @@ test('dispatchToWsl uses custom dispatcher when set', function (): void {
 
     $exit = $bridge->dispatchToWsl(['larakube', 'up', '--no-test']);
     expect($exit)->toBe(42)
-        ->and($dispatchedCommand)->toBe(['wsl.exe', '-d', 'larakube-ubuntu', '--user', 'larakube', '--', 'larakube', 'up', '--no-test']);
+        ->and($dispatchedCommand)->toBe(['wsl.exe', '-d', 'larakube-ubuntu', '--user', 'larakube', '--', 'env', 'LARAKUBE_NATIVE_DISPATCH=1', 'larakube', 'up', '--no-test']);
 });
 
 test('dispatchToWsl always pins --user larakube, never the distro\'s own default login user', function (): void {
@@ -206,6 +206,85 @@ test('dispatchToWsl always pins --user larakube, never the distro\'s own default
 
     expect($dispatchedCommand)->toContain('--user')
         ->and($dispatchedCommand[array_search('--user', $dispatchedCommand, true) + 1])->toBe('larakube');
+});
+
+test('ensureNrptRuleForLocalTld skips entirely when the TLD is already covered', function (): void {
+    Process::fake([
+        '*Get-DnsClientNrptRule*' => Process::result(output: '["kube"]'),
+    ]);
+
+    (new WslBridge)->ensureNrptRuleForLocalTld();
+
+    Process::assertNotRan(fn ($p) => str_contains(implode(' ', (array) $p->command), 'Start-Process'));
+});
+
+test('ensureNrptRuleForLocalTld applies the rule natively, one hop, when not yet covered', function (): void {
+    // Generalizes SetupCommand's own pre-dispatch check (previously `setup`-only)
+    // to every dispatched command, since trust/up/hosts all reach the same
+    // confirmed-unreliable two-hop WSL-side bridge via configureDnsmasq().
+    Process::fake([
+        '*Get-DnsClientNrptRule*' => Process::sequence()
+            ->push(Process::result(output: '[]'))
+            ->push(Process::result(output: '["kube"]')),
+        '*Start-Process*-Verb*RunAs*' => Process::result(),
+    ]);
+
+    (new WslBridge)->ensureNrptRuleForLocalTld();
+
+    Process::assertRan(fn ($p) => str_contains(implode(' ', (array) $p->command), 'Start-Process')
+        && str_contains(implode(' ', (array) $p->command), '-Verb'));
+});
+
+test('applyPendingWindowsHostsSync is a no-op when nothing was queued', function (): void {
+    $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
+    Process::fake([]);
+
+    $bridge = new WslBridge;
+    $bridge->setPendingWindowsHostsPathForTesting($dir->path().'/pending-windows-hosts');
+
+    $bridge->applyPendingWindowsHostsSync();
+
+    Process::assertNothingRan();
+});
+
+test('applyPendingWindowsHostsSync applies the queued content via one elevated hop and clears the handoff file', function (): void {
+    // Native counterpart to InteractsWithHosts::queuePendingWindowsHostsSync():
+    // the WSL-side sync writes the merged content here instead of
+    // self-elevating across the WSL boundary (unreliable — same root cause as
+    // applyNrptRule()'s own docblock). This picks it up once dispatchToWsl()
+    // returns and applies it with one direct elevation hop, same shape.
+    $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $pendingPath = $dir->path().'/pending-windows-hosts';
+    file_put_contents($pendingPath, "127.0.0.1 myapp.kube\n");
+
+    Process::fake([
+        '*Start-Process*-Verb*RunAs*' => Process::result(),
+    ]);
+
+    $bridge = new WslBridge;
+    $bridge->setPendingWindowsHostsPathForTesting($pendingPath);
+
+    $bridge->applyPendingWindowsHostsSync();
+
+    expect(file_exists($pendingPath))->toBeFalse();
+    Process::assertRan(fn ($p) => str_contains(implode(' ', (array) $p->command), 'Start-Process')
+        && str_contains(implode(' ', (array) $p->command), '-Verb'));
+});
+
+test('applyPendingWindowsHostsSync clears an empty handoff file without elevating', function (): void {
+    $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $pendingPath = $dir->path().'/pending-windows-hosts';
+    file_put_contents($pendingPath, '');
+
+    Process::fake([]);
+
+    $bridge = new WslBridge;
+    $bridge->setPendingWindowsHostsPathForTesting($pendingPath);
+
+    $bridge->applyPendingWindowsHostsSync();
+
+    expect(file_exists($pendingPath))->toBeFalse();
+    Process::assertNothingRan();
 });
 
 test('windowsQuoteArgument leaves plain tokens unquoted and quotes only when needed', function (): void {
