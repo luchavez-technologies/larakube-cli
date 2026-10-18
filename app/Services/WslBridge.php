@@ -265,12 +265,27 @@ class WslBridge
             2 => STDERR,
         ];
 
+        // Temporary diagnostic: confirmed manually (wsl.exe invoked directly
+        // with this exact argv) that the distro, the larakube user, and wsl.exe
+        // itself are all healthy -- the bug is specifically in how PHP's
+        // proc_open() passes this array through on Windows, not in WSL. Print
+        // the exact array so it can be compared byte-for-byte against the
+        // known-working manual invocation, instead of guessing a third fix.
+        if (getenv('LARAKUBE_DEBUG_DISPATCH') !== false) {
+            fwrite(STDERR, '[dispatch debug] PHP_VERSION = '.PHP_VERSION.PHP_EOL);
+            fwrite(STDERR, '[dispatch debug] command = '.var_export($command, true).PHP_EOL);
+        }
+
         // bypass_shell is required on Windows: without it, proc_open() silently
         // routes the command through cmd.exe /c, which re-tokenizes the already
         // -built argv array using its own quoting rules and can mangle flags
         // (confirmed live: --user larakube was present in $command but never
         // reached wsl.exe intact — it still ran as the distro's default user).
         $process = @proc_open($command, $descriptors, $pipes, $cwd, null, ['bypass_shell' => true]);
+
+        if (getenv('LARAKUBE_DEBUG_DISPATCH') !== false) {
+            fwrite(STDERR, '[dispatch debug] proc_open returned: '.(is_resource($process) ? 'resource' : var_export($process, true)).PHP_EOL);
+        }
 
         if (is_resource($process)) {
             return proc_close($process);
