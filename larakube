@@ -67,6 +67,8 @@ $autoloader = require file_exists(__DIR__.'/vendor/autoload.php') ?  __DIR__.'/v
 
 $app = require_once __DIR__.'/bootstrap/app.php';
 
+$kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+
 /*
 |--------------------------------------------------------------------------
 | Dispatch into WSL2 on Native Windows
@@ -80,6 +82,20 @@ $app = require_once __DIR__.'/bootstrap/app.php';
 */
 
 if (\App\Services\WslBridge::isNativeWindows()) {
+    $invokingCwd = getcwd() ?: null;
+    if ($invokingCwd !== null && str_starts_with($invokingCwd, '\\\\')) {
+        // UNC working directories (\\wsl.localhost\...) break cmd.exe (which
+        // Symfony Process wraps every Windows command in) and fail is_dir(cwd)
+        // right after `wsl.exe --shutdown` stops the 9P share. Step onto a
+        // local Windows drive path before running any Process calls; the
+        // original UNC path is still forwarded into WSL via --cd below.
+        @chdir(sys_get_temp_dir());
+    }
+
+    // WslBridge uses the Process facade and GlobalConfigData, which require
+    // RegisterFacades and service providers to have booted first.
+    $kernel->bootstrap();
+
     /** @var \App\Services\WslBridge $wslBridge */
     $wslBridge = $app->make(\App\Services\WslBridge::class);
     if ($wslBridge->shouldDispatchToWsl($_SERVER['argv'] ?? [])) {
@@ -96,7 +112,7 @@ if (\App\Services\WslBridge::isNativeWindows()) {
             $wslBridge->ensureNrptRuleForLocalTld();
         }
 
-        $status = $wslBridge->dispatchToWsl($_SERVER['argv'] ?? []);
+        $status = $wslBridge->dispatchToWsl($_SERVER['argv'] ?? [], $invokingCwd);
         exit($status);
     }
 }
@@ -111,8 +127,6 @@ if (\App\Services\WslBridge::isNativeWindows()) {
 | or another output device for the developers. Here goes nothing!
 |
 */
-
-$kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
 
 $status = $kernel->handle(
     $input = new Symfony\Component\Console\Input\ArgvInput,

@@ -315,7 +315,15 @@ class WslBridge
             fwrite(STDERR, '[dispatch debug] command line = '.$commandLine.PHP_EOL);
         }
 
-        $process = @proc_open($commandLine, $descriptors, $pipes, $cwd, null, ['bypass_shell' => true]);
+        // $cwd is already translated into --cd $linuxCwd for wsl.exe above;
+        // never hand a \\wsl.localhost UNC path to CreateProcessW's
+        // lpCurrentDirectory, which fails if the 9P share is offline after a
+        // shutdown.
+        $procCwd = ($cwd !== null && ! str_starts_with($cwd, '\\\\') && is_dir($cwd))
+            ? $cwd
+            : null;
+
+        $process = @proc_open($commandLine, $descriptors, $pipes, $procCwd, null, ['bypass_shell' => true]);
 
         if (getenv('LARAKUBE_DEBUG_DISPATCH') !== false) {
             fwrite(STDERR, '[dispatch debug] proc_open returned: '.(is_resource($process) ? 'resource' : var_export($process, true)).PHP_EOL);

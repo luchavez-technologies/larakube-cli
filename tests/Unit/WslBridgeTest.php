@@ -368,3 +368,20 @@ test('windowsQuoteArgument leaves plain tokens unquoted and quotes only when nee
         ->and($quote('say "hi"'))->toBe('"say \\"hi\\""')
         ->and($quote('trailing\\'))->toBe('trailing\\');
 });
+
+test('larakube entrypoint bootstraps the console kernel and steps off UNC cwd before invoking WslBridge', function (): void {
+    // Regression for live failure: `larakube.exe up` threw
+    // "RuntimeException: A facade root has not been set." at
+    // WslBridge->mirroredNetworkingActive() because `cli/larakube` resolved
+    // and called WslBridge before `$kernel->bootstrap()` had registered
+    // Facades and service providers.
+    $entrypoint = (string) file_get_contents(base_path('larakube'));
+
+    $bootstrapPos = strpos($entrypoint, '$kernel->bootstrap();');
+    $wslBridgeMakePos = strpos($entrypoint, '$app->make(\App\Services\WslBridge::class)');
+
+    expect($bootstrapPos)->toBeInt()
+        ->and($wslBridgeMakePos)->toBeInt()
+        ->and($bootstrapPos)->toBeLessThan($wslBridgeMakePos)
+        ->and($entrypoint)->toContain('$wslBridge->dispatchToWsl($_SERVER[\'argv\'] ?? [], $invokingCwd)');
+});
