@@ -1,8 +1,37 @@
 # Desktop: stop wrapping `larakube` in `wsl.exe` — let the CLI decide
 
-**Status:** Design only, not started. Saved so work can resume cold.
-Read this whole file before touching code — the scope boundary section
-matters as much as the design itself.
+**Status:** Ready for Antigravity to execute, pending one live-hardware
+confirmation (see Readiness below). Read this whole file before touching
+code — the scope boundary section matters as much as the design itself.
+
+## Readiness (updated 2026-10-18)
+
+The CLI-side prerequisite this plan assumes is no longer "in progress" —
+it's built, committed, and already proven on real Windows hardware:
+
+- `WslBridge`/the native `larakube` entry point (referenced throughout this
+  plan) is live on `develop` in the `cli` repo. A full `larakube setup` run
+  was confirmed working end-to-end on a real Windows laptop this session
+  (dispatch into WSL, mirrored networking, the lot).
+- Since then, two more fixes generalized that mechanism from "`setup`-only"
+  to "every dispatched command": the Windows DNS (NRPT) rule and the
+  Windows-hosts-file sync (previously each used a two-hop WSL→Windows
+  elevation bridge confirmed live to silently drop the UAC prompt) now both
+  apply via one direct elevation hop, natively, for ANY `larakube` command —
+  not just `setup`. Commit `a0b557cb` on `develop` in `cli`.
+- **This matters directly for this plan**: once Desktop routes `larakube`
+  invocations straight to the native exe (§1 below), Desktop calls like
+  `larakube up` start going through this *same* dispatch chokepoint
+  (`cli/larakube`'s own entry-point logic) for the first time — today
+  Desktop's `isolateForWsl()` wraps `wsl.exe -d ... --exec ... larakube up`
+  directly, bypassing that native entry point and its WSL-dispatch
+  decision-making entirely. So Desktop inherits whatever the native
+  dispatch path does well or poorly, including the hosts-file sync.
+- **Gate**: a live Windows test of `larakube up` (exercising the new
+  hosts-file native sync specifically) was requested but its result hadn't
+  come back as of this writing. Confirm that passed before starting
+  implementation — if it didn't, fix the CLI-side issue first; don't build
+  Desktop's half on top of an unverified native dispatch path.
 
 ## Context
 
@@ -70,12 +99,17 @@ already correct from inside the distro. **No project-path migration
 needed as part of this plan** — flagging this explicitly since it was the
 one finding that looked like a blocker at first read.
 
-**Antigravity has already built the native-exe install path** (uncommitted,
-`desktop/app/Services/LaraKube/CliInstaller.php`): on Windows, `binDir()`
-now resolves to `<Windows USERPROFILE>\.larakube\bin\larakube.exe`,
-downloaded via plain HTTP — the same mechanism already used for mac/linux,
-no WSL involved. This plan **builds on top of that**, not in place of it —
-don't re-do the install-path work, it already exists.
+**Antigravity has already built the native-exe install path** — committed
+on `develop` (`92299c5 feat(wsl): support native Windows CLI binary download
+and update`), `desktop/app/Services/LaraKube/CliInstaller.php`: on Windows,
+`binDir()` resolves to `<Windows USERPROFILE>\.larakube\bin`, and
+`install()` downloads straight to `{binDir}\larakube.exe` via plain HTTP —
+the same mechanism already used for mac/linux, no WSL involved. This plan
+**builds on top of that**, not in place of it — don't re-do the
+install-path work, it already exists. Re-verified current as of
+2026-10-18: `ToolLocator::find()`/`isolate()` still unconditionally route
+everything through `isolateForWsl()` on Windows (no `larakube.exe` special
+case yet) — §1 below is still un-started work, not already done elsewhere.
 `ToolInstallController::updateCli()` currently does **both** the new
 native-exe install **and** the old WSL-routed `larakube update` — a
 transitional dual-path state. This plan's change is what lets that second,
@@ -141,6 +175,20 @@ native-Windows branch (added alongside `WslBridge`) does anything
 meaningfully different from the in-distro `update` command before assuming
 the two converge.
 
+### 4. ADR 0007 needs an amendment, not a rewrite
+
+`desktop/docs/decisions/0007-*.md` ("Windows runs the CLI inside a bundled
+WSL distro") is the accepted record of today's behavior — this plan
+changes that premise for `larakube` invocations specifically (kubectl, ssh,
+editor CLIs, and the distro itself are all unaffected — see Explicitly out
+of scope below). Per this repo's ADR standard, amend 0007 in place (add a
+"Superseded in part by native dispatch for `larakube` calls" note and
+link to wherever this change actually lands, e.g. a changelog entry or new
+ADR) rather than leaving it describing behavior that's no longer fully
+true. Don't write a brand-new ADR for this unless the amendment itself
+turns out to be non-trivial — it's a scoping correction to an existing
+decision, not a new cross-cutting one.
+
 ## Explicitly out of scope
 
 - Redesigning how `kubectl`, `ssh`, or editor CLIs get dispatched on
@@ -163,8 +211,9 @@ the two converge.
   for the eventual dual-path simplification (§3), only after confirming
   it's safe.
 - `cli/app/Services/WslBridge.php`, `cli/larakube` (entry point) —
-  read-only reference for the CLI-side mechanism this plan assumes exists;
-  don't modify, that's Antigravity's work.
+  read-only reference for the CLI-side mechanism this plan assumes exists.
+  Already built and shipped on the `cli` side; this plan's actual
+  execution (by Antigravity) is Desktop-only — don't modify these.
 
 ## Verification
 
