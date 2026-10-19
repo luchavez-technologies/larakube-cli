@@ -9,6 +9,7 @@ use App\Enums\DnsProvider;
 use App\Enums\ManagedProvider;
 use App\Facades\State;
 use App\Services\Cloud\LiveProviderCatalog;
+use App\Services\Cloud\UbuntuImageResolver;
 use App\Services\Kubectl;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\EnsuresKubectl;
@@ -61,6 +62,7 @@ class CloudCreateCommand extends Command
         {--zone= : GCP Compute zone (defaults to <region>-a)}
         {--size= : Droplet/node size slug}
         {--key= : Path to the SSH private key (VPS)}
+        {--ubuntu-version=24.04 : Target Ubuntu LTS version for VPS (24.04 or 26.04)}
         {--ssh-port=22 : SSH port to configure on the VPS (default: 22; e.g. 8443 if port 22 is blocked)}
         {--admin-cidr= : Restrict SSH + the k3s API to this CIDR (VPS); omit = open}
         {--node-count= : Managed cluster node count (min 1)}
@@ -631,7 +633,10 @@ class CloudCreateCommand extends Command
             return 1;
         }
 
-        $hcl = view("tofu.{$provider}.vps", [
+        $ubuntuVersion = (string) ($this->option('ubuntu-version') ?: UbuntuImageResolver::DEFAULT_VERSION);
+        $imageConfig = UbuntuImageResolver::resolve($provider, $ubuntuVersion);
+
+        $hcl = view("tofu.{$provider}.vps", array_merge([
             'region' => $region,
             'zone' => $zone,
             'size' => $size,
@@ -643,7 +648,7 @@ class CloudCreateCommand extends Command
             'apiSources' => $sources,
             'adminCidr' => $adminCidr,
             'sshPort' => $sshPort,
-        ])->render();
+        ], $imageConfig))->render();
         $this->writeTofuFiles($stackName, ['main.tf' => $hcl]);
 
         $serverLabel = match ($provider) {

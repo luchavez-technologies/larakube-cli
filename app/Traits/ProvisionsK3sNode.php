@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Enums\DnsProvider;
 use App\Services\Kubectl;
+use App\Services\SshKeyInspector;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 
@@ -155,14 +156,21 @@ trait ProvisionsK3sNode
     {
         $this->laraKubeInfo('Creating "larakube" user...');
 
+        $pubKey = null;
         $pubKeyPath = $keyPath.'.pub';
-        if (! file_exists($pubKeyPath)) {
-            $this->laraKubeWarn("Public key not found at {$pubKeyPath}. Skipping user creation.");
+        if (file_exists($pubKeyPath)) {
+            $pubKey = trim((string) file_get_contents($pubKeyPath));
+        }
+
+        if ($pubKey === null || $pubKey === '') {
+            $pubKey = (new SshKeyInspector)->derivePublicKey($keyPath);
+        }
+
+        if ($pubKey === null || $pubKey === '') {
+            $this->laraKubeWarn("Could not resolve public key for {$keyPath}. Skipping user creation.");
 
             return false;
         }
-
-        $pubKey = trim(file_get_contents($pubKeyPath));
 
         $remoteCommand = <<<BASH
 if ! id "larakube" &>/dev/null; then

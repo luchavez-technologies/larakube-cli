@@ -374,3 +374,27 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
         run: gh workflow run release.yml --repo luchavez-technologies/larakube-ubuntu -f channel=canary
+
+  ubuntu-26-compatibility:
+    name: Ubuntu 26 Compatibility Verification
+    runs-on: ubuntu-26.04
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, bcmath, zip, pcntl, posix, openssl, curl, phar, opcache
+          ini-values: phar.readonly=0, opcache.enable_cli=1
+          coverage: none
+
+      - name: Install Dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Run Tests
+        run: composer test

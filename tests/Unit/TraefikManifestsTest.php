@@ -141,4 +141,3 @@ test('traefik-install renders ClusterIP with hostNetwork, Recreate strategy, and
         ->and($deployment['spec']['strategy']['type'])->toBe('Recreate')
         ->and($service['spec']['type'])->toBe('ClusterIP');
 });
-
