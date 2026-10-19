@@ -136,9 +136,10 @@ trait InteractsWithOcisExtensions
      *
      * @return list<string>
      */
-    protected function getInstalledOcisExtensions(string $kubectl, string $ns = 'larakube-shared'): array
+    protected function getInstalledOcisExtensions(string $kubectl, string $ns = 'larakube-shared', ?string $deployment = null): array
     {
-        $res = Kubectl::fromPrefix($kubectl)->exec($ns, 'deploy/'.$this->driveDeployment($kubectl), ['ls', '-1', '/var/lib/ocis/web/apps']);
+        $target = $deployment ?? $this->driveDeployment($kubectl);
+        $res = Kubectl::fromPrefix($kubectl)->exec($ns, "deploy/{$target}", ['ls', '-1', '/var/lib/ocis/web/apps']);
         if (! $res->ok) {
             return [];
         }
@@ -173,17 +174,23 @@ trait InteractsWithOcisExtensions
     /**
      * Install an oCIS web extension by downloading and extracting into /var/lib/ocis/web/apps/<id>.
      */
-    protected function installOcisExtension(string $kubectl, string $ns, string $extension, ?string $customUrl = null): bool
+    protected function installOcisExtension(string $kubectl, string $ns, string $extension, ?string $customUrl = null, ?string $deployment = null): bool
     {
         $downloadUrl = $customUrl;
 
         if (! $downloadUrl) {
             $catalog = $this->fetchOcisMarketplaceCatalog();
+            $norm = strtolower(str_replace(['-', '_', '.', ' '], '', $extension));
             foreach ($catalog as $item) {
+                $itemId = strtolower(str_replace(['-', '_', '.', ' '], '', $item['id']));
+                $itemName = strtolower(str_replace(['-', '_', '.', ' '], '', $item['name']));
                 if ($item['id'] === $extension
                     || strtolower($item['id']) === strtolower($extension)
                     || str_ends_with(strtolower($item['id']), '.'.strtolower($extension))
                     || strtolower($item['name']) === strtolower($extension)
+                    || $itemId === $norm
+                    || $itemName === $norm
+                    || str_ends_with($itemId, $norm)
                 ) {
                     $downloadUrl = $item['download_url'];
                     break;
@@ -194,6 +201,8 @@ trait InteractsWithOcisExtensions
         if (! $downloadUrl) {
             if (str_contains(strtolower($extension), 'excalidraw')) {
                 $downloadUrl = 'https://github.com/owncloud/marketplace/releases/download/excalidraw/excalidraw-0.1.0.zip';
+            } elseif (str_contains(strtolower($extension), 'draw')) {
+                $downloadUrl = 'https://github.com/owncloud/marketplace/releases/download/draw-io/draw-io-0.2.0.zip';
             } else {
                 $parts = explode('.', $extension);
                 $short = end($parts);
@@ -214,29 +223,40 @@ trait InteractsWithOcisExtensions
             ."mkdir -p \"/var/lib/ocis/web/apps/{$folder}\" && tar -xzf \"\$TMP_FILE\" -C \"/var/lib/ocis/web/apps/{$folder}\"; "
             .'fi && rm -rf "$TMP_FILE" /var/lib/ocis/web/apps/__MACOSX /var/lib/ocis/web/apps/._*';
 
-        return Kubectl::fromPrefix($kubectl)->exec($ns, 'deploy/'.$this->driveDeployment($kubectl), ['sh', '-c', $script])->ok;
+        $target = $deployment ?? $this->driveDeployment($kubectl);
+
+        return Kubectl::fromPrefix($kubectl)->exec($ns, "deploy/{$target}", ['sh', '-c', $script])->ok;
     }
 
     /**
      * Delete an oCIS web extension folder from /var/lib/ocis/web/apps/<id>.
      */
-    protected function removeOcisExtension(string $kubectl, string $ns, string $extension): bool
+    protected function removeOcisExtension(string $kubectl, string $ns, string $extension, ?string $deployment = null): bool
     {
         $parts = explode('.', $extension);
         $folder = end($parts);
         $cleanFolder = str_replace(['web-app-', 'web-extensions-'], '', $folder);
 
-        $targets = array_unique(array_filter([
+        $targets = [
             "/var/lib/ocis/web/apps/{$extension}",
             "/var/lib/ocis/web/apps/{$folder}",
             "/var/lib/ocis/web/apps/{$cleanFolder}",
             "/var/lib/ocis/web/apps/._{$extension}",
             "/var/lib/ocis/web/apps/._{$folder}",
             "/var/lib/ocis/web/apps/._{$cleanFolder}",
-        ]));
+        ];
 
-        return Kubectl::fromPrefix($kubectl)->exec($ns, 'deploy/'.$this->driveDeployment($kubectl), [
-            'rm', '-rf', ...$targets,
+        if (str_contains(strtolower($extension), 'draw')) {
+            $targets[] = '/var/lib/ocis/web/apps/draw-io';
+            $targets[] = '/var/lib/ocis/web/apps/drawio';
+            $targets[] = '/var/lib/ocis/web/apps/._draw-io';
+            $targets[] = '/var/lib/ocis/web/apps/._drawio';
+        }
+
+        $target = $deployment ?? $this->driveDeployment($kubectl);
+
+        return Kubectl::fromPrefix($kubectl)->exec($ns, "deploy/{$target}", [
+            'rm', '-rf', ...array_unique(array_filter($targets)),
         ])->ok;
     }
 }

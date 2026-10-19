@@ -249,3 +249,10 @@ test('ocis sets fsGroup so a freshly provisioned PVC is writable by its non-root
 
     expect($deployment['spec']['template']['spec']['securityContext']['fsGroup'])->toBe(1000);
 });
+
+test('ocis manifest configures WEB_ASSET_APPS_PATH for web extensions', function (): void {
+    $rendered = renderOcisManifest();
+
+    expect($rendered)->toContain('name: WEB_ASSET_APPS_PATH')
+        ->and($rendered)->toContain('value: "/var/lib/ocis/web/apps"');
+});

@@ -308,6 +308,10 @@ class ToolRegistry
             }
         }
 
+        if ($instance === '' && count($forTool) === 1) {
+            return $forTool[0];
+        }
+
         if ($selfHeal && count($forTool) === 1) {
             $stored = $rows[$forTool[0]]['instance'] ?? null;
 

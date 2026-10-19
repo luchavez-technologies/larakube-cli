@@ -55,6 +55,7 @@ class OfficeInitCommand extends Command
         {--context=   : Target a specific kube-context}
         {--domain=    : Base domain OR full host of the Drive this attaches to (defaults to the installed one)}
         {--vpn-only   : Restrict access to the editor via NetBird VPN IP whitelisting}
+        {--no-plex    : Bypass Plex Commons storage allocation}
         {--force      : Skip the confirmation prompt}'.self::PROXIED_FLAG;
 
     protected $description = 'Add Collabora Online document editing to an existing Drive (oCIS)';
@@ -68,7 +69,22 @@ class OfficeInitCommand extends Command
         $kubectl = Kubectl::forContext($context)->prefix();
         $ns = ClusterTool::OCIS->namespace();
 
-        $host = $this->resolveToolHost(SharedClusterService::DRIVE, ClusterTool::OCIS, $env, $kubectl);
+        $domainOption = trim((string) ($this->option('domain') ?? ''));
+        // If an operator or Desktop passed an office host (e.g. office.drive.example.com),
+        // strip the 'office.' prefix to find the parent Drive host it attaches to.
+        if (str_starts_with($domainOption, 'office.')) {
+            $domainOption = substr($domainOption, 7);
+        }
+
+        // If no domain was given, try to find an already-installed Drive host on this cluster.
+        if ($domainOption === '') {
+            $domainOption = $this->resolveLiveToolHost($kubectl, ClusterTool::OCIS) ?? '';
+        }
+
+        $host = $domainOption !== ''
+            ? $this->hostFromDomainOption(SharedClusterService::DRIVE, $domainOption, '', ClusterTool::OCIS, $kubectl)
+            : $this->resolveToolHost(SharedClusterService::DRIVE, ClusterTool::OCIS, $env, $kubectl);
+
         // Collabora is a component of the Drive instance serving $host, so
         // every name it writes comes from that instance (ADR 0021).
         $names = ToolInstance::forHost(ClusterTool::OCIS, $host);
@@ -130,9 +146,18 @@ class OfficeInitCommand extends Command
         $this->laraKubeInfo('Re-running tool:init --tool=ocis to add the WOPI bridge to oCIS...');
         $this->newLine();
 
-        $driveArgs = ['environment' => $env, '--force' => true];
+        $noPlex = (bool) $this->option('no-plex')
+            || (bool) ($this->findToolInstanceEntry($kubectl, ClusterTool::OCIS, $names->instance)['noPlex'] ?? false);
+
+        $driveArgs = ['environment' => $env, '--force' => true, '--domain' => $host];
         if ($context !== null && $context !== '') {
             $driveArgs['--context'] = $context;
+        }
+        if ($noPlex) {
+            $driveArgs['--no-plex'] = true;
+        }
+        if ($this->option('no-interaction')) {
+            $driveArgs['--no-interaction'] = true;
         }
 
         $exit = $this->call('tool:init', ['--tool' => 'ocis'] + $driveArgs);
@@ -157,8 +182,14 @@ class OfficeInitCommand extends Command
 
     protected function driveIsInstalled(string $kubectl, string $ns, ToolInstance $names): bool
     {
-        return trim(Process::run(
-            "{$kubectl} get deployment {$names->deployment()} -n {$ns} -o name --ignore-not-found",
-        )->output()) !== '';
+        if (trim(Process::run("{$kubectl} get deployment {$names->deployment()} -n {$ns} -o name --ignore-not-found")->output()) !== '') {
+            return true;
+        }
+
+        if (trim(Process::run("{$kubectl} get deployment -l larakube.io/tool=ocis -n {$ns} -o name --ignore-not-found")->output()) !== '') {
+            return true;
+        }
+
+        return trim(Process::run("{$kubectl} get deployment drive-ocis -n {$ns} -o name --ignore-not-found")->output()) !== '';
     }
 }

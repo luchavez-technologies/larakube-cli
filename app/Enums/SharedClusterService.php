@@ -237,7 +237,7 @@ enum SharedClusterService: string
             self::FORGEJO => 'deployment -l larakube.io/tool=git -n larakube-shared',
             self::FLOW => 'deployment -l larakube-tool=flow -n larakube-shared',
             self::SHEET => 'deployment -l larakube-tool=sheets -n larakube-shared',
-            self::DRIVE => 'deployment drive-ocis -n larakube-shared',
+            self::DRIVE => 'deployment -l larakube.io/tool=ocis -n larakube-shared',
             self::INSIGHTS => 'deployment -l larakube.io/tool=insights -n larakube-shared',
             // By label: Stalwart's Deployment is named per instance.
             self::MAIL => 'deployment -l larakube.io/tool=mail -n larakube-shared',

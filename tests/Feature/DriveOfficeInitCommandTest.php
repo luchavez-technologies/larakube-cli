@@ -124,3 +124,26 @@ test('a CSP change rolls the pod instead of applying silently', function (): voi
         ->and($b[1] ?? null)->not->toBeNull()
         ->and($a[1])->not->toBe($b[1]);
 });
+
+test('drive:office:init strips office. prefix from domain and detects labeled deployment', function (): void {
+    Process::fake([
+        '*get deployment -l larakube.io/tool=ocis*' => Process::result(output: 'deployment.apps/ocis-drive-example-com'),
+        '*get deployment ocis-drive-example-com*' => Process::result(output: 'deployment.apps/ocis-drive-example-com'),
+        '*get secret*' => Process::result(output: '', exitCode: 1),
+        '*create secret*' => Process::result(output: 'secret created'),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout status*' => Process::result(output: 'rolled out'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('drive:office:init', [
+        'environment' => 'production',
+        '--context' => 'gke-cluster',
+        '--domain' => 'office.drive.example.com',
+        '--no-plex' => true,
+        '--force' => true,
+        '--no-interaction' => true,
+    ])->assertSuccessful();
+
+    Process::assertRan(fn ($p): bool => str_contains($p->command, 'ocis-drive-example-com'));
+});

@@ -96,6 +96,8 @@ spec:
             # in the ConfigMap below.
             - name: PROXY_CSP_CONFIG_FILE_LOCATION
               value: "/etc/ocis/csp.yaml"
+            - name: WEB_ASSET_APPS_PATH
+              value: "/var/lib/ocis/web/apps"
             - name: OCIS_LOG_LEVEL
               value: "info"
             - name: OCIS_SYSTEM_USER_ID

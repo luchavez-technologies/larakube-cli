@@ -12,6 +12,7 @@ use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithIngressProxy;
+use App\Traits\InteractsWithOcisExtensions;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithVolumeSizing;
 use App\Traits\LaraKubeOutput;
@@ -28,7 +29,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 abstract class OcisInitCommand extends AbstractToolInitCommand
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, ReadsClusterSecrets, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithOcisExtensions, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, ReadsClusterSecrets, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected function runInit(): int
     {
@@ -145,6 +146,37 @@ abstract class OcisInitCommand extends AbstractToolInitCommand
 
         $this->registerDeployedTool(ClusterTool::OCIS, $kubectl, $host, $instance);
 
+        if ($extensions !== []) {
+            $installed = $this->getInstalledOcisExtensions($kubectl, $ns, $names->deployment());
+            $installedCount = 0;
+
+            foreach ($extensions as $ext) {
+                $norm = strtolower(str_replace(['-', '_', '.', ' '], '', $ext));
+                $alreadyInstalled = in_array($ext, $installed, true)
+                    || in_array(str_replace('drawio', 'draw-io', $ext), $installed, true)
+                    || in_array($norm, array_map(fn (string $i): string => strtolower(str_replace(['-', '_', '.', ' '], '', $i)), $installed), true);
+
+                if (! $alreadyInstalled) {
+                    $installedOk = $this->withSpin(
+                        "Installing Drive extension '{$ext}'...",
+                        fn (): bool => $this->installOcisExtension($kubectl, $ns, $ext, deployment: $names->deployment()),
+                    );
+                    if ($installedOk) {
+                        $installedCount++;
+                    }
+                }
+            }
+
+            if ($installedCount > 0) {
+                $this->withSpin('Restarting Drive (oCIS) deployment to activate extensions...', function () use ($kubectl, $ns, $names): bool {
+                    return Process::run("{$kubectl} rollout restart deploy/{$names->deployment()} -n {$ns}")->exitCode() === 0;
+                });
+                $this->withSpin('Waiting for Drive (oCIS) rollout...', function () use ($kubectl, $ns, $names): bool {
+                    return Process::timeout(130)->run("{$kubectl} rollout status deploy/{$names->deployment()} -n {$ns} --timeout=120s")->exitCode() === 0;
+                });
+            }
+        }
+
         $this->laraKubeNewLine();
         $this->laraKubeInfo("✅ Drive ({$engineName}) stack is live.");
         $this->newLine();
@@ -179,7 +211,7 @@ abstract class OcisInitCommand extends AbstractToolInitCommand
             return [];
         }
 
-        $allowed = ['drawio', 'excalidraw'];
+        $allowed = ['drawio', 'draw-io', 'excalidraw'];
         $extensions = array_filter(array_map('trim', explode(',', $raw)));
         $invalid = array_diff($extensions, $allowed);
 
