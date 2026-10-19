@@ -40,8 +40,22 @@ spec:
 @endforeach
         app.kubernetes.io/component: data
     spec:
-@if(($dbEngine ?? 'sqlite') === 'sqlite')
+      securityContext:
+        fsGroup: 33
       initContainers:
+        - name: seed-core
+          image: wordpress:6.7-php8.3-apache
+          command: ['sh', '-c']
+          args:
+            - |
+              if [ ! -f /var/www/html/wp-settings.php ]; then
+                echo "Seeding WordPress core into persistent volume..."
+                cp -a -n /usr/src/wordpress/. /var/www/html/
+              fi
+          volumeMounts:
+            - name: wp-data
+              mountPath: /var/www/html
+@if(($dbEngine ?? 'sqlite') === 'sqlite')
         - name: init-sqlite
           image: busybox:1.36
           command: ['sh', '-c']
@@ -59,9 +73,111 @@ spec:
                 fi
               fi
           volumeMounts:
-            - name: wp-content
-              mountPath: /var/www/html/wp-content
+            - name: wp-data
+              mountPath: /var/www/html
 @endif
+        - name: seed-platform
+          image: busybox:1.36
+          command: ['sh', '-c']
+          args:
+            - |
+              mkdir -p /var/www/html/wp-content/mu-plugins
+              cat << 'EOF' > /var/www/html/wp-content/mu-plugins/larakube-platform.php
+              @php echo '<?php'; @endphp
+
+              /**
+               * Plugin Name: LaraKube Platform Integration
+               * Description: Handles HTTPS reverse proxying, Stalwart/Mailpit SMTP relay, and XML-RPC hardening.
+               */
+              if (!defined('ABSPATH')) exit;
+
+              if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+                  $_SERVER['HTTPS'] = 'on';
+              }
+
+              add_action('phpmailer_init', function ($phpmailer) {
+                  $host = getenv('WORDPRESS_SMTP_HOST') ?: 'mail.{{ $plexNamespace }}.svc.cluster.local';
+                  $port = (int) (getenv('WORDPRESS_SMTP_PORT') ?: 25);
+                  $phpmailer->isSMTP();
+                  $phpmailer->Host = $host;
+                  $phpmailer->Port = $port;
+                  $phpmailer->SMTPAuth = false;
+                  $phpmailer->SMTPAutoTLS = false;
+              });
+
+              add_filter('xmlrpc_enabled', '__return_false');
+              EOF
+              chown -R 33:33 /var/www/html 2>/dev/null || true
+          volumeMounts:
+            - name: wp-data
+              mountPath: /var/www/html
+        - name: auto-install
+          image: wordpress:cli-php8.3
+          env:
+@if(($dbEngine ?? 'sqlite') === 'sqlite')
+            - name: WORDPRESS_DB_NAME
+              value: "wordpress"
+            - name: WORDPRESS_DB_USER
+              value: "root"
+            - name: WORDPRESS_DB_PASSWORD
+              value: ""
+            - name: WORDPRESS_DB_HOST
+              value: "127.0.0.1"
+@else
+            - name: WORDPRESS_DB_HOST
+              value: "{{ $dbHost ?? 'mysql.'.$plexNamespace.'.svc.cluster.local:3306' }}"
+            - name: WORDPRESS_DB_NAME
+              value: "{{ $dbName ?? 'data_wordpress' }}"
+            - name: WORDPRESS_DB_USER
+              value: "{{ $dbName ?? 'data_wordpress' }}"
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: db-password
+@endif
+            - name: WP_ADMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: admin-email
+            - name: WP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: admin-password
+          command: ['sh', '-c']
+          args:
+            - |
+              if ! wp core is-installed --path=/var/www/html --allow-root 2>/dev/null; then
+                echo "WordPress not installed yet. Creating config and running automated install..."
+@if(($dbEngine ?? 'sqlite') === 'sqlite')
+                wp config create --path=/var/www/html --dbname="$WORDPRESS_DB_NAME" --dbuser="$WORDPRESS_DB_USER" --dbpass="$WORDPRESS_DB_PASSWORD" --dbhost="$WORDPRESS_DB_HOST" --skip-check --force --allow-root 2>/dev/null || true
+@else
+                wp config create --path=/var/www/html --dbname="$WORDPRESS_DB_NAME" --dbuser="$WORDPRESS_DB_USER" --dbpass="$WORDPRESS_DB_PASSWORD" --dbhost="$WORDPRESS_DB_HOST" --force --allow-root 2>/dev/null || true
+@endif
+                wp config set --path=/var/www/html WP_HOME "https://{{ $host }}" --allow-root 2>/dev/null || true
+                wp config set --path=/var/www/html WP_SITEURL "https://{{ $host }}" --allow-root 2>/dev/null || true
+                wp config set --path=/var/www/html FORCE_SSL_ADMIN true --raw --allow-root 2>/dev/null || true
+@if(isset($redisIndex) && $redisIndex !== null)
+                wp config set --path=/var/www/html WP_REDIS_HOST "redis.{{ $plexNamespace }}.svc.cluster.local" --allow-root 2>/dev/null || true
+                wp config set --path=/var/www/html WP_REDIS_PORT 6379 --raw --allow-root 2>/dev/null || true
+                wp config set --path=/var/www/html WP_REDIS_DATABASE {{ $redisIndex }} --raw --allow-root 2>/dev/null || true
+@endif
+                wp core install \
+                  --path=/var/www/html \
+                  --url="https://{{ $host }}" \
+                  --title="{{ $siteTitle ?? 'WordPress' }}" \
+                  --admin_user="admin" \
+                  --admin_password="$WP_ADMIN_PASSWORD" \
+                  --admin_email="$WP_ADMIN_EMAIL" \
+                  --skip-email \
+                  --allow-root || true
+                chown -R 33:33 /var/www/html 2>/dev/null || true
+              fi
+          volumeMounts:
+            - name: wp-data
+              mountPath: /var/www/html
       containers:
         - name: wordpress
           image: wordpress:6.7-php8.3-apache
@@ -105,8 +221,8 @@ spec:
                 define('WP_REDIS_DATABASE', {{ $redisIndex }});
 @endif
           volumeMounts:
-            - name: wp-content
-              mountPath: /var/www/html/wp-content
+            - name: wp-data
+              mountPath: /var/www/html
           resources:
             requests:
               memory: 128Mi
@@ -135,7 +251,7 @@ spec:
             periodSeconds: 15
             timeoutSeconds: 5
       volumes:
-        - name: wp-content
+        - name: wp-data
           persistentVolumeClaim:
             claimName: {{ $pvcName }}
 ---
