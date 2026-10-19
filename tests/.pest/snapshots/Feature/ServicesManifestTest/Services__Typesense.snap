@@ -143,7 +143,7 @@ metadata:
     traefik.ingress.kubernetes.io/service.serversscheme: http
 spec:
   rules:
-    - host: typesense-test.kube
+    - host: typesense-test.test
       http:
         paths:
           - path: /
@@ -155,7 +155,7 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - typesense-test.kube
+        - typesense-test.test
 
 
 --- FILE: base/typesense-companion-deployment.yaml ---
@@ -456,7 +456,7 @@ metadata:
 spec:
   tls:
     - hosts:
-        - typesense-test.kube
+        - typesense-test.test
 
 
 --- FILE: overlays/local/typesense-companion-ingress.yaml ---
@@ -469,7 +469,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls: "true"
 spec:
   rules:
-    - host: typesense.typesense-test.kube
+    - host: typesense.typesense-test.test
       http:
         paths:
           - path: /
@@ -481,7 +481,7 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - typesense.typesense-test.kube
+        - typesense.typesense-test.test
 
 
 --- FILE: overlays/local/typesense-ingress.yaml ---
@@ -494,7 +494,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls: "true"
 spec:
   rules:
-    - host: typesense.typesense-test.kube
+    - host: typesense.typesense-test.test
       http:
         paths:
           - path: /
@@ -506,7 +506,7 @@ spec:
                   number: 8108
   tls:
     - hosts:
-        - typesense.typesense-test.kube
+        - typesense.typesense-test.test
 
 
 --- FILE: overlays/local/typesense-volumes.yaml ---
@@ -610,7 +610,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
 spec:
   rules:
-    - host: typesense-test.kube
+    - host: typesense-test.test
       http:
         paths:
           - path: /
@@ -622,7 +622,7 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - typesense-test.kube
+        - typesense-test.test
       secretName: typesense-test-tls
 
 

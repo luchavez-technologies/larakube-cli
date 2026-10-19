@@ -142,7 +142,7 @@ metadata:
     traefik.ingress.kubernetes.io/service.serversscheme: http
 spec:
   rules:
-    - host: meilisearch-test.kube
+    - host: meilisearch-test.test
       http:
         paths:
           - path: /
@@ -154,7 +154,7 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - meilisearch-test.kube
+        - meilisearch-test.test
 
 
 --- FILE: base/meilisearch-deployment.yaml ---
@@ -331,7 +331,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls: "true"
 spec:
   rules:
-    - host: meilisearch.meilisearch-test.kube
+    - host: meilisearch.meilisearch-test.test
       http:
         paths:
           - path: /
@@ -343,7 +343,7 @@ spec:
                   number: 7700
   tls:
     - hosts:
-        - meilisearch.meilisearch-test.kube
+        - meilisearch.meilisearch-test.test
 
 
 --- FILE: overlays/local/meilisearch-volumes.yaml ---
@@ -478,7 +478,7 @@ metadata:
 spec:
   tls:
     - hosts:
-        - meilisearch-test.kube
+        - meilisearch-test.test
 
 
 --- FILE: overlays/production/app-volumes.yaml ---
@@ -550,7 +550,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
 spec:
   rules:
-    - host: meilisearch-test.kube
+    - host: meilisearch-test.test
       http:
         paths:
           - path: /
@@ -562,7 +562,7 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - meilisearch-test.kube
+        - meilisearch-test.test
       secretName: meilisearch-test-tls
 
 

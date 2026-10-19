@@ -142,7 +142,7 @@ metadata:
     traefik.ingress.kubernetes.io/service.serversscheme: http
 spec:
   rules:
-    - host: seaweed-test.kube
+    - host: seaweed-test.test
       http:
         paths:
           - path: /
@@ -154,7 +154,7 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - seaweed-test.kube
+        - seaweed-test.test
 
 
 --- FILE: base/seaweedfs-deployment.yaml ---
@@ -425,7 +425,7 @@ metadata:
 spec:
   tls:
     - hosts:
-        - seaweed-test.kube
+        - seaweed-test.test
 
 
 --- FILE: overlays/local/seaweedfs-ingress.yaml ---
@@ -438,7 +438,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls: "true"
 spec:
   rules:
-    - host: s3.seaweed-test.kube
+    - host: s3.seaweed-test.test
       http:
         paths:
           - path: /
@@ -448,7 +448,7 @@ spec:
                 name: seaweedfs
                 port:
                   number: 8333
-    - host: s3-admin.seaweed-test.kube
+    - host: s3-admin.seaweed-test.test
       http:
         paths:
           - path: /
@@ -460,8 +460,8 @@ spec:
                   number: 8888
   tls:
     - hosts:
-        - s3.seaweed-test.kube
-        - s3-admin.seaweed-test.kube
+        - s3.seaweed-test.test
+        - s3-admin.seaweed-test.test
 
 
 --- FILE: overlays/local/seaweedfs-volumes.yaml ---
@@ -565,7 +565,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
 spec:
   rules:
-    - host: seaweed-test.kube
+    - host: seaweed-test.test
       http:
         paths:
           - path: /
@@ -577,7 +577,7 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - seaweed-test.kube
+        - seaweed-test.test
       secretName: seaweed-test-tls
 
 

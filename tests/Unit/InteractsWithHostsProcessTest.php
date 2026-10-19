@@ -192,11 +192,48 @@ test('syncWindowsHostsFile queues a handoff file instead of self-elevating when 
     }
 });
 
-test('dnsmasqFullyCoversKube on WSL requires the Windows NRPT rule too, even once dnsmasq itself resolves the TLD', function (): void {
-    $tld = 'nonexistent-tld-'.uniqid();
+test('dnsmasqFullyCoversKube on WSL always returns false since WSL uses the Windows hosts file', function (): void {
+    $tld = 'test';
 
-    // dnsmasq doesn't cover it at all (no larakube.conf on this machine) —
-    // short-circuits false without ever asking Windows about NRPT.
-    Process::fake(['*Get-DnsClientNrptRule*' => fn () => throw new RuntimeException('should not be called')]);
+    Process::fake(['*' => fn () => throw new RuntimeException('should not be called')]);
     expect(hostsProcessHelperOnWsl(true)->fullyCovers($tld))->toBeFalse();
+});
+
+test('readCurrentWindowsHostsContent returns pending-windows-hosts when already queued in the same native dispatch', function (): void {
+    // Regression guard: during `larakube.exe up`, ensureWindowsHostsAreSet()
+    // stages the project block (`test-windows`) into pending-windows-hosts,
+    // and then syncClusterServiceHosts() runs syncWindowsHosts() for
+    // `larakube-shared`. Without reading pending-windows-hosts first, the
+    // second call re-read /mnt/c/Windows/System32/drivers/etc/hosts and
+    // overwrote the project block!
+    $helper = new class
+    {
+        use InteractsWithHosts;
+
+        public function readCurrent(string $fallbackPath): ?string
+        {
+            return $this->readCurrentWindowsHostsContent($fallbackPath);
+        }
+
+        public function queue(string $content, string $entry): bool
+        {
+            return $this->queuePendingWindowsHostsSync($content, $entry);
+        }
+    };
+
+    $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $fallbackHosts = $dir->path().'/hosts';
+    file_put_contents($fallbackHosts, "127.0.0.1 localhost\n");
+
+    putenv('LARAKUBE_NATIVE_DISPATCH=1');
+    try {
+        @unlink($_SERVER['HOME'].'/.larakube/pending-windows-hosts');
+        expect($helper->readCurrent($fallbackHosts))->toBe("127.0.0.1 localhost\n");
+
+        $helper->queue("127.0.0.1 localhost\n127.0.0.1 test-windows.test\n", 'test-windows');
+        expect($helper->readCurrent($fallbackHosts))->toBe("127.0.0.1 localhost\n127.0.0.1 test-windows.test\n");
+    } finally {
+        @unlink($_SERVER['HOME'].'/.larakube/pending-windows-hosts');
+        putenv('LARAKUBE_NATIVE_DISPATCH');
+    }
 });

@@ -23,6 +23,10 @@ class WslBridge
 
     private ?string $pendingWindowsHostsPathOverride = null;
 
+    private ?string $cachedLinuxBinaryPathOverride = null;
+
+    private ?string $wslBinaryUncPathOverride = null;
+
     public function __construct(
         private ?bool $nativeWindows = null,
         private ?string $distro = null,
@@ -249,6 +253,93 @@ class WslBridge
         $this->pendingWindowsHostsPathOverride = $path;
     }
 
+    /** Test seam: overrides the host-side cached Linux binary path. */
+    public function setCachedLinuxBinaryPathForTesting(?string $path): void
+    {
+        $this->cachedLinuxBinaryPathOverride = $path;
+    }
+
+    /** Test seam: overrides the UNC path to /usr/local/bin/larakube inside WSL. */
+    public function setWslBinaryUncPathForTesting(?string $path): void
+    {
+        $this->wslBinaryUncPathOverride = $path;
+    }
+
+    /**
+     * Host-side path where the matching Linux ELF binary is cached alongside
+     * `larakube.exe` (`%USERPROFILE%\.larakube\bin\larakube-linux-x64`), safe
+     * from `wsl --unregister` / LaraKube Linux Reset.
+     */
+    public function cachedLinuxBinaryPath(): ?string
+    {
+        if ($this->cachedLinuxBinaryPathOverride !== null) {
+            return $this->cachedLinuxBinaryPathOverride;
+        }
+
+        $profile = $this->userProfilePath();
+
+        return $profile !== null
+            ? rtrim($profile, '\\/').DIRECTORY_SEPARATOR.'.larakube'.DIRECTORY_SEPARATOR.'bin'.DIRECTORY_SEPARATOR.'larakube-linux-x64'
+            : null;
+    }
+
+    /**
+     * UNC path to `/usr/local/bin/larakube` inside the target WSL distro.
+     */
+    public function wslBinaryUncPath(): string
+    {
+        return $this->wslBinaryUncPathOverride
+            ?? '\\\\wsl.localhost\\'.$this->distroName().'\\usr\\local\\bin\\larakube';
+    }
+
+    /**
+     * Self-healing pre-dispatch sync: if the Windows host has a cached
+     * `larakube-linux-x64` binary and `/usr/local/bin/larakube` inside WSL is
+     * missing (e.g. after a "LaraKube Linux Reset") or out of sync with the
+     * host binary, copy it into WSL as root before dispatching.
+     */
+    public function ensureWslBinarySynced(): void
+    {
+        $linuxCache = $this->cachedLinuxBinaryPath();
+        if ($linuxCache === null || ! is_file($linuxCache)) {
+            return;
+        }
+
+        $wslBinUnc = $this->wslBinaryUncPath();
+        if (
+            is_file($wslBinUnc)
+            && @filesize($wslBinUnc) === @filesize($linuxCache)
+            && @filemtime($wslBinUnc) === @filemtime($linuxCache)
+        ) {
+            return;
+        }
+
+        $this->syncLinuxBinaryToWsl($linuxCache);
+    }
+
+    /**
+     * Install the host-cached Linux binary into `/usr/local/bin/larakube`
+     * inside the target WSL distro as root, preserving timestamps (`-p`) so
+     * subsequent `ensureWslBinarySynced()` checks hit the fast path.
+     */
+    public function syncLinuxBinaryToWsl(?string $linuxBinaryPath = null): bool
+    {
+        $source = $linuxBinaryPath ?? $this->cachedLinuxBinaryPath();
+        if ($source === null || ! is_file($source)) {
+            return false;
+        }
+
+        $wslSource = $this->translateCwdToWsl($source) ?? (str_starts_with($source, '/') ? $source : null);
+        if ($wslSource === null) {
+            return false;
+        }
+
+        return Process::timeout(30)->run([
+            'wsl.exe', '-d', $this->distroName(), '--user', 'root',
+            '--', 'install', '-p', '-m', '0755', $wslSource, '/usr/local/bin/larakube',
+        ])->successful();
+    }
+
     /**
      * Dispatches command invocation to WSL2 distro.
      *
@@ -256,6 +347,8 @@ class WslBridge
      */
     public function dispatchToWsl(array $argv, ?string $cwd = null): int
     {
+        $this->ensureWslBinarySynced();
+
         $args = array_slice($argv, 1);
 
         // Without this, project-aware commands (`up`, `trust`, ...) always land
@@ -368,6 +461,33 @@ class WslBridge
     }
 
     /**
+     * Remove any stale Windows NRPT rules pointing to 127.0.0.1 (created by
+     * earlier LaraKube versions before retiring WSL2 dnsmasq) and flush the
+     * Windows DNS client cache so browsers immediately fall back to the
+     * Windows hosts file.
+     */
+    public function removeStaleLocalNrptRules(): bool
+    {
+        $tempDir = sys_get_temp_dir();
+        $scriptPath = $tempDir.DIRECTORY_SEPARATOR.'larakube-nrpt-cleanup-'.bin2hex(random_bytes(6)).'.ps1';
+
+        file_put_contents(
+            $scriptPath,
+            "Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object { \$_.NameServers -contains '127.0.0.1' } | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue\n"
+            ."Clear-DnsClientCache -ErrorAction SilentlyContinue\n",
+        );
+
+        $startProcess = 'Start-Process -FilePath powershell -Verb RunAs -Wait '
+            ."-ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{$scriptPath}'";
+
+        $ok = Process::run(['powershell.exe', '-NoProfile', '-Command', $startProcess])->successful();
+
+        @unlink($scriptPath);
+
+        return $ok;
+    }
+
+    /**
      * Add a Windows NRPT rule for each given TLD via a directly-elevated
      * PowerShell (the standard UAC prompt) — one hop, since we're already
      * native Windows. The WSL-side equivalent (applyWindowsNrptRule() in
@@ -473,7 +593,9 @@ class WslBridge
         file_put_contents($contentPath, $content);
         file_put_contents(
             $scriptPath,
-            "Copy-Item -LiteralPath '{$contentPath}' -Destination 'C:\\Windows\\System32\\drivers\\etc\\hosts' -Force\n",
+            "Copy-Item -LiteralPath '{$contentPath}' -Destination 'C:\\Windows\\System32\\drivers\\etc\\hosts' -Force\n"
+            ."Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object { \$_.NameServers -contains '127.0.0.1' } | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue\n"
+            ."Clear-DnsClientCache -ErrorAction SilentlyContinue\n",
         );
 
         fwrite(STDERR, 'Windows hosts file needs a one-time update -- look for a Windows security prompt (it may be behind this window or on another monitor)...'.PHP_EOL);

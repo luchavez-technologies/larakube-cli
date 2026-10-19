@@ -142,7 +142,7 @@ metadata:
     traefik.ingress.kubernetes.io/service.serversscheme: http
 spec:
   rules:
-    - host: octane-auto-franken.kube
+    - host: octane-auto-franken.test
       http:
         paths:
           - path: /
@@ -154,7 +154,7 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - octane-auto-franken.kube
+        - octane-auto-franken.test
 
 
 --- FILE: base/postgres-deployment.yaml ---
@@ -403,7 +403,7 @@ metadata:
 spec:
   tls:
     - hosts:
-        - octane-auto-franken.kube
+        - octane-auto-franken.test
 
 
 --- FILE: overlays/local/postgres-patch.yaml ---
@@ -521,7 +521,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
 spec:
   rules:
-    - host: octane-auto-franken.kube
+    - host: octane-auto-franken.test
       http:
         paths:
           - path: /
@@ -533,7 +533,7 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - octane-auto-franken.kube
+        - octane-auto-franken.test
       secretName: octane-auto-franken-tls
 
 

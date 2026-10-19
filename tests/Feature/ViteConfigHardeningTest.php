@@ -39,8 +39,8 @@ TS;
     expect($result)->toContain('wayfinder');
 
     // Verify K8s config is injected
-    expect($result)->toContain("origin: 'https://vite.test-app.kube'");
-    expect($result)->toContain("host: 'vite.test-app.kube'")
+    expect($result)->toContain("origin: 'https://vite.test-app.test'");
+    expect($result)->toContain("host: 'vite.test-app.test'")
         ->toContain('cors: true');
 
     $temporaryDirectory->delete();

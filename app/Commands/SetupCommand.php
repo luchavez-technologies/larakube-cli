@@ -2,7 +2,6 @@
 
 namespace App\Commands;
 
-use App\Data\GlobalConfigData;
 use App\Enums\CliTool;
 use App\Services\Kubectl;
 use App\Services\WslBridge;
@@ -124,27 +123,21 @@ class SetupCommand extends Command
         $this->newLine();
 
         // Step 4 — WSL2 mirrored networking (WSL only; self-guards otherwise).
-        // Decided before dnsmasq below because it decides WHICH mechanism
-        // Step 5 can use: with it active, Windows and WSL share localhost,
-        // so dnsmasq inside the distro works exactly like it does on
-        // macOS/Linux once a Windows NRPT rule points the TLD at it. Without
-        // it (declined, or Windows 10 where mirrored mode doesn't exist),
-        // Step 5 falls back to the per-host Windows hosts file sync that
-        // `larakube up`/`larakube hosts` already do.
+        // With mirrored networking active, Windows and WSL share 127.0.0.1 on
+        // ports 80/443, so Windows hosts entries point to a permanent 127.0.0.1
+        // that never goes stale across reboots.
         $this->ensureMirroredNetworking();
         $this->newLine();
 
-        // Step 5 — dnsmasq (wildcard *.{tld} DNS). Required (not opt-in) on
-        // macOS/Linux and on WSL2 with mirrored networking active — every
-        // host then resolves with no per-project /etc/hosts entries.
-        if ($this->isDnsmasqConfigured()) {
+        // Step 5 — dnsmasq (wildcard *.{tld} DNS on macOS/Linux). On WSL2,
+        // Windows svchost.exe owns UDP 0.0.0.0:53 on the host, so Windows
+        // browsers resolve via 127.0.0.1 entries in the Windows hosts file.
+        if ($this->isWsl()) {
+            $this->line('  <fg=gray>Local DNS: `larakube up` keeps the Windows hosts file in sync per project.</>');
+        } elseif ($this->isDnsmasqConfigured()) {
             $this->line('  <fg=green>✓</> Wildcard DNS (dnsmasq) already configured.');
         } else {
             $this->setupDnsmasq();
-        }
-
-        if ($this->isWsl() && ! $this->mirroredNetworkingActive()) {
-            $this->line('  <fg=gray>Wildcard DNS: using the Windows hosts file instead (mirrored networking isn\'t active) — `larakube up` keeps it in sync per project.</>');
         }
 
         $this->newLine();
@@ -702,6 +695,12 @@ class SetupCommand extends Command
         $kubectl = Kubectl::forContext($localContext);
         $res = $kubectl->raw(['get', 'svc', '-n', 'traefik', 'traefik', '-o', 'name']);
         if ($res->ok && trim($res->output) !== '') {
+            if ($this->isWsl()) {
+                $hostNet = $kubectl->raw(['get', 'deployment', 'traefik', '-n', 'traefik', '-o', 'jsonpath={.spec.template.spec.hostNetwork}']);
+
+                return $hostNet->ok && trim($hostNet->output) === 'true';
+            }
+
             return true;
         }
 
@@ -778,29 +777,6 @@ class SetupCommand extends Command
             $this->newLine();
 
             return 1;
-        }
-
-        // The Windows DNS rule dnsmasq needs is applied here, natively, before
-        // dispatching into WSL — one direct elevation hop instead of bridging
-        // out from inside WSL and back (see WslBridge::applyNrptRule()'s own
-        // docblock for why that two-hop path doesn't reliably show the UAC
-        // prompt). configureDnsmasq() still re-checks this once setup
-        // continues inside WSL, so it's a no-op there once this succeeds —
-        // never a double prompt.
-        if ($bridge->mirroredNetworkingActive()) {
-            $tld = GlobalConfigData::load()->getLocalTld();
-
-            if (! in_array(strtolower($tld), $bridge->windowsNrptCoveredTlds(), true)) {
-                $this->laraKubeInfo("Windows DNS needs a one-time rule so your browser resolves *.{$tld} via dnsmasq.");
-                $this->line('  <fg=gray>Look for a Windows security prompt (it may be behind this window or on another monitor)...</>');
-
-                if ($bridge->applyNrptRule([$tld])) {
-                    $this->laraKubeInfo("✅ Windows DNS rule added: *.{$tld} → 127.0.0.1 (dnsmasq).");
-                } else {
-                    $this->laraKubeWarn('Could not add the Windows DNS rule automatically. From an elevated PowerShell, run:');
-                    $this->line("     Add-DnsClientNrptRule -Namespace \".{$tld}\" -NameServers \"127.0.0.1\"");
-                }
-            }
         }
 
         $this->newLine();

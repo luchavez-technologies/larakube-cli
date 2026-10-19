@@ -43,20 +43,20 @@ test('vpn:sso-login creates a domained account and stores its token', function (
         DeviceCodeRequest::class => MockResponse::make([
             'device_code' => 'dev-1',
             'user_code' => 'ABCD-EFGH',
-            'verification_uri_complete' => 'https://vpn.kube/oauth2/device?user_code=ABCD-EFGH',
+            'verification_uri_complete' => 'https://vpn.test/oauth2/device?user_code=ABCD-EFGH',
             'interval' => 1,
             'expires_in' => 300,
         ]),
         DeviceTokenRequest::class => MockResponse::make(['access_token' => 'jwt-abc']),
         ListUsersRequest::class => MockResponse::make([['id' => 'owner-1', 'is_current' => true]]),
-        ListAccountsRequest::class => MockResponse::make([['id' => 'acc-1', 'domain' => 'kube']]),
+        ListAccountsRequest::class => MockResponse::make([['id' => 'acc-1', 'domain' => 'test']]),
         CreatePersonalAccessTokenRequest::class => MockResponse::make(['plain_token' => 'nbp_new']),
     ]);
 
     $this->artisan('vpn:sso-login local')
         ->assertExitCode(0)
         ->expectsOutputToContain('ABCD-EFGH')
-        ->expectsOutputToContain("owned by the 'kube' domain");
+        ->expectsOutputToContain("owned by the 'test' domain");
 
     // The account-creating call must carry the JWT, not a PAT — a PAT belongs to
     // an account that must already exist, so it can never create one.

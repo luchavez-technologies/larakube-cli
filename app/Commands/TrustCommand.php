@@ -19,7 +19,7 @@ class TrustCommand extends Command
         $this->renderHeader();
         $this->laraKubeInfo('LaraKube Local HTTPS Setup');
 
-        if (file_exists('/.dockerenv')) {
+        if (file_exists('/.dockerenv') && ! $this->isWsl()) {
             $this->error('  ✖ The "trust" command must be run directly on your HOST (or WSL2) machine.');
 
             return 1;

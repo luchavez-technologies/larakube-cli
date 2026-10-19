@@ -142,7 +142,7 @@ metadata:
     traefik.ingress.kubernetes.io/service.serversscheme: http
 spec:
   rules:
-    - host: mysql-test.kube
+    - host: mysql-test.test
       http:
         paths:
           - path: /
@@ -154,7 +154,7 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - mysql-test.kube
+        - mysql-test.test
 
 
 --- FILE: base/mysql-deployment.yaml ---
@@ -454,7 +454,7 @@ metadata:
 spec:
   tls:
     - hosts:
-        - mysql-test.kube
+        - mysql-test.test
 
 
 --- FILE: overlays/production/app-volumes.yaml ---
@@ -526,7 +526,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
 spec:
   rules:
-    - host: mysql-test.kube
+    - host: mysql-test.test
       http:
         paths:
           - path: /
@@ -538,7 +538,7 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - mysql-test.kube
+        - mysql-test.test
       secretName: mysql-test-tls
 
 

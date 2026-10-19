@@ -17,11 +17,11 @@ class ConfigTldCommand extends Command
     use InteractsWithGlobalConfig, InteractsWithProjectConfig, InteractsWithTrust, LaraKubeOutput;
 
     protected $signature = 'config:tld
-                            {tld? : The local domain TLD (e.g. kube, localhost, test)}
+                            {tld? : The local domain TLD (e.g. test, kube, localhost)}
                             {--project : Pin this TLD for the current project only (committed in .larakube.json), instead of your global default}
                             {--clear : With --project, remove this project\'s TLD override and follow the global default again}';
 
-    protected $description = 'Set the local domain TLD used for vanity URLs (default: kube)';
+    protected $description = 'Set the local domain TLD used for vanity URLs (default: test)';
 
     public function handle()
     {
@@ -85,11 +85,11 @@ class ConfigTldCommand extends Command
             $this->line('  <fg=yellow>ℹ  Tip: For unknown TLDs, prefix with https:// in your browser.</>');
         }
 
-        // If dnsmasq is already installed, extend it to also cover the new TLD
-        // immediately so `larakube up` doesn't fall back to /etc/hosts prompts.
-        // The old TLD stays covered too — some other project may still pin it
-        // via `config:tld --project`.
-        if ($this->isDnsmasqInstalled()) {
+        // If dnsmasq is already installed on macOS/Linux, extend it to also cover
+        // the new TLD immediately so `larakube up` doesn't fall back to /etc/hosts
+        // prompts. The old TLD stays covered too — some other project may still
+        // pin it via `config:tld --project`.
+        if (! $this->isWsl() && $this->isDnsmasqInstalled()) {
             $this->line('');
             $this->line('  <fg=gray>dnsmasq detected — extending it to cover the new TLD too (requires sudo)...</>');
             $this->configureDnsmasq($tld);

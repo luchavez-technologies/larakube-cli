@@ -91,6 +91,10 @@ metadata:
     app: traefik
 spec:
   replicas: 1
+@if($hostNetwork ?? false)
+  strategy:
+    type: Recreate
+@endif
   selector:
     matchLabels:
       app: traefik
@@ -100,6 +104,10 @@ spec:
         app: traefik
     spec:
       serviceAccountName: traefik-ingress-controller
+@if($hostNetwork ?? false)
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+@endif
       containers:
         - name: traefik
           image: {{ \App\Data\ConfigData::TRAEFIK_IMAGE }}
@@ -145,7 +153,7 @@ metadata:
     app.kubernetes.io/component: ingress-controller
     app.kubernetes.io/managed-by: larakube
 spec:
-  type: LoadBalancer
+  type: {{ ($hostNetwork ?? false) ? 'ClusterIP' : 'LoadBalancer' }}
   selector:
     app: traefik
   ports:

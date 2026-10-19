@@ -14,10 +14,10 @@ class GlobalConfigData extends Data
 
     const string CONFIG_FILE = 'config.json';
 
-    const string DEFAULT_TLD = 'kube';
+    const string DEFAULT_TLD = 'test';
 
     /** Valid TLDs the user may choose. */
-    const array ALLOWED_TLDS = ['kube', 'localhost', 'test', 'local', 'internal'];
+    const array ALLOWED_TLDS = ['test', 'kube', 'localhost', 'local', 'internal'];
 
     public function __construct(
         public ?string $email = null,

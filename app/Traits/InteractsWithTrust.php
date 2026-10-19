@@ -184,7 +184,7 @@ trait InteractsWithTrust
      */
     protected function setupDnsmasq(): void
     {
-        if ($this->isWsl() && ! $this->mirroredNetworkingActive()) {
+        if ($this->isWsl()) {
             return;
         }
 
@@ -244,7 +244,7 @@ trait InteractsWithTrust
             return $brewPrefix.'/etc/dnsmasq.d/larakube.conf';
         }
 
-        if ($this->isLinux()) {
+        if ($this->isLinux() && ! $this->isWsl()) {
             return '/etc/dnsmasq.d/larakube.conf';
         }
 
@@ -320,6 +320,10 @@ trait InteractsWithTrust
      */
     protected function configureDnsmasq(?string $tld = null): void
     {
+        if ($this->isWsl()) {
+            return;
+        }
+
         $tld = $tld ?? GlobalConfigData::load()->getLocalTld();
         $confPath = $this->getDnsmasqConfPath();
 
@@ -330,13 +334,6 @@ trait InteractsWithTrust
         $existingConf = file_exists($confPath) ? (string) file_get_contents($confPath) : '';
         $existingTlds = $this->parseDnsmasqTlds($existingConf);
         $tlds = array_unique(array_merge($existingTlds, [$tld]));
-
-        // Independent of whether dnsmasq's own Linux-side conf needs updating
-        // below (it no-ops instantly off WSL or without mirrored networking,
-        // and is itself idempotent) — this is what makes Windows actually ask
-        // dnsmasq for these TLDs; a first run's elevation can also simply
-        // have failed, so it's worth re-checking every call, not just once.
-        $this->ensureWindowsNrptRule($tlds);
 
         $resolverMissing = $this->isDarwin()
             ? ! file_exists('/etc/resolver/'.$tld)
@@ -575,6 +572,10 @@ trait InteractsWithTrust
 
     protected function isDnsmasqConfigured(): bool
     {
+        if ($this->isWsl()) {
+            return false;
+        }
+
         $tld = GlobalConfigData::load()->getLocalTld();
 
         if ($this->isDarwin()) {
@@ -599,19 +600,12 @@ trait InteractsWithTrust
                 return false;
             }
         } else {
-            // Linux (and WSL — isLinux() is true there too): getent respects
-            // /etc/resolv.conf + nsswitch.
+            // Linux: getent respects /etc/resolv.conf + nsswitch.
             $result = Process::run('getent hosts larakube-probe.'.$tld)->output();
 
             if (! str_contains($result, '127.0.0.1')) {
                 return false;
             }
-        }
-
-        // On WSL this only proved dnsmasq resolves *inside* the VM — the
-        // Windows browser also needs the NRPT rule pointing at it.
-        if ($this->isWsl() && ! in_array(strtolower($tld), $this->windowsNrptCoveredTlds(), true)) {
-            return false;
         }
 
         return true;
@@ -651,7 +645,17 @@ trait InteractsWithTrust
 
         // DNS
         $dnsSection = "DNS (*.{$tld} → 127.0.0.1)";
-        if ($this->isDnsmasqConfigured()) {
+        if ($this->isWsl()) {
+            $winHosts = '/mnt/c/Windows/System32/drivers/etc/hosts';
+            $hostsHasKube = (file_exists($winHosts) && str_contains((string) file_get_contents($winHosts), '# LaraKube:'))
+                || (file_exists('/etc/hosts') && str_contains((string) file_get_contents('/etc/hosts'), '# LaraKube:'));
+            $items[] = [
+                'ok' => $hostsHasKube,
+                'section' => $dnsSection,
+                'label' => 'Windows hosts file managed by larakube up',
+                'fix' => $hostsHasKube ? null : 'larakube up  (to sync Windows hosts entries)',
+            ];
+        } elseif ($this->isDnsmasqConfigured()) {
             $items[] = ['ok' => true, 'section' => $dnsSection, 'label' => 'dnsmasq configured', 'fix' => null];
         } else {
             $hostsHasKube = str_contains((string) file_get_contents('/etc/hosts'), '# LaraKube:');

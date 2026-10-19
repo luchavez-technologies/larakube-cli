@@ -176,6 +176,13 @@ trait LaraKubeOutput
         $this->laraKubeInfo('Active Service Links');
 
         $routedHosts = $environment === 'local' ? $this->getTraefikRoutedHosts() : null;
+        if ($routedHosts !== null && ! app()->runningUnitTests()) {
+            $expectedHosts = array_keys($hosts);
+            for ($attempt = 0; $attempt < 5 && array_diff($expectedHosts, $routedHosts) !== []; $attempt++) {
+                usleep(500_000);
+                $routedHosts = $this->getTraefikRoutedHosts() ?? $routedHosts;
+            }
+        }
 
         $rows = [];
         foreach ($hosts as $host => $label) {

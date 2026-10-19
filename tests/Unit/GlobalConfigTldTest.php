@@ -3,10 +3,10 @@
 use App\Commands\Config\ConfigTldCommand;
 use App\Data\GlobalConfigData;
 
-test('GlobalConfigData defaults to kube TLD', function (): void {
+test('GlobalConfigData defaults to test TLD', function (): void {
     $config = new GlobalConfigData;
 
-    expect($config->getLocalTld())->toBe('kube');
+    expect($config->getLocalTld())->toBe('test');
 });
 
 test('GlobalConfigData setLocalTld strips leading dot and lowercases', function (): void {

@@ -141,7 +141,7 @@ metadata:
     traefik.ingress.kubernetes.io/service.serversscheme: http
 spec:
   rules:
-    - host: vue-test.kube
+    - host: vue-test.test
       http:
         paths:
           - path: /
@@ -153,7 +153,7 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - vue-test.kube
+        - vue-test.test
 
 
 --- FILE: overlays/local/app-volumes.yaml ---
@@ -321,7 +321,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls: "true"
 spec:
   rules:
-    - host: vite.vue-test.kube
+    - host: vite.vue-test.test
       http:
         paths:
           - path: /
@@ -333,7 +333,7 @@ spec:
                   number: 5173
   tls:
     - hosts:
-        - vite.vue-test.kube
+        - vite.vue-test.test
 
 
 --- FILE: overlays/local/patches.yaml ---
@@ -457,7 +457,7 @@ metadata:
 spec:
   tls:
     - hosts:
-        - vue-test.kube
+        - vue-test.test
 
 
 --- FILE: overlays/production/app-volumes.yaml ---
@@ -529,7 +529,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
 spec:
   rules:
-    - host: vue-test.kube
+    - host: vue-test.test
       http:
         paths:
           - path: /
@@ -541,7 +541,7 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - vue-test.kube
+        - vue-test.test
       secretName: vue-test-tls
 
 

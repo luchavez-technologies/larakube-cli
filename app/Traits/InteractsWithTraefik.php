@@ -13,6 +13,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 trait InteractsWithTraefik
 {
+    use DetectsWsl;
     use InteractsWithToolRegistry;
     use LaraKubeOutput, ManagesLocalCa, VerifiesKubernetesRollout;
 
@@ -35,9 +36,22 @@ trait InteractsWithTraefik
             return true;
         });
 
+        $hostNetwork = $this->isWsl();
+        if ($hostNetwork) {
+            // On WSL2 k3s, an existing LoadBalancer Service spawns svclb-traefik
+            // in kube-system, which holds kubelet hostPort reservations on 80/443/8080
+            // without binding a real host socket in the WSL2 root network namespace.
+            // Removing the LoadBalancer Service before applying ClusterIP + hostNetwork
+            // releases those ports so Traefik binds real host sockets reachable at 127.0.0.1.
+            $existingType = trim(Kubectl::current()->raw(['get', 'service', 'traefik', '-n', 'traefik', '-o', 'jsonpath={.spec.type}'])->output);
+            if ($existingType === 'LoadBalancer') {
+                Kubectl::current()->raw(['delete', 'service', 'traefik', '-n', 'traefik', '--ignore-not-found']);
+            }
+        }
+
         $temporaryDirectory = TemporaryDirectory::make();
         $tmpInstall = $temporaryDirectory->path('traefik-install.yaml');
-        file_put_contents($tmpInstall, view('k8s.traefik-install')->render());
+        file_put_contents($tmpInstall, view('k8s.traefik-install', ['hostNetwork' => $hostNetwork])->render());
         $ok = $this->applyAndVerifyRollout('kubectl', $tmpInstall, 'traefik', 'traefik', 120, '--validate=false');
         $temporaryDirectory->delete();
 
@@ -250,6 +264,16 @@ trait InteractsWithTraefik
      */
     protected function reconcileSharedCluster(ConfigData $config): void
     {
+        if ($this->isWsl()) {
+            $hasHostNet = trim(Kubectl::current()->raw([
+                'get', 'deployment', 'traefik', '-n', 'traefik', '-o', 'jsonpath={.spec.template.spec.hostNetwork}',
+            ])->output) === 'true';
+
+            if (! $hasHostNet) {
+                $this->setupTraefik();
+            }
+        }
+
         $appName = $config->getName();
         $tld = $config->getLocalTld();
         $additionalHosts = $config->getEnvironment('local')?->additionalWebHosts ?? [];
@@ -429,6 +453,7 @@ trait InteractsWithTraefik
         // 3. Restart Traefik to pick up changes (only if it exists)
         if ($local->exists(new ResourceRef('Deployment', 'traefik', $namespace))) {
             $local->rolloutRestart($namespace, 'traefik');
+            $local->rolloutStatus($namespace, 'traefik', 60);
         }
     }
 

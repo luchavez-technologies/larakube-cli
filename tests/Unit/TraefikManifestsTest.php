@@ -110,3 +110,35 @@ test('the HTTP challenge stays the default and carries no Cloudflare token', fun
         ->not->toContain('dnschallenge')
         ->not->toContain('CF_DNS_API_TOKEN');
 });
+
+test('traefik-install renders LoadBalancer without hostNetwork when hostNetwork is false (macOS OrbStack / Linux)', function (): void {
+    $rendered = view('k8s.traefik-install', ['hostNetwork' => false])->render();
+    $documents = collect(array_values(array_filter(array_map(
+        fn (string $doc) => Yaml::parse($doc),
+        array_filter(preg_split('/^---\s*$/m', $rendered), fn (string $doc) => trim($doc) !== ''),
+    ))));
+
+    $deployment = $documents->first(fn ($d) => ($d['kind'] ?? null) === 'Deployment' && $d['metadata']['name'] === 'traefik');
+    $service = $documents->first(fn ($d) => ($d['kind'] ?? null) === 'Service' && $d['metadata']['name'] === 'traefik');
+
+    expect($deployment['spec']['template']['spec']['hostNetwork'] ?? null)->toBeNull()
+        ->and($deployment['spec']['strategy']['type'] ?? null)->toBeNull()
+        ->and($service['spec']['type'])->toBe('LoadBalancer');
+});
+
+test('traefik-install renders ClusterIP with hostNetwork, Recreate strategy, and ClusterFirstWithHostNet dnsPolicy when hostNetwork is true (WSL2)', function (): void {
+    $rendered = view('k8s.traefik-install', ['hostNetwork' => true])->render();
+    $documents = collect(array_values(array_filter(array_map(
+        fn (string $doc) => Yaml::parse($doc),
+        array_filter(preg_split('/^---\s*$/m', $rendered), fn (string $doc) => trim($doc) !== ''),
+    ))));
+
+    $deployment = $documents->first(fn ($d) => ($d['kind'] ?? null) === 'Deployment' && $d['metadata']['name'] === 'traefik');
+    $service = $documents->first(fn ($d) => ($d['kind'] ?? null) === 'Service' && $d['metadata']['name'] === 'traefik');
+
+    expect($deployment['spec']['template']['spec']['hostNetwork'])->toBeTrue()
+        ->and($deployment['spec']['template']['spec']['dnsPolicy'])->toBe('ClusterFirstWithHostNet')
+        ->and($deployment['spec']['strategy']['type'])->toBe('Recreate')
+        ->and($service['spec']['type'])->toBe('ClusterIP');
+});
+

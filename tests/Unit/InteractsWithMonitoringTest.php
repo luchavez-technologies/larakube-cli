@@ -79,8 +79,8 @@ test('monitoringAccess is null when monitoring is not installed, populated when 
 
     Process::fake([
         "{$kubectl} get deployment grafana -n larakube-shared --no-headers" => 'grafana   1/1   1   1   5d',
-        // The host resolves to the grafana-kube instance, so its Secret is that instance's.
-        "{$kubectl} get secret grafana-secrets-grafana-kube -n larakube-shared -o jsonpath='{.data.password}'" => base64_encode('s3cr3t'),
+        // The host resolves to the grafana-test instance, so its Secret is that instance's.
+        "{$kubectl} get secret grafana-secrets-grafana-test -n larakube-shared -o jsonpath='{.data.password}'" => base64_encode('s3cr3t'),
     ]);
     $access = monitoringReader()->access('local', null);
 

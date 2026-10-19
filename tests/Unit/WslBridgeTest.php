@@ -210,7 +210,7 @@ test('dispatchToWsl always pins --user larakube, never the distro\'s own default
 
 test('ensureNrptRuleForLocalTld skips entirely when the TLD is already covered', function (): void {
     Process::fake([
-        '*Get-DnsClientNrptRule*' => Process::result(output: '["kube"]'),
+        '*Get-DnsClientNrptRule*' => Process::result(output: '["test"]'),
     ]);
 
     (new WslBridge)->ensureNrptRuleForLocalTld();
@@ -225,7 +225,7 @@ test('ensureNrptRuleForLocalTld applies the rule natively, one hop, when not yet
     Process::fake([
         '*Get-DnsClientNrptRule*' => Process::sequence()
             ->push(Process::result(output: '[]'))
-            ->push(Process::result(output: '["kube"]')),
+            ->push(Process::result(output: '["test"]')),
         '*Start-Process*-Verb*RunAs*' => Process::result(),
     ]);
 
@@ -255,7 +255,7 @@ test('applyPendingWindowsHostsSync applies the queued content via one elevated h
     // returns and applies it with one direct elevation hop, same shape.
     $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
     $pendingPath = $dir->path().'/pending-windows-hosts';
-    file_put_contents($pendingPath, "127.0.0.1 myapp.kube\n");
+    file_put_contents($pendingPath, "127.0.0.1 myapp.test\n");
 
     Process::fake([
         '*Start-Process*-Verb*RunAs*' => Process::result(),
@@ -384,4 +384,60 @@ test('larakube entrypoint bootstraps the console kernel and steps off UNC cwd be
         ->and($wslBridgeMakePos)->toBeInt()
         ->and($bootstrapPos)->toBeLessThan($wslBridgeMakePos)
         ->and($entrypoint)->toContain('$wslBridge->dispatchToWsl($_SERVER[\'argv\'] ?? [], $invokingCwd)');
+});
+
+test('ensureWslBinarySynced is a no-op when no cached linux binary exists on Windows', function (): void {
+    $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
+    Process::fake([]);
+
+    $bridge = new WslBridge(nativeWindows: true);
+    $bridge->setCachedLinuxBinaryPathForTesting($dir->path().'/nonexistent-larakube-linux-x64');
+
+    $bridge->ensureWslBinarySynced();
+
+    Process::assertNothingRan();
+});
+
+test('ensureWslBinarySynced skips wsl.exe sync when UNC target already matches size and mtime', function (): void {
+    $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $cached = $dir->path().'/larakube-linux-x64';
+    $uncTarget = $dir->path().'/wsl-usr-local-bin-larakube';
+
+    file_put_contents($cached, 'linux-binary-payload');
+    file_put_contents($uncTarget, 'linux-binary-payload');
+    $mtime = time() - 60;
+    touch($cached, $mtime);
+    touch($uncTarget, $mtime);
+
+    Process::fake([]);
+
+    $bridge = new WslBridge(nativeWindows: true);
+    $bridge->setCachedLinuxBinaryPathForTesting($cached);
+    $bridge->setWslBinaryUncPathForTesting($uncTarget);
+
+    $bridge->ensureWslBinarySynced();
+
+    Process::assertNothingRan();
+});
+
+test('ensureWslBinarySynced syncs cached linux binary into WSL when UNC target differs', function (): void {
+    $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $cached = $dir->path().'/larakube-linux-x64';
+    $uncTarget = $dir->path().'/wsl-usr-local-bin-larakube';
+
+    file_put_contents($cached, 'new-linux-binary-payload');
+    file_put_contents($uncTarget, 'old-payload');
+
+    Process::fake([
+        '*' => Process::result(output: ''),
+    ]);
+
+    $bridge = new WslBridge(nativeWindows: true);
+    $bridge->setCachedLinuxBinaryPathForTesting($cached);
+    $bridge->setWslBinaryUncPathForTesting($uncTarget);
+
+    $bridge->ensureWslBinarySynced();
+
+    Process::assertRan(fn ($p) => in_array('root', (array) $p->command, true)
+        && in_array('/usr/local/bin/larakube', (array) $p->command, true));
 });

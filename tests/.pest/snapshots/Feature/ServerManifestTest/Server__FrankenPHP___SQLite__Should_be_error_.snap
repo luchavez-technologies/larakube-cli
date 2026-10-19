@@ -141,7 +141,7 @@ metadata:
     traefik.ingress.kubernetes.io/service.serversscheme: http
 spec:
   rules:
-    - host: franken-sqlite.kube
+    - host: franken-sqlite.test
       http:
         paths:
           - path: /
@@ -153,7 +153,7 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - franken-sqlite.kube
+        - franken-sqlite.test
 
 
 --- FILE: overlays/local/app-volumes.yaml ---
@@ -352,7 +352,7 @@ metadata:
 spec:
   tls:
     - hosts:
-        - franken-sqlite.kube
+        - franken-sqlite.test
 
 
 --- FILE: overlays/production/app-volumes.yaml ---
@@ -424,7 +424,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
 spec:
   rules:
-    - host: franken-sqlite.kube
+    - host: franken-sqlite.test
       http:
         paths:
           - path: /
@@ -436,7 +436,7 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - franken-sqlite.kube
+        - franken-sqlite.test
       secretName: franken-sqlite-tls
 
 

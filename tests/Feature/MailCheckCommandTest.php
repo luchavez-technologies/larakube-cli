@@ -31,6 +31,6 @@ test('mail:check emits json report when mail host is resolved', function (): voi
     $data = json_decode($output, true);
     expect($data)->toBeArray()
         ->and($data['installed'])->toBeTrue()
-        ->and($data['host'])->toBe('send.kube')
+        ->and($data['host'])->toBe('send.test')
         ->and($data['checks'])->toBeArray();
 });

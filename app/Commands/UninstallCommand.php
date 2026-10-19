@@ -2,6 +2,7 @@
 
 namespace App\Commands;
 
+use App\Traits\DetectsWsl;
 use App\Traits\LaraKubeOutput;
 
 use function Laravel\Prompts\confirm;
@@ -10,7 +11,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class UninstallCommand extends Command
 {
-    use LaraKubeOutput;
+    use DetectsWsl, LaraKubeOutput;
 
     /**
      * The console command aliases.
@@ -40,8 +41,8 @@ class UninstallCommand extends Command
         $this->renderHeader();
         $this->laraKubeInfo('LaraKube CLI Uninstaller');
 
-        // Safety Guard: Don't run inside a container
-        if (file_exists('/.dockerenv')) {
+        // Safety Guard: Don't run inside a container (WSL2 rootfs tarballs exported from Docker still carry /.dockerenv)
+        if (file_exists('/.dockerenv') && ! $this->isWsl()) {
             $this->error('  ✖ The "uninstall" command must be run directly on your HOST machine.');
 
             return 1;

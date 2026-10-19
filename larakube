@@ -103,15 +103,6 @@ if (\App\Services\WslBridge::isNativeWindows()) {
             $wslBridge->shutdown();
         }
 
-        // Generalizes SetupCommand::handleWindowsSetup()'s own native,
-        // one-hop NRPT check (which only ran for `setup`) to every other
-        // dispatched command — trust/up/hosts all reach the WSL-side
-        // two-hop bridge too (via configureDnsmasq()), so this makes that
-        // call a no-op in practice by the time it runs.
-        if ($wslBridge->mirroredNetworkingActive()) {
-            $wslBridge->ensureNrptRuleForLocalTld();
-        }
-
         $status = $wslBridge->dispatchToWsl($_SERVER['argv'] ?? [], $invokingCwd);
         exit($status);
     }

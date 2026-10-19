@@ -532,27 +532,27 @@ test('local tld defaults to global when project has no override', function (): v
     $config = ConfigData::from(['name' => 'demo']);
 
     expect($config->hasLocalTld())->toBeFalse()
-        ->and($config->getLocalTld())->toBe('kube');
+        ->and($config->getLocalTld())->toBe('test');
 });
 
 test('local tld override wins over the global default', function (): void {
-    $config = ConfigData::from(['name' => 'demo', 'localTld' => 'test']);
+    $config = ConfigData::from(['name' => 'demo', 'localTld' => 'kube']);
 
     expect($config->hasLocalTld())->toBeTrue()
-        ->and($config->getLocalTld())->toBe('test')
-        ->and($config->getAppUrl('local'))->toBe('https://demo.test')
-        ->and($config->getServiceHost('vite', 'local'))->toBe('vite.demo.test');
+        ->and($config->getLocalTld())->toBe('kube')
+        ->and($config->getAppUrl('local'))->toBe('https://demo.kube')
+        ->and($config->getServiceHost('vite', 'local'))->toBe('vite.demo.kube');
 });
 
 test('set local tld normalizes and can be cleared', function (): void {
     $config = ConfigData::from(['name' => 'demo']);
 
-    $config->setLocalTld('.TEST');
-    expect($config->getLocalTld())->toBe('test');
+    $config->setLocalTld('.KUBE');
+    expect($config->getLocalTld())->toBe('kube');
 
     $config->setLocalTld(null);
     expect($config->hasLocalTld())->toBeFalse()
-        ->and($config->getLocalTld())->toBe('kube');
+        ->and($config->getLocalTld())->toBe('test');
 });
 
 test('add additional extension appends uniquely', function (): void {

@@ -13,15 +13,18 @@ trait InteractsWithSslTrust
      */
     protected function isSslTrusted(): bool
     {
-        if (file_exists('/.dockerenv')) {
+        if (file_exists('/.dockerenv') && ! $this->isWsl()) {
             return false;
         }
 
         if ($this->isWsl()) {
-            $result = Process::run('certutil.exe -verifystore Root "LaraKube Local CA"');
+            $certutil = $this->windowsCommand('certutil.exe');
+            $result = Process::run("{$certutil} -user -verifystore Root \"LaraKube Local CA\"");
             $output = $result->output().$result->errorOutput();
 
-            return str_contains($output, 'Certificate is valid') || str_contains($output, 'CertUtil: -verifystore command completed successfully');
+            return str_contains($output, 'LaraKube Local CA')
+                || str_contains($output, 'Certificate is valid')
+                || str_contains($output, 'CertUtil: -verifystore command completed successfully');
         }
 
         if ($this->isDarwin()) {

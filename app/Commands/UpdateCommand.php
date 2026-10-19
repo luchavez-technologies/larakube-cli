@@ -206,14 +206,39 @@ class UpdateCommand extends Command
             if (file_exists($oldExe)) {
                 @unlink($oldExe);
             }
-            $temporaryDirectory->delete();
 
             $this->laraKubeInfo("✅ LaraKube Windows binary updated successfully to $version!");
 
             $bridge = app(WslBridge::class);
+            $linuxBinaryName = "larakube-linux-$arch";
+            $linuxDownloadUrl = $this->getGithubUrl()."/{$repo}/releases/download/$version/$linuxBinaryName";
+            $linuxTempPath = $temporaryDirectory->path().'/larakube-linux-update';
+            $linuxTarget = $bridge->cachedLinuxBinaryPath() ?? ($targetDir !== '' ? "{$targetDir}/{$linuxBinaryName}" : null);
+
+            if ($linuxTarget !== null) {
+                $this->laraKubeInfo("Downloading $linuxBinaryName for WSL2 lockstep cache...");
+
+                try {
+                    $linuxDownload = Http::withHeaders(['User-Agent' => 'LaraKube-CLI'])->timeout(600)->sink($linuxTempPath)->get($linuxDownloadUrl);
+                    if ($linuxDownload->successful() && is_file($linuxTempPath) && filesize($linuxTempPath) >= 1024) {
+                        @mkdir(dirname($linuxTarget), 0755, true);
+                        @copy($linuxTempPath, $linuxTarget);
+                    }
+                } catch (Exception) {
+                    // Best-effort cache update; if it fails we warn below when syncing.
+                }
+            }
+
+            $temporaryDirectory->delete();
+
             if ($bridge->distroExists()) {
-                $this->laraKubeInfo("🔄 Updating LaraKube CLI inside Linux ({$bridge->distroName()})...");
-                $bridge->dispatchToWsl(['larakube', 'update', ...($version === 'canary' ? ['--canary'] : []), '--yes']);
+                $this->laraKubeInfo("🔄 Syncing LaraKube CLI ($version) into Linux ({$bridge->distroName()})...");
+                if ($linuxTarget !== null && is_file($linuxTarget) && $bridge->syncLinuxBinaryToWsl($linuxTarget)) {
+                    $this->laraKubeInfo("✅ LaraKube Linux binary synced to $version!");
+                } else {
+                    $this->laraKubeWarn('Could not sync cached Linux binary directly; running update inside WSL...');
+                    $bridge->dispatchToWsl(['larakube', 'update', ...($version === 'canary' ? ['--canary'] : []), '--yes']);
+                }
             }
 
             return 0;

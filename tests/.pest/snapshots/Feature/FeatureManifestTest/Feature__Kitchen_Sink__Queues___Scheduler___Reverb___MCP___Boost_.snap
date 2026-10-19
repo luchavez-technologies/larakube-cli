@@ -144,7 +144,7 @@ metadata:
     traefik.ingress.kubernetes.io/service.serversscheme: http
 spec:
   rules:
-    - host: kitchen-sink.kube
+    - host: kitchen-sink.test
       http:
         paths:
           - path: /
@@ -156,7 +156,7 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - kitchen-sink.kube
+        - kitchen-sink.test
 
 
 --- FILE: base/queues-deployment.yaml ---
@@ -857,7 +857,7 @@ metadata:
 spec:
   tls:
     - hosts:
-        - kitchen-sink.kube
+        - kitchen-sink.test
 
 
 --- FILE: overlays/local/reverb-ingress.yaml ---
@@ -870,7 +870,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls: "true"
 spec:
   rules:
-    - host: reverb.kitchen-sink.kube
+    - host: reverb.kitchen-sink.test
       http:
         paths:
           - path: /
@@ -882,7 +882,7 @@ spec:
                   number: 8080
   tls:
     - hosts:
-        - reverb.kitchen-sink.kube
+        - reverb.kitchen-sink.test
 
 
 --- FILE: overlays/production/app-volumes.yaml ---
@@ -1034,7 +1034,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
 spec:
   rules:
-    - host: kitchen-sink.kube
+    - host: kitchen-sink.test
       http:
         paths:
           - path: /
@@ -1046,7 +1046,7 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - kitchen-sink.kube
+        - kitchen-sink.test
       secretName: kitchen-sink-tls
 
 

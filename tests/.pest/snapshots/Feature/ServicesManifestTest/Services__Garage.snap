@@ -64,11 +64,11 @@ data:
     [s3_api]
     s3_region = "us-east-1"
     api_bind_addr = "[::]:3900"
-    root_domain = ".s3.garage-test.kube"
+    root_domain = ".s3.garage-test.test"
 
     [s3_web]
     bind_addr = "[::]:3902"
-    root_domain = ".s3.garage-test.kube"
+    root_domain = ".s3.garage-test.test"
     index = "index.html"
 
     [admin]
@@ -237,7 +237,7 @@ metadata:
     traefik.ingress.kubernetes.io/service.serversscheme: http
 spec:
   rules:
-    - host: garage-test.kube
+    - host: garage-test.test
       http:
         paths:
           - path: /
@@ -249,7 +249,7 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - garage-test.kube
+        - garage-test.test
 
 
 --- FILE: overlays/local/app-volumes.yaml ---
@@ -291,7 +291,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls: "true"
 spec:
   rules:
-    - host: s3.garage-test.kube
+    - host: s3.garage-test.test
       http:
         paths:
           - path: /
@@ -301,7 +301,7 @@ spec:
                 name: garage
                 port:
                   number: 3900
-    - host: s3-web.garage-test.kube
+    - host: s3-web.garage-test.test
       http:
         paths:
           - path: /
@@ -313,8 +313,8 @@ spec:
                   number: 3902
   tls:
     - hosts:
-        - s3.garage-test.kube
-        - s3-web.garage-test.kube
+        - s3.garage-test.test
+        - s3-web.garage-test.test
 
 
 --- FILE: overlays/local/garage-volumes.yaml ---
@@ -518,7 +518,7 @@ metadata:
 spec:
   tls:
     - hosts:
-        - garage-test.kube
+        - garage-test.test
 
 
 --- FILE: overlays/production/app-volumes.yaml ---
@@ -603,7 +603,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
 spec:
   rules:
-    - host: garage-test.kube
+    - host: garage-test.test
       http:
         paths:
           - path: /
@@ -615,7 +615,7 @@ spec:
                   number: 80
   tls:
     - hosts:
-        - garage-test.kube
+        - garage-test.test
       secretName: garage-test-tls
 
 

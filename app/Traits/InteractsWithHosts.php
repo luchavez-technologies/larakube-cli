@@ -93,11 +93,9 @@ trait InteractsWithHosts
             return null;
         }
 
-        // dnsmasq is set up but doesn't know about this TLD yet — offer to
-        // extend it. isDnsmasqInstalled() is false on WSL2 without mirrored
-        // networking (dnsmasq is never installed there), so this naturally
-        // falls through to the Windows hosts file sync below in that case.
-        if ($this->isDnsmasqInstalled()
+        // dnsmasq is set up on macOS/Linux but doesn't know about this TLD yet — offer to extend it.
+        if (! $this->isWsl()
+            && $this->isDnsmasqInstalled()
             && confirm("dnsmasq is set up but doesn't cover .{$tld} yet — extend it to cover this project too? (requires sudo)")
         ) {
             $this->configureDnsmasq($tld);
@@ -329,7 +327,7 @@ trait InteractsWithHosts
         $ingressIp = $this->windowsReachableIngressIp();
         $entry = "{$ingressIp} ".implode(' ', $hosts);
         $blockId = "# LaraKube: {$appName}";
-        $current = (string) file_get_contents($winHosts);
+        $current = $this->readCurrentWindowsHostsContent($winHosts);
         $updated = $this->applyHostsBlock($current, $blockId, $entry);
 
         if (rtrim($updated) === rtrim($current)) {
@@ -379,7 +377,7 @@ trait InteractsWithHosts
         $ingressIp = $this->windowsReachableIngressIp();
         $entry = "{$ingressIp} ".implode(' ', $requiredHosts);
 
-        $current = (string) file_get_contents($winHosts);
+        $current = $this->readCurrentWindowsHostsContent($winHosts);
         $updated = $this->applyHostsBlock($current, $blockIdentifier, $entry);
 
         // Already in sync (ignoring trailing-whitespace differences).
@@ -427,6 +425,31 @@ trait InteractsWithHosts
         $this->laraKubeInfo('Windows hosts file synchronized!');
 
         return null;
+    }
+
+    /**
+     * Read the base Windows hosts content to layer a new `# LaraKube: <app>`
+     * block onto. When running under `LARAKUBE_NATIVE_DISPATCH=1`, an earlier
+     * call in the same command (e.g. `ensureWindowsHostsAreSet()` for the
+     * project before `syncWindowsHosts()` for `larakube-shared`) has staged its
+     * update into `~/.larakube/pending-windows-hosts` rather than modifying
+     * `/mnt/c/Windows/System32/drivers/etc/hosts` in place — reading that
+     * staged file first ensures both blocks merge into a single handoff instead
+     * of the second call overwriting the first.
+     */
+    protected function readCurrentWindowsHostsContent(string $winHosts): string
+    {
+        if (getenv('LARAKUBE_NATIVE_DISPATCH') !== false) {
+            $pendingPath = home_path('.larakube/pending-windows-hosts');
+            if (is_file($pendingPath)) {
+                $pending = (string) @file_get_contents($pendingPath);
+                if (trim($pending) !== '') {
+                    return $pending;
+                }
+            }
+        }
+
+        return (string) file_get_contents($winHosts);
     }
 
     /**
@@ -485,7 +508,9 @@ trait InteractsWithHosts
 
         file_put_contents(
             $scriptTmp,
-            "Copy-Item -LiteralPath '{$winContent}' -Destination 'C:\\Windows\\System32\\drivers\\etc\\hosts' -Force\n",
+            "Copy-Item -LiteralPath '{$winContent}' -Destination 'C:\\Windows\\System32\\drivers\\etc\\hosts' -Force\n"
+            ."Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object { \$_.NameServers -contains '127.0.0.1' } | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue\n"
+            ."Clear-DnsClientCache -ErrorAction SilentlyContinue\n",
         );
         $winScript = trim(Process::run('wslpath -w '.escapeshellarg($scriptTmp))->output());
 
@@ -592,9 +617,14 @@ trait InteractsWithHosts
     /**
      * True when dnsmasq is already wildcarding *.{tld} → 127.0.0.1 locally,
      * meaning individual /etc/hosts entries would be redundant.
+     * Always false on WSL2 where Windows browsers rely on the Windows hosts file.
      */
     protected function dnsmasqCoversKube(?string $tld = null): bool
     {
+        if ($this->isWsl()) {
+            return false;
+        }
+
         $tld = $tld ?? GlobalConfigData::load()->getLocalTld();
 
         if ($this->isDarwin()) {
@@ -616,21 +646,17 @@ trait InteractsWithHosts
 
     /**
      * Whether dnsmasq is a complete substitute for per-host hosts-file
-     * entries for $tld — on macOS/Linux that's just dnsmasqCoversKube(), but
-     * on WSL it additionally requires the Windows NRPT rule to actually be
-     * in place (mirrored networking): dnsmasq resolving *inside* the VM
-     * alone doesn't help the Windows browser. Shared by ensureHostsAreSet(),
-     * ManagesCompanions and PlexInitCommand so the three don't drift.
+     * entries for $tld — on macOS/Linux that's dnsmasqCoversKube(); on WSL2
+     * it is always false because Windows svchost.exe owns UDP 0.0.0.0:53 on
+     * the host and Windows browsers resolve via the Windows hosts file.
      */
     protected function dnsmasqFullyCoversKube(?string $tld = null): bool
     {
-        $tld = $tld ?? GlobalConfigData::load()->getLocalTld();
-
-        if (! $this->dnsmasqCoversKube($tld)) {
+        if ($this->isWsl()) {
             return false;
         }
 
-        return ! $this->isWsl() || in_array(strtolower($tld), $this->windowsNrptCoveredTlds(), true);
+        return $this->dnsmasqCoversKube($tld);
     }
 
     /**

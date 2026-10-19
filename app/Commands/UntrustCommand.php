@@ -19,7 +19,7 @@ class UntrustCommand extends Command
         $this->renderHeader();
         $this->laraKubeInfo('LaraKube Local HTTPS Cleanup');
 
-        if (file_exists('/.dockerenv')) {
+        if (file_exists('/.dockerenv') && ! $this->isWsl()) {
             $this->error('  ✖ This command must be run directly on your HOST (or WSL2) machine.');
 
             return 1;

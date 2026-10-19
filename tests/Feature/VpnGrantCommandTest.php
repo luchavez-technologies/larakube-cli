@@ -41,7 +41,7 @@ test('vpn:grant mints a single-use setup key by default and prints the join comm
 
     $this->artisan('vpn:grant local --name=lloyd')
         ->assertExitCode(0)
-        ->expectsOutputToContain('netbird up --management-url https://vpn.kube --setup-key AAAA-BBBB-CCCC');
+        ->expectsOutputToContain('netbird up --management-url https://vpn.test --setup-key AAAA-BBBB-CCCC');
 
     Saloon::assertSent(fn ($request, $response) => $request instanceof CreateSetupKeyRequest
         && $response->getPendingRequest()->headers()->get('Authorization') === 'Token nbp_test_pat'

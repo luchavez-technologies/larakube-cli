@@ -154,12 +154,11 @@ function trustHelperOnWsl(bool $mirrored): object
     };
 }
 
-test('isDnsmasqConfigured on WSL is false when the Linux-side conf is missing, before even asking Windows for the NRPT rule', function (): void {
-    Process::fake(['*Get-DnsClientNrptRule*' => fn () => throw new RuntimeException('should not be called — the earlier /etc/dnsmasq.d/larakube.conf check already failed')]);
+test('isDnsmasqConfigured on WSL is always false because WSL uses the Windows hosts file', function (): void {
+    Process::fake(['*' => fn () => throw new RuntimeException('should not be called')]);
 
-    // No /etc/dnsmasq.d/larakube.conf on this test machine, mirrored or not.
     expect(trustHelperOnWsl(true)->dnsmasqConfigured())->toBeFalse();
-    Process::assertNotRan(fn ($process) => str_contains($process->command, 'Get-DnsClientNrptRule'));
+    Process::assertNothingRan();
 });
 
 test('windowsNrptCoveredTlds parses a single-namespace PowerShell result (bare JSON string)', function (): void {

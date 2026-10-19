@@ -44,22 +44,22 @@ function sslTrustOnDarwin(): object
     };
 }
 
-// isSslTrusted() short-circuits to false whenever /.dockerenv exists — true
-// in this project's own Docker-wrapped test runner, so the "actually trusted"
-// branches below are unreachable here and covered only when that guard is off.
-test('isSslTrusted is false inside a Docker container regardless of platform', function (): void {
-    Process::fake(['certutil.exe -verifystore Root "LaraKube Local CA"' => 'CertUtil: -verifystore command completed successfully.']);
+// isSslTrusted() short-circuits to false whenever /.dockerenv exists on non-WSL
+// platforms — on WSL2, /.dockerenv is ignored because the larakube-ubuntu rootfs
+// is exported from a container build and contains /.dockerenv at /.
+test('isSslTrusted is false inside a Docker container on non-WSL platforms', function (): void {
+    Process::fake(['security find-certificate -c "LaraKube Local CA"' => "keychain: ...\n"]);
 
-    expect(sslTrustOnWsl()->trusted())->toBeFalse();
+    expect(sslTrustOnDarwin()->trusted())->toBeFalse();
 })->skip(fn () => ! file_exists('/.dockerenv'), 'Only meaningful inside a container with /.dockerenv present.');
 
-test('isSslTrusted on WSL reflects whether certutil reports the CA as valid', function (): void {
-    Process::fake(['certutil.exe -verifystore Root "LaraKube Local CA"' => 'CertUtil: -verifystore command completed successfully.']);
+test('isSslTrusted on WSL reflects whether certutil reports the CA as valid even if /.dockerenv exists', function (): void {
+    Process::fake(['*certutil.exe*-verifystore Root "LaraKube Local CA"' => 'CertUtil: -verifystore command completed successfully.']);
     expect(sslTrustOnWsl()->trusted())->toBeTrue();
 
-    Process::fake(['certutil.exe -verifystore Root "LaraKube Local CA"' => Process::result(errorOutput: 'CertUtil: -verifystore command FAILED', exitCode: 1)]);
+    Process::fake(['*certutil.exe*-verifystore Root "LaraKube Local CA"' => Process::result(errorOutput: 'CertUtil: -verifystore command FAILED', exitCode: 1)]);
     expect(sslTrustOnWsl()->trusted())->toBeFalse();
-})->skip(fn () => file_exists('/.dockerenv'), 'The /.dockerenv guard short-circuits before this is ever reached.');
+});
 
 test('isSslTrusted on macOS reflects whether the CA is in the keychain', function (): void {
     Process::fake(['security find-certificate -c "LaraKube Local CA"' => "keychain: ...\n"]);

@@ -243,7 +243,7 @@ test('share:remove deletes the records and the tunnel and forgets the share', fu
         expect($exit)->toBe(0)
             ->and(domainShareJson())->toBe(['success' => true, 'removed' => true])
             ->and(implode("\n", $commands))->toContain('delete deployment,secret -l larakube.dev/role=share')
-            ->and(ConfigData::loadFromFile(getcwd())->getAppUrl('local'))->toBe('https://shop.kube')
+            ->and(ConfigData::loadFromFile(getcwd())->getAppUrl('local'))->toBe('https://shop.test')
             ->and($GLOBALS['share_up_calls'])->toBe(['local', 'local']);
 
         Saloon::assertSent(DeleteDnsRecordRequest::class);

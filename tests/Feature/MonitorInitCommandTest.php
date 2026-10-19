@@ -252,7 +252,7 @@ test('tool:init --tool=grafana allocates a real Commons Postgres database for Gr
 
     $this->artisan('tool:init --tool=grafana local --no-logs')
         ->assertExitCode(0)
-        ->expectsOutputToContain("Allocating database 'grafana_grafana_kube' in the Commons");
+        ->expectsOutputToContain("Allocating database 'grafana_grafana_test' in the Commons");
 
     Process::assertRan(fn ($p) => str_contains($p->command, 'exec -i -n')
         && str_contains($p->command, 'larakube-plex')
