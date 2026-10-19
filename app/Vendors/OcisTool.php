@@ -6,15 +6,17 @@ use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasSmtpWiring;
+use App\Contracts\HasToolAccessDetails;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
+use Illuminate\Support\Facades\Process;
 
 /** The vendor implementation for oCIS (ownCloud Infinite Scale). */
-final class OcisTool implements ClusterToolVendor, HasCommonsBuckets, HasOidcWiring, HasSmtpWiring, HasVpnWiring, HasWorkloadComponents
+final class OcisTool implements ClusterToolVendor, HasCommonsBuckets, HasOidcWiring, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring, HasWorkloadComponents
 {
     public function getLabel(): string
     {
@@ -199,5 +201,29 @@ final class OcisTool implements ClusterToolVendor, HasCommonsBuckets, HasOidcWir
     public function canonicalBucketList(): array
     {
         return ['ocis-storage'];
+    }
+
+    public function toolAccessRows(?string $host, string $env, string $kubectl, string $instance = ''): array
+    {
+        if ($host === null || $host === '') {
+            return [];
+        }
+
+        $names = $instance !== ''
+            ? ToolInstance::forInstance(ClusterTool::OCIS, $instance)
+            : ToolInstance::forHost(ClusterTool::OCIS, $host);
+
+        $codeDeployment = $names->deployment('code');
+        $found = trim(Process::run(
+            "{$kubectl} get deployment {$codeDeployment} -n {$names->namespace()} -o name --ignore-not-found",
+        )->output());
+
+        if ($found !== '') {
+            return [
+                ['Collabora Online', "https://office.{$host}"],
+            ];
+        }
+
+        return [];
     }
 }

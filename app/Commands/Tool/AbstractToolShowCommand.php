@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Process;
 use function Laravel\Prompts\table;
 
 use LaravelZero\Framework\Commands\Command;
+use Throwable;
 
 /**
  * Base for every `{tool}:show {environment}` command.
@@ -100,7 +101,7 @@ abstract class AbstractToolShowCommand extends Command
                 'host' => $host,
                 'url' => $host !== null ? "https://{$host}" : null,
                 'wirings' => $this->supportedWirings($tool),
-                'components' => $this->componentSummary($tool, $instance),
+                'components' => $this->componentSummary($tool, $instance, $kubectl),
                 // null when the tool has none (e.g. n8n, where the first
                 // visitor claims admin) — never guessed or left stale.
                 'credentials' => $installed ? $this->credentials($host, $env, $instance) : null,
@@ -189,23 +190,73 @@ abstract class AbstractToolShowCommand extends Command
      * The instance's workloads with the names and identity labels ToolInstance
      * derives, so a UI never has to compose either.
      *
-     * @return list<array{key: string, role: string, deployment: string, labels: array<string, string>}>
+     * @return list<array{key: string, name: string, role: string, deployment: string, labels: array<string, string>, deployed?: bool, ready?: bool, replicas?: string}>
      */
-    protected function componentSummary(ClusterTool $tool, string $instance): array
+    protected function componentSummary(ClusterTool $tool, string $instance, ?string $kubectl = null): array
     {
         if ($instance === '') {
             return [];
         }
 
         $names = ToolInstance::forInstance($tool, $instance);
+        $deployments = [];
 
-        return array_map(fn ($component) => [
-            'key' => $component->key,
-            'name' => $component->deployment,
-            'role' => $component->role->name,
-            'deployment' => $component->deployment,
-            'labels' => $names->labels($component->key),
-        ], $names->components());
+        if ($kubectl !== null) {
+            try {
+                $rawJson = trim(Process::run(
+                    "{$kubectl} get deployment -n {$names->namespace()} -o json --ignore-not-found",
+                )->output());
+
+                $decoded = json_decode($rawJson, true);
+                if (is_array($decoded) && isset($decoded['items']) && is_array($decoded['items'])) {
+                    foreach ($decoded['items'] as $item) {
+                        $name = (string) ($item['metadata']['name'] ?? '');
+                        if ($name === '') {
+                            continue;
+                        }
+                        $readyReplicas = (int) ($item['status']['readyReplicas'] ?? 0);
+                        $desiredReplicas = (int) ($item['spec']['replicas'] ?? $item['status']['replicas'] ?? 0);
+                        $deployments[$name] = [
+                            'deployed' => true,
+                            'ready' => $readyReplicas > 0,
+                            'replicas' => "{$readyReplicas}/{$desiredReplicas}",
+                        ];
+                    }
+                }
+            } catch (Throwable) {
+                // Ignore cluster communication error, keep deployments empty
+            }
+        }
+
+        return array_map(function ($component) use ($names, $deployments, $kubectl, $tool) {
+            $depStatus = null;
+            if ($kubectl !== null) {
+                $prefix = $tool->legacyCategoryPrefix();
+                $withCategory = ($prefix !== null && ! str_starts_with($component->deployment, "{$prefix}-"))
+                    ? "{$prefix}-{$component->deployment}"
+                    : null;
+
+                $depStatus = $deployments[$component->deployment]
+                    ?? $deployments[$tool->withoutCategory($component->deployment)]
+                    ?? ($withCategory !== null ? ($deployments[$withCategory] ?? null) : null);
+            }
+
+            $summary = [
+                'key' => $component->key,
+                'name' => $component->deployment,
+                'role' => $component->role->name,
+                'deployment' => $component->deployment,
+                'labels' => $names->labels($component->key),
+            ];
+
+            if ($kubectl !== null) {
+                $summary['deployed'] = $depStatus !== null;
+                $summary['ready'] = $depStatus['ready'] ?? false;
+                $summary['replicas'] = $depStatus['replicas'] ?? '0/0';
+            }
+
+            return $summary;
+        }, $names->components());
     }
 
     abstract protected function tool(): ClusterTool;

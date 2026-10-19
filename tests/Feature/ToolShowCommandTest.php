@@ -97,3 +97,73 @@ test('--json emits a machine-readable object instead of a table', function (): v
         ->and($payload['components'][0])->toHaveKeys(['key', 'role', 'deployment', 'labels'])
         ->and($payload['components'][0]['deployment'])->toEndWith('-main');
 });
+
+test('--json reports component readiness and replicas from live cluster deployments', function (): void {
+    $deploymentListJson = json_encode([
+        'items' => [
+            [
+                'metadata' => ['name' => 'ocis-drive-main'],
+                'spec' => ['replicas' => 1],
+                'status' => ['readyReplicas' => 1, 'replicas' => 1],
+            ],
+            [
+                'metadata' => ['name' => 'code-drive-main'],
+                'spec' => ['replicas' => 1],
+                'status' => ['readyReplicas' => 1, 'replicas' => 1],
+            ],
+        ],
+    ]);
+
+    Process::fake([
+        '*larakube-tools-registry*' => Process::result(
+            output: base64_encode((string) json_encode([
+                ['tool' => 'ocis', 'instance' => 'drive-main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'drive.example.com'],
+            ])),
+        ),
+        '*get deployment -n larakube-shared -o json*' => Process::result(output: (string) $deploymentListJson),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $exit = Artisan::call('ocis:show local --json');
+    $payload = json_decode(Artisan::output(), true);
+
+    expect($exit)->toBe(0)
+        ->and($payload['components'])->toHaveCount(2)
+        ->and($payload['components'][0])->toMatchArray([
+            'key' => 'app',
+            'deployed' => true,
+            'ready' => true,
+            'replicas' => '1/1',
+        ])
+        ->and($payload['components'][1])->toMatchArray([
+            'key' => 'code',
+            'deployed' => true,
+            'ready' => true,
+            'replicas' => '1/1',
+        ]);
+});
+
+test('OcisTool toolAccessRows includes Collabora Online when code deployment is present', function (): void {
+    Process::fake([
+        '*get deployment code-drive-main *' => Process::result(output: 'deployment.apps/code-drive-main'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $vendor = ClusterTool::OCIS->vendor();
+    expect($vendor)->toBeInstanceOf(App\Contracts\HasToolAccessDetails::class);
+
+    $rows = $vendor->toolAccessRows('drive.example.com', 'production', 'kubectl', 'drive-main');
+    expect($rows)->toBe([
+        ['Collabora Online', 'https://office.drive.example.com'],
+    ]);
+});
+
+test('OcisTool toolAccessRows returns empty when code deployment is not present', function (): void {
+    Process::fake([
+        '*' => Process::result(output: ''),
+    ]);
+
+    $vendor = ClusterTool::OCIS->vendor();
+    $rows = $vendor->toolAccessRows('drive.example.com', 'production', 'kubectl', 'drive-main');
+    expect($rows)->toBe([]);
+});
