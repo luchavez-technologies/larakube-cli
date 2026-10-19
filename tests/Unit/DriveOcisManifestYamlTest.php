@@ -256,3 +256,18 @@ test('ocis manifest configures WEB_ASSET_APPS_PATH for web extensions', function
     expect($rendered)->toContain('name: WEB_ASSET_APPS_PATH')
         ->and($rendered)->toContain('value: "/var/lib/ocis/web/apps"');
 });
+
+test('ocis deployment uses Recreate strategy to prevent RWO volume multi-attach deadlock', function (): void {
+    $documents = array_map(
+        fn (string $doc) => Yaml::parse($doc),
+        array_values(array_filter(
+            array_map('trim', preg_split('/^---$/m', renderOcisManifest())),
+            fn (string $doc) => $doc !== '',
+        )),
+    );
+
+    $deployment = collect($documents)
+        ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment');
+
+    expect($deployment['spec']['strategy']['type'])->toBe('Recreate');
+});
