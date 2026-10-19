@@ -201,6 +201,7 @@ abstract class AbstractToolShowCommand extends Command
 
         return array_map(fn ($component) => [
             'key' => $component->key,
+            'name' => $component->deployment,
             'role' => $component->role->name,
             'deployment' => $component->deployment,
             'labels' => $names->labels($component->key),
