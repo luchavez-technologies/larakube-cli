@@ -51,6 +51,9 @@ spec:
               if [ ! -f /var/www/html/wp-settings.php ]; then
                 echo "Seeding WordPress core into persistent volume..."
                 cp -a -n /usr/src/wordpress/. /var/www/html/
+                if [ ! -f /var/www/html/wp-config.php ] && [ -f /var/www/html/wp-config-docker.php ]; then
+                  cp /var/www/html/wp-config-docker.php /var/www/html/wp-config.php
+                fi
               fi
           volumeMounts:
             - name: wp-data
@@ -107,12 +110,32 @@ spec:
 
               add_filter('xmlrpc_enabled', '__return_false');
               EOF
+
+              if [ ! -f /var/www/html/.htaccess ]; then
+                cat << 'EOF' > /var/www/html/.htaccess
+# Preserve HTTPS behind reverse proxy on directory redirects
+RewriteEngine On
+RewriteCond %{HTTP:X-Forwarded-Proto} =https
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^(.+[^/])$ https://%{HTTP_HOST}/$1/ [R=301,L]
+
+# BEGIN WordPress
+RewriteEngine On
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+RewriteBase /
+RewriteRule ^index\.php$ - [L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.php [L]
+# END WordPress
+EOF
+              fi
               chown -R 33:33 /var/www/html 2>/dev/null || true
           volumeMounts:
             - name: wp-data
               mountPath: /var/www/html
         - name: auto-install
-          image: wordpress:cli-php8.3
+          image: wordpress:6.7-php8.3-apache
           env:
 @if(($dbEngine ?? 'sqlite') === 'sqlite')
             - name: WORDPRESS_DB_NAME
@@ -146,35 +169,33 @@ spec:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: admin-password
+            - name: WORDPRESS_CONFIG_EXTRA
+              value: |
+                define('WP_HOME', 'https://{{ $host }}');
+                define('WP_SITEURL', 'https://{{ $host }}');
+                define('FORCE_SSL_ADMIN', true);
+@if(isset($redisIndex) && $redisIndex !== null)
+                define('WP_REDIS_HOST', 'redis.{{ $plexNamespace }}.svc.cluster.local');
+                define('WP_REDIS_PORT', 6379);
+                define('WP_REDIS_DATABASE', {{ $redisIndex }});
+@endif
           command: ['sh', '-c']
           args:
             - |
-              if ! wp core is-installed --path=/var/www/html --allow-root 2>/dev/null; then
-                echo "WordPress not installed yet. Creating config and running automated install..."
-@if(($dbEngine ?? 'sqlite') === 'sqlite')
-                wp config create --path=/var/www/html --dbname="$WORDPRESS_DB_NAME" --dbuser="$WORDPRESS_DB_USER" --dbpass="$WORDPRESS_DB_PASSWORD" --dbhost="$WORDPRESS_DB_HOST" --skip-check --force --allow-root 2>/dev/null || true
-@else
-                wp config create --path=/var/www/html --dbname="$WORDPRESS_DB_NAME" --dbuser="$WORDPRESS_DB_USER" --dbpass="$WORDPRESS_DB_PASSWORD" --dbhost="$WORDPRESS_DB_HOST" --force --allow-root 2>/dev/null || true
-@endif
-                wp config set --path=/var/www/html WP_HOME "https://{{ $host }}" --allow-root 2>/dev/null || true
-                wp config set --path=/var/www/html WP_SITEURL "https://{{ $host }}" --allow-root 2>/dev/null || true
-                wp config set --path=/var/www/html FORCE_SSL_ADMIN true --raw --allow-root 2>/dev/null || true
-@if(isset($redisIndex) && $redisIndex !== null)
-                wp config set --path=/var/www/html WP_REDIS_HOST "redis.{{ $plexNamespace }}.svc.cluster.local" --allow-root 2>/dev/null || true
-                wp config set --path=/var/www/html WP_REDIS_PORT 6379 --raw --allow-root 2>/dev/null || true
-                wp config set --path=/var/www/html WP_REDIS_DATABASE {{ $redisIndex }} --raw --allow-root 2>/dev/null || true
-@endif
-                wp core install \
-                  --path=/var/www/html \
-                  --url="https://{{ $host }}" \
-                  --title="{{ $siteTitle ?? 'WordPress' }}" \
-                  --admin_user="admin" \
-                  --admin_password="$WP_ADMIN_PASSWORD" \
-                  --admin_email="$WP_ADMIN_EMAIL" \
-                  --skip-email \
-                  --allow-root || true
-                chown -R 33:33 /var/www/html 2>/dev/null || true
-              fi
+              php -r '
+              define("WP_INSTALLING", true);
+              if (!file_exists("/var/www/html/wp-load.php")) {
+                  exit(0);
+              }
+              require_once "/var/www/html/wp-load.php";
+              require_once "/var/www/html/wp-admin/includes/upgrade.php";
+              if (!is_blog_installed()) {
+                  echo "Installing WordPress into database...\n";
+                  wp_install("{{ $siteTitle ?? 'WordPress' }}", "admin", getenv("WP_ADMIN_EMAIL"), true, "", getenv("WP_ADMIN_PASSWORD"));
+                  echo "WordPress installation complete.\n";
+              }
+              ' || true
+              chown -R 33:33 /var/www/html 2>/dev/null || true
           volumeMounts:
             - name: wp-data
               mountPath: /var/www/html

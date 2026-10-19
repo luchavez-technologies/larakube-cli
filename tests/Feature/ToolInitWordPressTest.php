@@ -74,7 +74,7 @@ test('wordpress manifest view renders valid resources for sqlite and mysql', fun
         ->and($sqliteManifest)->toContain('name: init-sqlite')
         ->and($sqliteManifest)->toContain('name: seed-platform')
         ->and($sqliteManifest)->toContain('name: auto-install')
-        ->and($sqliteManifest)->toContain('wp core install')
+        ->and($sqliteManifest)->toContain('wp_install')
         ->and($sqliteManifest)->toContain('fsGroup: 33')
         ->and($sqliteManifest)->toContain('sqlite-database-integration')
         ->and($sqliteManifest)->toContain('image: wordpress:6.7-php8.3-apache')
@@ -106,7 +106,7 @@ test('wordpress manifest view renders valid resources for sqlite and mysql', fun
         ->and($mysqlManifest)->toContain('mountPath: /var/www/html')
         ->and($mysqlManifest)->toContain('name: seed-core')
         ->and($mysqlManifest)->toContain('name: auto-install')
-        ->and($mysqlManifest)->toContain('wp core install')
+        ->and($mysqlManifest)->toContain('wp_install')
         ->and($mysqlManifest)->toContain('mysql.larakube-plex.svc.cluster.local:3306')
         ->and($mysqlManifest)->toContain('WP_REDIS_DATABASE');
 });
