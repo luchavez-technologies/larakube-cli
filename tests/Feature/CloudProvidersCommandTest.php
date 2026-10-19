@@ -201,8 +201,8 @@ test('--status-only --json returns only provider metadata and credentials withou
     expect(array_keys($providers))->toBe(array_keys(CloudProvider::activeProviders()));
 
     $do = $providers['do'];
-    expect($do)->toHaveKeys(['slug', 'label', 'regions', 'defaultRegion', 'pricing', 'credentials', 'accounts', 'activeAccount'])
-        ->and($do)->not->toHaveKeys(['vpsSizes', 'managedSizes', 'defaultDevBoxSize']);
+    expect($do)->toHaveKeys(['slug', 'label', 'regions', 'defaultRegion', 'vpsSizes', 'managedSizes', 'pricing', 'credentials', 'accounts', 'activeAccount'])
+        ->and($do['pricing']['source'])->toBe('builtin');
 });
 
 test('--provider option filters to a single provider', function (): void {

@@ -102,16 +102,28 @@ class CloudProvidersCommand extends Command
         $regions = $this->pickerOptions($provider->regions());
         $defaultRegion = $provider->defaultRegion();
 
+        $sizes = $this->pickerOptions($provider->vpsSizes());
+        $managedSizes = $this->pickerOptions($provider->managedSizes());
+        $defaultSize = $provider->defaultVpsSize();
+        $defaultManagedSize = $provider->defaultManagedSize();
+        $pricing = ['source' => 'builtin', 'asOf' => null, 'currency' => null];
+
         if ($statusOnly) {
             return [
                 'slug' => $provider->value,
                 'label' => $provider->label(),
                 'regions' => $regions,
                 'defaultRegion' => $defaultRegion,
+                'vpsSizes' => $sizes,
+                'defaultVpsSize' => $defaultSize,
+                'defaultDevBoxSize' => $this->devBoxSize($sizes, $defaultSize),
+                'managedSizes' => $managedSizes,
+                'defaultManagedSize' => $defaultManagedSize,
+                'managedProvider' => $provider->managedProvider()->value,
+                'haOption' => $provider->managedProvider()->haOption(),
+                'haCost' => $provider->managedProvider()->haCost(),
                 'pricing' => [
-                    'source' => 'builtin',
-                    'asOf' => null,
-                    'currency' => null,
+                    ...$pricing,
                     'priceIsEstimated' => $provider->pricingUrl() !== null,
                     'officialPricingUrl' => $provider->pricingUrl(),
                 ],
@@ -120,13 +132,6 @@ class CloudProvidersCommand extends Command
                 'activeAccount' => $accountData['activeAccount'],
             ];
         }
-
-        $sizes = $this->pickerOptions($provider->vpsSizes());
-        $managedSizes = $this->pickerOptions($provider->managedSizes());
-        $defaultSize = $provider->defaultVpsSize();
-        $defaultManagedSize = $provider->defaultManagedSize();
-        // Without a connected account, the prices are the ones written into the CLI.
-        $pricing = ['source' => 'builtin', 'asOf' => null, 'currency' => null];
 
         $live = $credentials['ready'] ? (new LiveProviderCatalog)->get($provider, $this->credentialFor($provider), $this->flag('refresh')) : null;
         $priced = null;
