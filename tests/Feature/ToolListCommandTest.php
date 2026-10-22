@@ -600,3 +600,17 @@ test('a --no-plex instance never reports a Commons tenant, even though the tool 
 
     expect($row['commons'])->toBe(['databases' => [], 'redis' => [], 'buckets' => []]);
 });
+
+test('app:list command alias executes identically to tool:list', function (): void {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([]))),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $exit = Artisan::call('app:list local --registry-only --json');
+    $output = json_decode(Artisan::output(), true);
+
+    expect($exit)->toBe(0)
+        ->and($output)->toBeArray()
+        ->and(collect($output)->pluck('tool'))->toContain('outline', 'pocketbase');
+});

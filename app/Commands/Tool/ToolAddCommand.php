@@ -38,6 +38,8 @@ class ToolAddCommand extends Command
 
     protected $description = 'Interactively discover and install LaraKube shared cluster tools';
 
+    protected $aliases = ['app:add'];
+
     public function __construct()
     {
         parent::__construct();

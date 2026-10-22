@@ -20,6 +20,8 @@ class ToolRemoveCommand extends Command
 
     protected $description = 'Interactively remove LaraKube shared cluster tools';
 
+    protected $aliases = ['app:remove'];
+
     public function handle(): int
     {
         $this->renderHeader();

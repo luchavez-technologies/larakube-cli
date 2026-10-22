@@ -33,6 +33,8 @@ class ToolShowCommand extends Command
 
     protected $description = 'Show how to reach one shared cluster tool (proxies {tool}:show)';
 
+    protected $aliases = ['app:show'];
+
     public function handle(): int
     {
         [$env, $kubectl] = $this->resolveStandaloneEnvironmentAndKubectl();

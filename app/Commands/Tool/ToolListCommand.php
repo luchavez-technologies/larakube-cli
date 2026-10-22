@@ -47,6 +47,8 @@ class ToolListCommand extends Command
 
     protected $description = 'List LaraKube shared cluster tools and which are installed';
 
+    protected $aliases = ['app:list'];
+
     public function handle(): int
     {
         if (! $this->option('json')) {

@@ -28,6 +28,8 @@ class ToolInitCommand extends Command
 
     protected $description = 'Deploy a LaraKube cluster tool into the shared cluster';
 
+    protected $aliases = ['app:init'];
+
     public function __construct()
     {
         parent::__construct();
