@@ -97,6 +97,8 @@ test('setup --tools without --update leaves an already-installed tool alone', fu
 test('setup --tools --update brings an installed tool up to date instead of leaving it alone', function (): void {
     Process::fake([
         'command -v gcloud' => Process::result('/usr/bin/gcloud'),
+        'command -v python3.12' => Process::result('/usr/local/bin/python3.12'),
+        '*python3.12* -c *' => Process::result('3.12'),
         '*components update --quiet*' => Process::result('Updated.'),
         '*gcloud auth print-access-token*' => Process::result('ya29.fake-token'),
         '*' => Process::result(''),
@@ -111,6 +113,8 @@ test('setup --tools --update brings an installed tool up to date instead of leav
 test('setup --tools --update reports a failure instead of silently leaving the tool as-is', function (): void {
     Process::fake([
         'command -v gcloud' => Process::result('/usr/bin/gcloud'),
+        'command -v python3.12' => Process::result('/usr/local/bin/python3.12'),
+        '*python3.12* -c *' => Process::result('3.12'),
         '*components update --quiet*' => Process::result('', exitCode: 1),
         '*' => Process::result(''),
     ]);

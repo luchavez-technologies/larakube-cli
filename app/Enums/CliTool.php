@@ -418,12 +418,29 @@ enum CliTool: string
     /**
      * The Google Cloud SDK ships its own updater — far better than re-running
      * the bundled install.sh against a directory that already exists.
+     *
+     * `update()` already routes a Homebrew-managed gcloud to brewUpgrade()
+     * before this is ever reached, so this only runs for a direct-download
+     * install. `components update` re-runs the same launcher as every other
+     * gcloud invocation, so it's exposed to the same broken-system-Python
+     * discovery installGcloud() exists to route around (see that method's
+     * docblock) — that install has no cask-managed Python pinned for it, so
+     * CLOUDSDK_PYTHON must be resolved and injected here too.
      */
     protected function updateGcloud(): bool
     {
         $bin = $this->resolveBinary() ?? 'gcloud';
 
-        return $this->runStreaming(escapeshellarg($bin).' components update --quiet') === 0;
+        $python = $this->resolvePython() ?? $this->installPython();
+
+        if ($python === null) {
+            warning('Google Cloud SDK needs Python '.self::GCLOUD_MIN_PYTHON.' or newer, and no usable interpreter could be installed.');
+            warning('Install Python from https://www.python.org/downloads/macos/ (or Homebrew: brew install python), then retry.');
+
+            return false;
+        }
+
+        return $this->runStreaming(escapeshellarg($bin).' components update --quiet', env: ['CLOUDSDK_PYTHON' => $python]) === 0;
     }
 
     /**

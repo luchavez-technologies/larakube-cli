@@ -162,6 +162,8 @@ test('update() appends --update to the AWS CLI\'s own installer instead of reins
 test('update() asks the Google Cloud SDK to update itself rather than re-running its installer', function (): void {
     Process::fake([
         'command -v gcloud' => Process::result('/Users/dev/.larakube/google-cloud-sdk/bin/gcloud'),
+        'command -v python3.12' => Process::result('/usr/local/bin/python3.12'),
+        '*python3.12* -c *' => Process::result('3.12'),
         '*' => Process::result(''),
     ]);
 
@@ -169,6 +171,37 @@ test('update() asks the Google Cloud SDK to update itself rather than re-running
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'components update --quiet')
         && ! str_contains($process->command, 'sdk.cloud.google.com'));
+});
+
+test('update() hands the Google Cloud SDK updater its own CLOUDSDK_PYTHON, same as install', function (): void {
+    // `components update` re-runs the same launcher install does, so a
+    // non-Homebrew install (no cask-managed Python pinned for it) hits the
+    // same broken-system-Python discovery otherwise — reported live on a
+    // Mac without Homebrew ("you are running gcloud with Python 3.9").
+    Process::fake([
+        'command -v gcloud' => Process::result('/Users/dev/.larakube/google-cloud-sdk/bin/gcloud'),
+        'command -v python3.12' => Process::result('/usr/local/bin/python3.12'),
+        '*python3.12* -c *' => Process::result('3.12'),
+        '*' => Process::result(''),
+    ]);
+
+    CliTool::GCLOUD->update();
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'components update --quiet')
+        && ($process->environment['CLOUDSDK_PYTHON'] ?? null) === '/usr/local/bin/python3.12');
+});
+
+test('update() refuses to run the Google Cloud SDK updater against an unsupported Python', function (): void {
+    Process::fake([
+        'command -v gcloud' => Process::result('/Users/dev/.larakube/google-cloud-sdk/bin/gcloud'),
+        'command -v python3' => Process::result('/usr/bin/python3'),
+        '*python3* -c *' => Process::result('3.9'),
+        '*' => Process::result('', exitCode: 1),
+    ]);
+
+    expect(CliTool::GCLOUD->update())->toBeFalse();
+
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'components update --quiet'));
 });
 
 test('update() installs a missing tool instead of trying to upgrade nothing', function (): void {
