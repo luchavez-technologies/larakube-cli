@@ -27,6 +27,12 @@ function companionAccessHarness(array $configmap = [], array $secret = []): obje
             return $this->companionAccessRows($config, $appName, $environment);
         }
 
+        /** @return array<int, array<string, mixed>> */
+        public function json(ConfigData $config, string $appName, string $environment): array
+        {
+            return $this->companionAccessJson($config, $appName, $environment);
+        }
+
         public function render(ConfigData $config, string $appName, string $environment): void
         {
             $this->showCompanionAccess($config, $appName, $environment);
@@ -80,6 +86,25 @@ test('companionAccessRows includes a phpMyAdmin row when withCompanions is true'
     $names = array_column($rows, 0);
 
     expect($names)->toContain('Mailpit')->toContain('phpMyAdmin');
+});
+
+test('companionAccessJson strips ANSI tags from the URL and turns the em-dash placeholder into null', function (): void {
+    $config = ConfigData::from(['name' => 'demo', 'database' => 'mariadb']);
+
+    $json = companionAccessHarness()->json($config, 'demo', 'local');
+    $mailpit = collect($json)->firstWhere('companion', 'Mailpit');
+
+    expect($mailpit)->not->toBeNull()
+        ->and($mailpit['url'])->toBe('https://mailpit.test')
+        ->and($mailpit['host'])->toBeNull()
+        ->and($mailpit['user'])->toBeNull()
+        ->and($mailpit['password'])->toBeNull()
+        ->and($mailpit['database'])->toBeNull();
+
+    $phpMyAdmin = collect($json)->firstWhere('companion', 'phpMyAdmin');
+    expect($phpMyAdmin)->not->toBeNull()
+        ->and($phpMyAdmin['url'])->toBe('https://phpmyadmin.test')
+        ->and($phpMyAdmin['host'])->not->toBeNull();
 });
 
 test('showCompanionAccess does nothing for non-local environments', function (): void {

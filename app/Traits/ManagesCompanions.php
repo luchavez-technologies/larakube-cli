@@ -209,6 +209,28 @@ trait ManagesCompanions
     }
 
     /**
+     * companionAccessRows(), shaped for JSON instead of a Prompts table: ANSI
+     * tags stripped from the URL and the em-dash placeholder back to null, so
+     * a consumer (Desktop's companion credentials panel) gets plain data.
+     *
+     * @return list<array{companion: string, url: string, host: ?string, user: ?string, password: ?string, database: ?string}>
+     */
+    protected function companionAccessJson(ConfigData $config, string $appName, string $environment): array
+    {
+        return array_map(
+            fn (array $row): array => [
+                'companion' => $row[0],
+                'url' => (string) preg_replace('/<[^>]+>/', '', $row[1]),
+                'host' => $row[2] === '—' ? null : $row[2],
+                'user' => $row[3] === '—' ? null : $row[3],
+                'password' => $row[4] === '—' ? null : $row[4],
+                'database' => $row[5] === '—' ? null : $row[5],
+            ],
+            $this->companionAccessRows($config, $appName, $environment),
+        );
+    }
+
+    /**
      * Resolve the service-connection env the local app pod actually consumes:
      * the live `laravel-config` ConfigMap + `laravel-secrets` Secret (which carry
      * self-hosted DB_ and REDIS_ vars via envFrom) overlaid on the project's
