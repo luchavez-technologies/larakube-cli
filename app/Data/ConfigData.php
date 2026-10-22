@@ -1588,6 +1588,30 @@ class ConfigData extends Data
 
     // --- 🔐 ENVIRONMENT AGGREGATION ---
 
+    public function getSecretName(): string
+    {
+        return $this->framework === null || $this->framework === AppFramework::LARAVEL
+            ? 'laravel-secrets'
+            : 'app-secrets';
+    }
+
+    public function getConfigMapName(): string
+    {
+        return $this->framework === null || $this->framework === AppFramework::LARAVEL
+            ? 'laravel-config'
+            : 'app-config';
+    }
+
+    public function getLegacySecretName(): string
+    {
+        return 'laravel-secrets';
+    }
+
+    public function getLegacyConfigMapName(): string
+    {
+        return 'laravel-config';
+    }
+
     public function getAllEnvironmentVariables(string $environment = 'local'): array
     {
         return array_merge(

@@ -80,6 +80,90 @@ trait ReadsEnvSources
     }
 
     /**
+     * Read cluster secret vars, checking canonical 'app-secrets' first,
+     * then falling back to legacy 'laravel-secrets' for backward compatibility.
+     *
+     * @return array<string, string>
+     */
+    protected function readCanonicalSecret(string $namespace, ?string $kubectl = null): array
+    {
+        $vars = $this->readClusterEnvVars('secret', 'app-secrets', $namespace, true, $kubectl);
+        if ($vars !== []) {
+            return $vars;
+        }
+
+        return $this->readClusterEnvVars('secret', 'laravel-secrets', $namespace, true, $kubectl);
+    }
+
+    /**
+     * Read cluster config vars, checking canonical 'app-config' first,
+     * then falling back to legacy 'laravel-config' for backward compatibility.
+     *
+     * @return array<string, string>
+     */
+    protected function readCanonicalConfig(string $namespace, ?string $kubectl = null): array
+    {
+        $vars = $this->readClusterEnvVars('configmap', 'app-config', $namespace, false, $kubectl);
+        if ($vars !== []) {
+            return $vars;
+        }
+
+        return $this->readClusterEnvVars('configmap', 'laravel-config', $namespace, false, $kubectl);
+    }
+
+    /**
+     * Resolve the active secret name in the namespace: 'app-secrets' if present, else 'laravel-secrets'.
+     */
+    protected function resolveSecretName(string $namespace, ?string $kubectl = null, ?\App\Data\ConfigData $config = null): string
+    {
+        $checkApp = Process::run(
+            ($kubectl ?? 'kubectl').' get secret app-secrets -n '.escapeshellarg($namespace).' --ignore-not-found -o name',
+        )->output();
+        if (trim($checkApp) !== '') {
+            return 'app-secrets';
+        }
+
+        $checkLaravel = Process::run(
+            ($kubectl ?? 'kubectl').' get secret laravel-secrets -n '.escapeshellarg($namespace).' --ignore-not-found -o name',
+        )->output();
+        if (trim($checkLaravel) !== '') {
+            return 'laravel-secrets';
+        }
+
+        if ($config !== null && $config->framework !== null && $config->framework !== \App\Enums\AppFramework::LARAVEL) {
+            return 'app-secrets';
+        }
+
+        return 'laravel-secrets';
+    }
+
+    /**
+     * Resolve the active configmap name in the namespace: 'app-config' if present, else 'laravel-config'.
+     */
+    protected function resolveConfigMapName(string $namespace, ?string $kubectl = null, ?\App\Data\ConfigData $config = null): string
+    {
+        $checkApp = Process::run(
+            ($kubectl ?? 'kubectl').' get configmap app-config -n '.escapeshellarg($namespace).' --ignore-not-found -o name',
+        )->output();
+        if (trim($checkApp) !== '') {
+            return 'app-config';
+        }
+
+        $checkLaravel = Process::run(
+            ($kubectl ?? 'kubectl').' get configmap laravel-config -n '.escapeshellarg($namespace).' --ignore-not-found -o name',
+        )->output();
+        if (trim($checkLaravel) !== '') {
+            return 'laravel-config';
+        }
+
+        if ($config !== null && $config->framework !== null && $config->framework !== \App\Enums\AppFramework::LARAVEL) {
+            return 'app-config';
+        }
+
+        return 'laravel-config';
+    }
+
+    /**
      * Would this key be stored in the Secret rather than the ConfigMap? Two
      * signals, ORed: it's in $knownSecrets (a driver/feature enum's
      * getSecretEnvironmentVariables(), aggregated by

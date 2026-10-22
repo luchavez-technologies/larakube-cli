@@ -103,18 +103,22 @@ deploy:{{ $envName }}:
       # Public/build vars only — computed from your blueprint, never a secret.
       {!! $envMeta['publicEnvScript'] !!}
 
-      # laravel-secrets now only ever comes from `larakube dotenv:push`, run
+      # app-secrets (or legacy laravel-secrets) now only ever comes from `larakube dotenv:push`, run
       # from a developer's own machine — this pipeline never holds runtime
       # credentials, only the public/build vars above. Fail fast with a clear
       # fix instead of letting every pod CrashLoop on a missing envFrom source.
-      if ! kubectl get secret laravel-secrets -n {{ $envMeta['namespace'] }} >/dev/null 2>&1; then
-        echo "'laravel-secrets' is missing in '{{ $envMeta['namespace'] }}'. Run 'larakube dotenv:push {{ $envName }}' from your machine before deploying."
+      if ! kubectl get secret {{ $config->getSecretName() }} -n {{ $envMeta['namespace'] }} >/dev/null 2>&1 && ! kubectl get secret {{ $config->getLegacySecretName() }} -n {{ $envMeta['namespace'] }} >/dev/null 2>&1; then
+        echo "Runtime secrets missing in '{{ $envMeta['namespace'] }}'. Run 'larakube dotenv:push {{ $envName }}' from your machine before deploying."
         exit 1
       fi
 
       # Sync public config into the ConfigMap (runtime secrets are
       # dotenv:push's job, verified above, never this pipeline's).
-      kubectl create configmap laravel-config \
+      CONFIG_NAME="{{ $config->getConfigMapName() }}"
+      if kubectl get configmap {{ $config->getLegacyConfigMapName() }} -n {{ $envMeta['namespace'] }} >/dev/null 2>&1; then
+        CONFIG_NAME="{{ $config->getLegacyConfigMapName() }}"
+      fi
+      kubectl create configmap $CONFIG_NAME \
         -n {{ $envMeta['namespace'] }} --from-env-file=.env --dry-run=client -o yaml | kubectl apply -f -
 
 @endif

@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use App\Data\ConfigData;
+use App\Enums\AppFramework;
 use App\Enums\LaravelFeature;
 
 trait EnsuresHostDependencies
@@ -25,8 +26,9 @@ trait EnsuresHostDependencies
         }
 
         $projectPath = $config->getPath();
+        $framework = $config->framework ?? AppFramework::LARAVEL;
 
-        if (! is_dir("$projectPath/vendor")) {
+        if ($framework->isPhp() && ! is_dir("$projectPath/vendor")) {
             $this->laraKubeInfo('vendor/ not found — running composer install (first-time setup)...');
             $this->runInContainer('composer install --no-interaction --prefer-dist', $projectPath);
         }

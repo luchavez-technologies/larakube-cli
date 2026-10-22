@@ -164,13 +164,13 @@ jobs:
 
       - name: 🔒 Verify runtime secrets were pushed
         run: |
-          # laravel-secrets now only ever comes from `larakube dotenv:push`, run
+          # app-secrets (or legacy laravel-secrets) now only ever comes from `larakube dotenv:push`, run
           # from a developer's own machine — this workflow never holds runtime
           # credentials, only the public/build subset above. Fail fast with a
           # clear fix instead of letting every pod CrashLoop on a missing
           # envFrom source a few minutes from now.
-          if ! kubectl get secret laravel-secrets -n {{ $namespace }} >/dev/null 2>&1; then
-            echo "::error::'laravel-secrets' is missing in '{{ $namespace }}'. Run 'larakube dotenv:push {{ $environment }}' from your machine before deploying."
+          if ! kubectl get secret {{ $config->getSecretName() }} -n {{ $namespace }} >/dev/null 2>&1 && ! kubectl get secret {{ $config->getLegacySecretName() }} -n {{ $namespace }} >/dev/null 2>&1; then
+            echo "::error::Runtime secrets missing in '{{ $namespace }}'. Run 'larakube dotenv:push {{ $environment }}' from your machine before deploying."
             exit 1
           fi
 
@@ -178,7 +178,7 @@ jobs:
         run: |
           # 1. Update ConfigMap (public/build config only — runtime secrets are
           #    dotenv:push's job, verified above, never this workflow's).
-          kubectl create configmap laravel-config -n {{ $namespace }} --from-env-file=.env --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create configmap {{ $config->getConfigMapName() }} -n {{ $namespace }} --from-env-file=.env --dry-run=client -o yaml | kubectl apply -f -
 
           # 2. Deploy via Kustomize at the pushed digest. The namespace already
           #    exists (created at `cloud:configure` time), and this runner uses a

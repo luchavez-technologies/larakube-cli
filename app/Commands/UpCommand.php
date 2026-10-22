@@ -4,6 +4,7 @@ namespace App\Commands;
 
 use App\Contracts\HasReloadCommand;
 use App\Data\ConfigData;
+use App\Enums\AppFramework;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
 use App\Enums\SearchDriver;
@@ -310,30 +311,24 @@ class UpCommand extends Command
             }
         }
 
-        // A static site has neither: create-vite emits no .env (and a landing
-        // page needs none), and its node_modules is installed by the dev pod's
-        // init container into a PVC, because Vite 8's Rolldown binary is
-        // platform-specific and a host install cannot run in the container.
-        // Without this guard `larakube up` printed a false "no .env" error and
-        // then tried to run composer against a project with no vendor/ at all.
-        $isStaticSite = $config->framework?->isStaticSpa() ?? false;
+        $framework = $config->framework ?? AppFramework::LARAVEL;
 
-        if ($environment === 'local' && ! $isStaticSite) {
+        if ($environment === 'local') {
             // 🔒 1. Handle missing .env
             if (! file_exists($projectPath.'/.env')) {
                 if (file_exists($projectPath.'/.env.example')) {
                     $this->laraKubeInfo('No .env file found. Creating from .env.example...');
                     @copy($projectPath.'/.env.example', $projectPath.'/.env');
-                    if (file_exists($projectPath.'/artisan')) {
-                        $this->runStreaming('php artisan key:generate --no-interaction');
+                    if ($postEnvCmd = $framework->postEnvSetupCommand()) {
+                        $this->runStreaming($postEnvCmd);
                     }
-                } else {
+                } elseif ($framework->requiresEnvFile()) {
                     $this->laraKubeError('No .env or .env.example found! Deployment may fail.');
                 }
             }
 
             // 📦 2. Handle missing dependencies (Surgical)
-            if (! is_dir($projectPath.'/vendor') || ! is_dir($projectPath.'/node_modules')) {
+            if ($framework->hasMissingDependencies($projectPath, $config)) {
                 $this->laraKubeInfo('Missing local dependencies. Orchestrating installation...');
                 $this->installComponents($config);
             }
@@ -346,23 +341,23 @@ class UpCommand extends Command
 
         if (! is_dir(getcwd().'/'.$path)) {
             $this->laraKubeError("Environment '{$environment}' configuration not found!");
-            info('Make sure you are in the root of your Laravel project and the environment exists.');
+            info("Make sure you are in the root of your {$framework->getLabel()} project and the environment exists.");
 
             return 1;
         }
 
         $this->laraKubeInfo("Targeting environment: {$environment}");
 
-        // Static sites have no database — seeding one would leave a stray,
-        // never-read database.sqlite inside a Vite project.
-        if ($environment === 'local' && ! $isStaticSite) {
-            $this->withSpin('Ensuring local infrastructure directories exist...', function () use ($projectPath): void {
+        if ($environment === 'local') {
+            $this->withSpin('Ensuring local infrastructure directories exist...', function () use ($projectPath, $framework, $config): void {
                 @mkdir($projectPath.'/.infrastructure/volume_data', 0777, true);
-                $dbFile = $projectPath.'/.infrastructure/volume_data/database.sqlite';
-                if (! file_exists($dbFile)) {
-                    touch($dbFile);
+                if ($framework->usesLocalSqlite($config)) {
+                    $dbFile = $projectPath.'/.infrastructure/volume_data/database.sqlite';
+                    if (! file_exists($dbFile)) {
+                        touch($dbFile);
+                    }
+                    chmod($dbFile, 0666); // User/Group/Others can read/write
                 }
-                chmod($dbFile, 0666); // User/Group/Others can read/write
             });
         }
 
@@ -417,7 +412,7 @@ class UpCommand extends Command
 
         // 1b. Ensure host has vendor/, node_modules/, and SSR bundle before pods start.
         // Pod start commands assume these are present (via hostPath mount in local).
-        if (! $isStaticSite) {
+        if (! $framework->isStaticSpa()) {
             $this->ensureHostDependencies($config, $environment);
         }
 
@@ -485,17 +480,25 @@ class UpCommand extends Command
                 }
 
                 // Values go on stdin, never in argv.
+                $configName = $config->getConfigMapName();
+                $secretName = $config->getSecretName();
                 if ($public !== []) {
-                    Kubectl::current()->putConfigMap($namespace, 'laravel-config', $public);
+                    Kubectl::current()->putConfigMap($namespace, $configName, $public);
+                    if ($configName !== $config->getLegacyConfigMapName()) {
+                        Kubectl::current()->putConfigMap($namespace, $config->getLegacyConfigMapName(), $public);
+                    }
                 }
                 if ($secret !== []) {
-                    Kubectl::current()->putSecret($namespace, 'laravel-secrets', $secret);
+                    Kubectl::current()->putSecret($namespace, $secretName, $secret);
+                    if ($secretName !== $config->getLegacySecretName()) {
+                        Kubectl::current()->putSecret($namespace, $config->getLegacySecretName(), $secret);
+                    }
                 }
 
                 // Persist locally and sync blueprint to cluster for resilience
                 $this->saveProjectConfig($projectPath, $config, $environment);
             });
-        } elseif (! $isStaticSite) {
+        } elseif ($framework->requiresEnvFile()) {
             // A static site legitimately has no .env — create-vite emits none and
             // a landing page has nothing to configure. Only a server-rendered app
             // is actually broken by a missing one.
@@ -508,13 +511,10 @@ class UpCommand extends Command
         // --- 🛡 SAFETY: Handle Immutable PersistentVolumes ---
         // If a PersistentVolume's path has changed (e.g. cloned to a new location),
         // we must delete the old one because K8s spec.hostPath is immutable.
-        if ($environment === 'local' && ! $isStaticSite) {
-            $this->withSpin('Optimizing local storage bindings...', function () use ($config) {
+        if ($environment === 'local') {
+            $this->withSpin('Optimizing local storage bindings...', function () use ($config, $framework) {
                 $appName = $config->getName();
-                $pvNames = [
-                    "{$appName}-laravel-storage-pv",
-                    "{$appName}-laravel-data-pv",
-                ];
+                $pvNames = $framework->localPersistentVolumeNames($appName, $config);
 
                 foreach ($pvNames as $pvName) {
                     $currentPath = Process::run(Kubectl::current()->prefix()." get pv {$pvName} -o jsonpath='{.spec.hostPath.path}'")->output();
@@ -665,7 +665,7 @@ class UpCommand extends Command
         }
 
         $this->newLine();
-        $this->line('  <fg=cyan>💡 Hot-reload tip:</> run <fg=yellow;options=bold>larakube watch</> in another terminal to auto-reload '.implode(' + ', $services).' on PHP code changes.');
+        $this->line('  <fg=cyan>💡 Hot-reload tip:</> run <fg=yellow;options=bold>larakube watch</> in another terminal to auto-reload '.implode(' + ', $services).' on code changes.');
     }
 
     /**

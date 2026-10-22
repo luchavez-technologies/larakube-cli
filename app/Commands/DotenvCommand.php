@@ -90,9 +90,9 @@ class DotenvCommand extends Command
         // whether this context may read secrets and only then fetch them.
         $canReadSecrets = $this->authorizedToReadSecrets($kubectl, $namespace);
 
-        $clusterConfig = $this->readClusterEnvVars('configmap', 'laravel-config', $namespace, false, $kubectl);
+        $clusterConfig = $this->readCanonicalConfig($namespace, $kubectl);
         $clusterSecret = $canReadSecrets
-            ? $this->readClusterEnvVars('secret', 'laravel-secrets', $namespace, true, $kubectl)
+            ? $this->readCanonicalSecret($namespace, $kubectl)
             : [];
         $cluster = array_merge($clusterConfig, $clusterSecret);
 

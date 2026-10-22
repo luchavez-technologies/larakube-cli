@@ -113,11 +113,9 @@ trait InteractsWithDocker
         $appName = $config->getName();
         $path = $config->getPath();
 
-        // Build Primary Project Image. Next.js is a Node server with its own
-        // standalone Dockerfile; everything else here builds the PHP image.
-        $dockerfile = $config->framework === AppFramework::NEXTJS
-            ? "$path/Dockerfile.nextjs"
-            : "$path/Dockerfile.php";
+        // Build Primary Project Image using framework-designated Dockerfile.
+        $framework = $config->framework ?? AppFramework::LARAVEL;
+        $dockerfile = "{$path}/{$framework->dockerfile()}";
 
         return $this->buildTargetedImage("$appName:local", $dockerfile, $path, $uid, $gid);
     }
@@ -145,8 +143,8 @@ trait InteractsWithDocker
         // the static frameworks preview the single-stage Caddy image. Same
         // {name}:preview tag and dotenv secret either way; only the Dockerfile,
         // the build target, and the static-only STRICT_HOSTS guard differ.
-        $isNext = $config->framework === AppFramework::NEXTJS;
-        $dockerfile = $isNext ? "$path/Dockerfile.nextjs" : "$path/Dockerfile.static";
+        $framework = $config->framework ?? AppFramework::LARAVEL;
+        $dockerfile = "{$path}/{$framework->dockerfile()}";
         $dockerfileLabel = basename($dockerfile);
 
         if (! file_exists($dockerfile)) {
@@ -160,14 +158,17 @@ trait InteractsWithDocker
 
         $this->laraKubeInfo("Building preview image '$imageTag' from {$dockerfileLabel}...");
 
+        $targetArg = $framework->buildTarget() ? "--target {$framework->buildTarget()} " : '';
+        $buildArgs = $framework->isStaticSpa() ? '--build-arg STRICT_HOSTS=0' : '';
+
         $code = $this->runStreaming(
             $this->buildImageCommand(
                 image: $imageTag,
                 dockerfile: $dockerfile,
                 path: $path,
                 dotenvPath: file_exists($dotenv) ? $dotenv : '',
-                target: $isNext ? '--target deploy ' : '',
-                buildArgs: $isNext ? '' : '--build-arg STRICT_HOSTS=0',
+                target: $targetArg,
+                buildArgs: $buildArgs,
             ),
         );
 

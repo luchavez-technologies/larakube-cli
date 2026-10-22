@@ -25,7 +25,7 @@ use Throwable;
  */
 trait InteractsWithRemoteDeploy
 {
-    use DeploysMonitoringExporters, InteractsWithGitForge, InteractsWithKustomize, ResolvesContainerRuntime, StreamsProcessOutput;
+    use DeploysMonitoringExporters, InteractsWithGitForge, InteractsWithKustomize, ReadsEnvSources, ResolvesContainerRuntime, StreamsProcessOutput;
     use InteractsWithScopedRbac, ResolvesEnvironmentContext;
 
     /** The kube-context cloud:init creates for a host. Pure. */
@@ -899,23 +899,26 @@ trait InteractsWithRemoteDeploy
             ? Kubectl::forKubeconfig($kubeconfigPath)
             : Kubectl::forContext((string) $context);
 
-        $this->putLaravelEnv($kube, $namespace, $public, $secret);
+        $this->putLaravelEnv($kube, $namespace, $public, $secret, $config);
     }
 
     /**
-     * Write the app's laravel-config ConfigMap and laravel-secrets Secret. The
-     * values travel on stdin, never in argv.
+     * Write the app's ConfigMap and Secret (canonical app-config/app-secrets or legacy laravel-config/laravel-secrets).
+     * The values travel on stdin, never in argv.
      *
      * @param  array<string, string>  $public
      * @param  array<string, string>  $secret
      */
-    protected function putLaravelEnv(Kubectl $kubectl, string $namespace, array $public, array $secret): void
+    protected function putLaravelEnv(Kubectl $kubectl, string $namespace, array $public, array $secret, ?ConfigData $config = null): void
     {
+        $kPrefix = $kubectl->prefix();
         if ($public !== []) {
-            $kubectl->putConfigMap($namespace, 'laravel-config', $public);
+            $configName = $this->resolveConfigMapName($namespace, $kPrefix, $config);
+            $kubectl->putConfigMap($namespace, $configName, $public);
         }
         if ($secret !== []) {
-            $kubectl->putSecret($namespace, 'laravel-secrets', $secret);
+            $secretName = $this->resolveSecretName($namespace, $kPrefix, $config);
+            $kubectl->putSecret($namespace, $secretName, $secret);
         }
     }
 

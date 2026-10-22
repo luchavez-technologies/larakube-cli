@@ -4,6 +4,7 @@ namespace App\Enums;
 
 use App\Contracts\HasLabel;
 use App\Contracts\RequiresPhpExtensions;
+use App\Data\ConfigData;
 
 enum AppFramework: string implements HasLabel, RequiresPhpExtensions
 {
@@ -141,6 +142,7 @@ enum AppFramework: string implements HasLabel, RequiresPhpExtensions
                 DatabaseDriver::MYSQL,
                 DatabaseDriver::MARIADB,
             ],
+            self::ASTRO, self::VITE, self::DOCUSAURUS => [],
             default => [
                 DatabaseDriver::POSTGRESQL,
                 DatabaseDriver::MYSQL,
@@ -531,6 +533,86 @@ enum AppFramework: string implements HasLabel, RequiresPhpExtensions
             self::AXUM => 'cargo run',
             self::ASTRO, self::VITE, self::DOCUSAURUS => 'npm run dev',
         };
+    }
+
+    /**
+     * Whether this framework requires a runtime .env file.
+     * Static SPAs (Vite, Astro, Docusaurus) don't require .env for serving,
+     * whereas all server/backend frameworks depend on environment configuration.
+     */
+    public function requiresEnvFile(): bool
+    {
+        return ! $this->isStaticSpa();
+    }
+
+    /**
+     * Optional CLI command to run immediately after .env is created from .env.example
+     * (e.g. generating an application encryption key for Laravel/Statamic).
+     */
+    public function postEnvSetupCommand(): ?string
+    {
+        return match ($this) {
+            self::LARAVEL, self::STATAMIC => 'php artisan key:generate --no-interaction',
+            default => null,
+        };
+    }
+
+    /**
+     * Check if local dependencies for this framework are missing on the host.
+     */
+    public function hasMissingDependencies(string $projectPath, ConfigData $config): bool
+    {
+        if ($this->isPhp()) {
+            if (! is_dir("{$projectPath}/vendor")) {
+                return true;
+            }
+
+            $needsNode = $config->getFrontend()?->requiresNodePod()
+                || $config->hasFeature(LaravelFeature::SSR);
+
+            if ($needsNode && ! is_dir("{$projectPath}/node_modules")) {
+                return true;
+            }
+
+            return false;
+        }
+
+        if (in_array($this, [self::NEXTJS, self::NESTJS, self::ADONISJS], true)) {
+            return ! is_dir("{$projectPath}/node_modules");
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether this framework project uses a local SQLite database file in .infrastructure/volume_data/database.sqlite.
+     */
+    public function usesLocalSqlite(ConfigData $config): bool
+    {
+        return ! $this->isStaticSpa()
+            && $config->hasDatabase(DatabaseDriver::SQLITE)
+            && in_array(DatabaseDriver::SQLITE, $this->supportedDatabaseDrivers(), true);
+    }
+
+    /**
+     * Return names of local hostPath PersistentVolumes generated for this framework
+     * that should be validated for path consistency when orchestrating locally.
+     *
+     * @return list<string>
+     */
+    public function localPersistentVolumeNames(string $appName, ConfigData $config): array
+    {
+        if (! $this->isPhp()) {
+            return [];
+        }
+
+        $names = ["{$appName}-laravel-storage-pv"];
+
+        if ($config->hasDatabase(DatabaseDriver::SQLITE)) {
+            $names[] = "{$appName}-laravel-data-pv";
+        }
+
+        return $names;
     }
 
     /**

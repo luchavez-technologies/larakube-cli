@@ -117,7 +117,7 @@ class DotenvPushCommand extends Command
         }
 
         if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
-            return $this->pushToOpenBao($kubectl, $namespace, $env, $app, $toPush);
+            return $this->pushToOpenBao($kubectl, $namespace, $env, $app, $toPush, $config);
         }
 
         if (! $this->option('json')) {
@@ -135,7 +135,9 @@ class DotenvPushCommand extends Command
                 'keys' => array_keys($toPush),
             ]);
         } else {
-            $this->laraKubeInfo("Pushed .env.{$env} to 'laravel-secrets'/'laravel-config' in '{$namespace}'.");
+            $targetSecret = $this->resolveSecretName($namespace, $kubectl, $config);
+            $targetConfig = $this->resolveConfigMapName($namespace, $kubectl, $config);
+            $this->laraKubeInfo("Pushed .env.{$env} to '{$targetSecret}'/'{$targetConfig}' in '{$namespace}'.");
         }
 
         return 0;
@@ -144,8 +146,9 @@ class DotenvPushCommand extends Command
     /**
      * @param  array<string, string>  $toPush
      */
-    protected function pushToOpenBao(string $kubectl, string $namespace, string $env, string $app, array $toPush): int
+    protected function pushToOpenBao(string $kubectl, string $namespace, string $env, string $app, array $toPush, ?\App\Data\ConfigData $config = null): int
     {
+        $targetSecret = $this->resolveSecretName($namespace, $kubectl, $config);
         $ok = true;
         $pushAction = function () use (&$ok, $kubectl, $env, $app, $toPush): void {
             foreach ($toPush as $key => $value) {
@@ -171,21 +174,21 @@ class DotenvPushCommand extends Command
             return 1;
         }
 
-        $syncAction = function () use (&$ok, $kubectl, $namespace, $env, $app): void {
-            $ok = $this->syncClusterSecretToNamespace($kubectl, $namespace, 'laravel-secrets', $env, prefix: $app);
+        $syncAction = function () use (&$ok, $kubectl, $namespace, $env, $app, $targetSecret): void {
+            $ok = $this->syncClusterSecretToNamespace($kubectl, $namespace, $targetSecret, $env, prefix: $app);
         };
 
         if ($this->option('json')) {
             $syncAction();
         } else {
-            $this->withSpin("Syncing 'laravel-secrets' in '{$namespace}' from OpenBao...", $syncAction);
+            $this->withSpin("Syncing '{$targetSecret}' in '{$namespace}' from OpenBao...", $syncAction);
         }
 
         if (! $ok) {
             if ($this->option('json')) {
-                $this->jsonOutput(['success' => false, 'error' => "Could not sync 'laravel-secrets' into '{$namespace}' from OpenBao."]);
+                $this->jsonOutput(['success' => false, 'error' => "Could not sync '{$targetSecret}' into '{$namespace}' from OpenBao."]);
             } else {
-                $this->laraKubeError("Could not sync 'laravel-secrets' into '{$namespace}' from OpenBao.");
+                $this->laraKubeError("Could not sync '{$targetSecret}' into '{$namespace}' from OpenBao.");
             }
 
             return 1;
@@ -201,7 +204,7 @@ class DotenvPushCommand extends Command
                 'keys' => array_keys($toPush),
             ]);
         } else {
-            $this->laraKubeInfo('Pushed '.count($toPush)." key(s) to OpenBao and synced 'laravel-secrets' in '{$namespace}'.");
+            $this->laraKubeInfo('Pushed '.count($toPush)." key(s) to OpenBao and synced '{$targetSecret}' in '{$namespace}'.");
         }
 
         return 0;
