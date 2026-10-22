@@ -39,6 +39,7 @@ test('resolveCommonsResource names the tool and the instance an instanced tenant
         'yopass-storage-paste-example-com' => [ClusterTool::YOPASS, 'paste-example-com'],
         'forgejo-lfs-git-luchtech-dev' => [ClusterTool::FORGEJO, 'git-luchtech-dev'],
         'stalwart-storage-send-luchtech-dev' => [ClusterTool::STALWART, 'send-luchtech-dev'],
+        'notes-storage-notes-luchtech-dev' => [ClusterTool::OUTLINE, 'notes-luchtech-dev'],
     ];
 
     foreach ($cases as $name => [$tool, $instance]) {

@@ -923,7 +923,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             ],
             self::STALWART => [
                 'databases' => ['sqlite', 'postgresql', 'mysql', 'mariadb'],
-                'cache' => [],
+                'cache' => ['redis'],
                 'storage' => ['s3'],
                 'auth' => ['oidc'],
                 'mail' => [],
@@ -1932,17 +1932,28 @@ enum ClusterTool: string implements HasWorkloadComponents
         $best = null;
 
         foreach (self::cases() as $tool) {
-            if (in_array($name, $tool->commonsDatabases(), true) || in_array($name, $tool->commonsBuckets(), true)) {
+            $dbBases = $tool->commonsDatabases();
+            $bucketBases = $tool->commonsBuckets();
+
+            $vendor = $tool->vendor();
+            if ($vendor instanceof HasCommonsDatabases) {
+                $dbBases = array_values(array_unique([...$dbBases, ...$vendor->commonsDatabaseList(), ...$vendor->canonicalDatabaseList()]));
+            }
+            if ($vendor instanceof HasCommonsBuckets) {
+                $bucketBases = array_values(array_unique([...$bucketBases, ...$vendor->commonsBucketList(), ...$vendor->canonicalBucketList()]));
+            }
+
+            if (in_array($name, $dbBases, true) || in_array($name, $bucketBases, true)) {
                 return ['tool' => $tool, 'instance' => null];
             }
 
-            foreach ($tool->commonsDatabases() as $base) {
+            foreach ($dbBases as $base) {
                 if (str_starts_with($name, "{$base}_") && ($best === null || strlen($base) > $best['length'])) {
                     $best = ['tool' => $tool, 'instance' => str_replace('_', '-', substr($name, strlen($base) + 1)), 'length' => strlen($base)];
                 }
             }
 
-            foreach ($tool->commonsBuckets() as $base) {
+            foreach ($bucketBases as $base) {
                 if (str_starts_with($name, "{$base}-") && ($best === null || strlen($base) > $best['length'])) {
                     $best = ['tool' => $tool, 'instance' => substr($name, strlen($base) + 1), 'length' => strlen($base)];
                 }
