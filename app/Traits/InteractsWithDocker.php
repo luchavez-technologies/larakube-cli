@@ -203,7 +203,13 @@ trait InteractsWithDocker
         // Plain `build` (no BuildKit/cross-arch features here) aliases cleanly
         // between the runtimes, so a straight binary swap is enough.
         // Named the way the cluster will look it up (Podman would otherwise call it localhost/<name>).
-        $this->runStreaming($this->containerRuntime()." build $target $buildArgs -t ".escapeshellarg($this->localImageRef($imageTag))." -f $dockerfile $path");
+        $code = $this->runStreaming($this->containerRuntime()." build $target $buildArgs -t ".escapeshellarg($this->localImageRef($imageTag))." -f $dockerfile $path");
+
+        if ($code !== 0) {
+            $this->laraKubeError("Build failed for '$imageTag'.");
+
+            return false;
+        }
 
         // --- 🛡 LOCAL IMAGE BRIDGE ---
         // Images built on the host Docker engine are invisible to a local

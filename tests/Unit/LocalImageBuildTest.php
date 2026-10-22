@@ -149,6 +149,64 @@ test('an image that could not be loaded into k3s is reported as a failure', func
     expect($harness->sideloadImage())->toBeFalse();
 });
 
+test('a failed build is never sideloaded into the cluster', function (): void {
+    // Regression: buildTargetedImage() used to ignore the build's exit code
+    // and sideload unconditionally — so a failed `npm ci` inside the image
+    // build (reported live under Podman on WSL) still triggered "Importing
+    // 'app:local' into k3s", which then failed a second time with a
+    // confusing "image not known" / "unrecognized image format" error
+    // instead of surfacing the real build failure.
+    Process::fake(['*' => Process::result(output: '')]);
+    $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
+    file_put_contents($dir->path().'/Dockerfile.php', "FROM scratch\n");
+
+    $harness = new class
+    {
+        use InteractsWithDocker, StreamsProcessOutput;
+
+        public array $ran = [];
+
+        public function laraKubeInfo(string $message): void {}
+
+        public function laraKubeError(string $message): void {}
+
+        public function line(string $text): void {}
+
+        public function runtimeIsPodman(): bool
+        {
+            return true;
+        }
+
+        public function containerRuntime(): string
+        {
+            return 'podman';
+        }
+
+        public function build(string $dockerfile): bool
+        {
+            return $this->buildTargetedImage('shop:local', $dockerfile, dirname($dockerfile), 1000, 1000);
+        }
+
+        protected function runStreaming(string $command, ...$rest): int
+        {
+            $this->ran[] = $command;
+
+            // Only the build step fails, matching the reported sequence.
+            return str_contains($command, ' build ') ? 1 : 0;
+        }
+
+        protected function runInteractive(string $command): int
+        {
+            $this->ran[] = $command;
+
+            return 0;
+        }
+    };
+
+    expect($harness->build($dir->path().'/Dockerfile.php'))->toBeFalse()
+        ->and(collect($harness->ran)->contains(fn (string $command): bool => str_contains($command, 'k3s ctr images import')))->toBeFalse();
+});
+
 test('the app image runs as the user who owns the project files, not a guessed 1000', function (): void {
     Process::fake([
         'id -u' => Process::result(output: "1001\n"),
