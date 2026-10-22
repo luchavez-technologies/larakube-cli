@@ -51,11 +51,22 @@ class CompanionAddCommand extends Command
         $tld = GlobalConfigData::load()->getLocalTld();
         $host = "{$companion->value}.{$tld}";
 
-        $this->withSpin("Installing {$companion->getLabel()}...", function () use ($companion) {
-            $this->deployCompanion($companion);
+        $deployError = null;
+        $deployed = $this->withSpin("Installing {$companion->getLabel()}...", function () use ($companion, &$deployError) {
+            $result = $this->deployCompanion($companion);
+            $deployError = $result->error;
 
-            return true;
+            return $result->ok;
         });
+
+        if (! $deployed) {
+            $this->laraKubeError("Failed to install {$companion->getLabel()}.");
+            if ($deployError) {
+                $this->line("  <fg=red>{$deployError}</>");
+            }
+
+            return 1;
+        }
 
         $this->ensureHostsAreSet([$host], 'larakube-companions');
 

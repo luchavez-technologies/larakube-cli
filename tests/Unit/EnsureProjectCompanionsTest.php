@@ -1,6 +1,7 @@
 <?php
 
 use App\Data\ConfigData;
+use App\Data\KubectlResult;
 use App\Enums\CompanionDriver;
 use App\Traits\ManagesCompanions;
 
@@ -33,9 +34,14 @@ function companionsHarness(array $preInstalled = []): object
             $this->namespaceEnsured = true;
         }
 
-        protected function deployCompanion(CompanionDriver $companion): void
+        protected function deployCompanion(CompanionDriver $companion): KubectlResult
         {
+            // Real deployCompanion() ensures the namespace itself now (not the
+            // caller) — mirror that here so namespaceEnsured still reflects it.
+            $this->ensureCompanionNamespace();
             $this->deployed[] = $companion;
+
+            return new KubectlResult(true, '');
         }
 
         protected function refreshPhpMyAdminServers(ConfigData $config, string $appName): void

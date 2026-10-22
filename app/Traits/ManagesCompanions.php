@@ -4,6 +4,7 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Data\KubectlResult;
 use App\Data\ResourceRef;
 use App\Enums\CacheDriver;
 use App\Enums\CompanionDriver;
@@ -17,8 +18,18 @@ trait ManagesCompanions
 {
     use InteractsWithHosts, ReadsEnvSources;
 
-    protected function deployCompanion(CompanionDriver $companion): void
+    /**
+     * Deploy (or re-apply) a companion's Deployment/Service/Ingress. Ensures the
+     * larakube-companions namespace exists first — kubectl apply does not create
+     * a namespace for you, and a namespaced apply against one that doesn't exist
+     * yet fails outright, so every caller gets this for free instead of having
+     * to remember it (a standalone `companion:add` on a cluster that has never
+     * had a companion before is exactly the case that was silently failing).
+     */
+    protected function deployCompanion(CompanionDriver $companion): KubectlResult
     {
+        $this->ensureCompanionNamespace();
+
         // Resolve the dev TLD fresh from disk rather than leaning on the shared
         // `$localTld` view var — that's set once at provider boot, so when
         // `config:tld` mutates the global TLD and chains `larakube up` in the SAME
@@ -30,7 +41,8 @@ trait ManagesCompanions
             'companion' => $companion,
             'localTld' => GlobalConfigData::load()->getLocalTld(),
         ])->render();
-        Kubectl::current()->apply($manifest);
+
+        return Kubectl::current()->apply($manifest);
     }
 
     protected function removeCompanion(CompanionDriver $companion): void
@@ -280,7 +292,6 @@ trait ManagesCompanions
                 continue;
             }
 
-            $this->ensureCompanionNamespace();
             $this->deployCompanion($companion);
         }
 
