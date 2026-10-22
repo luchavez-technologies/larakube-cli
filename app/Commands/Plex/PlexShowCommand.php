@@ -225,6 +225,7 @@ class PlexShowCommand extends Command
                     'tagline' => $tool->tagline(),
                     'logo' => $tool->logo(),
                     'icon' => $tool->icon(),
+                    'requiresRender' => $tool === ClusterTool::DOCUMENSO,
                 ] : null,
             ];
         }
