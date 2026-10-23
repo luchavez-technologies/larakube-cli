@@ -280,6 +280,48 @@ trait InteractsWithStalwartApi
     }
 
     /**
+     * Accounts on $domain only — stalwartAccounts() has no server-side domain
+     * filter (an empty x:Account/query filter returns everything), so this
+     * filters client-side by emailAddress suffix. Returns null if Stalwart
+     * couldn't be reached, [] if the domain has no accounts.
+     *
+     * @return list<array<string, mixed>>|null
+     */
+    protected function stalwartAccountsForDomain(string $kubectl, string $ns, string $domain): ?array
+    {
+        $accounts = $this->stalwartAccounts($kubectl, $ns);
+
+        if ($accounts === null) {
+            return null;
+        }
+
+        return array_values(array_filter(
+            $accounts,
+            fn (array $a): bool => str_ends_with((string) ($a['emailAddress'] ?? ''), '@'.$domain),
+        ));
+    }
+
+    /**
+     * Destroy a batch of x:Account objects by id. Same destroy shape as
+     * stalwartDeleteRoute()/MailDeleteCommand's single-account call. Returns
+     * the count actually destroyed, or null if Stalwart couldn't be reached.
+     *
+     * @param  list<string>  $ids
+     */
+    protected function stalwartDestroyAccounts(string $kubectl, string $ns, array $ids): ?int
+    {
+        if ($ids === []) {
+            return 0;
+        }
+
+        $responses = $this->stalwartJmap($kubectl, $ns, [
+            ['x:Account/set', ['destroy' => array_values($ids)], 'c1'],
+        ]);
+
+        return $responses === null ? null : count($responses[0][1]['destroyed'] ?? []);
+    }
+
+    /**
      * The named MtaRoute (any @type) matching $name, or null if none exists.
      * Route names are immutable in Stalwart, so callers key off this to decide
      * create vs update.
@@ -662,6 +704,26 @@ trait InteractsWithStalwartApi
     }
 
     /**
+     * Destroy a batch of x:DkimSignature objects by id. Same destroy shape as
+     * stalwartEnforceSingleRsaDkimSignature()'s Ed25519 prune. Returns the
+     * count actually destroyed, or null if Stalwart couldn't be reached.
+     *
+     * @param  list<string>  $ids
+     */
+    protected function stalwartDestroyDkimSignatures(string $kubectl, string $ns, array $ids): ?int
+    {
+        if ($ids === []) {
+            return 0;
+        }
+
+        $responses = $this->stalwartJmap($kubectl, $ns, [
+            ['x:DkimSignature/set', ['destroy' => array_values($ids)], 'c2'],
+        ]);
+
+        return $responses === null ? null : count($responses[0][1]['destroyed'] ?? []);
+    }
+
+    /**
      * The account id of the dedicated automation principal, creating it if
      * absent. A service account (Admin role, zero mailbox quota) that owns the
      * CLI's API key. Needs a configured domain to attach to — returns null when
@@ -925,6 +987,29 @@ trait InteractsWithStalwartApi
     }
 
     /**
+     * Destroy the x:DnsServer object identified by $id — domain-specific
+     * automation config (Cloudflare zone/token), never shared across domains
+     * (unlike x:AcmeProvider, which legitimately serves many domains from one
+     * account and must never be destroyed when removing a single domain).
+     *
+     * Not directly proven against a live Stalwart instance —
+     * stalwartUpsertCloudflareDnsServer() above never calls destroy — but see
+     * stalwartDestroyDomain()'s docblock for why the `{destroy: [id]} ->
+     * {destroyed: [...]}` shape is expected to work the same way here.
+     * Unlike a domain, there is no documented "soft-disable" field for
+     * x:DnsServer anywhere in this trait — callers must treat a false return
+     * as "needs manual cleanup," not retry automatically.
+     */
+    protected function stalwartDestroyDnsServer(string $kubectl, string $ns, string $id): bool
+    {
+        $responses = $this->stalwartJmap($kubectl, $ns, [
+            ['x:DnsServer/set', ['destroy' => [$id]], 'c1'],
+        ]);
+
+        return $responses !== null && in_array($id, $responses[0][1]['destroyed'] ?? [], true);
+    }
+
+    /**
      * Every configured ACME provider (x:AcmeProvider — a Let's Encrypt-style
      * account issuing certs, potentially for many domains at once).
      */
@@ -1050,6 +1135,59 @@ trait InteractsWithStalwartApi
         ]);
 
         return $responses[0][1]['created']['dm1']['id'] ?? null;
+    }
+
+    /**
+     * Destroy the x:Domain object identified by $id.
+     *
+     * Not directly proven against a live Stalwart instance — stalwartUpsertDomain()
+     * above only ever create/updates — but the same `{destroy: [id]} ->
+     * {destroyed: [...]}` shape is already confirmed working for x:Account
+     * (MailDeleteCommand), x:DkimSignature (stalwartEnforceSingleRsaDkimSignature())
+     * and x:MtaRoute (stalwartDeleteRoute()), so this is Stalwart's standard
+     * JMAP `/set` destroy convention, not something type-specific. Still,
+     * verify against the live cluster before trusting this in production —
+     * a domain with referencing accounts/DKIM signatures still attached may
+     * be rejected, which is exactly why callers destroy those first.
+     *
+     * Returns true only if $id appears in the response's `destroyed` list —
+     * never assume success from a merely-non-null response.
+     */
+    protected function stalwartDestroyDomain(string $kubectl, string $ns, string $id): bool
+    {
+        $responses = $this->stalwartJmap($kubectl, $ns, [
+            ['x:Domain/set', ['destroy' => [$id]], 'c1'],
+        ]);
+
+        return $responses !== null && in_array($id, $responses[0][1]['destroyed'] ?? [], true);
+    }
+
+    /**
+     * Fallback for stalwartDestroyDomain() failing: disable the domain and
+     * switch off its Automatic DNS/TLS management via the proven x:Domain/set
+     * update path (same props shape as stalwartUpsertDomain()'s update
+     * branch), rather than leaving a domain that can't be destroyed in an
+     * ambiguous half-automatic state. Leaves dkimManagement alone (no safe
+     * "off" state is exercised anywhere in this trait) and doesn't touch the
+     * DnsServer reference — only flips the two flags actually responsible for
+     * the 2026-10-23 incident this was built for (ACME renewal + DNS writes
+     * for a domain whose Cloudflare token the operator no longer controls).
+     *
+     * The exact "disabled" @type for dnsManagement/certificateManagement used
+     * here ('Disabled') is inferred from the 'Automatic' counterpart, not
+     * confirmed against Stalwart's schema — verify before relying on it.
+     */
+    protected function stalwartSoftDisableDomain(string $kubectl, string $ns, string $id): bool
+    {
+        $responses = $this->stalwartJmap($kubectl, $ns, [
+            ['x:Domain/set', ['update' => [$id => [
+                'isEnabled' => false,
+                'dnsManagement' => ['@type' => 'Disabled'],
+                'certificateManagement' => ['@type' => 'Disabled'],
+            ]]], 'c1'],
+        ]);
+
+        return $responses !== null && array_key_exists($id, $responses[0][1]['updated'] ?? []);
     }
 
     /**
