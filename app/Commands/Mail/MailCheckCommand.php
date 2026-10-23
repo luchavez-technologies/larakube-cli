@@ -151,6 +151,22 @@ class MailCheckCommand extends Command
         foreach ($ports as $port => [$label, $failSeverity, $hint]) {
             $open = $this->tcpOpen($target, (int) $port);
             $this->report($open ? 'ok' : $failSeverity, "Port {$port} · {$label}", $hint);
+
+            // Implicit-TLS ports (465/993): the port being open says nothing about
+            // WHICH certificate Stalwart is presenting on it — that's configured
+            // separately, by hand, in Settings → Server → TLS → ACME Providers (see
+            // stalwart:init's printed instructions), and is easy to mis-set on a
+            // shared cluster hosting more than one mail tenant. A fail here is
+            // silent everywhere else: the port stays "open", and the first symptom
+            // is usually a client (or Zitadel, sending a notification email) getting
+            // a TLS verification error for the wrong hostname.
+            if ($open && in_array($port, [465, 993], true)) {
+                $covers = $this->tlsCertCoversHost($host, (int) $port);
+                if ($covers !== null) {
+                    $this->report($covers ? 'ok' : 'fail', "Port {$port} · TLS cert covers {$host}",
+                        "Stalwart is presenting a certificate for a different hostname on this port. Fix in Stalwart's admin UI (https://{$host}/admin): Settings → Server → TLS → ACME Providers → Subject names = {$host}.");
+                }
+            }
         }
 
         // --- Outbound relay (external delivery) ----------------------------
@@ -365,6 +381,89 @@ class MailCheckCommand extends Command
         }
 
         return false;
+    }
+
+    /**
+     * Whether the TLS certificate presented on host:port actually covers $host
+     * (exact CN/SAN match, or a wildcard SAN one level up). Connects by
+     * hostname (not the resolved IP used for tcpOpen) so SNI matches what a
+     * real client sends. Returns null when the TLS handshake itself fails —
+     * the port-open check above already reports that; this stays silent
+     * rather than double-reporting a connectivity failure as an identity one.
+     */
+    private function tlsCertCoversHost(string $host, int $port, int $timeout = 5): ?bool
+    {
+        $context = stream_context_create(['ssl' => [
+            'capture_peer_cert' => true,
+            'verify_peer' => false,
+            'verify_peer_name' => false,
+            'SNI_enabled' => true,
+            'peer_name' => $host,
+        ]]);
+
+        $client = @stream_socket_client(
+            "ssl://{$host}:{$port}",
+            $errno,
+            $errstr,
+            $timeout,
+            STREAM_CLIENT_CONNECT,
+            $context,
+        );
+
+        if ($client === false) {
+            return null;
+        }
+
+        $params = stream_context_get_params($client);
+        fclose($client);
+        $cert = $params['options']['ssl']['peer_certificate'] ?? null;
+
+        if ($cert === null) {
+            return null;
+        }
+
+        $parsed = openssl_x509_parse($cert);
+        if ($parsed === false) {
+            return null;
+        }
+
+        $names = [];
+        if (isset($parsed['subject']['CN'])) {
+            $names[] = (string) $parsed['subject']['CN'];
+        }
+        foreach (explode(',', (string) ($parsed['extensions']['subjectAltName'] ?? '')) as $entry) {
+            $entry = trim($entry);
+            if (str_starts_with($entry, 'DNS:')) {
+                $names[] = substr($entry, 4);
+            }
+        }
+
+        foreach ($names as $name) {
+            if ($this->hostMatchesCertName($host, $name)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** $certName may be an exact hostname or a single-level wildcard ("*.example.com"). */
+    private function hostMatchesCertName(string $host, string $certName): bool
+    {
+        $host = strtolower($host);
+        $certName = strtolower($certName);
+
+        if ($host === $certName) {
+            return true;
+        }
+
+        if (! str_starts_with($certName, '*.')) {
+            return false;
+        }
+
+        $suffix = substr($certName, 1); // ".example.com"
+
+        return str_ends_with($host, $suffix) && substr_count($host, '.') === substr_count($certName, '.');
     }
 
     /**
