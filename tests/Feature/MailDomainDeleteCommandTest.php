@@ -163,6 +163,48 @@ test('mail:domain-delete removes accounts, DKIM signatures, the domain, and its 
     });
 });
 
+test('mail:domain-delete reports why an account destroy was refused, not just a count', function (): void {
+    // Confirmed live (2026-10-24): destroying a batch mixing Individual and
+    // Group-type accounts destroyed every Individual and refused every Group
+    // — the operator only ever saw "Only 7/14 were destroyed," with no way to
+    // tell why without reading the JMAP response by hand.
+    mailDomainDeleteBaseFakes();
+
+    Saloon::fake([
+        ...mailDomainDeleteDomainsFound(),
+        MockResponse::make(['methodResponses' => [
+            ['x:Account/query', ['ids' => ['a1', 'a2']], 'c0'],
+            ['x:Account/get', ['list' => [], 'notFound' => []], 'c1'],
+        ], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [
+            ['x:Account/get', ['list' => [
+                ['id' => 'a1', 'emailAddress' => 'alice@partner.example', 'name' => 'alice', 'description' => 'Alice'],
+                ['id' => 'a2', 'emailAddress' => 'support@partner.example', 'name' => 'support', 'description' => null],
+            ], 'notFound' => []], 'c1'],
+        ], 'sessionState' => 'x']),
+        // stalwartDkimSignatures() — none, fetched unconditionally before confirmation.
+        MockResponse::make(['methodResponses' => [
+            ['x:DkimSignature/query', ['ids' => []], 'c0'],
+        ], 'sessionState' => 'x']),
+        MockResponse::make(['methodResponses' => [
+            ['x:Account/set', [
+                'destroyed' => ['a1'],
+                'notDestroyed' => ['a2' => ['type' => 'forbidden', 'description' => 'account is a Group and cannot be destroyed this way']],
+            ], 'c1'],
+        ], 'sessionState' => 'x']),
+    ]);
+
+    $this->artisan('mail:domain-delete', ['--domain' => 'partner.example', '--force' => true])
+        ->expectsOutputToContain('Only 1/2')
+        ->expectsOutputToContain('support@partner.example')
+        ->expectsOutputToContain('forbidden: account is a Group')
+        ->assertExitCode(1);
+
+    // DKIM/domain/DNS were never touched — the abort happened before them.
+    Saloon::assertSentCount(6);
+    Saloon::assertNotSent(fn ($request) => in_array($request->body()->get('methodCalls')[0][0] ?? null, ['x:DkimSignature/set', 'x:Domain/set', 'x:DnsServer/set'], true));
+});
+
 test('mail:domain-delete aborts when the retyped domain name does not match', function (): void {
     mailDomainDeleteBaseFakes();
 

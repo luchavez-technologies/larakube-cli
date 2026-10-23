@@ -308,6 +308,49 @@ trait InteractsWithStalwartApi
      *
      * @param  list<string>  $ids
      */
+    /**
+     * Destroy a batch of x:Account objects by id — same call as above, but
+     * reports WHY a destroy was refused instead of just how many weren't.
+     * Confirmed live (2026-10-24): a `destroy` batch mixing Individual and
+     * Group-type accounts silently (from the caller's view) destroyed every
+     * Individual and refused every Group, with the actual reason sitting in
+     * the JMAP response's standard `notDestroyed` SetError map
+     * (RFC 8620 §5.3) that the plain-count version above discards —
+     * `stalwartDestroyAccounts()` is kept for its one existing caller
+     * (account count assertions don't need the detail), this is for
+     * mail:domain-delete, which does.
+     *
+     * @param  list<string>  $ids
+     * @return array{destroyedIds: list<string>, failures: array<string, string>}|null
+     */
+    protected function stalwartDestroyAccountsVerbose(string $kubectl, string $ns, array $ids): ?array
+    {
+        if ($ids === []) {
+            return ['destroyedIds' => [], 'failures' => []];
+        }
+
+        $responses = $this->stalwartJmap($kubectl, $ns, [
+            ['x:Account/set', ['destroy' => array_values($ids)], 'c1'],
+        ]);
+
+        if ($responses === null) {
+            return null;
+        }
+
+        $destroyed = $responses[0][1]['destroyed'] ?? [];
+        $notDestroyed = $responses[0][1]['notDestroyed'] ?? [];
+
+        $failures = [];
+        foreach ($notDestroyed as $id => $error) {
+            $type = (string) ($error['type'] ?? 'error');
+            $description = (string) ($error['description'] ?? '');
+
+            $failures[$id] = $description !== '' ? "{$type}: {$description}" : $type;
+        }
+
+        return ['destroyedIds' => $destroyed, 'failures' => $failures];
+    }
+
     protected function stalwartDestroyAccounts(string $kubectl, string $ns, array $ids): ?int
     {
         if ($ids === []) {

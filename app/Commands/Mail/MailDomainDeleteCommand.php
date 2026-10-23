@@ -121,13 +121,23 @@ class MailDomainDeleteCommand extends Command
 
         if ($accounts !== []) {
             $accountIds = array_column($accounts, 'id');
-            $destroyedAccounts = 0;
-            $this->withSpin('Deleting '.count($accountIds).' mailbox account(s)...', function () use (&$destroyedAccounts, $kubectl, $ns, $accountIds): void {
-                $destroyedAccounts = $this->stalwartDestroyAccounts($kubectl, $ns, $accountIds);
+            $emailById = array_column($accounts, 'emailAddress', 'id');
+            $result = null;
+            $this->withSpin('Deleting '.count($accountIds).' mailbox account(s)...', function () use (&$result, $kubectl, $ns, $accountIds): void {
+                $result = $this->stalwartDestroyAccountsVerbose($kubectl, $ns, $accountIds);
             });
 
-            if ($destroyedAccounts !== count($accountIds)) {
-                $this->laraKubeError('Only '.(int) $destroyedAccounts.'/'.count($accountIds).' account(s) were destroyed. Aborting before touching DKIM/domain/DNS objects — re-run to retry.');
+            if ($result === null || count($result['destroyedIds']) !== count($accountIds)) {
+                $destroyedCount = $result === null ? 0 : count($result['destroyedIds']);
+                $this->laraKubeError('Only '.$destroyedCount.'/'.count($accountIds).' account(s) were destroyed. Aborting before touching DKIM/domain/DNS objects.');
+
+                foreach ($result['failures'] ?? [] as $id => $reason) {
+                    $email = $emailById[$id] ?? $id;
+                    $this->laraKubeLine("  <fg=red>✗ {$email}</>");
+                    $this->laraKubeLine("      {$reason}");
+                }
+
+                $this->laraKubeLine('  Fix the cause above, then re-run — already-destroyed accounts are skipped automatically.');
 
                 return 1;
             }
