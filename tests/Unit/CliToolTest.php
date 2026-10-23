@@ -108,6 +108,64 @@ test('the gcloud installer hands its interpreter over explicitly', function (): 
         && ($process->environment['CLOUDSDK_PYTHON'] ?? null) === '/usr/local/bin/python3.12');
 });
 
+test('install() self-heals a Homebrew permission error and retries once', function (): void {
+    // Confirmed live (2026-10-24): `brew install --cask gcloud-cli` failing
+    // outright with "/opt/homebrew is not writable" on a Mac whose Homebrew
+    // prefix ended up owned by the wrong user, even though brew itself works.
+    $homebrewError = <<<'OUTPUT'
+        Error: /opt/homebrew is not writable. You should change the
+        ownership and permissions of /opt/homebrew back to your
+        user account:
+          sudo chown -R someone /opt/homebrew
+        ==> Would install 1 cask:
+        gcloud-cli
+        Error: The following directories are not writable by your user:
+        /opt/homebrew
+        /opt/homebrew/share/doc
+        You should change the ownership of these directories to your user.
+          sudo chown -R someone /opt/homebrew /opt/homebrew/share/doc
+        OUTPUT;
+
+    $installed = false;
+
+    Process::fake([
+        'command -v gcloud' => function () use (&$installed) {
+            return $installed ? Process::result('/opt/homebrew/bin/gcloud') : Process::result('', exitCode: 1);
+        },
+        'command -v brew' => Process::result('/opt/homebrew/bin/brew'),
+        'brew install --cask gcloud-cli || brew install --cask google-cloud-sdk' => function () use (&$installed, $homebrewError) {
+            if ($installed) {
+                return Process::result('==> gcloud-cli was already installed!', exitCode: 0);
+            }
+            $installed = true;
+
+            return Process::result($homebrewError, exitCode: 1);
+        },
+        '*' => Process::result(''),
+    ]);
+
+    expect(CliTool::GCLOUD->install())->toBeTrue();
+
+    // The LAST (most complete) chown line is the one that actually ran.
+    Process::assertRan(fn ($process) => $process->command === 'sudo -n chown -R someone /opt/homebrew /opt/homebrew/share/doc');
+
+    Process::assertRanTimes('brew install --cask gcloud-cli || brew install --cask google-cloud-sdk', 2);
+});
+
+test('install() does not retry a brew failure unrelated to Homebrew permissions', function (): void {
+    Process::fake([
+        'command -v gcloud' => Process::result('', exitCode: 1),
+        'command -v brew' => Process::result('/opt/homebrew/bin/brew'),
+        'brew install --cask gcloud-cli || brew install --cask google-cloud-sdk' => Process::result('Error: Cask \'gcloud-cli\' is unavailable', exitCode: 1),
+        '*' => Process::result(''),
+    ]);
+
+    expect(CliTool::GCLOUD->install())->toBeFalse();
+
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'sudo -n chown'));
+    Process::assertRanTimes('brew install --cask gcloud-cli || brew install --cask google-cloud-sdk', 1);
+});
+
 test('an unsupported python stops the gcloud install rather than crashing inside it', function (): void {
     // Every interpreter on PATH reports 3.9, and there is no Homebrew to
     // install a newer one — so refuse, instead of handing the user a urllib3

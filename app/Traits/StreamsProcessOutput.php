@@ -46,6 +46,34 @@ trait StreamsProcessOutput
     }
 
     /**
+     * Same live streaming as runStreaming(), but also returns the full
+     * combined output — for callers that need to inspect WHAT failed, not
+     * just whether it did (e.g. detecting a specific recoverable error in a
+     * brew install's stderr and retrying once after fixing it).
+     *
+     * @param  array<string, string>  $env
+     * @return array{0: int, 1: string}
+     */
+    protected function runStreamingCaptured(string $command, int $timeoutSeconds = 0, array $env = []): array
+    {
+        $process = $timeoutSeconds > 0 ? Process::timeout($timeoutSeconds) : Process::forever();
+
+        if ($env !== []) {
+            $process = $process->env($env);
+        }
+
+        $result = $process->run($command, function (string $type, string $output): void {
+            State::isJsonMode() ? fwrite(STDERR, $output) : print $output;
+        });
+
+        // Read combined output from the result itself, not the callback above:
+        // Process::fake()'s synchronous fake path never invokes that callback
+        // at all, so accumulating through it would always come back empty
+        // under test — output()/errorOutput() work the same whether faked or real.
+        return [$result->exitCode(), $result->output().$result->errorOutput()];
+    }
+
+    /**
      * Run a command that READS from the terminal — the auth code pasted into
      * `gcloud auth login`, the keys `aws configure` asks for.
      *

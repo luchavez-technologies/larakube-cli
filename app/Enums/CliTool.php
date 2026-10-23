@@ -355,6 +355,43 @@ enum CliTool: string
         return $bin !== null && (str_starts_with($bin, '/opt/homebrew/') || str_starts_with($bin, '/home/linuxbrew/'));
     }
 
+    /**
+     * Homebrew's own prefix has occasionally ended up owned by the wrong
+     * user — confirmed live (2026-10-24): a `brew install --cask gcloud-cli`
+     * failing outright with "/opt/homebrew is not writable", even though
+     * Homebrew itself is present and otherwise working. Homebrew's error
+     * already prints the exact fix as a `sudo chown -R <user> <dirs...>`
+     * line; this extracts and re-runs that line verbatim rather than
+     * guessing which directories need it, then lets the caller retry once.
+     *
+     * Runs with `sudo -n` (never interactive): if passwordless sudo isn't
+     * already available — e.g. a local `larakube setup` grants it for the
+     * length of the run, same mechanism InstallTool runs use via
+     * CliRunner::needsElevation() — this fails immediately rather than
+     * hanging on a password prompt nothing can answer when driven from
+     * Desktop (no terminal). A human running the CLI directly in a real
+     * terminal still sees Homebrew's own suggested fix in the streamed
+     * output either way and can run it by hand.
+     *
+     * @return bool whether a chown line was found AND it exited 0
+     */
+    protected function attemptHomebrewPermissionFix(string $failedOutput): bool
+    {
+        if (! str_contains($failedOutput, 'is not writable')) {
+            return false;
+        }
+
+        // Homebrew can print more than one such block as it works through
+        // dependent directories — the LAST one is the most complete list.
+        if (preg_match_all('/^\s*sudo chown -R (\S+(?: \S+)+)$/m', $failedOutput, $matches) < 1) {
+            return false;
+        }
+
+        $code = $this->runStreaming('sudo -n chown -R '.(string) end($matches[1]));
+
+        return $code === 0;
+    }
+
     protected function brewUpgrade(): bool
     {
         // gcloud was installed under one of two possible cask names (whichever
@@ -582,7 +619,11 @@ enum CliTool: string
     protected function installGcloud(): bool
     {
         if (PHP_OS_FAMILY === 'Darwin' && trim(Process::run('command -v brew')->output()) !== '') {
-            $code = $this->runStreaming('brew install --cask gcloud-cli || brew install --cask google-cloud-sdk');
+            [$code, $output] = $this->runStreamingCaptured('brew install --cask gcloud-cli || brew install --cask google-cloud-sdk');
+
+            if ($code !== 0 && $this->attemptHomebrewPermissionFix($output)) {
+                $code = $this->runStreaming('brew install --cask gcloud-cli || brew install --cask google-cloud-sdk');
+            }
 
             return $code === 0 && $this->isInstalled();
         }
