@@ -245,10 +245,8 @@ abstract class StalwartInitCommand extends AbstractToolInitCommand
         }
         $this->line("  <fg=yellow>2. Valid TLS on the mail ports</> (so Apple Mail/Thunderbird don't warn).");
         $this->line('     The web UI cert is handled by the ingress; the mail ports (465/993) need');
-        $this->line('     Stalwart to hold its own cert. In <fg=gray>Settings → Server → TLS → ACME Providers</>:');
-        $this->line('       • Create provider · Challenge = <fg=blue>DNS-01</>');
-        $this->line('       • DNS provider = <fg=blue>Cloudflare</> · paste your API token');
-        $this->line("       • Subject names = <fg=blue>{$host}</>");
+        $this->line("     Stalwart to hold a cert covering <fg=blue>{$host}</> itself — once step 3 has added");
+        $this->line("     {$domain} as a domain: <fg=blue>larakube mail:tls {$env}</>");
         $this->newLine();
         $this->line("  <fg=yellow>3. Add the domain</> in <fg=gray>Directory → Domains</> → <fg=blue>{$domain}</>, then open its");
         $this->line('     <fg=gray>DKIM</> tab and copy the generated selector record for step 5.');

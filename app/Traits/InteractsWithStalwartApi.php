@@ -1051,4 +1051,67 @@ trait InteractsWithStalwartApi
 
         return $responses[0][1]['created']['dm1']['id'] ?? null;
     }
+
+    /**
+     * Make sure the mail server's own hostname (e.g. `send.luchtech.dev`) is
+     * covered by a certificate — distinct from a domain's own cert (e.g.
+     * `luchtech.dev`'s, for DKIM/mail-routing), and nothing sets it
+     * automatically: stalwart:init's wizard configures the first domain's
+     * certificate management but never adds the server's own hostname as a
+     * SAN, and mail:domain's per-domain onboarding has the same gap for every
+     * domain after it. Confirmed live (2026-10-23): three domains sharing one
+     * Stalwart instance, all pointing their MX/SRV at the same mail host, none
+     * of their `certificateManagement.subjectAlternativeNames` including that
+     * host — so the listener had nothing to match the host's SNI against and
+     * fell back to whichever domain's cert existed, breaking TLS for every
+     * client (including Zitadel's outbound SMTP for email 2FA) connecting by
+     * the mail host's own name.
+     *
+     * Finds the domain $host is a subdomain of (longest match if more than
+     * one could apply) and patches its SAN set to include $host, idempotent —
+     * a no-op if it's already there. Returns true once covered (already was,
+     * or just got added), false when no owning domain exists yet or the
+     * JMAP call failed.
+     */
+    protected function stalwartEnsureMailHostCertificate(string $kubectl, string $ns, string $host): bool
+    {
+        $domains = $this->stalwartDomains($kubectl, $ns) ?? [];
+
+        $owner = null;
+        foreach ($domains as $domain) {
+            $name = (string) ($domain['name'] ?? '');
+            if ($name !== '' && str_ends_with($host, '.'.$name) && ($owner === null || strlen($name) > strlen((string) $owner['name']))) {
+                $owner = $domain;
+            }
+        }
+
+        if ($owner === null) {
+            return false;
+        }
+
+        $certManagement = $owner['certificateManagement'] ?? [];
+        $sans = (array) ($certManagement['subjectAlternativeNames'] ?? []);
+
+        if (array_key_exists($host, $sans)) {
+            return true;
+        }
+
+        $sans[$host] = true;
+
+        $responses = $this->stalwartJmap($kubectl, $ns, [
+            ['x:Domain/set', ['update' => [
+                $owner['id'] => [
+                    'certificateManagement' => [
+                        '@type' => $certManagement['@type'] ?? 'Automatic',
+                        'acmeProviderId' => $certManagement['acmeProviderId'] ?? null,
+                        'subjectAlternativeNames' => (object) $sans,
+                    ],
+                ],
+            ]], 'c1'],
+        ]);
+
+        $updated = $responses[0][1]['updated'] ?? [];
+
+        return array_key_exists($owner['id'], $updated);
+    }
 }

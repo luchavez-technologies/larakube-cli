@@ -164,7 +164,7 @@ class MailCheckCommand extends Command
                 $covers = $this->tlsCertCoversHost($host, (int) $port);
                 if ($covers !== null) {
                     $this->report($covers ? 'ok' : 'fail', "Port {$port} · TLS cert covers {$host}",
-                        "Stalwart is presenting a certificate for a different hostname on this port. Fix in Stalwart's admin UI (https://{$host}/admin): Settings → Server → TLS → ACME Providers → Subject names = {$host}.");
+                        "Stalwart is presenting a certificate for a different hostname on this port. Run: larakube mail:tls {$env} — adds {$host} to the right domain's certificate.");
                 }
             }
         }
