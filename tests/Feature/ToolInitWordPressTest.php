@@ -77,7 +77,7 @@ test('wordpress manifest view renders valid resources for sqlite and mysql', fun
         ->and($sqliteManifest)->toContain('wp_install')
         ->and($sqliteManifest)->toContain('fsGroup: 33')
         ->and($sqliteManifest)->toContain('sqlite-database-integration')
-        ->and($sqliteManifest)->toContain('image: wordpress:6.7-php8.3-apache')
+        ->and($sqliteManifest)->toContain('image: wordpress:7.1-php8.3-apache')
         ->and($sqliteManifest)->toContain('kind: Service')
         ->and($sqliteManifest)->toContain('kind: Ingress');
 

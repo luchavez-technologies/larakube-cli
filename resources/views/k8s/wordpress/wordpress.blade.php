@@ -44,7 +44,7 @@ spec:
         fsGroup: 33
       initContainers:
         - name: seed-core
-          image: wordpress:6.7-php8.3-apache
+          image: wordpress:7.1-php8.3-apache
           command: ['sh', '-c']
           args:
             - |
@@ -135,7 +135,7 @@ EOF
             - name: wp-data
               mountPath: /var/www/html
         - name: auto-install
-          image: wordpress:6.7-php8.3-apache
+          image: wordpress:7.1-php8.3-apache
           env:
 @if(($dbEngine ?? 'sqlite') === 'sqlite')
             - name: WORDPRESS_DB_NAME
@@ -201,7 +201,7 @@ EOF
               mountPath: /var/www/html
       containers:
         - name: wordpress
-          image: wordpress:6.7-php8.3-apache
+          image: wordpress:7.1-php8.3-apache
           ports:
             - containerPort: 80
               name: http
