@@ -164,7 +164,7 @@ test('install() self-heals a Homebrew permission error and retries once', functi
         ."'/opt/homebrew/share/zsh/site-functions' '/opt/homebrew/var/homebrew/locks'");
 
     Process::assertRanTimes('brew install --cask gcloud-cli || brew install --cask google-cloud-sdk', 2);
-});
+})->skip(PHP_OS_FAMILY !== 'Darwin', '`brew install --cask` is macOS-only; installGcloud() only takes this branch on Darwin.');
 
 test('install() self-heals when Homebrew only prints the bare directory-list format, with no suggested command at all', function (): void {
     // The fatal block alone, with no leading "<path> is not writable" one-liner
@@ -197,7 +197,7 @@ test('install() self-heals when Homebrew only prints the bare directory-list for
     expect(CliTool::GCLOUD->install())->toBeTrue();
 
     Process::assertRan(fn ($process) => $process->command === "sudo -n chown -R \$(whoami) '/opt/homebrew' '/opt/homebrew/share/zsh/site-functions'");
-});
+})->skip(PHP_OS_FAMILY !== 'Darwin', '`brew install --cask` is macOS-only; installGcloud() only takes this branch on Darwin.');
 
 test('install() does not retry a brew failure unrelated to Homebrew permissions', function (): void {
     Process::fake([
@@ -211,6 +211,34 @@ test('install() does not retry a brew failure unrelated to Homebrew permissions'
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'sudo -n chown'));
     Process::assertRanTimes('brew install --cask gcloud-cli || brew install --cask google-cloud-sdk', 1);
+})->skip(PHP_OS_FAMILY !== 'Darwin', '`brew install --cask` is macOS-only; installGcloud() only takes this branch on Darwin.');
+
+test('homebrewUnwritablePaths extracts every path across both message shapes, run cross-platform since the Darwin-only install() tests above cannot be', function (): void {
+    $method = new ReflectionMethod(CliTool::class, 'homebrewUnwritablePaths');
+    $method->setAccessible(true);
+
+    $mixed = <<<'OUTPUT'
+        Error: /opt/homebrew is not writable. You should change the ownership and permissions of /opt/homebrew back to your
+        user account:
+          sudo chown -R someone /opt/homebrew
+        Error: The following directories are not writable by your user:
+        /opt/homebrew
+        /opt/homebrew/share/doc
+        OUTPUT;
+
+    expect($method->invoke(CliTool::GCLOUD, $mixed))->toBe(['/opt/homebrew', '/opt/homebrew/share/doc']);
+
+    $bareListOnly = <<<'OUTPUT'
+        Error: The following directories are not writable by your user:
+        /opt/homebrew
+        /opt/homebrew/share/zsh/site-functions
+        OUTPUT;
+
+    expect($method->invoke(CliTool::GCLOUD, $bareListOnly))->toBe(['/opt/homebrew', '/opt/homebrew/share/zsh/site-functions']);
+
+    $unrelatedFailure = "Error: Cask 'gcloud-cli' is unavailable";
+
+    expect($method->invoke(CliTool::GCLOUD, $unrelatedFailure))->toBe([]);
 });
 
 test('an unsupported python stops the gcloud install rather than crashing inside it', function (): void {
