@@ -3,14 +3,14 @@
 ## Status
 
 **Phase 1 (Dashboard) implemented and confirmed live 2026-10-24.** Phase 2
-(Servers list) and Phase 2b (Servers detail page) implemented the same day
-— Phase 1's battle-test on the live running app (`native:dev`, confirmed
-against the real `database/nativephp.sqlite`, not the decoy
-`database/database.sqlite` — see the Phase 1 section below) passed, so
-Phase 2/2b proceeded the same day rather than waiting on a separate
-`./build`. Not yet battle-tested live the way Phase 1 was — pending the
-user's own `./build`/run. Phases 3–4 (Apps/Tools, Projects) not started.
-Follow-up from the dashboard perf fix (`perf(dashboard): cut
+(Servers list), Phase 2b (Servers detail page), and Phase 3 (Apps/Tools
+page) implemented the same day — Phase 1's battle-test on the live running
+app (`native:dev`, confirmed against the real `database/nativephp.sqlite`,
+not the decoy `database/database.sqlite` — see the Phase 1 section below)
+passed, so later phases proceeded the same day rather than waiting on a
+separate `./build`. Phases 2/2b/3 not yet battle-tested live the way Phase
+1 was — pending the user's own `./build`/run. Phase 4 (Projects) not
+started. Follow-up from the dashboard perf fix (`perf(dashboard): cut
 duplicate/redundant subprocess work on Windows`, desktop `13cdd18`) and its
 predecessor,
 `cli/plans/active/inertia-desktop-performance-and-external-links.md`
@@ -162,6 +162,42 @@ merits:
   rather than adding five near-duplicate tests), `tests/Feature/
   RecordRunOutputTest.php` (+3, two parametrized over their respective run
   kinds). Full suite: 708 passed (was 695).
+
+### What shipped in Phase 3 (Apps/Tools page), 2026-10-24
+
+Unlike the Servers detail page, an audit of `ClusterToolController` found
+the DB-first infrastructure for this page was mostly already in place from
+before this whole arc: `ToolCatalog` (`tools` prop, backed by
+`cluster_tools`/`SyncClusterToolsJob`) and `DomainCatalog` (`domains` prop,
+backed by `server_domains`/`SyncServerDomainsJob`) were both already
+reading the database first and dispatching a background re-sync on a
+cache-miss, exactly the pattern the rest of this plan has been building
+toward. No change needed there.
+
+The one real gap: both `index()`'s `activeCommonsServices` prop and
+`show()`'s `backing` prop called `ClusterStatus::plex($context)` directly
+— bypassing the `servers.plex_data` column that Phase 2b's `SyncPlexJob`
+(10-minute fan-out schedule + boot dispatch) already keeps fresh for the
+Servers detail page's own `plex` prop. Both props were already wrapped in
+`Inertia::defer()`, so this never blocked the page's initial render — but
+it meant the deferred request itself could take up to `plex:show`'s 60s
+timeout on a cold cache, and duplicated a live CLI call that the rest of
+the app was already paying to keep fresh in the database.
+
+Fix: new private `ClusterToolController::plexData()` helper, same
+DB-first-with-live-fallback shape as `ServerController::show()`'s `plex`
+prop — reads `servers.plex_data` when `plex_last_synced_at` is within
+`SyncPlexJob::FRESH_SECONDS`, falls back to `ClusterStatus::plex()`
+otherwise. `ClusterStatus::parsePlexReport()` (previously private) was
+made public so the controller can validate the DB-stored JSON through the
+same untrusted-shape guard the live CLI path already uses, rather than
+duplicating that validation or loosening the return type to an unchecked
+`array<string, mixed>`.
+
+Tests: `tests/Feature/ClusterToolsTest.php` (+3: fresh `plex_data` skips
+the live call for `show()`'s `backing` prop, a stale one falls back live,
+and `activeCommonsServices` on the `/domains` endpoint reads the fresh
+column too). Full suite: 711 passed (was 708).
 
 ## Context
 
