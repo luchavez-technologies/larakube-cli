@@ -2,17 +2,16 @@
 
 ## Status
 
-**Phase 1 (Dashboard) implemented and confirmed live 2026-10-24.** Phase 2
-(Servers list), Phase 2b (Servers detail page), and Phase 3 (Apps/Tools
-page) implemented the same day — Phase 1's battle-test on the live running
-app (`native:dev`, confirmed against the real `database/nativephp.sqlite`,
-not the decoy `database/database.sqlite` — see the Phase 1 section below)
-passed, so later phases proceeded the same day rather than waiting on a
-separate `./build`. Phases 2/2b/3 not yet battle-tested live the way Phase
-1 was — pending the user's own `./build`/run. Phase 4 (Projects) not
-started. Follow-up from the dashboard perf fix (`perf(dashboard): cut
-duplicate/redundant subprocess work on Windows`, desktop `13cdd18`) and its
-predecessor,
+**All four phases (Dashboard, Servers list, Servers detail, Apps/Tools,
+Projects) implemented 2026-10-24.** Phase 1's battle-test on the live
+running app (`native:dev`, confirmed against the real
+`database/nativephp.sqlite`, not the decoy `database/database.sqlite` —
+see the Phase 1 section below) passed, so later phases proceeded the same
+day rather than waiting on a separate `./build`. Phases 2/2b/3/4 not yet
+battle-tested live the way Phase 1 was — pending the user's own
+`./build`/run. Follow-up from the dashboard perf fix
+(`perf(dashboard): cut duplicate/redundant subprocess work on Windows`,
+desktop `13cdd18`) and its predecessor,
 `cli/plans/active/inertia-desktop-performance-and-external-links.md`
 (marked Completed — this is its sequel, not a rewrite).
 
@@ -199,6 +198,65 @@ the live call for `show()`'s `backing` prop, a stale one falls back live,
 and `activeCommonsServices` on the `/domains` endpoint reads the fresh
 column too). Full suite: 711 passed (was 708).
 
+### What shipped in Phase 4 (Projects page), 2026-10-24
+
+`ProjectWorkloadStatus::localWorkloadStatuses()` — called synchronously
+(not deferred) on every Projects list/show request to build each
+project's Running/Paused/Down badge — was the one item explicitly flagged
+back in Phase 1 as out of scope. It already carried its own docblock
+describing exactly this plan's motivating problem: a real, synchronous
+`kubectl get deployments,statefulsets -A` shelled out fresh on every
+navigation, behind only a 5-second `Cache::remember()` as a stopgap.
+
+Fix: extended the existing `local_cluster_state` singleton row (rather
+than a new table — this data is inherently cluster-wide, matching
+`LocalClusterState`'s existing shape) with a `workloads_data` JSON column
+plus its own `workloads_sync_status`/`workloads_last_synced_at`/
+`workloads_last_sync_error` columns. New `SyncLocalWorkloadsJob`
+(15-second schedule tick — matching `SyncLocalClusterJob`'s cadence, since
+both are equally session-actionable by the same up/down/start/stop
+actions — plus immediate dispatch on app boot and on any local
+up/down/start/stop via `RecordRunOutput`, alongside the existing
+`SyncLocalClusterJob::dispatch()` there).
+`ProjectWorkloadStatus::localWorkloadStatuses()` now reads
+`workloads_data` once the row has ever synced (same "has it ever synced,
+trust the recurring tick" shape as `DashboardController`'s `localCluster`
+prop — no separate per-request freshness check, since the 15-second tick
+already keeps it current); only a never-synced machine falls back to the
+live call, which also dispatches the job so the next request is instant.
+The old 5-second cache is gone — once synced, every read is an instant
+database read instead of a short-lived re-shell. The method's public
+signature is unchanged, so every caller (`ProjectController::index/show/
+stopAll/downAll`, `TrayController`) picked this up with no call-site
+changes.
+
+**Leak found and fixed while running the full suite for this phase**: a
+pre-existing test (`'a local up/down/start/stop queues an immediate local
+cluster re-sync...'`, added in Phase 1) dispatched `RecordRunOutput::
+handleExit()` for a local `UpProject`/`DownProject`/`StartProject`/
+`StopProject` run without faking `Process` or mocking `Elevation` — that
+handler's existing `Elevation::revoke()` call (unrelated to this plan,
+pre-dating it) has no `runningUnitTests()` guard the way `CliRunner`'s own
+`Elevation::grant()` call site does (its docblock there describes this
+exact failure mode as previously confirmed live). Running the real test
+suite on macOS popped a genuine native "administrator privileges"
+password prompt. Fixed by adding `Process::fake()` to that one test,
+per the existing CLAUDE.md rule that every shell command a test can reach
+must be faked — not a production-code guard, since the dedicated
+elevation tests intentionally call through the same `handleExit()` path
+with a mocked `Elevation` and need `revoke()` to actually fire. Audited
+every other test touching `RecordRunOutput`/`ProcessExited` and
+`UpProject`/`DownProject`/`StartProject`/`StopProject`; none of the others
+reach the finish-side `handleExit()` call for a local run, so this was the
+only leak.
+
+Tests: new `tests/Feature/ProjectWorkloadStatusTest.php` (4: DB-first read
+with no live kubectl call, live fallback + dispatch when never synced,
+`SyncLocalWorkloadsJob` success, and failure preserving last-known replica
+counts), `tests/Feature/RecordRunOutputTest.php` (extended the existing
+local-run-kinds test to also assert `SyncLocalWorkloadsJob` is dispatched,
+plus the `Process::fake()` fix above). Full suite: 715 passed (was 711).
+
 ## Context
 
 Windows wraps every kubectl/`larakube` call in a fresh `wsl.exe` invocation
@@ -300,16 +358,14 @@ normal `Schedule::job(...)->everyXSeconds()`/`->everyMinute()` entry in
 
 From the Dashboard/Projects audit (live findings, not estimates):
 
-1. **`ProjectWorkloadStatus::localWorkloadStatuses()`** — **Phase 4
-   (Projects page), not started.** Currently an uncached, synchronous
-   `kubectl get deployments,statefulsets -A -o json` on every Projects
-   list/show request (4 call sites). The earlier dashboard perf fix only
-   added a 5s cache as a stopgap. Real fix: a `SyncLocalWorkloadsJob`
-   writing per-namespace replica counts into a new table (this is
-   cluster-wide, not per-server — doesn't fit the existing `servers`-table
-   column convention, needs its own small table, e.g.
-   `local_workload_statuses(namespace, replicas, ready_replicas,
-   deployments_count, synced_at)`).
+1. ~~**`ProjectWorkloadStatus::localWorkloadStatuses()`**~~ — **DONE,
+   Phase 4.** `SyncLocalWorkloadsJob` writes per-namespace replica counts
+   into `local_cluster_state.workloads_data` (a JSON column on the
+   existing singleton row, not the separate table originally proposed
+   here — simpler, and this data is just as cluster-wide/singleton-shaped
+   as `LocalClusterState`'s existing columns), on a 15-second schedule
+   tick plus immediate dispatch on boot and on local up/down/start/stop.
+   The old 5s cache is gone.
 2. ~~**`LocalCluster::detect()`**~~ — **DONE, Phase 1.** New
    `local_cluster_state` singleton table + `SyncLocalClusterJob`
    (everyFifteenSeconds + immediate dispatch on boot and on local
