@@ -109,21 +109,32 @@ test('the gcloud installer hands its interpreter over explicitly', function (): 
 });
 
 test('install() self-heals a Homebrew permission error and retries once', function (): void {
-    // Confirmed live (2026-10-24): `brew install --cask gcloud-cli` failing
-    // outright with "/opt/homebrew is not writable" on a Mac whose Homebrew
-    // prefix ended up owned by the wrong user, even though brew itself works.
+    // Confirmed live (2026-10-24): a single `brew install --cask gcloud-cli`
+    // printed BOTH an early one-line "<path> is not writable... sudo chown -R
+    // <user> <path>" warning AND, once dependency resolution reached
+    // directories that warning never covered, a second, FATAL "The following
+    // directories are not writable by your user:" block listing several more
+    // paths with NO suggested command of its own — proving an earlier version
+    // of this fix (which only ever parsed a "sudo chown -R" line) chowned too
+    // little and the retry failed the exact same way.
     $homebrewError = <<<'OUTPUT'
-        Error: /opt/homebrew is not writable. You should change the
-        ownership and permissions of /opt/homebrew back to your
+        Error: /opt/homebrew is not writable. You should change the ownership and permissions of /opt/homebrew back to your
         user account:
           sudo chown -R someone /opt/homebrew
+        ==> Downloading JSON API packages.arm64_sonoma.jws.json
         ==> Would install 1 cask:
-        gcloud-cli
+          gcloud-cli
+        ==> Would install 7 dependencies for gcloud-cli:
+          python@3.13 ca-certificates openssl@3 readline sqlite xz
         Error: The following directories are not writable by your user:
         /opt/homebrew
+        /opt/homebrew/etc/bash_completion.d
         /opt/homebrew/share/doc
-        You should change the ownership of these directories to your user.
-          sudo chown -R someone /opt/homebrew /opt/homebrew/share/doc
+        /opt/homebrew/share/man
+        /opt/homebrew/share/man/man1
+        /opt/homebrew/share/zsh
+        /opt/homebrew/share/zsh/site-functions
+        /opt/homebrew/var/homebrew/locks
         OUTPUT;
 
     $installed = false;
@@ -146,10 +157,46 @@ test('install() self-heals a Homebrew permission error and retries once', functi
 
     expect(CliTool::GCLOUD->install())->toBeTrue();
 
-    // The LAST (most complete) chown line is the one that actually ran.
-    Process::assertRan(fn ($process) => $process->command === 'sudo -n chown -R someone /opt/homebrew /opt/homebrew/share/doc');
+    // Every path from both message shapes is chowned in one pass, using our
+    // own $(whoami) rather than whatever owner token Homebrew's own line used.
+    Process::assertRan(fn ($process) => $process->command === "sudo -n chown -R \$(whoami) '/opt/homebrew' '/opt/homebrew/etc/bash_completion.d' "
+        ."'/opt/homebrew/share/doc' '/opt/homebrew/share/man' '/opt/homebrew/share/man/man1' '/opt/homebrew/share/zsh' "
+        ."'/opt/homebrew/share/zsh/site-functions' '/opt/homebrew/var/homebrew/locks'");
 
     Process::assertRanTimes('brew install --cask gcloud-cli || brew install --cask google-cloud-sdk', 2);
+});
+
+test('install() self-heals when Homebrew only prints the bare directory-list format, with no suggested command at all', function (): void {
+    // The fatal block alone, with no leading "<path> is not writable" one-liner
+    // and no "sudo chown -R" line anywhere — confirmed live (2026-10-24) this
+    // can be the ENTIRE failure, not just a tail end of the mixed case above.
+    $homebrewError = <<<'OUTPUT'
+        Error: The following directories are not writable by your user:
+        /opt/homebrew
+        /opt/homebrew/share/zsh/site-functions
+        OUTPUT;
+
+    $installed = false;
+
+    Process::fake([
+        'command -v gcloud' => function () use (&$installed) {
+            return $installed ? Process::result('/opt/homebrew/bin/gcloud') : Process::result('', exitCode: 1);
+        },
+        'command -v brew' => Process::result('/opt/homebrew/bin/brew'),
+        'brew install --cask gcloud-cli || brew install --cask google-cloud-sdk' => function () use (&$installed, $homebrewError) {
+            if ($installed) {
+                return Process::result('==> gcloud-cli was already installed!', exitCode: 0);
+            }
+            $installed = true;
+
+            return Process::result($homebrewError, exitCode: 1);
+        },
+        '*' => Process::result(''),
+    ]);
+
+    expect(CliTool::GCLOUD->install())->toBeTrue();
+
+    Process::assertRan(fn ($process) => $process->command === "sudo -n chown -R \$(whoami) '/opt/homebrew' '/opt/homebrew/share/zsh/site-functions'");
 });
 
 test('install() does not retry a brew failure unrelated to Homebrew permissions', function (): void {
