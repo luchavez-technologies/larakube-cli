@@ -26,65 +26,53 @@ trait InstallsK9s
 
     /**
      * Download and install k9s for the current platform:
-     * - macOS: Homebrew
-     * - Linux/WSL2: GitHub release tarball into ~/.larakube/bin (no sudo, no snap)
+     * - macOS: tries Homebrew if available, otherwise direct binary tarball
+     * - Linux/WSL2: direct GitHub release tarball into ~/.larakube/bin (no sudo, no snap)
      */
     protected function installK9s(): bool
     {
-        $version = 'v0.32.5';
-
-        if ($this->isDarwin()) {
-            $brew = trim(Process::run('command -v brew')->output());
-            if ($brew === '') {
-                $this->warn('  Homebrew not found. Install it from https://brew.sh then run: brew install k9s');
-
-                return false;
-            }
-
+        if ($this->isDarwin() && trim(Process::run('command -v brew')->output()) !== '') {
             $this->laraKubeInfo('Installing k9s via Homebrew...');
             $code = Process::forever()->run('brew install k9s', function (string $type, string $output): void {
                 echo $output;
             })->exitCode();
 
-            return $code === 0;
-        }
-
-        if ($this->isLinux()) {
-            $machine = php_uname('m');
-            $arch = in_array($machine, ['arm64', 'aarch64'], true) ? 'arm64' : 'amd64';
-            $binDir = home_path('.larakube/bin');
-            $bin = $binDir.'/k9s';
-            @mkdir($binDir, 0755, true);
-
-            $where = $this->isWsl() ? 'WSL2' : 'Linux';
-            $this->laraKubeInfo("Installing k9s {$version} for {$where}...");
-
-            $url = "https://github.com/derailed/k9s/releases/download/{$version}/k9s_linux_{$arch}.tar.gz";
-            $code = Process::forever()->run('curl -fsSL '.escapeshellarg($url).' | tar -xz -C '.escapeshellarg($binDir).' k9s')->exitCode();
-
-            if ($code !== 0 || ! is_file($bin) || ! is_executable($bin)) {
-                $this->laraKubeWarn("Failed to download k9s {$version}.");
-                $this->laraKubeLine('  👉 Install manually: https://k9scli.io/topics/install/');
-
-                return false;
-            }
-
-            @chmod($bin, 0755);
-
-            $verOut = Process::run(escapeshellarg($bin).' version --short')->output();
-            if (str_contains(strtolower($verOut), strtolower(str_replace('v', '', $version)))) {
-                $this->laraKubeInfo("✅ k9s ready at {$bin}");
-
+            if ($code === 0 && $this->resolveK9sBin() !== null) {
                 return true;
             }
+        }
 
-            @unlink($bin);
-            $this->laraKubeWarn('Installed k9s but binary verification failed.');
+        $machine = php_uname('m');
+        $arch = in_array($machine, ['arm64', 'aarch64'], true) ? 'arm64' : 'amd64';
+        $targetOs = $this->isDarwin() ? 'Darwin' : 'Linux';
+        $binDir = home_path('.larakube/bin');
+        $bin = $binDir.'/k9s';
+        @mkdir($binDir, 0755, true);
+
+        $platformName = $this->isDarwin() ? 'macOS' : ($this->isWsl() ? 'WSL2' : 'Linux');
+        $this->laraKubeInfo("Downloading k9s standalone binary for {$platformName} ({$arch})...");
+
+        $url = "https://github.com/derailed/k9s/releases/latest/download/k9s_{$targetOs}_{$arch}.tar.gz";
+        $code = Process::forever()->run('curl -fsSL '.escapeshellarg($url).' | tar -xz -C '.escapeshellarg($binDir).' k9s')->exitCode();
+
+        if ($code !== 0 || ! is_file($bin) || ! is_executable($bin)) {
+            $this->laraKubeWarn('Failed to download k9s.');
+            $this->laraKubeLine('  👉 Install manually: https://k9scli.io/topics/install/');
 
             return false;
         }
 
-        $this->warn('  k9s install not supported on this platform. See https://k9scli.io/topics/install/');
+        @chmod($bin, 0755);
+
+        $verOut = Process::run(escapeshellarg($bin).' version --short')->output();
+        if ($verOut !== '') {
+            $this->laraKubeInfo("✅ k9s ready at {$bin}");
+
+            return true;
+        }
+
+        @unlink($bin);
+        $this->laraKubeWarn('Installed k9s but binary verification failed.');
 
         return false;
     }
