@@ -145,6 +145,38 @@ class FeatureAddCommand extends Command
             }
         }
 
+        if ($config->isPhp()) {
+            foreach (PhpVersion::cases() as $case) {
+                if ($case instanceof HasHiddenComponents && $case->isHidden($config)) {
+                    continue;
+                }
+
+                if ($this->option($case->value)) {
+                    $selectedItems[] = $case->value;
+                }
+            }
+
+            foreach (ServerVariation::cases() as $case) {
+                if ($case instanceof HasHiddenComponents && $case->isHidden($config)) {
+                    continue;
+                }
+
+                if ($this->option($case->value)) {
+                    $selectedItems[] = $case->value;
+                }
+            }
+
+            foreach (OperatingSystem::cases() as $case) {
+                if ($case instanceof HasHiddenComponents && $case->isHidden($config)) {
+                    continue;
+                }
+
+                if ($this->option($case->value)) {
+                    $selectedItems[] = $case->value;
+                }
+            }
+        }
+
         if (empty($selectedItems)) {
             $this->laraKubeInfo('Welcome to the Architectural Evolution wizard.');
 
@@ -353,6 +385,30 @@ class FeatureAddCommand extends Command
             $blueprint = Blueprint::tryFrom($item);
             if ($blueprint) {
                 $this->addBlueprint($blueprint, $config);
+                $addedCount++;
+
+                continue;
+            }
+
+            $phpVersion = PhpVersion::tryFrom($item);
+            if ($phpVersion) {
+                $this->updatePhpVersion($phpVersion, $config);
+                $addedCount++;
+
+                continue;
+            }
+
+            $serverVariation = ServerVariation::tryFrom($item);
+            if ($serverVariation) {
+                $this->updateServerVariation($serverVariation, $config);
+                $addedCount++;
+
+                continue;
+            }
+
+            $os = OperatingSystem::tryFrom($item);
+            if ($os) {
+                $this->updateOs($os, $config);
                 $addedCount++;
 
                 continue;

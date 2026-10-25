@@ -95,3 +95,29 @@ test('feature:add supports backwards-compatible add alias', function (): void {
         expect($saved->getCacheDrivers())->toContain(CacheDriver::REDIS);
     });
 });
+
+test('feature:add supports updating php version via positional argument and flag', function (): void {
+    inTempLaraKubeProject(['phpVersion' => '8.5'], function (string $dir): void {
+        $code = Artisan::call('feature:add', [
+            'items' => ['8.4'],
+            '--no-interaction' => true,
+        ]);
+
+        expect($code)->toBe(0);
+
+        $saved = ConfigData::loadFromFile($dir);
+        expect($saved->getPhpVersion()->value)->toBe('8.4');
+    });
+
+    inTempLaraKubeProject(['phpVersion' => '8.5'], function (string $dir): void {
+        $code = Artisan::call('feature:add', [
+            '--8.3' => true,
+            '--no-interaction' => true,
+        ]);
+
+        expect($code)->toBe(0);
+
+        $saved = ConfigData::loadFromFile($dir);
+        expect($saved->getPhpVersion()->value)->toBe('8.3');
+    });
+});
