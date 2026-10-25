@@ -60,7 +60,19 @@ test('ext:add is idempotent — re-adding does not duplicate the extension', fun
     });
 });
 
-test('ext:add warns when Dockerfile.php has no install-php-extensions line', function (): void {
+test('ext:add injects install-php-extensions block into base stage when no extensions previously existed', function (): void {
+    extAddInProject("FROM php:8.5-fpm-nginx-alpine AS base\n\nFROM base AS development\n", function (string $dir): void {
+        $code = Artisan::call('ext:add', ['extension' => 'bcmath']);
+
+        expect($code)->toBe(0);
+
+        $dockerfile = file_get_contents($dir.'/Dockerfile.php');
+        expect($dockerfile)->toContain("USER root\nRUN install-php-extensions bcmath\nUSER www-data")
+            ->and(ConfigData::loadFromFile($dir)->getAdditionalExtensions())->toBe(['bcmath']);
+    });
+});
+
+test('ext:add warns when Dockerfile.php has no install-php-extensions line and no base stage', function (): void {
     extAddInProject("FROM php:8.5\n", function (string $dir): void {
         $code = Artisan::call('ext:add', ['extension' => 'imagick']);
         $output = Artisan::output();

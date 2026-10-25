@@ -62,8 +62,13 @@ class ExtAddCommand extends Command
                     file_put_contents($dockerfilePath, $dockerfile);
                     $this->laraKubeInfo("Updated Dockerfile.php with '{$extension}'");
                 }
+            } elseif (preg_match('/^FROM\s+.*?\s+AS\s+base[^\n]*\n/mi', $dockerfile, $baseMatches)) {
+                $block = "USER root\nRUN install-php-extensions {$extension}\nUSER www-data\n\n";
+                $dockerfile = str_replace($baseMatches[0], $baseMatches[0]."\n".$block, $dockerfile);
+                file_put_contents($dockerfilePath, $dockerfile);
+                $this->laraKubeInfo("Added 'RUN install-php-extensions {$extension}' to Dockerfile.php");
             } else {
-                warning("Could not find an active 'RUN install-php-extensions' line in Dockerfile.php. Please add it manually.");
+                warning("Could not find an active 'RUN install-php-extensions' line or base stage in Dockerfile.php. Please add it manually.");
             }
         }
 
