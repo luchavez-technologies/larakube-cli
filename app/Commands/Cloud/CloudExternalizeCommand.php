@@ -112,8 +112,8 @@ class CloudExternalizeCommand extends Command
             $this->line('   • <fg=cyan>managed</> → point DB_* at your own (e.g. DO Managed Postgres)');
             $this->newLine();
 
-            if (confirm('Switch to a networked database engine now (via `larakube add`)?', default: true)) {
-                $this->call('add', ['items' => [select(
+            if (confirm('Switch to a networked database engine now (via `larakube feature:add`)?', default: true)) {
+                $this->call('feature:add', ['items' => [select(
                     label: 'Which database engine?',
                     options: $this->networkedDatabaseOptions(),
                     default: DatabaseDriver::POSTGRESQL->value,
@@ -334,7 +334,7 @@ class CloudExternalizeCommand extends Command
                 $items[] = $cache->value;  // redis / memcached service
             }
             if ($items !== []) {
-                $this->call('add', ['items' => $items]);
+                $this->call('feature:add', ['items' => $items]);
                 $config = $this->getProjectConfig(getcwd());
             }
 

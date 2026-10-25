@@ -109,6 +109,11 @@ enum AppFramework: string implements HasLabel, RequiresPhpExtensions
         return in_array($this, [self::LARAVEL, self::STATAMIC, self::WORDPRESS, self::NEXTJS], true);
     }
 
+    public function isLaravel(): bool
+    {
+        return in_array($this, [self::LARAVEL, self::STATAMIC], true);
+    }
+
     /** Offered in the CLI but kept out of pickers, for now. */
     public function isHidden(): bool
     {

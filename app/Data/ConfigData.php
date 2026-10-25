@@ -1612,6 +1612,16 @@ class ConfigData extends Data
         return 'laravel-config';
     }
 
+    public function isPhp(): bool
+    {
+        return $this->framework === null || $this->framework->isPhp();
+    }
+
+    public function isLaravel(): bool
+    {
+        return $this->framework === null || $this->framework->isLaravel();
+    }
+
     public function getAllEnvironmentVariables(string $environment = 'local'): array
     {
         return array_merge(

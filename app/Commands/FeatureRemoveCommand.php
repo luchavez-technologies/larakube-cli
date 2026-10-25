@@ -23,7 +23,7 @@ use function Laravel\Prompts\select;
 
 use LaravelZero\Framework\Commands\Command;
 
-class RemoveCommand extends Command
+class FeatureRemoveCommand extends Command
 {
     use GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithDocker, InteractsWithDynamicOptions, InteractsWithProjectConfig, LaraKubeOutput, ManagesArchitecturalComponents;
 
@@ -32,13 +32,20 @@ class RemoveCommand extends Command
      *
      * @var string
      */
-    protected $signature = 'remove {items?* : The database(s), feature(s), blueprint(s), or storage to remove}
+    protected $signature = 'feature:remove {items?* : The database(s), feature(s), blueprint(s), or storage to remove}
                             {--dry-run : Show what will be removed without making changes}';
 
     /**
      * The console command description.
      */
     protected $description = 'Remove architectural components (DB, Features, Storage, etc.)';
+
+    /**
+     * Command aliases for backwards compatibility.
+     *
+     * @var array<string>
+     */
+    protected $aliases = ['remove'];
 
     /**
      * Execute the console command.
@@ -108,16 +115,23 @@ class RemoveCommand extends Command
         if (empty($selectedItems)) {
             $this->laraKubeInfo('Welcome to the De-Architectural Wizard.');
 
+            $options = [];
+            if ($config->isLaravel()) {
+                $options['blueprint'] = 'Specialized Blueprint';
+            }
+            $options['database'] = 'Database Engine';
+            $options['cache'] = 'Cache Driver';
+            if ($config->isLaravel()) {
+                $options['feature'] = 'Laravel Feature';
+            }
+            $options['storage'] = 'Object Storage';
+            if ($config->isPhp()) {
+                $options['extension'] = 'PHP Extension';
+            }
+
             $type = select(
                 label: 'What would you like to remove?',
-                options: [
-                    'blueprint' => 'Specialized Blueprint',
-                    'database' => 'Database Engine',
-                    'cache' => 'Cache Driver',
-                    'feature' => 'Laravel Feature',
-                    'storage' => 'Object Storage',
-                    'extension' => 'PHP Extension',
-                ],
+                options: $options,
             );
 
             if ($type === 'extension') {

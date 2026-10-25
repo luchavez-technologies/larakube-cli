@@ -40,7 +40,7 @@ test('every path that prints one-time steps filters Plex-backed components', fun
         'app/Traits/LaraKubeOutput.php',
         'app/Commands/NewCommand.php',
         'app/Commands/InitCommand.php',
-        'app/Commands/AddCommand.php',
+        'app/Commands/FeatureAddCommand.php',
     ];
 
     foreach ($sites as $site) {

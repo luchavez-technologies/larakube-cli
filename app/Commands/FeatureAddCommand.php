@@ -34,7 +34,7 @@ use function Laravel\Prompts\text;
 use LaravelZero\Framework\Commands\Command;
 use Random\RandomException;
 
-class AddCommand extends Command
+class FeatureAddCommand extends Command
 {
     use CheckPrerequisites, GathersEnvironmentData, GeneratesProjectInfrastructure, HasConsoleInteraction, InteractsWithArchitecturalEngine, InteractsWithDocker, InteractsWithDynamicOptions, InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput, ManagesArchitecturalComponents;
 
@@ -43,13 +43,20 @@ class AddCommand extends Command
      *
      * @var string
      */
-    protected $signature = 'add {items?* : The database(s), feature(s), blueprint, or storage to add}
+    protected $signature = 'feature:add {items?* : The database(s), feature(s), blueprint, or storage to add}
                             {--dry-run : Show what will be done without making any changes}';
 
     /**
      * The console command description.
      */
-    protected $description = 'Add or swap databases, Laravel features, blueprints, or storage';
+    protected $description = 'Add or swap databases, features, blueprints, or storage';
+
+    /**
+     * Command aliases for backwards compatibility.
+     *
+     * @var array<string>
+     */
+    protected $aliases = ['add'];
 
     /**
      * Execute the console command.
@@ -141,20 +148,32 @@ class AddCommand extends Command
         if (empty($selectedItems)) {
             $this->laraKubeInfo('Welcome to the Architectural Evolution wizard.');
 
+            $options = [];
+
+            if ($config->isLaravel()) {
+                $options['feature'] = 'Laravel Feature (Horizon, Reverb, etc.)';
+            }
+
+            $options['database'] = 'Database Engine (MySQL, Postgres, etc.)';
+            $options['cache'] = 'Cache Driver (Redis, Memcached)';
+            $options['storage'] = 'Object Storage (MinIO, Garage)';
+
+            if ($config->isPhp()) {
+                $options['php_version'] = 'PHP Version (8.4, 8.5, etc.)';
+                $options['server'] = 'Server Variation (FrankenPHP, Nginx, Apache)';
+                $options['os'] = 'Operating System (Alpine, Debian)';
+                $options['extension'] = 'PHP Extension (gd, bcmath, etc.)';
+            }
+
+            if ($config->isLaravel()) {
+                $options['blueprint'] = 'Specialized Blueprint (Filament, etc.)';
+            }
+
+            $options['cloud'] = 'Cloud Configuration (Ingress, Managed Services)';
+
             $type = select(
                 label: 'What would you like to evolve?',
-                options: [
-                    'feature' => 'Laravel Feature (Horizon, Reverb, etc.)',
-                    'database' => 'Database Engine (MySQL, Postgres, etc.)',
-                    'cache' => 'Cache Driver (Redis, Memcached)',
-                    'storage' => 'Object Storage (MinIO, Garage)',
-                    'php_version' => 'PHP Version (8.4, 8.5, etc.)',
-                    'server' => 'Server Variation (FrankenPHP, Nginx, Apache)',
-                    'os' => 'Operating System (Alpine, Debian)',
-                    'extension' => 'PHP Extension (gd, bcmath, etc.)',
-                    'blueprint' => 'Specialized Blueprint (Filament, etc.)',
-                    'cloud' => 'Cloud Configuration (Ingress, Managed Services)',
-                ],
+                options: $options,
             );
 
             if ($type === 'cloud') {

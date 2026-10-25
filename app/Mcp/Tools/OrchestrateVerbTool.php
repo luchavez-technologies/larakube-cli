@@ -34,7 +34,7 @@ class OrchestrateVerbTool extends Tool
             return Response::error("Error: Project directory not found at '{$path}'.");
         }
 
-        $allowedVerbs = ['up', 'down', 'heal', 'add', 'remove', 'start', 'stop', 'purge', 'status', 'doctor', 'trust', 'trust:remove', 'trust:check', 'trust:reset', 'about', 'web', 'console'];
+        $allowedVerbs = ['up', 'down', 'heal', 'feature:add', 'feature:remove', 'add', 'remove', 'start', 'stop', 'purge', 'status', 'doctor', 'trust', 'trust:remove', 'trust:check', 'trust:reset', 'about', 'web', 'console'];
 
         if (! in_array($verb, $allowedVerbs)) {
             chdir($originalCwd);
