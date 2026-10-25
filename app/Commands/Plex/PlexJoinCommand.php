@@ -27,6 +27,7 @@ class PlexJoinCommand extends Command
     protected $signature = 'plex:join
         {environment? : Environment to join to the Commons — "local" (default) or a cloud environment. Omit to be prompted.}
         {--context= : Target a specific kube-context (defaults to the environment\'s saved target, or the current context for local)}
+        {--service=* : Specific service(s) to join (e.g. postgres, redis). Omit to join all eligible services.}
         {--migrate : Auto-migrate existing self-hosted data into the Commons instead of refusing to join}
         {--fresh : Discard existing self-hosted data instead of migrating it — deletes the self-hosted deployment/PVC and joins Commons empty}';
 
@@ -81,6 +82,27 @@ class PlexJoinCommand extends Command
 
         // 1. Which of this app's services are Commons-eligible?
         $services = $this->resolveTenantServices($config);
+
+        $serviceOption = array_filter((array) $this->option('service'));
+        if (! empty($serviceOption)) {
+            $filtered = [];
+            foreach ($serviceOption as $svc) {
+                $normalized = strtolower(trim((string) $svc));
+                $normalized = match ($normalized) {
+                    'database', 'db', 'postgresql' => 'postgres',
+                    'cache' => 'redis',
+                    'storage', 's3' => 'seaweedfs',
+                    'search' => 'meilisearch',
+                    default => $normalized,
+                };
+                if (in_array($normalized, $services, true)) {
+                    $filtered[] = $normalized;
+                }
+            }
+            if (! empty($filtered)) {
+                $services = array_values(array_unique($filtered));
+            }
+        }
 
         if (empty($services)) {
             $this->laraKubeError('No Commons-eligible services found. Plex shares a database (Postgres/MySQL/MariaDB), Redis, Meilisearch or S3;');

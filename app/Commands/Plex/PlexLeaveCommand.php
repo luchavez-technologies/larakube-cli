@@ -13,6 +13,7 @@ use App\Traits\ResolvesEnvironmentContext;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
+use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
@@ -25,6 +26,7 @@ class PlexLeaveCommand extends Command
     protected $signature = 'plex:leave
         {environment? : Environment to remove from the Commons — "local" (default) or a cloud environment. Omit to be prompted.}
         {--context= : Target a specific kube-context (defaults to the environment\'s saved target, or the current context for local)}
+        {--service=* : Specific service(s) to disconnect (e.g. postgres, redis, seaweedfs). Omit to disconnect all.}
         {--backup= : Path for the pre-drop pg_dump backup (default: ./<tenant>-commons-<env>.sql)}
         {--no-backup : Skip the safety backup before dropping (dangerous)}
         {--restore : Phase 2 — copy Commons data into the now-live self-hosted pod(s), then finish leaving}
@@ -68,7 +70,7 @@ class PlexLeaveCommand extends Command
             $this->line('  <fg=gray>Its Commons data outlives <fg=yellow>larakube down</>; <fg=yellow>larakube down --full</> or <fg=yellow>--vols</> evicts it.</>');
             $this->newLine();
 
-            if (! confirm('Continue anyway?', false)) {
+            if (! $this->option('force') && ! $this->option('no-interaction') && ! confirm('Continue anyway?', false)) {
                 return 0;
             }
         }
@@ -106,7 +108,58 @@ class PlexLeaveCommand extends Command
         $namespace = $config->getNamespace($env);
         $storage = $config->getObjectStorage();
 
+        $plexServices = $config->getPlex($env);
+        $serviceOption = array_filter((array) $this->option('service'));
+
+        $targetServices = [];
+        if (! empty($serviceOption)) {
+            foreach ($serviceOption as $svc) {
+                $normalized = strtolower(trim((string) $svc));
+                $normalized = match ($normalized) {
+                    'database', 'db', 'postgresql' => $entry['db_service'] ?? 'postgres',
+                    'cache' => 'redis',
+                    'storage', 's3' => $entry['s3_service'] ?? 'seaweedfs',
+                    'search' => 'meilisearch',
+                    default => $normalized,
+                };
+                $targetServices[] = $normalized;
+            }
+            $targetServices = array_values(array_unique($targetServices));
+        } elseif (count($plexServices) > 1 && ! $this->option('force') && ! $this->option('no-interaction') && ! (bool) $this->option('restore')) {
+            $options = ['all' => 'All services ('.implode(', ', $plexServices).')'];
+            foreach ($plexServices as $svc) {
+                $options[$svc] = ucfirst($svc).' only';
+            }
+            $chosen = select(
+                label: 'Which Commons service(s) would you like to disconnect?',
+                options: $options,
+                default: 'all',
+            );
+            if ($chosen !== 'all') {
+                $targetServices = [$chosen];
+            } else {
+                $targetServices = $plexServices;
+            }
+        } else {
+            $targetServices = $plexServices;
+        }
+
+        $leaveDb = in_array($dbDriver->value, $targetServices, true) || in_array('database', $targetServices, true) || in_array('postgres', $targetServices, true) || in_array('mysql', $targetServices, true) || in_array('mariadb', $targetServices, true)
+            ? $db
+            : null;
+
+        $leaveRedis = in_array('redis', $targetServices, true) || in_array('cache', $targetServices, true)
+            ? $redisIndex
+            : null;
+
+        $leaveS3 = in_array('seaweedfs', $targetServices, true) || in_array('minio', $targetServices, true) || in_array('storage', $targetServices, true) || in_array('s3', $targetServices, true)
+            ? $s3Bucket
+            : null;
+
         $this->line("  <fg=gray>Tenant:</> <fg=cyan>{$tenant}</>  <fg=gray>env:</> <fg=cyan>{$env}</>  <fg=gray>context:</> <fg=cyan>".($context ?: 'current').'</>');
+        if (count($targetServices) < count($plexServices)) {
+            $this->line('  <fg=gray>Disconnecting service(s):</> <fg=yellow>'.implode(', ', $targetServices).'</>');
+        }
 
         // Like plex:join's "migrate now?" — if the self-hosted service(s) are
         // ALREADY back and Ready (you already ran step 1 + redeployed, maybe
@@ -116,8 +169,8 @@ class PlexLeaveCommand extends Command
 
         if (! $shouldRestore) {
             $targets = array_values(array_filter([
-                $db ? $dbDriver->value : null,
-                $s3Bucket && $storage !== null ? $storage->value : null,
+                $leaveDb ? $dbDriver->value : null,
+                $leaveS3 && $storage !== null ? $storage->value : null,
             ]));
 
             if (! empty($targets) && $this->allSelfHostedReady($targets, $namespace)) {
@@ -127,14 +180,16 @@ class PlexLeaveCommand extends Command
         }
 
         return $shouldRestore
-            ? $this->finishLeaving($config, $env, $tenant, $appName, $namespace, $registry, $db, $dbDriver, $redisIndex, $s3Bucket, $s3Service)
-            : $this->prepareToLeave($config, $projectPath, $env, $tenant, $appName, $db, $dbDriver, $redisIndex, $s3Bucket);
+            ? $this->finishLeaving($config, $env, $tenant, $appName, $namespace, $registry, $leaveDb, $dbDriver, $leaveRedis, $leaveS3, $s3Service, $targetServices)
+            : $this->prepareToLeave($config, $projectPath, $env, $tenant, $appName, $leaveDb, $dbDriver, $leaveRedis, $leaveS3, $targetServices);
     }
 
     /**
      * Phase 1: warn what leaving will eventually do, then clear the
      * plex/managed markers and regenerate manifests so the self-hosted
      * service(s) come back. The Commons itself is untouched.
+     *
+     * @param  list<string>  $targetServices
      */
     protected function prepareToLeave(
         ConfigData $config,
@@ -146,8 +201,9 @@ class PlexLeaveCommand extends Command
         DatabaseDriver $dbDriver,
         ?int $redisIndex,
         ?string $s3Bucket,
+        array $targetServices = [],
     ): int {
-        $this->laraKubeWarn('Leaving will eventually PERMANENTLY drop this tenant from the Commons:');
+        $this->laraKubeWarn('Leaving will eventually PERMANENTLY drop this tenant\'s service(s) from the Commons:');
         if ($db) {
             $this->laraKubeLine("    • {$dbDriver->getLabel()} database \"{$db}\" and login \"{$tenant}\" (all data)");
         }
@@ -157,7 +213,12 @@ class PlexLeaveCommand extends Command
         if ($s3Bucket) {
             $this->laraKubeLine("    • Object-storage bucket \"{$s3Bucket}\" (all objects)");
         }
-        $this->laraKubeLine('    • the tenant entry in the Commons registry');
+        $remainingServices = array_diff($config->getPlex($env), $targetServices);
+        if (empty($remainingServices)) {
+            $this->laraKubeLine('    • the tenant entry in the Commons registry');
+        } else {
+            $this->laraKubeLine('    • (retaining remaining Commons services: '.implode(', ', $remainingServices).')');
+        }
         $this->laraKubeLine('  ...but NOT yet. This step only brings the self-hosted service(s) back; the');
         $this->laraKubeLine('  Commons is only touched (and only after copying its data back) in step 2.');
         $this->laraKubeNewLine();
@@ -171,7 +232,7 @@ class PlexLeaveCommand extends Command
             }
         }
 
-        $this->clearPlexMarkers($projectPath, $config, $env);
+        $this->clearPlexMarkers($projectPath, $config, $env, $targetServices);
 
         $this->laraKubeNewLine();
         $this->laraKubeInfo('Regenerating manifests so the self-hosted service(s) come back...');
@@ -207,6 +268,7 @@ class PlexLeaveCommand extends Command
         ?int $redisIndex,
         ?string $s3Bucket,
         string $s3Service,
+        array $targetServices = [],
     ): int {
         $ns = $this->plexNamespace();
         $storage = $config->getObjectStorage();
@@ -296,9 +358,28 @@ class PlexLeaveCommand extends Command
             $this->deleteTenantBucket($ns, $s3Service, $s3Bucket);
         }
 
-        // 7. Remove the tenant from the Commons registry (frees its redis index).
-        $this->saveRegistry($this->registryRemove($registry, $tenant));
-        $this->line("  <fg=gray>Removed</> {$tenant} <fg=gray>from the Commons registry.</>");
+        // 7. Update or remove the tenant from the Commons registry.
+        if ($db) {
+            unset($registry['tenants'][$tenant]['db'], $registry['tenants'][$tenant]['db_service']);
+        }
+        if ($redisIndex !== null) {
+            unset($registry['tenants'][$tenant]['redis_index']);
+        }
+        if ($s3Bucket) {
+            unset($registry['tenants'][$tenant]['s3_bucket'], $registry['tenants'][$tenant]['s3_service']);
+        }
+
+        $hasRemaining = ! empty($registry['tenants'][$tenant]['db'])
+            || isset($registry['tenants'][$tenant]['redis_index'])
+            || ! empty($registry['tenants'][$tenant]['s3_bucket']);
+
+        if (! $hasRemaining) {
+            $this->saveRegistry($this->registryRemove($registry, $tenant));
+            $this->line("  <fg=gray>Removed</> {$tenant} <fg=gray>from the Commons registry.</>");
+        } else {
+            $this->saveRegistry($registry);
+            $this->line("  <fg=gray>Updated</> {$tenant} <fg=gray>in the Commons registry (remaining services preserved).</>");
+        }
 
         $this->printNext($env, $appName);
 
@@ -433,23 +514,32 @@ class PlexLeaveCommand extends Command
     /**
      * Drop the env's plex marker and remove the Commons services from its managed
      * list, so a later heal/regenerate stops treating them as Commons-backed.
+     *
+     * @param  list<string>  $leavingServices
      */
-    protected function clearPlexMarkers(string $projectPath, ConfigData $config, string $env): void
+    protected function clearPlexMarkers(string $projectPath, ConfigData $config, string $env, array $leavingServices = []): void
     {
         $plexServices = $config->getPlex($env);
         if (empty($plexServices)) {
             return;
         }
 
+        if (empty($leavingServices)) {
+            $leavingServices = $plexServices;
+        }
+
         $data = $config->toArray();
         $data['environments'][$env]['managed'] = array_values(array_diff(
             $data['environments'][$env]['managed'] ?? [],
-            $plexServices,
+            $leavingServices,
         ));
-        $data['environments'][$env]['plex'] = [];
+        $data['environments'][$env]['plex'] = array_values(array_diff(
+            $data['environments'][$env]['plex'] ?? [],
+            $leavingServices,
+        ));
         ConfigData::from($data)->saveToFile($projectPath);
 
-        $this->line('  <fg=gray>Cleared plex/managed markers in .larakube.json for:</> '.implode(', ', $plexServices));
+        $this->line('  <fg=gray>Cleared plex/managed markers in .larakube.json for:</> '.implode(', ', $leavingServices));
     }
 
     protected function printNext(string $env, string $appName): void
