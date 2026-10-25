@@ -208,6 +208,25 @@ trait GeneratesProjectInfrastructure
         } elseif ($isManagedTemplate) {
             $content = preg_replace("/origin:\s*['\"][^'\"]+['\"]/", "origin: 'https://{$viteHost}'", $content, 1);
             $content = preg_replace("/(hmr:\s*\{\s*host:\s*)['\"][^'\"]+['\"]/", "$1'{$viteHost}'", $content, 1);
+
+            // Realign allowedHosts on a rename/config:tld change; retrofit it
+            // onto a managed config written before this key existed (every
+            // project scaffolded before this fix) by inserting it right after
+            // `strictPort: true,` — a key every managed block has, old or new.
+            // Without this, Vite 6+ rejects every request through Traefik with
+            // "Blocked request. This host is not allowed." even though
+            // origin/hmr.host both look correctly aligned.
+            if (str_contains($content, 'allowedHosts:')) {
+                $content = preg_replace("/allowedHosts:\s*\[[^\]]*\]/", "allowedHosts: ['{$viteHost}']", $content, 1);
+            } else {
+                $content = preg_replace(
+                    "/^([ \t]*)strictPort:\s*true,[ \t]*$/m",
+                    "$1strictPort: true,\n$1allowedHosts: ['{$viteHost}'],",
+                    $content,
+                    1,
+                );
+            }
+
             file_put_contents($viteFile, $content);
         } elseif (($merged = $this->mergeIntoViteServerBlock($content, $viteHost)) !== null) {
             // Laravel's Vite+ starter kits ship their OWN `server` block (a
@@ -325,6 +344,10 @@ trait GeneratesProjectInfrastructure
             'host' => "'0.0.0.0'",
             'port' => '5173',
             'strictPort' => 'true',
+            // Vite 6+ refuses any Host header that isn't localhost, so the
+            // Traefik-proxied hostname must be declared here or every request
+            // is rejected with "Blocked request. This host is not allowed."
+            'allowedHosts' => "['{$viteHost}']",
         ];
 
         foreach ($managed as $key => $value) {

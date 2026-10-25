@@ -83,6 +83,13 @@ enum PackageManager: string implements HasCommandOptions, HasLabel, HasSelectOpt
         };
     }
 
+    /**
+     * node_modules is installed by a dedicated initContainer into its own PVC
+     * (see node-deployment.blade.php), not by this command — a package with
+     * platform-specific native bindings (e.g. installed as darwin-arm64 on
+     * the host) would crash-loop if this container had to rely on a hostPath
+     * bind-mount of the developer's own node_modules instead.
+     */
     public function getReadinessProbeCommand(): string
     {
         $separator = ($this === self::NPM) ? '' : ' --';

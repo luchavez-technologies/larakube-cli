@@ -91,7 +91,61 @@ TS;
     // A managed server block must be re-aligned to the new TLD, not left
     // stale with only an advisory.
     expect($result)->toContain("origin: 'https://vite.test-app.test'")
-        ->and($result)->toContain("host: 'vite.test-app.test'");
+        ->and($result)->toContain("host: 'vite.test-app.test'")
+        // Retrofitted onto a managed block written before allowedHosts
+        // existed (every project scaffolded before this fix, confirmed live
+        // on a real project where it 403'd every asset request) — not left
+        // missing just because there was nothing to regex-replace.
+        ->and($result)->toContain("allowedHosts: ['vite.test-app.test']");
+
+    $temporaryDirectory->delete();
+    unlink($globalConfigDir.'/config.json');
+});
+
+test('Vite Hardening: Realigns an existing allowedHosts to the current TLD instead of leaving it stale', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
+
+    $viteConfig = <<<'TS'
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+server: {
+        // larakube:managed
+        cors: true,
+        origin: 'https://vite.test-app.kube',
+        host: '0.0.0.0',
+        port: 5173,
+        strictPort: true,
+        allowedHosts: ['vite.test-app.kube'],
+        hmr: {
+            host: 'vite.test-app.kube',
+        },
+        watch: {
+            ignored: ['**/.infrastructure/volume_data/**'],
+        },
+    },
+    plugins: [],
+});
+TS;
+
+    file_put_contents($tempDir.'/vite.config.ts', $viteConfig);
+
+    $globalConfigDir = $_SERVER['HOME'].'/.larakube';
+    if (! is_dir($globalConfigDir)) {
+        mkdir($globalConfigDir, 0700, true);
+    }
+    file_put_contents($globalConfigDir.'/config.json', json_encode(['localTld' => 'test']));
+
+    $config = new ConfigData(name: 'test-app');
+    $config->setPath($tempDir);
+
+    (new ViteHardenHelper)->hardenViteConfig($config);
+
+    $result = file_get_contents($tempDir.'/vite.config.ts');
+
+    expect($result)->toContain("allowedHosts: ['vite.test-app.test']")
+        ->and($result)->not->toContain('vite.test-app.kube');
 
     $temporaryDirectory->delete();
     unlink($globalConfigDir.'/config.json');

@@ -43,6 +43,16 @@ test('our HMR keys are merged into a server block somebody else wrote', function
         ->and($merged)->toContain('port: 5173');
 });
 
+test('allowedHosts is merged in, or every Traefik-proxied request gets a 403', function (): void {
+    // Vite 6+ refuses any Host header that isn't localhost by default —
+    // confirmed live against a real project: the companion Vite pod served
+    // every asset (app.tsx, app.css, fonts, @react-refresh) with "Blocked
+    // request. This host is not allowed." until allowedHosts was present.
+    $merged = (string) viteMergeHarness()->merge(vitePlusConfig(), 'vite.app.test');
+
+    expect($merged)->toContain("allowedHosts: ['vite.app.test']");
+});
+
 test('their watch.ignored entries survive the merge', function (): void {
     // Replacing the list would silently re-enable watching vendor/, which is
     // what those entries exist to prevent.
