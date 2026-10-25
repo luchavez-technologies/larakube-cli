@@ -73,8 +73,18 @@ class ExtRemoveCommand extends Command
             if (preg_match('/RUN install-php-extensions (.*)/', $dockerfile, $matches)) {
                 $currentExts = array_filter(explode(' ', trim($matches[1])));
                 if (in_array($extension, $currentExts)) {
-                    $newExts = implode(' ', array_values(array_diff($currentExts, [$extension])));
-                    $dockerfile = str_replace($matches[0], "RUN install-php-extensions {$newExts}", $dockerfile);
+                    $remaining = array_values(array_diff($currentExts, [$extension]));
+                    if (empty($remaining)) {
+                        $pattern = '/\n?USER root\s*\n\s*RUN install-php-extensions[^\n]*\n\s*USER www-data\n?/m';
+                        if (preg_match($pattern, $dockerfile)) {
+                            $dockerfile = preg_replace($pattern, "\n", $dockerfile, 1);
+                        } else {
+                            $dockerfile = str_replace($matches[0]."\n", '', $dockerfile);
+                        }
+                    } else {
+                        $newExts = implode(' ', $remaining);
+                        $dockerfile = str_replace($matches[0], "RUN install-php-extensions {$newExts}", $dockerfile);
+                    }
                     file_put_contents($dockerfilePath, $dockerfile);
                     $this->laraKubeInfo("Updated Dockerfile.php (removed '{$extension}')");
                 }
