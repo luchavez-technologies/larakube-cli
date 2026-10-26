@@ -95,9 +95,24 @@ class WatchCommand extends Command
             );
 
             foreach ($iter as $file) {
-                if ($file->isFile()) {
-                    $entries[$file->getPathname()] = $file->getMTime();
+                if (! $file->isFile()) {
+                    continue;
                 }
+
+                $pathname = $file->getPathname();
+                $basename = $file->getBasename();
+
+                // Skip bootstrap cache files to avoid reload loops
+                if (str_contains($pathname, DIRECTORY_SEPARATOR.'bootstrap'.DIRECTORY_SEPARATOR.'cache')) {
+                    continue;
+                }
+
+                // Skip OS & editor temp files
+                if ($basename === '.DS_Store' || str_starts_with($basename, '.') || str_ends_with($basename, '~') || str_ends_with($basename, '.swp') || str_ends_with($basename, '.tmp')) {
+                    continue;
+                }
+
+                $entries[$pathname] = $file->getMTime();
             }
         }
 

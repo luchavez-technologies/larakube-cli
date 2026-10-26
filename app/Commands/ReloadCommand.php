@@ -72,21 +72,34 @@ class ReloadCommand extends Command
             $labels[] = 'app=laravel-queue';
         }
 
-        $podName = null;
+        $podNames = [];
         foreach ($labels as $label) {
-            $podName = trim(Process::run("{$kubectl} get pods -n {$namespace} -l {$label} -o jsonpath='{.items[0].metadata.name}'")->output());
-            if ($podName !== '') {
+            $output = trim(Process::run("{$kubectl} get pods -n {$namespace} -l {$label} --field-selector=status.phase=Running -o jsonpath='{.items[*].metadata.name}'")->output());
+            if ($output !== '') {
+                $podNames = array_values(array_filter(explode(' ', $output)));
                 break;
             }
         }
 
-        if (! $podName) {
+        if (empty($podNames)) {
+            foreach ($labels as $label) {
+                $output = trim(Process::run("{$kubectl} get pods -n {$namespace} -l {$label} -o jsonpath='{.items[*].metadata.name}'")->output());
+                if ($output !== '') {
+                    $podNames = array_values(array_filter(explode(' ', $output)));
+                    break;
+                }
+            }
+        }
+
+        if (empty($podNames)) {
             $this->laraKubeWarn("Pod for '{$service}' not found in '{$namespace}'. Skipping.");
 
             return;
         }
 
-        $this->laraKubeInfo("↻ {$service}: {$command}");
-        $this->runStreaming("{$kubectl} exec -n {$namespace} -c php {$podName} -- {$command}");
+        foreach ($podNames as $podName) {
+            $this->laraKubeInfo("↻ {$service} ({$podName}): {$command}");
+            $this->runStreaming("{$kubectl} exec -n {$namespace} -c php {$podName} -- {$command}");
+        }
     }
 }

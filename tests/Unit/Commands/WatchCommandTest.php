@@ -53,3 +53,28 @@ test('computeHash recurses into subdirectories', function (): void {
     @unlink($this->tmp.'/app/Models/Post.php');
     @rmdir($this->tmp.'/app/Models');
 });
+
+test('computeHash ignores bootstrap/cache to prevent reload loops', function (): void {
+    mkdir($this->tmp.'/bootstrap/cache', 0755, true);
+    file_put_contents($this->tmp.'/bootstrap/cache/services.php', '<?php');
+
+    $before = WatchCommand::computeHash(['bootstrap'], $this->tmp);
+
+    touch($this->tmp.'/bootstrap/cache/services.php', time() + 100);
+
+    $after = WatchCommand::computeHash(['bootstrap'], $this->tmp);
+
+    expect($before)->toBe($after);
+});
+
+test('computeHash ignores dotfiles and editor swap files', function (): void {
+    $before = WatchCommand::computeHash(['app'], $this->tmp);
+
+    file_put_contents($this->tmp.'/app/.DS_Store', 'junk');
+    file_put_contents($this->tmp.'/app/User.php.swp', 'swap');
+    file_put_contents($this->tmp.'/app/User.php~', 'backup');
+
+    $after = WatchCommand::computeHash(['app'], $this->tmp);
+
+    expect($before)->toBe($after);
+});
