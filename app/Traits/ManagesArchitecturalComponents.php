@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Contracts\HasComposerDependencies;
 use App\Data\ConfigData;
 use App\Enums\Blueprint;
 use App\Enums\CacheDriver;
@@ -237,7 +238,25 @@ trait ManagesArchitecturalComponents
     protected function addFeature(LaravelFeature $feature, ConfigData $config, bool $skipConfirm = false): void
     {
         $projectPath = $config->getPath();
-        if (in_array($feature, $config->getFeatures())) {
+        $missingComposerDeps = false;
+
+        if ($feature instanceof HasComposerDependencies && file_exists("$projectPath/composer.json")) {
+            $composerJson = json_decode((string) file_get_contents("$projectPath/composer.json"), true);
+            if (is_array($composerJson)) {
+                $required = array_merge(
+                    array_keys($composerJson['require'] ?? []),
+                    array_keys($composerJson['require-dev'] ?? []),
+                );
+                foreach ($feature->getComposerDependencies($config) as $pkg) {
+                    if (! in_array($pkg, $required, true)) {
+                        $missingComposerDeps = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (in_array($feature, $config->getFeatures()) && ! $missingComposerDeps) {
             $this->laraKubeInfo("Feature '{$feature->value}' is already added. Skipping...");
 
             return;

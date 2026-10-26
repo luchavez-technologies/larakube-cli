@@ -190,7 +190,7 @@ class FeatureRemoveCommand extends Command
         if ($this->option('dry-run')) {
             return 0;
         }
-        if (! confirm('Apply these architectural removals?', true)) {
+        if (! $this->option('no-interaction') && ! confirm('Apply these architectural removals?', true)) {
             return 0;
         }
 

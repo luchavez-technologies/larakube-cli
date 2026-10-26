@@ -2,6 +2,8 @@
 
 namespace App\Traits;
 
+use App\Contracts\HasArtisanCommands;
+use App\Contracts\HasComposerDependencies;
 use App\Data\ConfigData;
 use App\Enums\AppFramework;
 use App\Enums\LaravelFeature;
@@ -31,6 +33,45 @@ trait EnsuresHostDependencies
         if ($framework->isPhp() && ! is_dir("$projectPath/vendor")) {
             $this->laraKubeInfo('vendor/ not found — running composer install (first-time setup)...');
             $this->runInContainer('composer install --no-interaction --prefer-dist', $projectPath);
+        }
+
+        if ($framework->isPhp() && file_exists("$projectPath/composer.json")) {
+            $missingPackages = [];
+            $composerJson = json_decode((string) file_get_contents("$projectPath/composer.json"), true);
+            $required = array_merge(
+                array_keys($composerJson['require'] ?? []),
+                array_keys($composerJson['require-dev'] ?? []),
+            );
+
+            foreach ($config->getFeatures() as $feature) {
+                if ($feature instanceof HasComposerDependencies) {
+                    foreach ($feature->getComposerDependencies($config) as $pkg) {
+                        if (! in_array($pkg, $required, true)) {
+                            $missingPackages[] = $pkg;
+                        }
+                    }
+                }
+            }
+
+            if (! empty($missingPackages)) {
+                $unique = array_unique($missingPackages);
+                $this->laraKubeInfo('Installing missing composer package(s) for active features: '.implode(', ', $unique).'...');
+                $phpCommands = [
+                    'composer require '.implode(' ', $unique).' --with-all-dependencies --ignore-platform-reqs --no-scripts',
+                    'php artisan package:discover --ansi',
+                ];
+
+                foreach ($config->getFeatures() as $feature) {
+                    if ($feature instanceof HasArtisanCommands) {
+                        foreach ($feature->getArtisanCommands($config) as $cmd) {
+                            $phpCommands[] = "php artisan {$cmd}";
+                        }
+                    }
+                }
+
+                $safeEnv = '-e REDIS_CLIENT=null -e CACHE_STORE=array -e SESSION_DRIVER=array -e DB_CONNECTION=sqlite';
+                $this->runInContainer(implode(' && ', $phpCommands), $projectPath, envs: $safeEnv);
+            }
         }
 
         $needsNode = $config->getFrontend()?->requiresNodePod()

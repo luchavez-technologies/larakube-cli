@@ -54,18 +54,17 @@ trait InteractsWithArchitecturalEngine
         }
 
         // Execute PHP installation if needed
-        if (! empty($composerPackages) || (! empty($artisanCommands) && $config->isScaffolding)) {
+        if (! empty($composerPackages) || ! empty($artisanCommands)) {
             $phpCommands = [];
             $noScripts = $config->isScaffolding ? '' : ' --no-scripts';
 
             if (! empty($composerPackages)) {
                 $phpCommands[] = 'composer require '.implode(' ', array_unique($composerPackages)).' --with-all-dependencies --ignore-platform-reqs'.$noScripts;
+                $phpCommands[] = 'php artisan package:discover --ansi';
             }
 
-            if ($config->isScaffolding) {
-                foreach ($artisanCommands as $cmd) {
-                    $phpCommands[] = $cmd;
-                }
+            foreach ($artisanCommands as $cmd) {
+                $phpCommands[] = $cmd;
             }
 
             // Inject a safe environment for Artisan commands to prevent connection errors on boot
@@ -119,7 +118,7 @@ trait InteractsWithArchitecturalEngine
         }
 
         // PHP
-        if (! empty($composerPackages) || (! empty($artisanCommands) && $config->isScaffolding)) {
+        if (! empty($composerPackages) || ! empty($artisanCommands)) {
             $this->laraKubeInfo('Installing PHP requirements...');
 
             $phpCommands = [];
@@ -128,12 +127,11 @@ trait InteractsWithArchitecturalEngine
             if (! empty($composerPackages)) {
                 $uniquePackages = array_unique($composerPackages);
                 $phpCommands[] = 'composer require '.implode(' ', $uniquePackages).' --with-all-dependencies --ignore-platform-reqs'.$noScripts;
+                $phpCommands[] = 'php artisan package:discover --ansi';
             }
 
-            if ($config->isScaffolding) {
-                foreach ($artisanCommands as $cmd) {
-                    $phpCommands[] = $cmd;
-                }
+            foreach ($artisanCommands as $cmd) {
+                $phpCommands[] = $cmd;
             }
 
             // Inject a safe environment for Artisan commands to prevent connection errors on boot
