@@ -658,6 +658,16 @@ test('install() fails the Google Cloud SDK on Windows rather than leaving a non-
     // separately putenv'd one.
     putenv('LOCALAPPDATA='.$_SERVER['HOME'].'/AppData/Local');
 
+    // resolvePython()'s `command -v pythonX.Y` loop runs unconditionally,
+    // on every OS (it's only the Windows-specific glob fallback below it
+    // that's gated) — without faking this, the test's outcome depends on
+    // whether the machine actually running it happens to expose a real
+    // Python 3.10+ via `command -v`, which varies by host (confirmed live:
+    // passed locally, failed in CI, for exactly this reason).
+    Process::fake([
+        'command -v python*' => Process::result('', exitCode: 1),
+    ]);
+
     Http::fake([
         'https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-windows-x86_64.zip' => Http::response(
             fakeZipBytes(['google-cloud-sdk/bin/gcloud.cmd' => 'fake-gcloud-wrapper']),

@@ -110,6 +110,25 @@ enum CliTool: string
             home_path(".local/bin/{$bin}"),
         ];
 
+        // Confirmed live (CI, 2026-10-26): these bare `/usr/bin/kubectl`-style
+        // paths used to be unconditional, so a real kubectl/gcloud/aws
+        // genuinely installed at one of them on a Linux CI runner satisfied
+        // isInstalled() even while resolving for a Windows-forced test,
+        // short-circuiting install() before it ever ran — install() returned
+        // true, but nothing was actually downloaded to the test's own binDir.
+        if (self::hostOs() === 'windows') {
+            return match ($this) {
+                self::GCLOUD => array_merge($base, [home_path('google-cloud-sdk/bin/'.$this->binary())]),
+                self::AWS => array_merge($base, [
+                    // The per-user Windows MSI (AWSCLIV2-User.msi) always
+                    // installs here — fixed by the installer, not by us —
+                    // never into binDir.
+                    rtrim((string) getenv('LOCALAPPDATA'), '/\\').'/Programs/Amazon/AWSCLIV2/aws.exe',
+                ]),
+                default => $base,
+            };
+        }
+
         return match ($this) {
             self::KUBECTL => array_merge($base, ['/usr/bin/kubectl', '/snap/bin/kubectl']),
             self::TOFU => array_merge($base, [
@@ -126,9 +145,6 @@ enum CliTool: string
             self::AWS => array_merge($base, [
                 '/snap/bin/aws',
                 '/usr/bin/aws',
-                // The per-user Windows MSI (AWSCLIV2-User.msi) always installs
-                // here — fixed by the installer, not by us — never into binDir.
-                rtrim((string) getenv('LOCALAPPDATA'), '/\\').'/Programs/Amazon/AWSCLIV2/aws.exe',
             ]),
             default => $base,
         };
