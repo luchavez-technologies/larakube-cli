@@ -160,12 +160,33 @@ test('shouldDispatchToWsl filters lifecycle commands on Windows', function (): v
     expect($bridge->shouldDispatchToWsl(['larakube', 'up']))->toBeTrue()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'down']))->toBeTrue()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'art', 'migrate']))->toBeTrue()
-        ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:init']))->toBeTrue();
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:list']))->toBeTrue();
 
-    // Lifecycle commands -> stay on host
+    // Lifecycle and provisioning commands -> stay on host
     expect($bridge->shouldDispatchToWsl(['larakube', 'setup']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'setup', '--tools=docker']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'update']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:create']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:create', 'production', '--provider=do']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:init', '--tool=forgejo', 'production']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:add']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:rebind']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:remove', '--tool=forgejo', 'production']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'tls:init', 'production']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'context', 'production']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'context:import', 'lloyd.kubeconfig']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'context:remove', 'production']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'context:backup']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'context:restore']))->toBeFalse()
+        // A command outside the Cluster-Tool install/remove and kubeconfig
+        // management families still dispatches to WSL, even sharing a
+        // `tool:`/`context:`-style prefix — these dev-box/local-only
+        // features were deliberately not part of this sweep.
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:list']))->toBeTrue()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'companion:remove']))->toBeTrue()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'feature:remove']))->toBeTrue()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'share:remove']))->toBeTrue()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'workspace:remove']))->toBeTrue()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'wsl:restart']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'wsl:status']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', '--version']))->toBeFalse()

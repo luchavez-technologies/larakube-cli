@@ -289,7 +289,11 @@ abstract class ZitadelInitCommand extends AbstractToolInitCommand
             return true; // already captured on a previous run
         }
 
-        $pod = trim(Process::run("{$kubectl} get pod -l app={$this->ssoNames($kubectl)?->deployment()} -n {$ns} -o name --no-headers 2>/dev/null | head -1")->output());
+        // `| head -1` dropped: `head` isn't a Windows command, and cmd.exe
+        // doesn't understand `2>/dev/null` either — take the first line in
+        // PHP instead, which works the same everywhere `kubectl` itself runs.
+        $podList = trim(Process::run("{$kubectl} get pod -l app={$this->ssoNames($kubectl)?->deployment()} -n {$ns} -o name --no-headers")->output());
+        $pod = trim(strtok($podList, "\n") ?: '');
         if ($pod === '') {
             return false;
         }

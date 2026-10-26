@@ -31,7 +31,7 @@ trait InteractsWithDnsZones
     {
         $json = trim(Process::run(
             "{$kubectl} get deployments -n {$namespace} "
-            .'-l app.kubernetes.io/name=external-dns -o json 2>/dev/null',
+            .'-l app.kubernetes.io/name=external-dns -o json',
         )->output());
 
         if ($json === '') {

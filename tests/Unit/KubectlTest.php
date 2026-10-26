@@ -194,6 +194,53 @@ test('forKubeconfig refuses an empty path list', function (): void {
     Kubectl::forKubeconfig(['', '']);
 })->throws(LogicException::class);
 
+test('on Windows, a prefix()-built pipeline never lets a set/&& prefix on the right side swallow the pipe', function (): void {
+    App\Support\Os::setForcedFamily('Windows');
+
+    try {
+        $kubectl = Kubectl::forContext('k3s-larakube')->prefix();
+        $pipeline = "{$kubectl} create namespace traefik --dry-run=client -o yaml | {$kubectl} apply -f -";
+
+        // The whole right-hand side of `|` must start with the kubectl
+        // binary itself — a `set ...&&` prefix there would instead pipe
+        // into the `set` command, discarding every byte of YAML.
+        [, $rightOfPipe] = explode(' | ', $pipeline, 2);
+        expect($rightOfPipe)->toStartWith('kubectl ')
+            ->not->toContain('set KUBECONFIG');
+    } finally {
+        App\Support\Os::setForcedFamily(null);
+    }
+});
+
+test('on Windows, prefix() uses a plain --kubeconfig flag for a single path, so it still composes safely inside a pipeline', function (): void {
+    App\Support\Os::setForcedFamily('Windows');
+
+    try {
+        expect(Kubectl::forKubeconfig('C:\\Users\\me\\.kube\\config')->prefix())
+            ->toBe("kubectl --kubeconfig 'C:\\Users\\me\\.kube\\config'")
+            ->and(Kubectl::forKubeconfig('C:\\k3s.yaml', 'k3s-larakube')->prefix())
+            ->toBe("kubectl --kubeconfig 'C:\\k3s.yaml' --context 'k3s-larakube'")
+            ->and(Kubectl::current()->prefix())->toBe('kubectl');
+    } finally {
+        App\Support\Os::setForcedFamily(null);
+    }
+});
+
+test('on Windows, prefix() falls back to set/&& only for a merged multi-path kubeconfig, which --kubeconfig cannot express', function (): void {
+    // This shape is only ever used for a non-piped `config view --flatten`
+    // merge (ProvisionsK3sNode::syncKubeconfig()) — never on one side of a
+    // `{$kubectl} ... | {$kubectl} ...` pipeline, so the `&&`/`|` precedence
+    // hazard the single-path case avoids doesn't apply here.
+    App\Support\Os::setForcedFamily('Windows');
+
+    try {
+        expect(Kubectl::forKubeconfig(['C:\\a\\config', 'C:\\b\\config'])->prefix())
+            ->toBe('set KUBECONFIG=C:\\a\\config;C:\\b\\config&& kubectl');
+    } finally {
+        App\Support\Os::setForcedFamily(null);
+    }
+});
+
 test('only Kubectl sets KUBECONFIG for a kubectl command', function (): void {
     $handBuilt = [];
     $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(app_path()));

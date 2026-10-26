@@ -1,6 +1,8 @@
 <?php
 
 use App\Enums\CliTool;
+use App\Support\Os;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 
 test('cli tools define expected cases and properties', function (): void {
@@ -528,4 +530,141 @@ test('tea install command supports macOS darwin binary', function (): void {
 
     expect($cmd)->toContain('tea-${V}-darwin-arm64')
         ->not->toContain('sudo');
+});
+
+// --- Windows native installers (ADR 0007's WSL path stays for the CLI's own
+// orchestration commands; these cover only the tool-installer layer) ---
+
+afterEach(function (): void {
+    Os::setForcedFamily(null);
+    putenv('LARAKUBE_BIN_DIR');
+    putenv('HOME');
+    putenv('LOCALAPPDATA');
+});
+
+/**
+ * Builds a zip archive in memory (via a throwaway temp file, since
+ * ZipArchive has no fully in-memory mode) and returns its raw bytes, for
+ * Http::fake() to serve as a release asset's response body.
+ */
+function fakeZipBytes(array $entries): string
+{
+    $path = tempnam(sys_get_temp_dir(), 'larakube-test-zip-');
+    $zip = new ZipArchive;
+    $zip->open($path, ZipArchive::OVERWRITE);
+    foreach ($entries as $name => $contents) {
+        $zip->addFromString($name, $contents);
+    }
+    $zip->close();
+
+    $bytes = (string) file_get_contents($path);
+    unlink($path);
+
+    return $bytes;
+}
+
+test('binary() and candidatePaths() carry Windows-specific names, not the Darwin/Linux ones', function (): void {
+    Os::setForcedFamily('Windows');
+
+    expect(CliTool::KUBECTL->binary())->toBe('kubectl.exe')
+        ->and(CliTool::K9S->binary())->toBe('k9s.exe')
+        ->and(CliTool::TOFU->binary())->toBe('tofu.exe')
+        ->and(CliTool::AWS->binary())->toBe('aws.exe')
+        ->and(CliTool::GCLOUD->binary())->toBe('gcloud.cmd');
+
+    expect(CliTool::KUBECTL->candidatePaths())->toContain(CliTool::binDir().'/kubectl.exe');
+});
+
+test('install() downloads kubectl.exe directly with no WSL and no shell one-liner', function (): void {
+    Os::setForcedFamily('Windows');
+    $dir = Spatie\TemporaryDirectory\TemporaryDirectory::make()->deleteWhenDestroyed();
+    putenv('LARAKUBE_BIN_DIR='.$dir->path());
+
+    Http::fake([
+        'https://dl.k8s.io/release/stable.txt' => Http::response('v1.31.0'),
+        'https://dl.k8s.io/release/v1.31.0/bin/windows/amd64/kubectl.exe' => Http::response('fake-kubectl-binary'),
+    ]);
+
+    expect(CliTool::KUBECTL->install())->toBeTrue();
+    expect(file_get_contents($dir->path().'/kubectl.exe'))->toBe('fake-kubectl-binary');
+});
+
+test('install() extracts k9s.exe out of the Windows release zip', function (): void {
+    Os::setForcedFamily('Windows');
+    $dir = Spatie\TemporaryDirectory\TemporaryDirectory::make()->deleteWhenDestroyed();
+    putenv('LARAKUBE_BIN_DIR='.$dir->path());
+
+    Http::fake([
+        'https://github.com/derailed/k9s/releases/latest/download/k9s_Windows_amd64.zip' => Http::response(
+            fakeZipBytes(['k9s.exe' => 'fake-k9s-binary'])
+        ),
+    ]);
+
+    expect(CliTool::K9S->install())->toBeTrue();
+    expect(file_get_contents($dir->path().'/k9s.exe'))->toBe('fake-k9s-binary');
+});
+
+test('install() resolves the current OpenTofu release before downloading the versioned Windows zip', function (): void {
+    Os::setForcedFamily('Windows');
+    $dir = Spatie\TemporaryDirectory\TemporaryDirectory::make()->deleteWhenDestroyed();
+    putenv('LARAKUBE_BIN_DIR='.$dir->path());
+
+    Http::fake([
+        'https://api.github.com/repos/opentofu/opentofu/releases/latest' => Http::response(['tag_name' => 'v1.8.0']),
+        'https://github.com/opentofu/opentofu/releases/download/v1.8.0/tofu_1.8.0_windows_amd64.zip' => Http::response(
+            fakeZipBytes(['tofu.exe' => 'fake-tofu-binary'])
+        ),
+    ]);
+
+    expect(CliTool::TOFU->install())->toBeTrue();
+    expect(file_get_contents($dir->path().'/tofu.exe'))->toBe('fake-tofu-binary');
+});
+
+test('install() uses AWS\'s documented no-admin per-user MSI, never the all-users one', function (): void {
+    Os::setForcedFamily('Windows');
+    $appData = Spatie\TemporaryDirectory\TemporaryDirectory::make()->deleteWhenDestroyed();
+    putenv('LOCALAPPDATA='.$appData->path());
+    $target = $appData->path().'/Programs/Amazon/AWSCLIV2/aws.exe';
+
+    Http::fake([
+        'https://awscli.amazonaws.com/AWSCLIV2-User.msi' => Http::response('fake-msi-bytes'),
+    ]);
+
+    Process::fake([
+        // Stands in for the real MSI actually placing a (Windows-executable)
+        // aws.exe at this fixed path — chmod matches what the real download
+        // helpers do after every write, since is_executable() on the real
+        // POSIX test runner otherwise sees a freshly-written 0644 file as
+        // not executable, unlike how Windows treats a plain .exe.
+        'msiexec.exe*' => function () use ($target) {
+            @mkdir(dirname($target), 0755, true);
+            file_put_contents($target, 'fake-aws-binary');
+            @chmod($target, 0755);
+
+            return Process::result('', exitCode: 0);
+        },
+    ]);
+
+    expect(CliTool::AWS->install())->toBeTrue();
+
+    Process::assertRan(fn ($process) => str_contains($process->command, '/qn')
+        && ! str_contains($process->command, 'AWSCLIV2.msi '));
+});
+
+test('install() fails the Google Cloud SDK on Windows rather than leaving a non-functional install when no Python is found', function (): void {
+    Os::setForcedFamily('Windows');
+    // TestCase::setUp() already sandboxes $_SERVER['HOME'] to a fresh
+    // per-test temp dir — home_path() reads THAT first, ahead of
+    // getenv('HOME'), so that's the directory to assert against, not a
+    // separately putenv'd one.
+    putenv('LOCALAPPDATA='.$_SERVER['HOME'].'/AppData/Local');
+
+    Http::fake([
+        'https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-windows-x86_64.zip' => Http::response(
+            fakeZipBytes(['google-cloud-sdk/bin/gcloud.cmd' => 'fake-gcloud-wrapper'])
+        ),
+    ]);
+
+    expect(CliTool::GCLOUD->install())->toBeFalse();
+    expect(file_exists($_SERVER['HOME'].'/google-cloud-sdk/bin/gcloud.cmd'))->toBeTrue();
 });

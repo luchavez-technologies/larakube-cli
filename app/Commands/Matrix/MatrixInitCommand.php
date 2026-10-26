@@ -400,7 +400,7 @@ abstract class MatrixInitCommand extends AbstractToolInitCommand
         //    config, which naturally preserves its `secrets:` block since
         //    renderMasConfig() only ever touches database/matrix/upstream_oauth2.
         $existingConfig = trim(Process::run(
-            "{$kubectl} get secret {$masConfigName} -n {$ns} -o jsonpath='{.data.config\.yaml}'",
+            "{$kubectl} get secret {$masConfigName} -n {$ns} -o ".Kubectl::arg('jsonpath={.data.config\.yaml}'),
         )->output());
         $previousConfigYaml = $existingConfig !== '' ? (string) base64_decode($existingConfig) : null;
 
@@ -423,7 +423,7 @@ abstract class MatrixInitCommand extends AbstractToolInitCommand
                 // object is CREATED, not when the container has finished —
                 // wait for it to actually complete before reading its logs.
                 Process::timeout(30)->run(
-                    "{$kubectl} wait --for=jsonpath='{.status.phase}'=Succeeded pod/{$podName} -n {$ns} --timeout=25s",
+                    "{$kubectl} wait ".Kubectl::arg('--for=jsonpath={.status.phase}=Succeeded')." pod/{$podName} -n {$ns} --timeout=25s",
                 );
 
                 // `kubectl logs` returns ONLY the container's own stdout.

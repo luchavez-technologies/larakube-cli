@@ -195,8 +195,47 @@ class WslBridge
     }
 
     /**
+     * Commands that run natively on the Windows host rather than being
+     * forwarded into the larakube-ubuntu distro. `cloud:create` joined
+     * `setup`/`update`/`wsl:*` once its own POSIX-only call sites
+     * (`Kubectl::prefix()`'s shell-prefix syntax, `InteractsWithOpenTofu`'s
+     * `command -v`/`exec ... 2>&1`, the EKS/GKE init commands' jsonpath
+     * quoting and gke-gcloud-auth-plugin lookup) were fixed to be
+     * Windows-aware the same way `CliTool.php` already is — see
+     * `InteractsWithOpenTofu`, `Kubectl::prefix()`, `EnsuresGkeAuthPlugin`.
+     *
+     * `tool:init`/`tool:add`/`tool:rebind`/`tool:remove`/`tls:init` joined
+     * after the same sweep across every Cluster Tool's own `:init`/`:remove`
+     * command (not the generic router files themselves, which were already
+     * clean) for the same shell-specific patterns — single-quoted jsonpath,
+     * `2>/dev/null`, a literal `bash`/`grep`/`head` dependency. Each hit was
+     * fixed in place (OpenBao/Matrix/NetBird/Zitadel's `:init`,
+     * Forgejo/Ocis/PocketBase/Stalwart/WordPress's `:remove`). This covers
+     * the install/configure/remove path for Cluster Tools specifically.
+     *
+     * `context`/`context:import`/`context:remove`/`context:backup`/
+     * `context:restore` (kubeconfig management — not dev-box-only, unlike
+     * the ones below) joined after auditing all five: all already built
+     * exclusively on `Kubectl::prefix()` (already Windows-safe) or plain PHP
+     * file I/O, with no shell-specific syntax to begin with.
+     *
+     * `companion:remove`/`feature:remove`/`share:remove`/`workspace:remove`
+     * are dev-box/local-development-only features, not part of the
+     * "provision a server, install apps on it" path this sweep targets —
+     * deliberately left dispatching to WSL, not an oversight.
+     *
+     * @var list<string>
+     */
+    private const NATIVE_WINDOWS_COMMANDS = [
+        'setup', 'update', 'cloud:create',
+        'tool:init', 'tool:add', 'tool:rebind', 'tool:remove', 'tls:init',
+        'context', 'context:import', 'context:remove', 'context:backup', 'context:restore',
+    ];
+
+    /**
      * Determines whether the given CLI invocation should be forwarded into WSL.
-     * Lifecycle management commands (setup, update, wsl:*) remain on the Windows host.
+     * Lifecycle management commands (setup, update, wsl:*) and cloud:create
+     * remain on the Windows host.
      *
      * @param  list<string>  $argv
      */
@@ -229,8 +268,8 @@ class WslBridge
             return $this->distroExists();
         }
 
-        // Native lifecycle commands run outside WSL
-        if (in_array($command, ['setup', 'update'], true) || str_starts_with($command, 'wsl:')) {
+        // Native lifecycle and provisioning commands run outside WSL
+        if (in_array($command, self::NATIVE_WINDOWS_COMMANDS, true) || str_starts_with($command, 'wsl:')) {
             return false;
         }
 

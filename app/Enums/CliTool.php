@@ -2,8 +2,11 @@
 
 namespace App\Enums;
 
+use App\Support\Os;
 use App\Traits\StreamsProcessOutput;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use ZipArchive;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\warning;
@@ -48,7 +51,7 @@ enum CliTool: string
 
     public function binary(): string
     {
-        return match ($this) {
+        $name = match ($this) {
             self::KUBECTL => 'kubectl',
             self::K9S => 'k9s',
             self::TOFU => 'tofu',
@@ -58,6 +61,13 @@ enum CliTool: string
             self::GH => 'gh',
             self::TEA => 'tea',
         };
+
+        if (self::hostOs() !== 'windows') {
+            return $name;
+        }
+
+        // gcloud ships a wrapper script on Windows, not a bare .exe.
+        return $this === self::GCLOUD ? "{$name}.cmd" : "{$name}.exe";
     }
 
     /**
@@ -108,13 +118,16 @@ enum CliTool: string
                 "{$binDir}/terraform",
             ]),
             self::GCLOUD => array_merge($base, [
-                home_path('google-cloud-sdk/bin/gcloud'),
+                home_path('google-cloud-sdk/bin/'.$this->binary()),
                 '/snap/bin/gcloud',
                 '/usr/bin/gcloud',
             ]),
             self::AWS => array_merge($base, [
                 '/snap/bin/aws',
                 '/usr/bin/aws',
+                // The per-user Windows MSI (AWSCLIV2-User.msi) always installs
+                // here — fixed by the installer, not by us — never into binDir.
+                rtrim((string) getenv('LOCALAPPDATA'), '/\\').'/Programs/Amazon/AWSCLIV2/aws.exe',
             ]),
             default => $base,
         };
@@ -125,24 +138,32 @@ enum CliTool: string
      */
     public function resolveBinary(): ?string
     {
-        $res = Process::run('command -v '.$this->binary());
-        $which = trim($res->output());
-        if ($res->successful() && $which !== '' && (@is_executable($which) || Process::isRecording())) {
-            return $which;
-        }
-
-        // For OpenTofu, also allow existing terraform binary
-        if ($this === self::TOFU) {
-            $tfRes = Process::run('command -v terraform');
-            $tfWhich = trim($tfRes->output());
-            if ($tfRes->successful() && $tfWhich !== '' && (@is_executable($tfWhich) || Process::isRecording())) {
-                return $tfWhich;
+        // `command -v` is POSIX-only; on Windows it never resolves via the
+        // shell, so skip straight to the candidate-path check below.
+        if (self::hostOs() !== 'windows') {
+            $res = Process::run('command -v '.$this->binary());
+            $which = trim($res->output());
+            if ($res->successful() && $which !== '' && (@is_executable($which) || Process::isRecording())) {
+                return $which;
             }
-        }
 
-        // When Process::fake() is active, do not let host candidate paths leak through and override the mock
-        if (Process::isRecording()) {
-            return null;
+            // For OpenTofu, also allow existing terraform binary
+            if ($this === self::TOFU) {
+                $tfRes = Process::run('command -v terraform');
+                $tfWhich = trim($tfRes->output());
+                if ($tfRes->successful() && $tfWhich !== '' && (@is_executable($tfWhich) || Process::isRecording())) {
+                    return $tfWhich;
+                }
+            }
+
+            // When Process::fake() is active, do not let host candidate paths
+            // leak through and override the mock — but only for this `command
+            // -v` flow: Windows never calls Process for lookup at all (see
+            // above), so a faked `msiexec`/similar elsewhere in the same test
+            // must not suppress the real, on-disk candidate-path check below.
+            if (Process::isRecording()) {
+                return null;
+            }
         }
 
         // Check fallback candidate paths (handles non-login shells and custom install dirs)
@@ -419,6 +440,10 @@ enum CliTool: string
 
     protected function updateKubectl(): bool
     {
+        if (self::hostOs() === 'windows') {
+            return $this->installKubectlWindows();
+        }
+
         $binDir = self::binDir();
         @mkdir($binDir, 0755, true);
 
@@ -427,11 +452,19 @@ enum CliTool: string
 
     protected function updateK9s(): bool
     {
+        if (self::hostOs() === 'windows') {
+            return $this->installK9sWindows();
+        }
+
         return $this->runDirectBinaryUpdate(self::k9sInstallCommand(self::hostOs(), self::hostArch(), self::binDir()), 'k9s');
     }
 
     protected function updateTofu(): bool
     {
+        if (self::hostOs() === 'windows') {
+            return $this->installTofuWindows();
+        }
+
         return $this->runDirectBinaryUpdate(self::tofuInstallCommand(self::hostOs(), self::hostArch(), self::binDir()), 'tofu');
     }
 
@@ -454,6 +487,10 @@ enum CliTool: string
 
     protected function updateAws(): bool
     {
+        if (self::hostOs() === 'windows') {
+            return $this->installAwsWindows();
+        }
+
         $binDir = self::binDir();
         @mkdir($binDir, 0755, true);
 
@@ -510,9 +547,18 @@ enum CliTool: string
         return false;
     }
 
+    /**
+     * Routed through `Os::family()` (not raw PHP_OS_FAMILY) specifically so
+     * `Os::setForcedFamily('Windows')` can exercise the Windows installers
+     * in tests without an actual Windows host.
+     */
     protected static function hostOs(): string
     {
-        return PHP_OS_FAMILY === 'Darwin' ? 'darwin' : 'linux';
+        return match (Os::family()) {
+            'Darwin' => 'darwin',
+            'Windows' => 'windows',
+            default => 'linux',
+        };
     }
 
     protected static function hostArch(): string
@@ -541,6 +587,10 @@ enum CliTool: string
      */
     protected function installKubectl(): bool
     {
+        if (self::hostOs() === 'windows') {
+            return $this->installKubectlWindows();
+        }
+
         if (PHP_OS_FAMILY === 'Darwin' && trim(Process::run('command -v brew')->output()) !== '') {
             if (Process::forever()->run('brew install kubernetes-cli')->exitCode() === 0 && $this->isInstalled()) {
                 return true;
@@ -560,6 +610,10 @@ enum CliTool: string
      */
     protected function installK9s(): bool
     {
+        if (self::hostOs() === 'windows') {
+            return $this->installK9sWindows();
+        }
+
         if (PHP_OS_FAMILY === 'Darwin' && trim(Process::run('command -v brew')->output()) !== '') {
             if (Process::forever()->run('brew install k9s')->exitCode() === 0 && $this->isInstalled()) {
                 return true;
@@ -588,6 +642,10 @@ enum CliTool: string
      */
     protected function installTofu(): bool
     {
+        if (self::hostOs() === 'windows') {
+            return $this->installTofuWindows();
+        }
+
         if (PHP_OS_FAMILY === 'Darwin' && trim(Process::run('command -v brew')->output()) !== '') {
             if (Process::forever()->run('brew install opentofu')->exitCode() === 0 && $this->isInstalled()) {
                 return true;
@@ -626,6 +684,10 @@ enum CliTool: string
      */
     protected function installGcloud(): bool
     {
+        if (self::hostOs() === 'windows') {
+            return $this->installGcloudWindows();
+        }
+
         if (PHP_OS_FAMILY === 'Darwin' && trim(Process::run('command -v brew')->output()) !== '') {
             [$code, $output] = $this->runStreamingCaptured('brew install --cask gcloud-cli || brew install --cask google-cloud-sdk');
 
@@ -694,6 +756,20 @@ enum CliTool: string
             rsort($frameworks);
 
             foreach ($frameworks as $path) {
+                if ($this->pythonIsSupported($path)) {
+                    return $path;
+                }
+            }
+        }
+
+        // python.org's per-user Windows installer lands here rather than on
+        // PATH when installed without the "Add to PATH" option checked.
+        if (Os::isWindows() && ! Process::isRecording()) {
+            $localAppData = (string) (getenv('LOCALAPPDATA') ?: '');
+            $installs = $localAppData !== '' ? (glob($localAppData.'/Programs/Python/Python3*/python.exe') ?: []) : [];
+            rsort($installs);
+
+            foreach ($installs as $path) {
                 if ($this->pythonIsSupported($path)) {
                     return $path;
                 }
@@ -812,6 +888,10 @@ enum CliTool: string
 
     protected function installAws(): bool
     {
+        if (self::hostOs() === 'windows') {
+            return $this->installAwsWindows();
+        }
+
         if (PHP_OS_FAMILY === 'Darwin' && trim(Process::run('command -v brew')->output()) !== '') {
             if (Process::forever()->run('brew install awscli')->exitCode() === 0 && $this->isInstalled()) {
                 return true;
@@ -854,6 +934,210 @@ enum CliTool: string
         }
 
         return false;
+    }
+
+    /**
+     * kubectl's official static binary for Windows — no installer, no admin,
+     * downloaded with Laravel's HTTP client rather than shelling to curl
+     * (there is no bash on a native Windows host to run the Darwin/Linux
+     * one-liner above against).
+     */
+    protected function installKubectlWindows(): bool
+    {
+        $binDir = self::binDir();
+        @mkdir($binDir, 0755, true);
+
+        $version = trim((string) Http::timeout(30)->get('https://dl.k8s.io/release/stable.txt')->body());
+        if ($version === '') {
+            return false;
+        }
+
+        $url = "https://dl.k8s.io/release/{$version}/bin/windows/amd64/kubectl.exe";
+
+        return $this->httpDownloadToFile($url, "{$binDir}/{$this->binary()}") && $this->isInstalled();
+    }
+
+    /**
+     * k9s's Windows release is a zip, unlike the plain binary tarball Darwin
+     * and Linux ship — extract just the exe, same end state as the Unix
+     * `tar -xz` path above.
+     */
+    protected function installK9sWindows(): bool
+    {
+        $binDir = self::binDir();
+        @mkdir($binDir, 0755, true);
+
+        $url = 'https://github.com/derailed/k9s/releases/latest/download/k9s_Windows_amd64.zip';
+
+        return $this->httpDownloadZipMember($url, "{$binDir}/{$this->binary()}", 'k9s.exe') && $this->isInstalled();
+    }
+
+    /**
+     * OpenTofu's Windows asset filename embeds the version, so (unlike k9s)
+     * there is no "latest/download" shortcut — the current tag is resolved
+     * from GitHub's API first.
+     */
+    protected function installTofuWindows(): bool
+    {
+        $binDir = self::binDir();
+        @mkdir($binDir, 0755, true);
+
+        $release = Http::timeout(30)->get('https://api.github.com/repos/opentofu/opentofu/releases/latest')->json();
+        $version = ltrim((string) ($release['tag_name'] ?? ''), 'v');
+        if ($version === '') {
+            return false;
+        }
+
+        $url = "https://github.com/opentofu/opentofu/releases/download/v{$version}/tofu_{$version}_windows_amd64.zip";
+
+        return $this->httpDownloadZipMember($url, "{$binDir}/{$this->binary()}", 'tofu.exe') && $this->isInstalled();
+    }
+
+    /**
+     * Google's self-contained Windows zip (no installer, no admin) into
+     * ~/google-cloud-sdk — the same install location the Darwin/Linux tarball
+     * path already uses, so `candidatePaths()`'s existing GCLOUD entry finds
+     * it unchanged. Doesn't bundle Python (the bundled-Python variant's
+     * filename embeds a version number with no "latest" alias), so Python is
+     * resolved the same way the Darwin/Linux path already does.
+     */
+    protected function installGcloudWindows(): bool
+    {
+        $url = 'https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-windows-x86_64.zip';
+
+        if (! $this->httpDownloadZipExtractAll($url, home_path()) || ! $this->isInstalled()) {
+            return false;
+        }
+
+        // gcloud.cmd shells out to Python — an SDK with none usable is
+        // installed but non-functional, so this fails the same way the
+        // Darwin/Linux branch above does rather than reporting success.
+        if ($this->resolvePython() === null) {
+            warning('Google Cloud SDK needs Python '.self::GCLOUD_MIN_PYTHON.' or newer, and none was found.');
+            warning('Install Python from https://www.python.org/downloads/windows/, then retry.');
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * AWS's own documented per-user MSI (`AWSCLIV2-User.msi`) — confirmed
+     * live against AWS's install docs (2026-10-27): installs under
+     * `%LOCALAPPDATA%\Programs\Amazon\AWSCLIV2` with no admin rights
+     * required, unlike the all-users `AWSCLIV2.msi`. `/qn` runs it silently.
+     */
+    protected function installAwsWindows(): bool
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'larakube-aws-').'.msi';
+
+        if (! $this->httpDownloadToFile('https://awscli.amazonaws.com/AWSCLIV2-User.msi', $tmp)) {
+            return false;
+        }
+
+        $code = $this->runStreaming('msiexec.exe /i '.escapeshellarg($tmp).' /qn /norestart');
+        @unlink($tmp);
+
+        return $code === 0 && $this->isInstalled();
+    }
+
+    /**
+     * Download a URL straight to a file path, for tools distributed as a
+     * bare binary (kubectl.exe) rather than an archive. Uses Laravel's HTTP
+     * client instead of shelling to curl, since a native Windows host has no
+     * bash to run this file's other installers' curl/tar one-liners against.
+     */
+    protected function httpDownloadToFile(string $url, string $target): bool
+    {
+        $response = Http::timeout(120)->get($url);
+        if (! $response->successful()) {
+            return false;
+        }
+
+        if (file_put_contents($target, $response->body()) === false) {
+            return false;
+        }
+
+        @chmod($target, 0755);
+
+        return true;
+    }
+
+    /**
+     * Download a zip and extract one named member (matched by basename,
+     * regardless of which folder it's nested under inside the archive) to a
+     * target path. Covers k9s/OpenTofu's Windows release zips.
+     */
+    protected function httpDownloadZipMember(string $url, string $target, string $memberBasename): bool
+    {
+        $response = Http::timeout(120)->get($url);
+        if (! $response->successful()) {
+            return false;
+        }
+
+        $tmpZip = tempnam(sys_get_temp_dir(), 'larakube-zip-');
+        if ($tmpZip === false || file_put_contents($tmpZip, $response->body()) === false) {
+            return false;
+        }
+
+        $zip = new ZipArchive;
+        if ($zip->open($tmpZip) !== true) {
+            @unlink($tmpZip);
+
+            return false;
+        }
+
+        $extracted = false;
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = $zip->getNameIndex($i);
+            if ($name !== false && basename($name) === $memberBasename) {
+                $contents = $zip->getFromIndex($i);
+                if ($contents !== false && file_put_contents($target, $contents) !== false) {
+                    @chmod($target, 0755);
+                    $extracted = true;
+                }
+                break;
+            }
+        }
+
+        $zip->close();
+        @unlink($tmpZip);
+
+        return $extracted;
+    }
+
+    /**
+     * Download a zip and extract its entire contents into a directory —
+     * Google Cloud SDK's Windows zip ships a whole `google-cloud-sdk/` tree,
+     * not a single binary, mirroring what `tar -xz` does for the Darwin/Linux
+     * tarball install above.
+     */
+    protected function httpDownloadZipExtractAll(string $url, string $destDir): bool
+    {
+        $response = Http::timeout(300)->get($url);
+        if (! $response->successful()) {
+            return false;
+        }
+
+        $tmpZip = tempnam(sys_get_temp_dir(), 'larakube-zip-');
+        if ($tmpZip === false || file_put_contents($tmpZip, $response->body()) === false) {
+            return false;
+        }
+
+        $zip = new ZipArchive;
+        if ($zip->open($tmpZip) !== true) {
+            @unlink($tmpZip);
+
+            return false;
+        }
+
+        @mkdir($destDir, 0755, true);
+        $extracted = $zip->extractTo($destDir);
+        $zip->close();
+        @unlink($tmpZip);
+
+        return $extracted;
     }
 
     /**

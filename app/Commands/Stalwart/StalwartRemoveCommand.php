@@ -56,14 +56,17 @@ class StalwartRemoveCommand extends AbstractToolRemoveCommand
         ) && $ok;
 
         // Wait for the pod to fully terminate before reporting done.
-        Process::run("{$kubectl} wait --for=delete pod -l larakube.io/tool=mail -n {$namespace} --timeout=60s 2>/dev/null || true");
+        // Result is never read — `2>/dev/null || true` was only ever there
+        // to keep the shell happy about a nonzero exit nothing checks.
+        Process::run("{$kubectl} wait --for=delete pod -l larakube.io/tool=mail -n {$namespace} --timeout=60s");
 
         // Mail-wire SMTP secrets (<tool>-smtp) — useless without Stalwart, and
-        // they'd silently point a re-installed tool at a mail server that's gone.
-        $wired = trim((string) Process::run([
-            'bash', '-c',
-            "{$kubectl} get secrets -n {$namespace} -o name --no-headers 2>/dev/null | grep '\\-smtp$' || true",
-        ])->output());
+        // they'd silently point a re-installed tool at a mail server that's
+        // gone. Filtered in PHP, not piped through `grep` — the prior
+        // `['bash', '-c', ...]` form hardcoded a literal `bash` executable,
+        // which doesn't exist on native Windows at all.
+        $secretNames = preg_split('/\r?\n/', trim(Process::run("{$kubectl} get secrets -n {$namespace} -o name --no-headers")->output())) ?: [];
+        $wired = implode("\n", array_filter($secretNames, fn (string $line): bool => str_ends_with(trim($line), '-smtp')));
 
         if ($wired !== '') {
             $ok = $this->removeResources(

@@ -30,4 +30,16 @@ class Os
     {
         return self::family() === 'Windows';
     }
+
+    /**
+     * The PATH-list separator for the current (possibly forced) OS. Routed
+     * through here rather than PHP's own `PATH_SEPARATOR` constant, which is
+     * fixed at build time by the REAL host OS and can't be faked by
+     * `setForcedFamily()` — every other OS-conditional in this codebase is
+     * testable without a real Windows host; this keeps that true here too.
+     */
+    public static function pathSeparator(): string
+    {
+        return self::isWindows() ? ';' : ':';
+    }
 }

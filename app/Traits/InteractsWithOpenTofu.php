@@ -2,7 +2,9 @@
 
 namespace App\Traits;
 
+use App\Enums\CliTool;
 use App\Facades\State;
+use App\Support\Os;
 use Closure;
 use Illuminate\Contracts\Process\InvokedProcess;
 use Illuminate\Support\Facades\Process;
@@ -35,33 +37,23 @@ trait InteractsWithOpenTofu
      * Terraform (the same HCL runs on either). Returns ['path' => ..., 'isOpenTofu'
      * => bool] or null when neither is installed.
      *
+     * Delegates to `CliTool::TOFU->resolveBinary()` — the Windows-aware
+     * detection (`.exe` suffix, candidate-path fallback instead of an
+     * unguarded `command -v`) already built for the Setup page's tool
+     * installers — rather than keeping a second, older implementation of
+     * the same lookup that never gained that awareness.
+     *
      * @return array{path: string, isOpenTofu: bool}|null
      */
     protected function resolveTofuBinary(): ?array
     {
-        $candidates = [
-            ['bin' => 'tofu', 'isOpenTofu' => true],
-            ['bin' => 'terraform', 'isOpenTofu' => false],
-        ];
+        $path = CliTool::TOFU->resolveBinary();
 
-        $dirs = ['', '/usr/local/bin/', '/opt/homebrew/bin/', '/home/linuxbrew/.linuxbrew/bin/'];
-
-        foreach ($candidates as $c) {
-            // PATH lookup first, then common install dirs (non-interactive shells
-            // often miss Homebrew/linuxbrew paths — same issue getGhCommand guards).
-            $which = trim(Process::run('command -v '.$c['bin'])->output());
-            if ($which !== '' && @is_executable($which)) {
-                return ['path' => $which, 'isOpenTofu' => $c['isOpenTofu']];
-            }
-            foreach ($dirs as $dir) {
-                $path = $dir.$c['bin'];
-                if ($dir !== '' && @is_executable($path)) {
-                    return ['path' => $path, 'isOpenTofu' => $c['isOpenTofu']];
-                }
-            }
+        if ($path === null) {
+            return null;
         }
 
-        return null;
+        return ['path' => $path, 'isOpenTofu' => ! str_starts_with(basename($path), 'terraform')];
     }
 
     /**
@@ -126,6 +118,14 @@ trait InteractsWithOpenTofu
             }
 
             return $this->installTofuStandalone();
+        }
+
+        if (Os::isWindows()) {
+            if (! confirm('Install OpenTofu now?', true)) {
+                return false;
+            }
+
+            return CliTool::TOFU->install();
         }
 
         $this->laraKubeWarn('Automatic install is unavailable on this OS. See https://opentofu.org/docs/intro/install/');
@@ -436,14 +436,30 @@ HCL;
         $offset = 0;
         $interrupted = false;
         $pendingSigint = false;
+        $logHandle = null;
 
         $process = null;
 
         // Handlers go in BEFORE the spawn: a handled signal resets to default
         // across exec, an ignored one would stay ignored and untrappable in tofu.
         $restoreHandlers = $this->forwardInterruptsToTofu($process, $interrupted, $pendingSigint);
-        // `exec` makes tofu itself the signalled PID rather than an `sh -c` wrapper.
-        $process = Process::forever()->env($env)->start('exec '.$command.' > '.escapeshellarg($log).' 2>&1');
+
+        if (Os::isWindows()) {
+            // `forwardInterruptsToTofu()` already no-ops above (pcntl doesn't
+            // exist on Windows PHP builds), so `exec`'s whole purpose here —
+            // making tofu itself the signalled PID instead of a shell wrapper
+            // — has nothing to preserve on this platform; `exec`/`2>&1` also
+            // aren't understood by cmd.exe regardless. Stream tofu's output
+            // straight to the log file via Process's own callback instead of
+            // shell redirection.
+            $logHandle = fopen($log, 'wb');
+            $process = Process::forever()->env($env)->start($command, function (string $type, string $buffer) use ($logHandle): void {
+                fwrite($logHandle, $buffer);
+            });
+        } else {
+            // `exec` makes tofu itself the signalled PID rather than an `sh -c` wrapper.
+            $process = Process::forever()->env($env)->start('exec '.$command.' > '.escapeshellarg($log).' 2>&1');
+        }
 
         if ($pendingSigint) {
             $pendingSigint = false;
@@ -464,6 +480,9 @@ HCL;
             $this->relayTofuLog($log, $offset);
         } finally {
             $restoreHandlers();
+            if ($logHandle !== null) {
+                @fclose($logHandle);
+            }
             @unlink($log);
         }
 

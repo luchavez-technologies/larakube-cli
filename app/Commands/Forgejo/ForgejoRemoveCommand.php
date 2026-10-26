@@ -36,7 +36,7 @@ class ForgejoRemoveCommand extends AbstractToolRemoveCommand
 
         $vpnMiddleware = ClusterTool::FORGEJO->vpnMiddlewareTarget($instance);
         if ($vpnMiddleware !== null) {
-            Process::run("{$kubectl} delete middleware/{$vpnMiddleware['name']} -n {$vpnMiddleware['namespace']} --ignore-not-found 2>/dev/null");
+            Process::run("{$kubectl} delete middleware/{$vpnMiddleware['name']} -n {$vpnMiddleware['namespace']} --ignore-not-found");
         }
 
         // Reverse tool:init --tool=forgejo's port opening — a forge that is gone but whose SSH

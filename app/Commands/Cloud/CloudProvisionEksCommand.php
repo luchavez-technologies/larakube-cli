@@ -203,7 +203,14 @@ class CloudProvisionEksCommand extends Command
     private function traefikInstalled(string $context): bool
     {
         $kubectl = Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context);
-        $ready = trim(Process::run("{$kubectl} get deployment -n traefik traefik -o jsonpath='{.status.readyReplicas}' 2>/dev/null")->output());
+        // -o jsonpath goes through Kubectl::arg(), not a hand-quoted
+        // '{...}' literal: single quotes are POSIX shell-quoting, which
+        // cmd.exe doesn't interpret — kubectl would receive the quote
+        // characters themselves as part of the jsonpath expression. The
+        // trailing `2>/dev/null` is also gone: only ->output() (stdout) is
+        // ever read below, never ->errorOutput(), so redirecting stderr
+        // changed nothing it's safe to drop rather than make OS-aware.
+        $ready = trim(Process::run("{$kubectl} get deployment -n traefik traefik -o ".Kubectl::arg('jsonpath={.status.readyReplicas}'))->output());
 
         return (int) $ready > 0;
     }
@@ -211,7 +218,7 @@ class CloudProvisionEksCommand extends Command
     private function resolveStorageClass(string $context): ?string
     {
         $kubectl = Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context);
-        $classes = trim(Process::run("{$kubectl} get storageclass -o jsonpath='{.items[*].metadata.name}' 2>/dev/null")->output());
+        $classes = trim(Process::run("{$kubectl} get storageclass -o ".Kubectl::arg('jsonpath={.items[*].metadata.name}'))->output());
         $list = array_values(array_filter(preg_split('/\s+/', $classes) ?: []));
 
         if (in_array('gp3', $list, true)) {
@@ -238,9 +245,9 @@ class CloudProvisionEksCommand extends Command
         $kubectl = Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context);
 
         // If a previous attempt left an unbound Pending PVC with an invalid/mismatched storage class, clean it up so apply succeeds.
-        $pvcStatus = trim(Process::run("{$kubectl} get pvc -n traefik traefik-acme -o jsonpath='{.status.phase}' 2>/dev/null")->output());
+        $pvcStatus = trim(Process::run("{$kubectl} get pvc -n traefik traefik-acme -o ".Kubectl::arg('jsonpath={.status.phase}'))->output());
         if ($pvcStatus === 'Pending') {
-            Process::run("{$kubectl} delete pvc -n traefik traefik-acme --wait=false 2>/dev/null");
+            Process::run("{$kubectl} delete pvc -n traefik traefik-acme --wait=false");
         }
 
         $manifest = view('k8s.traefik-managed', [
@@ -267,7 +274,7 @@ class CloudProvisionEksCommand extends Command
         while ($attempt < $maxAttempts) {
             $hostname = trim(Process::run(
                 Kubectl::forContext($context)->prefix()
-                .' get svc -n traefik traefik -o jsonpath=\'{.status.loadBalancer.ingress[0].hostname}\'',
+                .' get svc -n traefik traefik -o '.Kubectl::arg('jsonpath={.status.loadBalancer.ingress[0].hostname}'),
             )->output());
             if ($hostname !== '') {
                 return $hostname;
@@ -275,7 +282,7 @@ class CloudProvisionEksCommand extends Command
 
             $ip = trim(Process::run(
                 Kubectl::forContext($context)->prefix()
-                .' get svc -n traefik traefik -o jsonpath=\'{.status.loadBalancer.ingress[0].ip}\'',
+                .' get svc -n traefik traefik -o '.Kubectl::arg('jsonpath={.status.loadBalancer.ingress[0].ip}'),
             )->output());
             if ($ip !== '' && filter_var($ip, FILTER_VALIDATE_IP)) {
                 return $ip;

@@ -60,7 +60,9 @@ class PocketBaseRemoveCommand extends AbstractToolRemoveCommand
         ]);
 
         if ($this->option('purge')) {
-            Process::run("{$kubectl} wait --for=delete pod -l app.kubernetes.io/name={$deploy} -n {$namespace} --timeout=60s 2>/dev/null || true");
+            // Result is never read — `2>/dev/null || true` was only ever
+            // there to keep the shell happy about a nonzero exit nothing checks.
+            Process::run("{$kubectl} wait --for=delete pod -l app.kubernetes.io/name={$deploy} -n {$namespace} --timeout=60s");
 
             $ok = $this->deleteResources('Removing PocketBase storage...', [
                 new ResourceRef('PersistentVolumeClaim', $names->volume(), $namespace),

@@ -9,6 +9,7 @@
  */
 
 use App\Facades\State;
+use App\Support\Os;
 use App\Traits\InteractsWithOpenTofu;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
@@ -56,6 +57,36 @@ SH);
         ->not->toContain('stdout is a pipe');
 
     $directory->delete();
+});
+
+test('on Windows, tofu output still reaches the user without the POSIX exec/redirect wrapper', function (): void {
+    // `exec '.$command.' > log 2>&1` isn't understood by cmd.exe — the
+    // Windows branch streams tofu's output into the log file itself via
+    // Process's own output callback instead. Still runs this stub as a real
+    // subprocess (the test machine is POSIX regardless of the faked OS), so
+    // this proves the callback-based path actually captures output, not
+    // just that it compiles.
+    Os::setForcedFamily('Windows');
+
+    try {
+        $directory = TemporaryDirectory::make();
+        $bin = tofuInterruptStub($directory, <<<'SH'
+echo "google_compute_instance.larakube: Creating..."
+echo "Apply complete! Resources: 4 added, 0 changed, 0 destroyed."
+SH);
+
+        ob_start();
+        $result = tofuInterruptRunner()->apply($bin, 'interrupt-stack-windows');
+        $printed = (string) ob_get_clean();
+
+        expect($result['code'])->toBe(0)
+            ->and($printed)->toContain('Creating...')
+            ->toContain('Apply complete!');
+
+        $directory->delete();
+    } finally {
+        Os::setForcedFamily(null);
+    }
 });
 
 test('tofu exit codes pass through unchanged', function (): void {

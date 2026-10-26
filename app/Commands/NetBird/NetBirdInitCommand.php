@@ -336,7 +336,7 @@ abstract class NetBirdInitCommand extends AbstractToolInitCommand
     protected function ensureVpnConfig(string $kubectl, string $ns, string $host): bool
     {
         $existingRaw = trim(Process::run(
-            "{$kubectl} get secret ".$this->vpnSecretForHost($host, SecretKind::CONFIG)." -n {$ns} -o jsonpath='{.data.management\.json}'",
+            "{$kubectl} get secret ".$this->vpnSecretForHost($host, SecretKind::CONFIG)." -n {$ns} -o ".Kubectl::arg('jsonpath={.data.management\.json}'),
         )->output());
         $existingConfig = $existingRaw !== '' ? (string) base64_decode($existingRaw) : null;
         $existingDecoded = $existingConfig !== null ? json_decode($existingConfig, true) : null;

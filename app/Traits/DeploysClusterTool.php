@@ -481,8 +481,11 @@ trait DeploysClusterTool
             'ingressName' => $ingressName,
             'namespace' => $tool->namespace(),
             'isLocal' => $isLocal,
-            'vpnOnly' => str_contains(Process::run("{$kubectl} get ingress {$ingressName} -n {$tool->namespace()} -o jsonpath='{.metadata.annotations}' --ignore-not-found")->output(), 'vpn-only'),
-            'proxied' => str_contains(Process::run("{$kubectl} get ingress {$ingressName} -n {$tool->namespace()} -o jsonpath='{.metadata.annotations}' --ignore-not-found")->output(), 'cloudflare-proxied'),
+            // -o jsonpath goes through Kubectl::arg(), not a hand-quoted
+            // '{...}' literal: single quotes are POSIX shell-quoting, which
+            // cmd.exe doesn't interpret the same way.
+            'vpnOnly' => str_contains(Process::run("{$kubectl} get ingress {$ingressName} -n {$tool->namespace()} -o ".Kubectl::arg('jsonpath={.metadata.annotations}').' --ignore-not-found')->output(), 'vpn-only'),
+            'proxied' => str_contains(Process::run("{$kubectl} get ingress {$ingressName} -n {$tool->namespace()} -o ".Kubectl::arg('jsonpath={.metadata.annotations}').' --ignore-not-found')->output(), 'cloudflare-proxied'),
         ])->render();
 
         if (preg_match('/metadata:\s*\n\s*name:\s*([^\s]+)/m', $manifest, $matches)) {

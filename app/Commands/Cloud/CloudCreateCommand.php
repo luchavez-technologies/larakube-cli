@@ -934,7 +934,7 @@ class CloudCreateCommand extends Command
             return 1;
         }
 
-        $originalContext = trim(Process::run(Kubectl::forContext(null)->prefix().' config current-context 2>/dev/null')->output());
+        $originalContext = trim(Process::run(Kubectl::forContext(null)->prefix().' config current-context')->output());
 
         $this->mergeKubeconfig($kubeconfig);
         $this->laraKubeInfo("✅ Cluster ready. Context: <fg=cyan>{$context}</>");
@@ -961,15 +961,15 @@ class CloudCreateCommand extends Command
         if ($provider === 'gcp' && $projectId = $this->getGcpProjectId()) {
             // A regional cluster (HA) is addressed by --region, a zonal one by --zone — passing the wrong one fails to find it.
             $locationFlag = $ha ? "--region {$region}" : "--zone {$zone}";
-            Process::run("gcloud container clusters get-credentials {$stackName} {$locationFlag} --project {$projectId} 2>/dev/null");
+            Process::run("gcloud container clusters get-credentials {$stackName} {$locationFlag} --project {$projectId}");
         }
         if ($provider === 'aws') {
-            Process::run("aws eks update-kubeconfig --name {$stackName} --region {$region} 2>/dev/null");
+            Process::run("aws eks update-kubeconfig --name {$stackName} --region {$region}");
         }
 
         // Restore active context: gcloud, aws, and kubeconfig merging should never hijack the user's active context.
         if ($originalContext !== '') {
-            Process::run(Kubectl::forContext(null)->prefix().' config use-context '.escapeshellarg($originalContext).' 2>/dev/null');
+            Process::run(Kubectl::forContext(null)->prefix().' config use-context '.escapeshellarg($originalContext));
         }
 
         $traefikExit = $this->call($initCommand, $doksArgs);

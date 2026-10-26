@@ -9,6 +9,7 @@
 
 use App\Data\GlobalConfigData;
 use App\Facades\State;
+use App\Support\Os;
 use App\Traits\InteractsWithOpenTofu;
 use Illuminate\Support\Facades\Process;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
@@ -105,6 +106,29 @@ test('resolveTofuBinary is null when neither tofu nor terraform resolves to a re
     }
 
     expect(tofuHelper()->resolve())->toBeNull();
+});
+
+test('on Windows, resolveTofuBinary finds tofu.exe via CliTool\'s candidate-path lookup, never command -v', function (): void {
+    Os::setForcedFamily('Windows');
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    putenv('LARAKUBE_BIN_DIR='.$temporaryDirectory->path());
+    $fakeTofu = $temporaryDirectory->path().'/tofu.exe';
+    file_put_contents($fakeTofu, 'fake-tofu-binary');
+    chmod($fakeTofu, 0755);
+
+    Process::fake([
+        '*' => function (): never {
+            throw new RuntimeException('resolveTofuBinary must not shell out on Windows — command -v does not exist under cmd.exe.');
+        },
+    ]);
+
+    try {
+        expect(tofuHelper()->resolve())->toBe(['path' => $fakeTofu, 'isOpenTofu' => true]);
+    } finally {
+        putenv('LARAKUBE_BIN_DIR');
+        Os::setForcedFamily(null);
+        $temporaryDirectory->delete();
+    }
 });
 
 test('tofuOutput returns the trimmed raw output value, or null on failure/empty', function (): void {

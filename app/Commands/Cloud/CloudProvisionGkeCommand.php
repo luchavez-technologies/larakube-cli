@@ -210,7 +210,14 @@ class CloudProvisionGkeCommand extends Command
     private function traefikInstalled(string $context): bool
     {
         $kubectl = Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context);
-        $ready = trim(Process::run("{$kubectl} get deployment -n traefik traefik -o jsonpath='{.status.readyReplicas}' 2>/dev/null")->output());
+        // -o jsonpath goes through Kubectl::arg(), not a hand-quoted
+        // '{...}' literal: single quotes are POSIX shell-quoting, which
+        // cmd.exe doesn't interpret — kubectl would receive the quote
+        // characters themselves as part of the jsonpath expression. The
+        // trailing `2>/dev/null` is also gone: only ->output() (stdout) is
+        // ever read below, never ->errorOutput(), so redirecting stderr
+        // changed nothing it's safe to drop rather than make OS-aware.
+        $ready = trim(Process::run("{$kubectl} get deployment -n traefik traefik -o ".Kubectl::arg('jsonpath={.status.readyReplicas}'))->output());
 
         return (int) $ready > 0;
     }
@@ -226,9 +233,9 @@ class CloudProvisionGkeCommand extends Command
         $kubectl = Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context);
 
         // If a previous attempt left an unbound Pending PVC, clean it up so apply succeeds.
-        $pvcStatus = trim(Process::run("{$kubectl} get pvc -n traefik traefik-acme -o jsonpath='{.status.phase}' 2>/dev/null")->output());
+        $pvcStatus = trim(Process::run("{$kubectl} get pvc -n traefik traefik-acme -o ".Kubectl::arg('jsonpath={.status.phase}'))->output());
         if ($pvcStatus === 'Pending') {
-            Process::run("{$kubectl} delete pvc -n traefik traefik-acme --wait=false 2>/dev/null");
+            Process::run("{$kubectl} delete pvc -n traefik traefik-acme --wait=false");
         }
 
         $manifest = view('k8s.traefik-managed', [
@@ -255,7 +262,7 @@ class CloudProvisionGkeCommand extends Command
         while ($attempt < $maxAttempts) {
             $ip = trim(Process::run(
                 Kubectl::forContext($context)->prefix()
-                .' get svc -n traefik traefik -o jsonpath=\'{.status.loadBalancer.ingress[0].ip}\'',
+                .' get svc -n traefik traefik -o '.Kubectl::arg('jsonpath={.status.loadBalancer.ingress[0].ip}'),
             )->output());
             if ($ip !== '' && filter_var($ip, FILTER_VALIDATE_IP)) {
                 return $ip;

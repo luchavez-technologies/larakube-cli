@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Data\ConfigData;
 use App\Data\KubectlResult;
 use App\Data\ResourceRef;
+use App\Support\Os;
 use Illuminate\Support\Facades\Process;
 use LogicException;
 use stdClass;
@@ -128,7 +129,17 @@ final readonly class Kubectl
         return false;
     }
 
-    /** The command prefix, for callers not yet moved onto typed calls. */
+    /**
+     * The command prefix, for callers not yet moved onto typed calls.
+     *
+     * `Os::isWindows()` is only ever true when this process itself was
+     * dispatched natively on Windows (`cloud:create`, `setup`, `update` —
+     * see `WslBridge::shouldDispatchToWsl()`); every other command still
+     * runs inside the larakube-ubuntu WSL distro, where `Os::family()`
+     * reports `Linux` like any other process in there, so the POSIX branch
+     * below is unchanged for the hundreds of existing callers outside the
+     * cloud:create call graph.
+     */
     public function prefix(): string
     {
         if ($this->rawPrefix !== null) {
@@ -139,8 +150,29 @@ final readonly class Kubectl
             return 'kubectl';
         }
 
-        $kubeconfig = implode(':', array_map('escapeshellarg', $this->kubeconfigs ?? [home_path('.kube/config')]));
-        $kubectl = 'KUBECONFIG='.$kubeconfig.' kubectl';
+        $paths = $this->kubeconfigs ?? [home_path('.kube/config')];
+
+        if (Os::isWindows()) {
+            $kubectl = count($paths) === 1
+                // A plain --kubeconfig argument composes safely inside a
+                // pipeline (several call sites build `{$kubectl} ... | {$kubectl}
+                // ...`), unlike `set VAR=value&& command`: cmd.exe parses
+                // `&&` and `|` together, so a `set ...&&` prefix on BOTH
+                // sides of a pipe reassigns the pipe's source to the `set`
+                // command itself rather than to kubectl's own stdout.
+                ? 'kubectl --kubeconfig '.escapeshellarg($paths[0])
+                // Multiple merged kubeconfigs have no single-flag
+                // equivalent — only ever used for a non-piped `config view
+                // --flatten` merge (ProvisionsK3sNode::syncKubeconfig()),
+                // so the pipe hazard above doesn't apply to this branch.
+                // Not escapeshellarg()'d: cmd's `set` takes everything
+                // after `=` literally up to `&`/end of line, so quoting
+                // here would embed literal quote characters into
+                // KUBECONFIG itself rather than delimiting the value.
+                : 'set KUBECONFIG='.implode(Os::pathSeparator(), $paths).'&& kubectl';
+        } else {
+            $kubectl = 'KUBECONFIG='.implode(Os::pathSeparator(), array_map('escapeshellarg', $paths)).' kubectl';
+        }
 
         return $this->context !== null ? $kubectl.' --context '.escapeshellarg($this->context) : $kubectl;
     }

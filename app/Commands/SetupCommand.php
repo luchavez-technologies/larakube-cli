@@ -36,12 +36,35 @@ class SetupCommand extends Command
 
     protected $description = 'First-time setup: kubectl and developer CLI tools, plus a local cluster when this machine is for development';
 
+    /**
+     * Tools this command can install directly on a native Windows host,
+     * without the WSL round-trip — kept narrow and explicit rather than
+     * inferred from CliTool, so a tool only joins this list once its
+     * Windows installer has actually been built and verified.
+     *
+     * @var list<CliTool>
+     */
+    private const WINDOWS_NATIVE_TOOLS = [CliTool::KUBECTL, CliTool::K9S, CliTool::TOFU, CliTool::GCLOUD, CliTool::AWS];
+
     public function handle(): int
     {
         $this->renderHeader();
         $this->laraKubeInfo('LaraKube Environment Setup');
 
         if ($this->isWindows()) {
+            $requestedTools = $this->resolveRequestedTools();
+
+            // A scoped --tools/--tool request naming only tools with a native
+            // Windows installer skips the WSL distro entirely — this is the
+            // path Desktop's per-tool Install/Update buttons already use
+            // (ToolInstallController), so no WSL enable/reboot/import is
+            // needed just to get kubectl. A bare `setup` (full interactive
+            // onboarding) or a list containing a WSL-only tool (podman,
+            // hcloud/gh/tea) keeps the existing WSL-forwarding behavior.
+            if ($requestedTools !== null && $this->allNativelyInstallableOnWindows($requestedTools)) {
+                return $this->handleTargetedToolInstalls($requestedTools);
+            }
+
             return $this->handleWindowsSetup();
         }
 
@@ -504,6 +527,21 @@ class SetupCommand extends Command
         $this->renderReminders();
 
         return 0;
+    }
+
+    /**
+     * @param  list<string>  $slugs
+     */
+    protected function allNativelyInstallableOnWindows(array $slugs): bool
+    {
+        foreach ($slugs as $slug) {
+            $tool = CliTool::tryFrom(strtolower(trim($slug)));
+            if ($tool === null || ! in_array($tool, self::WINDOWS_NATIVE_TOOLS, true)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

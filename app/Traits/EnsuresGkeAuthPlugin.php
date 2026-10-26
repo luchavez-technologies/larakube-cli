@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use App\Enums\CliTool;
+use App\Support\Os;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
@@ -72,9 +73,15 @@ trait EnsuresGkeAuthPlugin
     /** Finds the plugin on PATH, or via gcloud's own SDK root when PATH doesn't have it — and fixes PATH for this process either way. */
     private function locateGkeAuthPlugin(): ?string
     {
-        $onPath = trim(Process::run('command -v gke-gcloud-auth-plugin')->output());
-        if ($onPath !== '') {
-            return $onPath;
+        $binary = Os::isWindows() ? 'gke-gcloud-auth-plugin.exe' : 'gke-gcloud-auth-plugin';
+
+        // `command -v` is POSIX-only (doesn't exist under cmd.exe) — on
+        // Windows, skip straight to the gcloud SDK-root lookup below.
+        if (! Os::isWindows()) {
+            $onPath = trim(Process::run('command -v '.$binary)->output());
+            if ($onPath !== '') {
+                return $onPath;
+            }
         }
 
         $gcloud = CliTool::GCLOUD->resolveBinary();
@@ -82,20 +89,26 @@ trait EnsuresGkeAuthPlugin
             return null;
         }
 
-        $sdkRoot = trim(Process::run(escapeshellarg($gcloud)." info --format='value(installation.sdk_root)'")->output());
+        // Array form, not a `--format='value(...)'` string: the single
+        // quotes there are POSIX shell-quoting with no effect under cmd.exe
+        // (no shell re-splits the argument on Windows either way, since it
+        // has no spaces) — they'd pass through as literal characters inside
+        // the format string instead of being stripped.
+        $sdkRoot = trim(Process::run([$gcloud, 'info', '--format=value(installation.sdk_root)'])->output());
         if ($sdkRoot === '') {
             return null;
         }
 
-        $candidate = "{$sdkRoot}/bin/gke-gcloud-auth-plugin";
+        $candidate = "{$sdkRoot}/bin/{$binary}";
         if (! @is_executable($candidate)) {
             return null;
         }
 
         $dir = dirname($candidate);
         $path = (string) getenv('PATH');
-        if (! in_array($dir, explode(':', $path), true)) {
-            putenv("PATH={$dir}:{$path}");
+        $separator = Os::pathSeparator();
+        if (! in_array($dir, explode($separator, $path), true)) {
+            putenv("PATH={$dir}{$separator}{$path}");
         }
 
         return $candidate;

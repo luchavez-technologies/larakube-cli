@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\Os;
 use App\Traits\EnsuresGkeAuthPlugin;
 use Illuminate\Console\Command;
 use Illuminate\Console\OutputStyle;
@@ -60,7 +61,7 @@ test('a plugin installed but off PATH (the Homebrew-cask case) is found via gclo
     Process::fake([
         'command -v gke-gcloud-auth-plugin' => Process::result('', exitCode: 1),
         'command -v gcloud' => Process::result('/opt/homebrew/bin/gcloud'),
-        "*info --format='value(installation.sdk_root)'*" => Process::result($sdk->path()),
+        '*sdk_root*' => Process::result($sdk->path()),
         '*' => Process::result('', exitCode: 1),
     ]);
 
@@ -74,13 +75,51 @@ test('non-interactive with no plugin anywhere refuses instead of guessing', func
     Process::fake([
         'command -v gke-gcloud-auth-plugin' => Process::result('', exitCode: 1),
         'command -v gcloud' => Process::result('/opt/homebrew/bin/gcloud'),
-        "*info --format='value(installation.sdk_root)'*" => Process::result('/nonexistent/sdk/root'),
+        '*sdk_root*' => Process::result('/nonexistent/sdk/root'),
         '*' => Process::result('', exitCode: 1),
     ]);
 
     expect(gkeAuthPluginRunner(interactive: false)->check())->toBeFalse();
 
-    Process::assertNotRan(fn ($process) => str_contains($process->command, 'components install'));
+    Process::assertNotRan(fn ($process) => str_contains(implode(' ', (array) $process->command), 'components install'));
+});
+
+test('on Windows, the plugin is located via gcloud\'s sdk_root with its .exe suffix, never command -v', function (): void {
+    Os::setForcedFamily('Windows');
+
+    // CliTool::GCLOUD->resolveBinary() itself skips `command -v` on Windows
+    // and resolves via LARAKUBE_BIN_DIR candidate paths instead — a fake
+    // `gcloud.cmd` there stands in for a native Windows gcloud install.
+    $binDir = TemporaryDirectory::make()->deleteWhenDestroyed();
+    putenv('LARAKUBE_BIN_DIR='.$binDir->path());
+    file_put_contents($binDir->path().'/gcloud.cmd', '');
+    chmod($binDir->path().'/gcloud.cmd', 0755);
+
+    $sdk = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $pluginDir = $sdk->path('bin');
+    file_put_contents("{$pluginDir}/gke-gcloud-auth-plugin.exe", '');
+    chmod("{$pluginDir}/gke-gcloud-auth-plugin.exe", 0755);
+
+    $originalPath = (string) getenv('PATH');
+
+    Process::fake([
+        '*sdk_root*' => Process::result($sdk->path()),
+        '*' => function (): never {
+            throw new RuntimeException('locateGkeAuthPlugin must not shell out to `command -v` on Windows.');
+        },
+    ]);
+
+    try {
+        expect(gkeAuthPluginRunner(interactive: true)->check())->toBeTrue()
+            // The Windows PATH merge must use `;`, not a POSIX `:` — joining
+            // a Windows directory with `:` would be ambiguous with its own
+            // drive-letter colon (`C:\...`).
+            ->and(getenv('PATH'))->toContain($pluginDir.';');
+    } finally {
+        putenv('LARAKUBE_BIN_DIR');
+        putenv("PATH={$originalPath}");
+        Os::setForcedFamily(null);
+    }
 });
 
 test('no gcloud installed at all refuses with a clear install-gcloud-first message', function (): void {

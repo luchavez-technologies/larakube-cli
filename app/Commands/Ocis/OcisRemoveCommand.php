@@ -42,7 +42,7 @@ class OcisRemoveCommand extends AbstractToolRemoveCommand
 
         $middleware = $this->tool()->vpnMiddlewareTarget($this->resolveInstance($kubectl));
         if ($middleware !== null) {
-            Process::run("{$kubectl} delete middleware/{$middleware['name']} -n {$middleware['namespace']} --ignore-not-found 2>/dev/null");
+            Process::run("{$kubectl} delete middleware/{$middleware['name']} -n {$middleware['namespace']} --ignore-not-found");
         }
 
         // Deliberately NOT deleted: the S3 bucket contents, the metadata PVC,

@@ -189,7 +189,7 @@ abstract class OpenBaoInitCommand extends AbstractToolInitCommand
 
         foreach ($crds as $crd) {
             $stored = trim(Process::run(
-                "{$kubectl} get customresourcedefinition {$crd} -o jsonpath='{.status.storedVersions}' --ignore-not-found",
+                "{$kubectl} get customresourcedefinition {$crd} -o ".Kubectl::arg('jsonpath={.status.storedVersions}').' --ignore-not-found',
             )->output());
 
             // Empty means either the CRD doesn't exist yet (fresh install —
