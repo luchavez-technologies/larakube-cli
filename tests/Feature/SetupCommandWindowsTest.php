@@ -116,8 +116,8 @@ test('setup --tools=kubectl on Windows installs natively, skipping the WSL distr
             ->expectsOutputToContain('kubectl (Kubernetes CLI) installed successfully')
             ->doesntExpectOutputToContain('Dispatching setup into LaraKube Linux');
 
-        expect($dispatched)->toBeFalse();
-        expect(file_get_contents($binDir->path().'/kubectl.exe'))->toBe('fake-kubectl-binary');
+        expect($dispatched)->toBeFalse()
+            ->and(file_get_contents($binDir->path().'/kubectl.exe'))->toBe('fake-kubectl-binary');
     } finally {
         putenv('LARAKUBE_BIN_DIR');
     }

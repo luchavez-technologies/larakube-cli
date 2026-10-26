@@ -27,15 +27,6 @@ class SetupCommand extends Command
 {
     use CollectsReminders, ConfiguresWslNetworking, DetectsWsl, InstallsK9s, InstallsPodman, InteractsWithOs, InteractsWithTrust, LaraKubeOutput, ResolvesContainerRuntime, StreamsProcessOutput;
 
-    protected $signature = 'setup
-        {--profile= : What this machine is for — "local" (development, needs a container runtime) or "remote" (Cluster Tools and cloud clusters only)}
-        {--runtime= : Container runtime to install without prompting (podman or docker)}
-        {--tool=* : Specific CLI tool(s) to install without running full setup (k9s, tofu, gcloud, gh, tea, aws)}
-        {--tools= : Comma-separated list of CLI tools to install without running full setup}
-        {--update : Update the named tool(s) instead of only installing them if missing}';
-
-    protected $description = 'First-time setup: kubectl and developer CLI tools, plus a local cluster when this machine is for development';
-
     /**
      * Tools this command can install directly on a native Windows host,
      * without the WSL round-trip — kept narrow and explicit rather than
@@ -45,6 +36,15 @@ class SetupCommand extends Command
      * @var list<CliTool>
      */
     private const WINDOWS_NATIVE_TOOLS = [CliTool::KUBECTL, CliTool::K9S, CliTool::TOFU, CliTool::GCLOUD, CliTool::AWS];
+
+    protected $signature = 'setup
+        {--profile= : What this machine is for — "local" (development, needs a container runtime) or "remote" (Cluster Tools and cloud clusters only)}
+        {--runtime= : Container runtime to install without prompting (podman or docker)}
+        {--tool=* : Specific CLI tool(s) to install without running full setup (k9s, tofu, gcloud, gh, tea, aws)}
+        {--tools= : Comma-separated list of CLI tools to install without running full setup}
+        {--update : Update the named tool(s) instead of only installing them if missing}';
+
+    protected $description = 'First-time setup: kubectl and developer CLI tools, plus a local cluster when this machine is for development';
 
     public function handle(): int
     {

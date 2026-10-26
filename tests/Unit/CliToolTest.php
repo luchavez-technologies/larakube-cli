@@ -570,9 +570,8 @@ test('binary() and candidatePaths() carry Windows-specific names, not the Darwin
         ->and(CliTool::K9S->binary())->toBe('k9s.exe')
         ->and(CliTool::TOFU->binary())->toBe('tofu.exe')
         ->and(CliTool::AWS->binary())->toBe('aws.exe')
-        ->and(CliTool::GCLOUD->binary())->toBe('gcloud.cmd');
-
-    expect(CliTool::KUBECTL->candidatePaths())->toContain(CliTool::binDir().'/kubectl.exe');
+        ->and(CliTool::GCLOUD->binary())->toBe('gcloud.cmd')
+        ->and(CliTool::KUBECTL->candidatePaths())->toContain(CliTool::binDir().'/kubectl.exe');
 });
 
 test('install() downloads kubectl.exe directly with no WSL and no shell one-liner', function (): void {
@@ -585,8 +584,8 @@ test('install() downloads kubectl.exe directly with no WSL and no shell one-line
         'https://dl.k8s.io/release/v1.31.0/bin/windows/amd64/kubectl.exe' => Http::response('fake-kubectl-binary'),
     ]);
 
-    expect(CliTool::KUBECTL->install())->toBeTrue();
-    expect(file_get_contents($dir->path().'/kubectl.exe'))->toBe('fake-kubectl-binary');
+    expect(CliTool::KUBECTL->install())->toBeTrue()
+        ->and(file_get_contents($dir->path().'/kubectl.exe'))->toBe('fake-kubectl-binary');
 });
 
 test('install() extracts k9s.exe out of the Windows release zip', function (): void {
@@ -596,12 +595,12 @@ test('install() extracts k9s.exe out of the Windows release zip', function (): v
 
     Http::fake([
         'https://github.com/derailed/k9s/releases/latest/download/k9s_Windows_amd64.zip' => Http::response(
-            fakeZipBytes(['k9s.exe' => 'fake-k9s-binary'])
+            fakeZipBytes(['k9s.exe' => 'fake-k9s-binary']),
         ),
     ]);
 
-    expect(CliTool::K9S->install())->toBeTrue();
-    expect(file_get_contents($dir->path().'/k9s.exe'))->toBe('fake-k9s-binary');
+    expect(CliTool::K9S->install())->toBeTrue()
+        ->and(file_get_contents($dir->path().'/k9s.exe'))->toBe('fake-k9s-binary');
 });
 
 test('install() resolves the current OpenTofu release before downloading the versioned Windows zip', function (): void {
@@ -612,12 +611,12 @@ test('install() resolves the current OpenTofu release before downloading the ver
     Http::fake([
         'https://api.github.com/repos/opentofu/opentofu/releases/latest' => Http::response(['tag_name' => 'v1.8.0']),
         'https://github.com/opentofu/opentofu/releases/download/v1.8.0/tofu_1.8.0_windows_amd64.zip' => Http::response(
-            fakeZipBytes(['tofu.exe' => 'fake-tofu-binary'])
+            fakeZipBytes(['tofu.exe' => 'fake-tofu-binary']),
         ),
     ]);
 
-    expect(CliTool::TOFU->install())->toBeTrue();
-    expect(file_get_contents($dir->path().'/tofu.exe'))->toBe('fake-tofu-binary');
+    expect(CliTool::TOFU->install())->toBeTrue()
+        ->and(file_get_contents($dir->path().'/tofu.exe'))->toBe('fake-tofu-binary');
 });
 
 test('install() uses AWS\'s documented no-admin per-user MSI, never the all-users one', function (): void {
@@ -661,10 +660,10 @@ test('install() fails the Google Cloud SDK on Windows rather than leaving a non-
 
     Http::fake([
         'https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-windows-x86_64.zip' => Http::response(
-            fakeZipBytes(['google-cloud-sdk/bin/gcloud.cmd' => 'fake-gcloud-wrapper'])
+            fakeZipBytes(['google-cloud-sdk/bin/gcloud.cmd' => 'fake-gcloud-wrapper']),
         ),
     ]);
 
-    expect(CliTool::GCLOUD->install())->toBeFalse();
-    expect(file_exists($_SERVER['HOME'].'/google-cloud-sdk/bin/gcloud.cmd'))->toBeTrue();
+    expect(CliTool::GCLOUD->install())->toBeFalse()
+        ->and(file_exists($_SERVER['HOME'].'/google-cloud-sdk/bin/gcloud.cmd'))->toBeTrue();
 });

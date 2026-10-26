@@ -6,10 +6,11 @@ use App\Support\Os;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
-use ZipArchive;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\warning;
+
+use ZipArchive;
 
 enum CliTool: string
 {
