@@ -1119,14 +1119,23 @@ enum CliTool: string
      * client instead of shelling to curl, since a native Windows host has no
      * bash to run this file's other installers' curl/tar one-liners against.
      */
+    /**
+     * Streams straight to disk via Guzzle's `sink` option — never buffers
+     * the whole response body in PHP memory first. kubectl/OpenTofu/the
+     * Google Cloud SDK zip are all 50-150MB; the previous `$response->body()`
+     * + `file_put_contents()` approach held the entire file in a PHP string
+     * (effectively twice, once in Guzzle's own buffer and once in that
+     * string) before ever writing a byte, which blew past PHP's default
+     * 128M memory_limit outright — confirmed live (2026-10-29): every
+     * Windows tool install past ~75MB failed with "Allowed memory size of
+     * 134217728 bytes exhausted."
+     */
     protected function httpDownloadToFile(string $url, string $target): bool
     {
-        $response = Http::timeout(120)->get($url);
+        $response = Http::timeout(120)->sink($target)->get($url);
         if (! $response->successful()) {
-            return false;
-        }
+            @unlink($target);
 
-        if (file_put_contents($target, $response->body()) === false) {
             return false;
         }
 
@@ -1142,13 +1151,18 @@ enum CliTool: string
      */
     protected function httpDownloadZipMember(string $url, string $target, string $memberBasename): bool
     {
-        $response = Http::timeout(120)->get($url);
-        if (! $response->successful()) {
+        $tmpZip = tempnam(sys_get_temp_dir(), 'larakube-zip-');
+        if ($tmpZip === false) {
             return false;
         }
 
-        $tmpZip = tempnam(sys_get_temp_dir(), 'larakube-zip-');
-        if ($tmpZip === false || file_put_contents($tmpZip, $response->body()) === false) {
+        // Streams straight to disk (see httpDownloadToFile()'s docblock) —
+        // ZipArchive itself already reads the downloaded file from disk, not
+        // memory, so only this initial download needed to avoid buffering.
+        $response = Http::timeout(120)->sink($tmpZip)->get($url);
+        if (! $response->successful()) {
+            @unlink($tmpZip);
+
             return false;
         }
 
@@ -1186,13 +1200,17 @@ enum CliTool: string
      */
     protected function httpDownloadZipExtractAll(string $url, string $destDir): bool
     {
-        $response = Http::timeout(300)->get($url);
-        if (! $response->successful()) {
+        $tmpZip = tempnam(sys_get_temp_dir(), 'larakube-zip-');
+        if ($tmpZip === false) {
             return false;
         }
 
-        $tmpZip = tempnam(sys_get_temp_dir(), 'larakube-zip-');
-        if ($tmpZip === false || file_put_contents($tmpZip, $response->body()) === false) {
+        // Streams straight to disk (see httpDownloadToFile()'s docblock) —
+        // the Google Cloud SDK's Windows zip alone is well over 100MB.
+        $response = Http::timeout(300)->sink($tmpZip)->get($url);
+        if (! $response->successful()) {
+            @unlink($tmpZip);
+
             return false;
         }
 
