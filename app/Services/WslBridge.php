@@ -44,12 +44,23 @@ class WslBridge
      * "provision a server, install apps on it" path this sweep targets —
      * deliberately left dispatching to WSL, not an oversight.
      *
+     * `backup:init`/`backup:run`/`backup:restore`/`backup:schedule`/
+     * `backup:unschedule`/`backup:prune` (every backup command Desktop's
+     * Backups page actually dispatches) joined after auditing their shared
+     * `InteractsWithBackup`/`DeploysClusterTool` traits for shell-specific
+     * patterns — none found: all cluster calls already go through the
+     * already-Windows-safe `Kubectl::prefix()`, the one local `aws s3 ...`
+     * call is built with OS-aware `escapeshellarg()`, and the only `sh -c`
+     * is a `kubectl exec` argument that runs inside the remote pod, not on
+     * the local host.
+     *
      * @var list<string>
      */
     private const NATIVE_WINDOWS_COMMANDS = [
         'setup', 'update', 'cloud:create',
         'tool:init', 'tool:add', 'tool:rebind', 'tool:remove', 'tls:init',
         'context', 'context:import', 'context:remove', 'context:backup', 'context:restore',
+        'backup:init', 'backup:run', 'backup:restore', 'backup:schedule', 'backup:unschedule', 'backup:prune',
     ];
 
     private static ?bool $forceNativeWindows = null;

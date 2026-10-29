@@ -178,6 +178,12 @@ test('shouldDispatchToWsl filters lifecycle commands on Windows', function (): v
         ->and($bridge->shouldDispatchToWsl(['larakube', 'context:remove', 'production']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'context:backup']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'context:restore']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'backup:init', 'production', '--context=do-sgp1']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'backup:run', 'production', '--context=do-sgp1']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'backup:restore', 'production', '--context=do-sgp1']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'backup:schedule', 'production', '--context=do-sgp1']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'backup:unschedule', 'production', '--context=do-sgp1']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'backup:prune', 'production', '--context=do-sgp1']))->toBeFalse()
         // A command outside the Cluster-Tool install/remove and kubeconfig
         // management families still dispatches to WSL, even sharing a
         // `tool:`/`context:`-style prefix — these dev-box/local-only
