@@ -380,6 +380,33 @@ enum CliTool: string
         return 'curl -fsSL '.escapeshellarg($url).' | tar -xz -C '.escapeshellarg($binDir).' hcloud';
     }
 
+    /** Where installPython()'s no-Homebrew macOS fallback unpacks its standalone Python build. */
+    public static function pythonStandaloneDir(): string
+    {
+        return home_path('.larakube/python-standalone');
+    }
+
+    /**
+     * A relocatable CPython 3.12 build from astral-sh/python-build-standalone
+     * (no installer, no sudo — the minor series is pinned to a known-stable
+     * one, but the exact patch release and the one-time download URL are
+     * always resolved against that project's current GitHub release, never
+     * hardcoded). The `install_only` tarball's own top-level `python/`
+     * directory is stripped so the interpreter lands at `$installDir/bin/python3`,
+     * matching the prefix layout `resolvePython()` expects.
+     */
+    public static function pythonStandaloneInstallCommand(string $arch, string $installDir): string
+    {
+        $pbsArch = $arch === 'arm64' ? 'aarch64' : 'x86_64';
+
+        return 'set -e; '
+            .'A=$(curl -fsSL https://api.github.com/repos/astral-sh/python-build-standalone/releases/latest); '
+            .'U=$(printf "%s" "$A" | grep -o "https://github.com/astral-sh/python-build-standalone/releases/download/[^\"]*cpython-3\.12\.[0-9]*+[0-9]*-'.$pbsArch.'-apple-darwin-install_only\.tar\.gz" | head -1); '
+            .'[ -n "$U" ] || { echo "Could not find a standalone Python 3.12 build for this Mac." >&2; exit 1; }; '
+            .'rm -rf '.escapeshellarg($installDir).'; mkdir -p '.escapeshellarg($installDir).'; '
+            .'curl -fsSL "$U" | tar -xz -C '.escapeshellarg($installDir).' --strip-components=1';
+    }
+
     /**
      * Whether the resolved binary lives under a Homebrew prefix — the signal
      * that `brew upgrade` is the right update path instead of re-running the
@@ -534,7 +561,7 @@ enum CliTool: string
 
         if ($python === null) {
             warning('Google Cloud SDK needs Python '.self::GCLOUD_MIN_PYTHON.' or newer, and no usable interpreter could be installed.');
-            warning('Install Python from https://www.python.org/downloads/macos/ (or Homebrew: brew install python), then retry.');
+            warning('Could not download a standalone Python build (check your network connection) and no Homebrew/python.org install was found. Install Python from https://www.python.org/downloads/macos/ (or Homebrew: brew install python), then retry.');
 
             return false;
         }
@@ -723,7 +750,7 @@ enum CliTool: string
 
         if ($python === null) {
             warning('Google Cloud SDK needs Python '.self::GCLOUD_MIN_PYTHON.' or newer, and no usable interpreter could be installed.');
-            warning('Install Python from https://www.python.org/downloads/macos/ (or Homebrew: brew install python), then retry.');
+            warning('Could not download a standalone Python build (check your network connection) and no Homebrew/python.org install was found. Install Python from https://www.python.org/downloads/macos/ (or Homebrew: brew install python), then retry.');
 
             return false;
         }
@@ -779,6 +806,18 @@ enum CliTool: string
             }
         }
 
+        // installPython()'s own no-Homebrew fallback lands here — a single
+        // fixed, known path rather than a wildcard glob, so (unlike the
+        // Python.framework scan above) it stays safe to check under
+        // Process::isRecording() too: home_path() is sandboxed per test, so
+        // this never reaches outside that sandbox during a test run.
+        if (PHP_OS_FAMILY === 'Darwin') {
+            $standalone = self::pythonStandaloneDir().'/bin/python3';
+            if (is_file($standalone) && $this->pythonIsSupported($standalone)) {
+                return $standalone;
+            }
+        }
+
         // python.org's per-user Windows installer lands here rather than on
         // PATH when installed without the "Add to PATH" option checked.
         if (Os::isWindows() && ! Process::isRecording()) {
@@ -809,21 +848,36 @@ enum CliTool: string
      *
      * Homebrew's `python` formula and every supported distro's `python3`
      * package track a current release, so there is no version to pin here.
-     * Without Homebrew on macOS there is no unattended, unpinned way to get
-     * one — python.org publishes versioned .pkg files behind no "latest"
-     * redirect — so this returns null and lets the caller say so plainly
-     * rather than guessing a download URL that will rot.
+     * Without Homebrew on macOS, python.org itself publishes versioned .pkg
+     * files behind no "latest" redirect and needs sudo to install (it's a
+     * system-wide installer) — neither works for a GUI app with no terminal
+     * attached. Instead this downloads a relocatable, no-install "standalone
+     * Python" build from astral-sh/python-build-standalone (the same portable
+     * CPython distributions `uv`, `rye`, and GitHub Actions' own setup-python
+     * use) straight into `~/.larakube/python-standalone`, the same
+     * no-elevation pattern as every other tool this enum installs.
      */
     protected function installPython(): ?string
     {
         if (PHP_OS_FAMILY === 'Darwin') {
-            if (trim(Process::run('command -v brew')->output()) === '') {
+            if (trim(Process::run('command -v brew')->output()) !== '') {
+                if (Process::forever()->run('brew install python')->exitCode() === 0) {
+                    $resolved = $this->resolvePython();
+                    if ($resolved !== null) {
+                        return $resolved;
+                    }
+                }
+            }
+
+            $arch = in_array(php_uname('m'), ['arm64', 'aarch64'], true) ? 'arm64' : 'amd64';
+            $installDir = self::pythonStandaloneDir();
+            @mkdir(dirname($installDir), 0755, true);
+
+            if ($this->runStreaming(self::pythonStandaloneInstallCommand($arch, $installDir)) !== 0) {
                 return null;
             }
 
-            return Process::forever()->run('brew install python')->exitCode() === 0
-                ? $this->resolvePython()
-                : null;
+            return $this->resolvePython();
         }
 
         if (PHP_OS_FAMILY === 'Linux') {

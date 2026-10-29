@@ -114,6 +114,19 @@ spec:
               value: "true"
             - name: STALWART_SERVER_HTTP_CORS_ALLOW_ORIGIN
               value: "*"
+@if($cloudflareTokenSecretName ?? null)
+            {{-- Some DnsServer principals (Stalwart's own bootstrap defaults
+                 among them) store their Cloudflare credential as a
+                 `{"@type":"EnvironmentVariable","variableName":"STALWART_CLOUDFLARE_TOKEN"}`
+                 reference rather than inline — without this var present,
+                 ACME DNS-01 renewal for that domain fails outright and its
+                 TLS cert never reissues. --}}
+            - name: STALWART_CLOUDFLARE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $cloudflareTokenSecretName }}
+                  key: token
+@endif
             {{-- Named refs, NOT `envFrom: secretRef`. The synced Secret mirrors
                  every key stored in the cluster backend — SIGN_ENCRYPTION_KEY,
                  RECORD_JWT_SECRET, every other tool's credentials — as env vars

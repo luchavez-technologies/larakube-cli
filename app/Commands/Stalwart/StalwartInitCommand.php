@@ -24,6 +24,7 @@ use App\Traits\InteractsWithTraefik;
 use App\Traits\InteractsWithVolumeSizing;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ManagesCloudFirewall;
+use App\Traits\ReadsStoredCloudflareTokens;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
@@ -40,7 +41,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 abstract class StalwartInitCommand extends AbstractToolInitCommand
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithRemoteSsh, InteractsWithSecrets, InteractsWithStalwartApi, InteractsWithTraefik, InteractsWithVolumeSizing, LaraKubeOutput, ManagesCloudFirewall, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithMail, InteractsWithPlex, InteractsWithRemoteSsh, InteractsWithSecrets, InteractsWithStalwartApi, InteractsWithTraefik, InteractsWithVolumeSizing, LaraKubeOutput, ManagesCloudFirewall, ReadsStoredCloudflareTokens, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected function runInit(): int
     {
@@ -160,6 +161,20 @@ abstract class StalwartInitCommand extends AbstractToolInitCommand
         // have one instance anyway.
         $aliasHosts = $this->resolveToolAliasHosts($kubectl, ClusterTool::STALWART, $resourceInstance);
 
+        // Stalwart's own DnsServer principals can point their Cloudflare
+        // credential at an env var (STALWART_CLOUDFLARE_TOKEN) instead of
+        // storing it inline — a path Stalwart's bootstrap defaults take for
+        // the first domain, independently of how `mail:dns` stores tokens
+        // for domains added later. Wire whichever `tool:init --tool=external-dns`
+        // already stored in this namespace so that path isn't silently
+        // unresolvable: without it, ACME renewal for any domain configured
+        // that way fails with "Environment variable 'STALWART_CLOUDFLARE_TOKEN'
+        // not found" and its TLS cert never reissues.
+        $cloudflareGroupSlug = array_key_first($this->storedCloudflareTokens($kubectl, $ns));
+        $cloudflareTokenSecretName = $cloudflareGroupSlug !== null
+            ? \App\Enums\DnsProvider::CLOUDFLARE->credentialSecretName($cloudflareGroupSlug)
+            : null;
+
         $manifest = view('k8s.stalwart.stalwart', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'host' => $host,
@@ -170,6 +185,7 @@ abstract class StalwartInitCommand extends AbstractToolInitCommand
             'proxied' => $this->resolveProxied($env === 'local'),
             'hostPort' => ! $this->option('no-host-port'),
             'storeBootstrap' => $storeBootstrap,
+            'cloudflareTokenSecretName' => $cloudflareTokenSecretName,
         ])->render();
 
         $temporaryDirectory = TemporaryDirectory::make();

@@ -260,6 +260,45 @@ test('an unsupported python stops the gcloud install rather than crashing inside
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'sdk.cloud.google.com'));
 });
 
+test('installGcloud() falls back to a standalone Python build when there is no Homebrew and no supported interpreter on PATH', function (): void {
+    // Confirmed live: python.org's own macOS installer needs sudo (a system-
+    // wide .pkg), which Desktop's GUI "Install" button has no terminal to
+    // satisfy — so without Homebrew, resolvePython()/installPython() must
+    // reach a working interpreter some other, no-elevation way.
+    $installed = false;
+    $standaloneBin = home_path('.larakube/python-standalone').'/bin/python3';
+
+    Process::fake([
+        'command -v gcloud' => function () use (&$installed) {
+            return $installed
+                ? Process::result('/Users/dev/.larakube/google-cloud-sdk/bin/gcloud')
+                : Process::result('', exitCode: 1);
+        },
+        'command -v brew' => Process::result('', exitCode: 1),
+        'command -v python*' => Process::result('', exitCode: 1),
+        '*python-build-standalone*' => function () use ($standaloneBin) {
+            @mkdir(dirname($standaloneBin), 0755, true);
+            file_put_contents($standaloneBin, "#!/bin/sh\n");
+            @chmod($standaloneBin, 0755);
+
+            return Process::result('', exitCode: 0);
+        },
+        escapeshellarg($standaloneBin).' -c *' => Process::result('3.12'),
+        '*sdk.cloud.google.com*' => function () use (&$installed) {
+            $installed = true;
+
+            return Process::result('', exitCode: 0);
+        },
+    ]);
+
+    expect(CliTool::GCLOUD->install())->toBeTrue();
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'python-build-standalone')
+        && str_contains($process->command, 'apple-darwin-install_only'));
+    Process::assertRan(fn ($process) => str_contains($process->command, 'sdk.cloud.google.com')
+        && ($process->environment['CLOUDSDK_PYTHON'] ?? null) === $standaloneBin);
+})->skip(PHP_OS_FAMILY !== 'Darwin', 'installGcloud()/installPython() only take the Darwin standalone-Python branch on Darwin.');
+
 test('update() upgrades via brew when the tool is brew-managed', function (): void {
     Process::fake([
         'command -v k9s' => Process::result('/opt/homebrew/bin/k9s'),
