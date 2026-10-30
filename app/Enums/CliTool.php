@@ -1193,7 +1193,11 @@ enum CliTool: string
         $tmp = $target.'.download';
         @unlink($tmp);
 
-        $response = Http::timeout(120)->sink($tmp)->get($url);
+        // retry(): GitHub's (and dl.k8s.io's) release CDN occasionally resets
+        // the connection mid-download — confirmed live (2026-10-30): "The
+        // request was aborted: The connection was closed unexpectedly" on a
+        // real Windows machine — almost always transient.
+        $response = Http::timeout(120)->retry(3, 2000)->sink($tmp)->get($url);
         if (! $response->successful()) {
             @unlink($tmp);
 
@@ -1224,8 +1228,9 @@ enum CliTool: string
         }
 
         // Streams straight to disk (see httpDownloadToFile()'s docblock) so
-        // the download itself never buffers in memory.
-        $response = Http::timeout(120)->sink($tmpZip)->get($url);
+        // the download itself never buffers in memory. retry(): see
+        // httpDownloadToFile()'s docblock on the connection-reset risk.
+        $response = Http::timeout(120)->retry(3, 2000)->sink($tmpZip)->get($url);
         if (! $response->successful()) {
             @unlink($tmpZip);
 
@@ -1296,7 +1301,8 @@ enum CliTool: string
 
         // Streams straight to disk (see httpDownloadToFile()'s docblock) —
         // the Google Cloud SDK's Windows zip alone is well over 100MB.
-        $response = Http::timeout(300)->sink($tmpZip)->get($url);
+        // retry(): see httpDownloadToFile()'s docblock on the connection-reset risk.
+        $response = Http::timeout(300)->retry(3, 2000)->sink($tmpZip)->get($url);
         if (! $response->successful()) {
             @unlink($tmpZip);
 

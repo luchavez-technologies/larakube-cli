@@ -169,7 +169,11 @@ class UpdateCommand extends Command
 
         try {
             // Streamed straight to disk: the binary is tens of megabytes, more than the CLI's own memory limit holds twice.
-            $download = Http::withHeaders(['User-Agent' => 'LaraKube-CLI'])->timeout(600)->sink($tempPath)->get($downloadUrl);
+            // retry(): GitHub's release CDN occasionally resets the connection
+            // mid-download (confirmed live, 2026-10-30: "The request was aborted:
+            // The connection was closed unexpectedly" on a real Windows machine)
+            // — almost always transient, worth a couple of retries before failing.
+            $download = Http::withHeaders(['User-Agent' => 'LaraKube-CLI'])->timeout(600)->retry(3, 2000)->sink($tempPath)->get($downloadUrl);
 
             if ($download->failed() || ! is_file($tempPath) || filesize($tempPath) < 1024) {
                 throw new Exception('Download failed.');
@@ -225,7 +229,7 @@ class UpdateCommand extends Command
                 $this->laraKubeInfo("Downloading $linuxBinaryName for WSL2 lockstep cache...");
 
                 try {
-                    $linuxDownload = Http::withHeaders(['User-Agent' => 'LaraKube-CLI'])->timeout(600)->sink($linuxTempPath)->get($linuxDownloadUrl);
+                    $linuxDownload = Http::withHeaders(['User-Agent' => 'LaraKube-CLI'])->timeout(600)->retry(3, 2000)->sink($linuxTempPath)->get($linuxDownloadUrl);
                     if ($linuxDownload->successful() && is_file($linuxTempPath) && filesize($linuxTempPath) >= 1024) {
                         @mkdir(dirname($linuxTarget), 0755, true);
                         @copy($linuxTempPath, $linuxTarget);
