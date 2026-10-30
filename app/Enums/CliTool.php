@@ -25,6 +25,23 @@ enum CliTool: string
     private const string TEA_FALLBACK_VERSION = '0.16.0';
 
     /**
+     * AWS's own documented per-user MSI (`AWSCLIV2-User.msi`) — confirmed
+     * live against AWS's install docs (2026-10-27): installs under
+     * `%LOCALAPPDATA%\Programs\Amazon\AWSCLIV2` with no admin rights
+     * required, unlike the all-users `AWSCLIV2.msi`. `/qn` runs it silently.
+     *
+     * `/qn` alone gives msiexec nothing to report — confirmed live
+     * (2026-10-30): every failure here collapsed to the same uninformative
+     * "Failed to install AWS CLI", with the real exit code thrown away by
+     * runStreaming() (which keeps only the bare int) and no MSI log ever
+     * requested. `/l*v` requests a verbose log so there is something to
+     * read back, and runStreamingCaptured() keeps the exit code so
+     * lastError() can report both.
+     */
+    /** ERROR_INSTALL_PACKAGE_OPEN_FAILED — msiexec could not even open the package. Confirmed live (2026-10-30) against a freshly-downloaded, verified-present MSI; consistent with antivirus real-time scanning briefly locking an unsigned installer right after it's written, same class of race isInstalledAfterSettle() guards elsewhere in this file. */
+    private const MSI_PACKAGE_OPEN_FAILED = 1619;
+
+    /**
      * The real reason this tool's last install() attempt failed, if its
      * installer captured one (currently: AWS's MSI installer). Cleared at
      * the start of every install(). Backed by RuntimeContext's transient
@@ -213,31 +230,6 @@ enum CliTool: string
     public function isInstalled(): bool
     {
         return $this->resolveBinary() !== null;
-    }
-
-    /**
-     * Re-checks isInstalled() a few times, briefly apart, before giving up —
-     * for right after this tool's own installer just wrote the binary. On
-     * Windows, confirmed live (2026-10-30): a freshly-renamed .exe can
-     * legitimately fail isInstalled()'s is_executable() check for a moment
-     * immediately after the write (consistent with antivirus real-time
-     * scanning briefly locking an unsigned, newly-written executable before
-     * it settles), even though the file is completely fine microseconds
-     * later. One immediate check has no way to distinguish that from a
-     * truly failed install; this does, at the cost of up to ~1s on the
-     * genuine-failure path.
-     */
-    private function isInstalledAfterSettle(): bool
-    {
-        for ($attempt = 0; $attempt < 5; $attempt++) {
-            if ($this->isInstalled()) {
-                return true;
-            }
-
-            Sleep::usleep(200_000);
-        }
-
-        return false;
     }
 
     /**
@@ -1139,23 +1131,6 @@ enum CliTool: string
         return true;
     }
 
-    /**
-     * AWS's own documented per-user MSI (`AWSCLIV2-User.msi`) — confirmed
-     * live against AWS's install docs (2026-10-27): installs under
-     * `%LOCALAPPDATA%\Programs\Amazon\AWSCLIV2` with no admin rights
-     * required, unlike the all-users `AWSCLIV2.msi`. `/qn` runs it silently.
-     *
-     * `/qn` alone gives msiexec nothing to report — confirmed live
-     * (2026-10-30): every failure here collapsed to the same uninformative
-     * "Failed to install AWS CLI", with the real exit code thrown away by
-     * runStreaming() (which keeps only the bare int) and no MSI log ever
-     * requested. `/l*v` requests a verbose log so there is something to
-     * read back, and runStreamingCaptured() keeps the exit code so
-     * lastError() can report both.
-     */
-    /** ERROR_INSTALL_PACKAGE_OPEN_FAILED — msiexec could not even open the package. Confirmed live (2026-10-30) against a freshly-downloaded, verified-present MSI; consistent with antivirus real-time scanning briefly locking an unsigned installer right after it's written, same class of race isInstalledAfterSettle() guards elsewhere in this file. */
-    private const MSI_PACKAGE_OPEN_FAILED = 1619;
-
     protected function installAwsWindows(): bool
     {
         $tmp = tempnam(sys_get_temp_dir(), 'larakube-aws-').'.msi';
@@ -1361,6 +1336,31 @@ enum CliTool: string
         @unlink($tmpZip);
 
         return $extracted;
+    }
+
+    /**
+     * Re-checks isInstalled() a few times, briefly apart, before giving up —
+     * for right after this tool's own installer just wrote the binary. On
+     * Windows, confirmed live (2026-10-30): a freshly-renamed .exe can
+     * legitimately fail isInstalled()'s is_executable() check for a moment
+     * immediately after the write (consistent with antivirus real-time
+     * scanning briefly locking an unsigned, newly-written executable before
+     * it settles), even though the file is completely fine microseconds
+     * later. One immediate check has no way to distinguish that from a
+     * truly failed install; this does, at the cost of up to ~1s on the
+     * genuine-failure path.
+     */
+    private function isInstalledAfterSettle(): bool
+    {
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            if ($this->isInstalled()) {
+                return true;
+            }
+
+            Sleep::usleep(200_000);
+        }
+
+        return false;
     }
 
     private function lastErrorKey(): string
