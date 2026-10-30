@@ -2,10 +2,12 @@
 
 namespace App\Enums;
 
+use App\Facades\State;
 use App\Support\Os;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Sleep;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\warning;
@@ -21,6 +23,23 @@ enum CliTool: string
 
     /** Used only when Gitea's API cannot be reached, so a flaky lookup does not stop an install. */
     private const string TEA_FALLBACK_VERSION = '0.16.0';
+
+    /**
+     * The real reason this tool's last install() attempt failed, if its
+     * installer captured one (currently: AWS's MSI installer). Cleared at
+     * the start of every install(). Backed by RuntimeContext's transient
+     * store via the State facade rather than an enum property — PHP enums
+     * cannot declare any state of their own, not even static properties.
+     */
+    public function lastError(): ?string
+    {
+        return State::getTransient($this->lastErrorKey());
+    }
+
+    private function lastErrorKey(): string
+    {
+        return "cli-tool-install-error:{$this->value}";
+    }
 
     public function label(): string
     {
@@ -206,6 +225,8 @@ enum CliTool: string
      */
     public function install(): bool
     {
+        State::setTransient($this->lastErrorKey(), null);
+
         if ($this->isInstalled()) {
             return true;
         }
@@ -1098,19 +1119,64 @@ enum CliTool: string
      * live against AWS's install docs (2026-10-27): installs under
      * `%LOCALAPPDATA%\Programs\Amazon\AWSCLIV2` with no admin rights
      * required, unlike the all-users `AWSCLIV2.msi`. `/qn` runs it silently.
+     *
+     * `/qn` alone gives msiexec nothing to report — confirmed live
+     * (2026-10-30): every failure here collapsed to the same uninformative
+     * "Failed to install AWS CLI", with the real exit code thrown away by
+     * runStreaming() (which keeps only the bare int) and no MSI log ever
+     * requested. `/l*v` requests a verbose log so there is something to
+     * read back, and runStreamingCaptured() keeps the exit code so
+     * lastError() can report both.
      */
     protected function installAwsWindows(): bool
     {
         $tmp = tempnam(sys_get_temp_dir(), 'larakube-aws-').'.msi';
 
         if (! $this->httpDownloadToFile('https://awscli.amazonaws.com/AWSCLIV2-User.msi', $tmp)) {
+            State::setTransient($this->lastErrorKey(), 'Could not download the AWS CLI installer.');
+
             return false;
         }
 
-        $code = $this->runStreaming('msiexec.exe /i '.escapeshellarg($tmp).' /qn /norestart');
+        $log = tempnam(sys_get_temp_dir(), 'larakube-aws-log-').'.txt';
+        [$code] = $this->runStreamingCaptured(
+            'msiexec.exe /i '.escapeshellarg($tmp).' /qn /norestart /l*v '.escapeshellarg($log)
+        );
         @unlink($tmp);
 
-        return $code === 0 && $this->isInstalled();
+        $installed = $code === 0 && $this->isInstalled();
+
+        if (! $installed) {
+            $logTail = is_file($log) ? self::fileTail($log, 2000) : '';
+            State::setTransient($this->lastErrorKey(), $logTail !== ''
+                ? "msiexec exited with code {$code}.\n{$logTail}"
+                : "msiexec exited with code {$code}.");
+        }
+
+        @unlink($log);
+
+        return $installed;
+    }
+
+    /**
+     * The last N bytes of a file without reading the whole thing into
+     * memory first — an MSI verbose log can run to several MB, and this
+     * codebase already hit PHP's 128M memory_limit once this session by
+     * buffering a whole file before trimming it.
+     */
+    private static function fileTail(string $path, int $bytes): string
+    {
+        $handle = fopen($path, 'rb');
+        if ($handle === false) {
+            return '';
+        }
+
+        $size = filesize($path) ?: 0;
+        fseek($handle, -min($bytes, $size), SEEK_END);
+        $tail = stream_get_contents($handle);
+        fclose($handle);
+
+        return trim((string) $tail);
     }
 
     /**
@@ -1118,8 +1184,7 @@ enum CliTool: string
      * bare binary (kubectl.exe) rather than an archive. Uses Laravel's HTTP
      * client instead of shelling to curl, since a native Windows host has no
      * bash to run this file's other installers' curl/tar one-liners against.
-     */
-    /**
+     *
      * Streams straight to disk via Guzzle's `sink` option — never buffers
      * the whole response body in PHP memory first. kubectl/OpenTofu/the
      * Google Cloud SDK zip are all 50-150MB; the previous `$response->body()`
@@ -1129,28 +1194,73 @@ enum CliTool: string
      * 128M memory_limit outright — confirmed live (2026-10-29): every
      * Windows tool install past ~75MB failed with "Allowed memory size of
      * 134217728 bytes exhausted."
+     *
+     * Downloads to a sibling temp file first, then rename()s onto $target —
+     * $target is frequently a binary already in use (an existing
+     * kubectl.exe being updated in place). Streaming straight onto that live
+     * path left it open/partially-written for the whole download, and
+     * confirmed live (2026-10-30): a transient lock on it (AV scanning the
+     * freshly-written exe, a stray process still holding it) could make
+     * this — or the isInstalled() check immediately after — fail even
+     * though the file was actually fine moments later. rename() on the same
+     * filesystem is atomic and near-instant, so there's effectively no
+     * window left for that race. On Windows, rename() refuses to replace an
+     * existing destination outright, so $target is removed first; if THAT
+     * unlink hits the exact same transient lock, one retry after a brief
+     * pause covers it before giving up.
      */
     protected function httpDownloadToFile(string $url, string $target): bool
     {
-        $response = Http::timeout(120)->sink($target)->get($url);
+        $tmp = $target.'.download';
+        @unlink($tmp);
+
+        $response = Http::timeout(120)->sink($tmp)->get($url);
         if (! $response->successful()) {
-            @unlink($target);
+            @unlink($tmp);
 
             return false;
         }
 
-        @chmod($target, 0755);
+        @chmod($tmp, 0755);
 
-        return true;
+        return self::replaceFile($tmp, $target);
+    }
+
+    /**
+     * Moves a completed download onto its final path, replacing whatever
+     * (if anything) is there — retrying once after a short pause if the
+     * destination is transiently locked (see httpDownloadToFile()'s
+     * docblock). Shared by every installer that writes a single file.
+     */
+    private static function replaceFile(string $tmp, string $target): bool
+    {
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            @unlink($target);
+            if (@rename($tmp, $target)) {
+                return true;
+            }
+
+            Sleep::usleep(200_000);
+        }
+
+        @unlink($tmp);
+
+        return false;
     }
 
     /**
      * Download a zip and extract one named member (matched by basename,
      * regardless of which folder it's nested under inside the archive) to a
      * target path. Covers k9s/OpenTofu's Windows release zips.
+     *
+     * Extracts to a sibling temp file and rename()s onto $target, same as
+     * httpDownloadToFile() — $target is the same kind of live, possibly
+     * already-running binary (k9s.exe/tofu.exe being updated in place), so
+     * it's exposed to the identical transient-lock race.
      */
     protected function httpDownloadZipMember(string $url, string $target, string $memberBasename): bool
     {
+        $tmpTarget = $target.'.download';
         $tmpZip = tempnam(sys_get_temp_dir(), 'larakube-zip-');
         if ($tmpZip === false) {
             return false;
@@ -1186,12 +1296,12 @@ enum CliTool: string
                 // stream_copy_to_stream() moves it to disk in chunks and
                 // never holds the whole decompressed file in memory at once.
                 $source = $zip->getStream($name);
-                $destination = $source !== false ? fopen($target, 'wb') : false;
+                $destination = $source !== false ? fopen($tmpTarget, 'wb') : false;
 
                 if ($source !== false && $destination !== false) {
                     $extracted = stream_copy_to_stream($source, $destination) !== false;
                     fclose($destination);
-                    @chmod($target, 0755);
+                    @chmod($tmpTarget, 0755);
                 }
 
                 if (is_resource($source)) {
@@ -1205,7 +1315,13 @@ enum CliTool: string
         $zip->close();
         @unlink($tmpZip);
 
-        return $extracted;
+        if (! $extracted) {
+            @unlink($tmpTarget);
+
+            return false;
+        }
+
+        return self::replaceFile($tmpTarget, $target);
     }
 
     /**

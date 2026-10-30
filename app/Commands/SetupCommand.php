@@ -591,7 +591,7 @@ class SetupCommand extends Command
             if ($update && $tool->isInstalled()) {
                 $this->line("  Updating {$tool->label()}...");
                 if (! $tool->update()) {
-                    $this->laraKubeError("Failed to update {$tool->label()}.");
+                    $this->laraKubeError("Failed to update {$tool->label()}.".$this->installFailureDetail($tool));
 
                     return 1;
                 }
@@ -603,7 +603,7 @@ class SetupCommand extends Command
                 $this->line("  Installing {$tool->label()}...");
                 $ok = $tool->install();
                 if (! $ok) {
-                    $this->laraKubeError("Failed to install {$tool->label()}.");
+                    $this->laraKubeError("Failed to install {$tool->label()}.".$this->installFailureDetail($tool));
 
                     return 1;
                 }
@@ -619,6 +619,21 @@ class SetupCommand extends Command
         }
 
         return 0;
+    }
+
+    /**
+     * The real reason behind a generic "Failed to install/update X.", when
+     * the installer captured one (currently: AWS's MSI exit code + log
+     * tail — see CliTool::installAwsWindows()) — confirmed live
+     * (2026-10-30): without this, every failure here read identically
+     * regardless of cause, leaving no way to tell an environment-level
+     * block from a transient network error.
+     */
+    protected function installFailureDetail(CliTool $tool): string
+    {
+        $detail = $tool->lastError();
+
+        return $detail === null ? '' : "\n{$detail}";
     }
 
     protected function setupDeveloperTools(): void

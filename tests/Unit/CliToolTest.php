@@ -689,6 +689,79 @@ test('install() uses AWS\'s documented no-admin per-user MSI, never the all-user
         && ! str_contains($process->command, 'AWSCLIV2.msi '));
 });
 
+test('a failed AWS CLI install surfaces the real msiexec exit code via lastError(), not just a bare false', function (): void {
+    // Confirmed live (2026-10-30): runStreaming() kept only the bare exit
+    // code and /qn alone gave msiexec nothing to log, so every failure here
+    // collapsed to the same uninformative "Failed to install AWS CLI" with
+    // no way to tell an environment block from a transient network error.
+    Os::setForcedFamily('Windows');
+    $appData = Spatie\TemporaryDirectory\TemporaryDirectory::make()->deleteWhenDestroyed();
+    putenv('LOCALAPPDATA='.$appData->path());
+
+    Http::fake([
+        'https://awscli.amazonaws.com/AWSCLIV2-User.msi' => Http::response('fake-msi-bytes'),
+    ]);
+
+    Process::fake([
+        'msiexec.exe*' => Process::result('', exitCode: 1603),
+    ]);
+
+    expect(CliTool::AWS->install())->toBeFalse()
+        ->and(CliTool::AWS->lastError())->toContain('1603');
+});
+
+test('install() clears a previous failure\'s lastError() once it later succeeds', function (): void {
+    Os::setForcedFamily('Windows');
+    $appData = Spatie\TemporaryDirectory\TemporaryDirectory::make()->deleteWhenDestroyed();
+    putenv('LOCALAPPDATA='.$appData->path());
+    $target = $appData->path().'/Programs/Amazon/AWSCLIV2/aws.exe';
+
+    Http::fake([
+        'https://awscli.amazonaws.com/AWSCLIV2-User.msi' => Http::response('fake-msi-bytes'),
+    ]);
+
+    Process::fake([
+        'msiexec.exe*' => Process::result('', exitCode: 1603),
+    ]);
+
+    expect(CliTool::AWS->install())->toBeFalse()
+        ->and(CliTool::AWS->lastError())->not->toBeNull();
+
+    Process::fake([
+        'msiexec.exe*' => function () use ($target) {
+            @mkdir(dirname($target), 0755, true);
+            file_put_contents($target, 'fake-aws-binary');
+            @chmod($target, 0755);
+
+            return Process::result('', exitCode: 0);
+        },
+    ]);
+
+    expect(CliTool::AWS->install())->toBeTrue()
+        ->and(CliTool::AWS->lastError())->toBeNull();
+});
+
+test('httpDownloadToFile downloads to a sibling temp file and only the final path exists once done', function (): void {
+    // Confirmed live (2026-10-30): streaming straight onto a live binary's
+    // own path left it open/partially-written for the whole download, and
+    // a transient lock on it (AV scanning the fresh exe, a stray process)
+    // could fail the write — or the isInstalled() re-check right after —
+    // even though the file was fine moments later. Writing to a sibling
+    // temp file and rename()ing it into place removes that window.
+    Os::setForcedFamily('Windows');
+    $dir = Spatie\TemporaryDirectory\TemporaryDirectory::make()->deleteWhenDestroyed();
+    putenv('LARAKUBE_BIN_DIR='.$dir->path());
+
+    Http::fake([
+        'https://dl.k8s.io/release/stable.txt' => Http::response('v1.31.0'),
+        'https://dl.k8s.io/release/v1.31.0/bin/windows/amd64/kubectl.exe' => Http::response('fake-kubectl-binary'),
+    ]);
+
+    expect(CliTool::KUBECTL->install())->toBeTrue()
+        ->and(file_get_contents($dir->path().'/kubectl.exe'))->toBe('fake-kubectl-binary')
+        ->and(file_exists($dir->path().'/kubectl.exe.download'))->toBeFalse();
+});
+
 test('install() fails the Google Cloud SDK on Windows rather than leaving a non-functional install when no Python is found', function (): void {
     Os::setForcedFamily('Windows');
     // TestCase::setUp() already sandboxes $_SERVER['HOME'] to a fresh
