@@ -48,6 +48,70 @@ test('update --canary --yes succeeds on a real Windows host, whose php_uname(\'m
     }
 });
 
+test('update --canary --yes on Windows skips the WSL2 lockstep binary download when no WSL distro exists', function (): void {
+    // Confirmed live (2026-10-31): a fresh Windows machine with no WSL distro
+    // installed yet (e.g. a user just running "Install everything" during
+    // onboarding, not creating a project) still downloaded a full second
+    // larakube-linux-x64 binary on every self-update "for WSL2 lockstep
+    // cache" — wasted bandwidth for a cache nothing could ever sync into.
+    Os::setForcedFamily('Windows');
+    Os::setForcedMachine('AMD64');
+    $userProfile = Spatie\TemporaryDirectory\TemporaryDirectory::make()->deleteWhenDestroyed();
+    putenv('USERPROFILE='.$userProfile->path());
+
+    Http::fake([
+        'api.github.com/repos/luchavez-technologies/larakube-cli/releases/tags/canary' => Http::response(['tag_name' => 'canary']),
+        'github.com/luchavez-technologies/larakube-cli/releases/download/canary/larakube-windows-x64.exe' => Http::response(str_repeat('x', 4096)),
+        'github.com/luchavez-technologies/larakube-cli/releases/download/canary/larakube-linux-x64' => Http::response(str_repeat('x', 4096)),
+    ]);
+    // Empty `wsl.exe --list --quiet` output means no distro is installed.
+    Process::fake(['*' => Process::result()]);
+
+    try {
+        $this->artisan('update --canary --yes')
+            ->doesntExpectOutputToContain('WSL2 lockstep cache')
+            ->doesntExpectOutputToContain('Syncing LaraKube CLI')
+            ->expectsOutputToContain('LaraKube Windows binary updated successfully to canary')
+            ->assertExitCode(0);
+
+        expect(file_exists($userProfile->path().'/.larakube/bin/larakube-linux-x64'))->toBeFalse();
+    } finally {
+        Os::setForcedFamily(null);
+        Os::setForcedMachine(null);
+        putenv('USERPROFILE');
+    }
+});
+
+test('update --canary --yes on Windows still downloads and syncs the Linux binary when a WSL distro exists', function (): void {
+    Os::setForcedFamily('Windows');
+    Os::setForcedMachine('AMD64');
+    $userProfile = Spatie\TemporaryDirectory\TemporaryDirectory::make()->deleteWhenDestroyed();
+    putenv('USERPROFILE='.$userProfile->path());
+
+    Http::fake([
+        'api.github.com/repos/luchavez-technologies/larakube-cli/releases/tags/canary' => Http::response(['tag_name' => 'canary']),
+        'github.com/luchavez-technologies/larakube-cli/releases/download/canary/larakube-windows-x64.exe' => Http::response(str_repeat('x', 4096)),
+        'github.com/luchavez-technologies/larakube-cli/releases/download/canary/larakube-linux-x64' => Http::response(str_repeat('x', 4096)),
+    ]);
+    Process::fake([
+        '*--list*' => Process::result(output: 'larakube-ubuntu'),
+        '*' => Process::result(),
+    ]);
+
+    try {
+        $this->artisan('update --canary --yes')
+            ->expectsOutputToContain('Downloading larakube-linux-x64 for WSL2 lockstep cache')
+            ->expectsOutputToContain('Syncing LaraKube CLI (canary) into Linux')
+            ->assertExitCode(0);
+
+        expect(file_exists($userProfile->path().'/.larakube/bin/larakube-linux-x64'))->toBeTrue();
+    } finally {
+        Os::setForcedFamily(null);
+        Os::setForcedMachine(null);
+        putenv('USERPROFILE');
+    }
+});
+
 test('update command detects if version is up to date', function (): void {
     config(['app.version' => 'v0.2.0']);
 

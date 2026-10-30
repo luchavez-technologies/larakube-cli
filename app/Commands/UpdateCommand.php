@@ -220,28 +220,32 @@ class UpdateCommand extends Command
             $this->laraKubeInfo("✅ LaraKube Windows binary updated successfully to $version!");
 
             $bridge = app(WslBridge::class);
-            $linuxBinaryName = "larakube-linux-$arch";
-            $linuxDownloadUrl = $this->getGithubUrl()."/{$repo}/releases/download/$version/$linuxBinaryName";
-            $linuxTempPath = $temporaryDirectory->path().'/larakube-linux-update';
-            $linuxTarget = $bridge->cachedLinuxBinaryPath() ?? ($targetDir !== '' ? "{$targetDir}/{$linuxBinaryName}" : null);
 
-            if ($linuxTarget !== null) {
-                $this->laraKubeInfo("Downloading $linuxBinaryName for WSL2 lockstep cache...");
-
-                try {
-                    $linuxDownload = Http::withHeaders(['User-Agent' => 'LaraKube-CLI'])->timeout(600)->retry(3, 2000)->sink($linuxTempPath)->get($linuxDownloadUrl);
-                    if ($linuxDownload->successful() && is_file($linuxTempPath) && filesize($linuxTempPath) >= 1024) {
-                        @mkdir(dirname($linuxTarget), 0755, true);
-                        @copy($linuxTempPath, $linuxTarget);
-                    }
-                } catch (Exception) {
-                    // Best-effort cache update; if it fails we warn below when syncing.
-                }
-            }
-
-            $temporaryDirectory->delete();
-
+            // Only bother keeping the WSL2 Linux-binary cache in lockstep if a
+            // distro actually exists to sync it into — e.g. a user who is just
+            // installing tools on a fresh Windows machine has no WSL distro
+            // yet, so there is nothing to cache for and this would otherwise
+            // be a wasted ~tens-of-MB download on every self-update.
             if ($bridge->distroExists()) {
+                $linuxBinaryName = "larakube-linux-$arch";
+                $linuxDownloadUrl = $this->getGithubUrl()."/{$repo}/releases/download/$version/$linuxBinaryName";
+                $linuxTempPath = $temporaryDirectory->path().'/larakube-linux-update';
+                $linuxTarget = $bridge->cachedLinuxBinaryPath() ?? ($targetDir !== '' ? "{$targetDir}/{$linuxBinaryName}" : null);
+
+                if ($linuxTarget !== null) {
+                    $this->laraKubeInfo("Downloading $linuxBinaryName for WSL2 lockstep cache...");
+
+                    try {
+                        $linuxDownload = Http::withHeaders(['User-Agent' => 'LaraKube-CLI'])->timeout(600)->retry(3, 2000)->sink($linuxTempPath)->get($linuxDownloadUrl);
+                        if ($linuxDownload->successful() && is_file($linuxTempPath) && filesize($linuxTempPath) >= 1024) {
+                            @mkdir(dirname($linuxTarget), 0755, true);
+                            @copy($linuxTempPath, $linuxTarget);
+                        }
+                    } catch (Exception) {
+                        // Best-effort cache update; if it fails we warn below when syncing.
+                    }
+                }
+
                 $this->laraKubeInfo("🔄 Syncing LaraKube CLI ($version) into Linux ({$bridge->distroName()})...");
                 if ($linuxTarget !== null && is_file($linuxTarget) && $bridge->syncLinuxBinaryToWsl($linuxTarget)) {
                     $this->laraKubeInfo("✅ LaraKube Linux binary synced to $version!");
@@ -250,6 +254,8 @@ class UpdateCommand extends Command
                     $bridge->dispatchToWsl(['larakube', 'update', ...($version === 'canary' ? ['--canary'] : []), '--yes']);
                 }
             }
+
+            $temporaryDirectory->delete();
 
             return 0;
         }
