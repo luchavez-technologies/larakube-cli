@@ -3,6 +3,7 @@
 namespace App\Commands;
 
 use App\Services\WslBridge;
+use App\Support\Os;
 use App\Traits\LaraKubeOutput;
 use App\Traits\StreamsProcessOutput;
 use Exception;
@@ -121,14 +122,19 @@ class UpdateCommand extends Command
     protected function downloadAndInstall(string $version): int
     {
         // 1. Detect OS and Architecture
-        $os = match (strtolower(PHP_OS_FAMILY)) {
+        $os = match (strtolower(Os::family())) {
             'darwin' => 'mac',
             'windows' => 'windows',
             default => 'linux',
         };
-        $machine = php_uname('m');
+        $machine = Os::machine();
 
-        $arch = match ($machine) {
+        // Windows's php_uname('m') returns "AMD64"/"ARM64" (uppercase),
+        // unlike Darwin/Linux's lowercase "x86_64"/"arm64" — confirmed live
+        // (2026-10-30): this match was case-sensitive, so every Windows
+        // update failed with "Unsupported architecture: AMD64" regardless
+        // of the real architecture.
+        $arch = match (strtolower($machine)) {
             'x86_64', 'amd64' => 'x64',
             'arm64', 'aarch64' => 'arm',
             default => null,

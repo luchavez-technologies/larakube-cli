@@ -36,11 +36,6 @@ enum CliTool: string
         return State::getTransient($this->lastErrorKey());
     }
 
-    private function lastErrorKey(): string
-    {
-        return "cli-tool-install-error:{$this->value}";
-    }
-
     public function label(): string
     {
         return match ($this) {
@@ -628,7 +623,12 @@ enum CliTool: string
 
     protected static function hostArch(): string
     {
-        return in_array(php_uname('m'), ['arm64', 'aarch64'], true) ? 'arm64' : 'amd64';
+        // Windows's php_uname('m') returns "ARM64" (uppercase), unlike
+        // Darwin/Linux's lowercase "arm64"/"aarch64" — this strict,
+        // case-sensitive check silently fell through to 'amd64' on a real
+        // ARM64 Windows host, same bug class as UpdateCommand's "Unsupported
+        // architecture: AMD64" (confirmed live 2026-10-30).
+        return in_array(strtolower(Os::machine()), ['arm64', 'aarch64'], true) ? 'arm64' : 'amd64';
     }
 
     /**
@@ -1140,7 +1140,7 @@ enum CliTool: string
 
         $log = tempnam(sys_get_temp_dir(), 'larakube-aws-log-').'.txt';
         [$code] = $this->runStreamingCaptured(
-            'msiexec.exe /i '.escapeshellarg($tmp).' /qn /norestart /l*v '.escapeshellarg($log)
+            'msiexec.exe /i '.escapeshellarg($tmp).' /qn /norestart /l*v '.escapeshellarg($log),
         );
         @unlink($tmp);
 
@@ -1156,27 +1156,6 @@ enum CliTool: string
         @unlink($log);
 
         return $installed;
-    }
-
-    /**
-     * The last N bytes of a file without reading the whole thing into
-     * memory first — an MSI verbose log can run to several MB, and this
-     * codebase already hit PHP's 128M memory_limit once this session by
-     * buffering a whole file before trimming it.
-     */
-    private static function fileTail(string $path, int $bytes): string
-    {
-        $handle = fopen($path, 'rb');
-        if ($handle === false) {
-            return '';
-        }
-
-        $size = filesize($path) ?: 0;
-        fseek($handle, -min($bytes, $size), SEEK_END);
-        $tail = stream_get_contents($handle);
-        fclose($handle);
-
-        return trim((string) $tail);
     }
 
     /**
@@ -1224,28 +1203,6 @@ enum CliTool: string
         @chmod($tmp, 0755);
 
         return self::replaceFile($tmp, $target);
-    }
-
-    /**
-     * Moves a completed download onto its final path, replacing whatever
-     * (if anything) is there — retrying once after a short pause if the
-     * destination is transiently locked (see httpDownloadToFile()'s
-     * docblock). Shared by every installer that writes a single file.
-     */
-    private static function replaceFile(string $tmp, string $target): bool
-    {
-        for ($attempt = 0; $attempt < 2; $attempt++) {
-            @unlink($target);
-            if (@rename($tmp, $target)) {
-                return true;
-            }
-
-            Sleep::usleep(200_000);
-        }
-
-        @unlink($tmp);
-
-        return false;
     }
 
     /**
@@ -1359,6 +1316,54 @@ enum CliTool: string
         @unlink($tmpZip);
 
         return $extracted;
+    }
+
+    private function lastErrorKey(): string
+    {
+        return "cli-tool-install-error:{$this->value}";
+    }
+
+    /**
+     * The last N bytes of a file without reading the whole thing into
+     * memory first — an MSI verbose log can run to several MB, and this
+     * codebase already hit PHP's 128M memory_limit once this session by
+     * buffering a whole file before trimming it.
+     */
+    private static function fileTail(string $path, int $bytes): string
+    {
+        $handle = fopen($path, 'rb');
+        if ($handle === false) {
+            return '';
+        }
+
+        $size = filesize($path) ?: 0;
+        fseek($handle, -min($bytes, $size), SEEK_END);
+        $tail = stream_get_contents($handle);
+        fclose($handle);
+
+        return trim((string) $tail);
+    }
+
+    /**
+     * Moves a completed download onto its final path, replacing whatever
+     * (if anything) is there — retrying once after a short pause if the
+     * destination is transiently locked (see httpDownloadToFile()'s
+     * docblock). Shared by every installer that writes a single file.
+     */
+    private static function replaceFile(string $tmp, string $target): bool
+    {
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            @unlink($target);
+            if (@rename($tmp, $target)) {
+                return true;
+            }
+
+            Sleep::usleep(200_000);
+        }
+
+        @unlink($tmp);
+
+        return false;
     }
 
     /**
