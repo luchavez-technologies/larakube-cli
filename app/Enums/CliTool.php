@@ -216,6 +216,31 @@ enum CliTool: string
     }
 
     /**
+     * Re-checks isInstalled() a few times, briefly apart, before giving up —
+     * for right after this tool's own installer just wrote the binary. On
+     * Windows, confirmed live (2026-10-30): a freshly-renamed .exe can
+     * legitimately fail isInstalled()'s is_executable() check for a moment
+     * immediately after the write (consistent with antivirus real-time
+     * scanning briefly locking an unsigned, newly-written executable before
+     * it settles), even though the file is completely fine microseconds
+     * later. One immediate check has no way to distinguish that from a
+     * truly failed install; this does, at the cost of up to ~1s on the
+     * genuine-failure path.
+     */
+    private function isInstalledAfterSettle(): bool
+    {
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            if ($this->isInstalled()) {
+                return true;
+            }
+
+            Sleep::usleep(200_000);
+        }
+
+        return false;
+    }
+
+    /**
      * Install the tool natively using the appropriate platform installer.
      */
     public function install(): bool
@@ -1046,7 +1071,7 @@ enum CliTool: string
 
         $url = "https://dl.k8s.io/release/{$version}/bin/windows/amd64/kubectl.exe";
 
-        return $this->httpDownloadToFile($url, "{$binDir}/{$this->binary()}") && $this->isInstalled();
+        return $this->httpDownloadToFile($url, "{$binDir}/{$this->binary()}") && $this->isInstalledAfterSettle();
     }
 
     /**
@@ -1061,7 +1086,7 @@ enum CliTool: string
 
         $url = 'https://github.com/derailed/k9s/releases/latest/download/k9s_Windows_amd64.zip';
 
-        return $this->httpDownloadZipMember($url, "{$binDir}/{$this->binary()}", 'k9s.exe') && $this->isInstalled();
+        return $this->httpDownloadZipMember($url, "{$binDir}/{$this->binary()}", 'k9s.exe') && $this->isInstalledAfterSettle();
     }
 
     /**
@@ -1082,7 +1107,7 @@ enum CliTool: string
 
         $url = "https://github.com/opentofu/opentofu/releases/download/v{$version}/tofu_{$version}_windows_amd64.zip";
 
-        return $this->httpDownloadZipMember($url, "{$binDir}/{$this->binary()}", 'tofu.exe') && $this->isInstalled();
+        return $this->httpDownloadZipMember($url, "{$binDir}/{$this->binary()}", 'tofu.exe') && $this->isInstalledAfterSettle();
     }
 
     /**
@@ -1097,7 +1122,7 @@ enum CliTool: string
     {
         $url = 'https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-windows-x86_64.zip';
 
-        if (! $this->httpDownloadZipExtractAll($url, home_path()) || ! $this->isInstalled()) {
+        if (! $this->httpDownloadZipExtractAll($url, home_path()) || ! $this->isInstalledAfterSettle()) {
             return false;
         }
 
@@ -1128,6 +1153,9 @@ enum CliTool: string
      * read back, and runStreamingCaptured() keeps the exit code so
      * lastError() can report both.
      */
+    /** ERROR_INSTALL_PACKAGE_OPEN_FAILED — msiexec could not even open the package. Confirmed live (2026-10-30) against a freshly-downloaded, verified-present MSI; consistent with antivirus real-time scanning briefly locking an unsigned installer right after it's written, same class of race isInstalledAfterSettle() guards elsewhere in this file. */
+    private const MSI_PACKAGE_OPEN_FAILED = 1619;
+
     protected function installAwsWindows(): bool
     {
         $tmp = tempnam(sys_get_temp_dir(), 'larakube-aws-').'.msi';
@@ -1138,22 +1166,33 @@ enum CliTool: string
             return false;
         }
 
-        $log = tempnam(sys_get_temp_dir(), 'larakube-aws-log-').'.txt';
-        [$code] = $this->runStreamingCaptured(
-            'msiexec.exe /i '.escapeshellarg($tmp).' /qn /norestart /l*v '.escapeshellarg($log),
-        );
+        $code = null;
+        $logTail = '';
+
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            $log = tempnam(sys_get_temp_dir(), 'larakube-aws-log-').'.txt';
+            [$code] = $this->runStreamingCaptured(
+                'msiexec.exe /i '.escapeshellarg($tmp).' /qn /norestart /l*v '.escapeshellarg($log),
+            );
+            $logTail = is_file($log) ? self::fileTail($log, 2000) : '';
+            @unlink($log);
+
+            if ($code === 0 || $code !== self::MSI_PACKAGE_OPEN_FAILED || ! is_file($tmp)) {
+                break;
+            }
+
+            Sleep::usleep(300_000);
+        }
+
         @unlink($tmp);
 
-        $installed = $code === 0 && $this->isInstalled();
+        $installed = $code === 0 && $this->isInstalledAfterSettle();
 
         if (! $installed) {
-            $logTail = is_file($log) ? self::fileTail($log, 2000) : '';
             State::setTransient($this->lastErrorKey(), $logTail !== ''
                 ? "msiexec exited with code {$code}.\n{$logTail}"
                 : "msiexec exited with code {$code}.");
         }
-
-        @unlink($log);
 
         return $installed;
     }

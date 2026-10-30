@@ -689,6 +689,62 @@ test('install() uses AWS\'s documented no-admin per-user MSI, never the all-user
         && ! str_contains($process->command, 'AWSCLIV2.msi '));
 });
 
+test('install() retries msiexec once after ERROR_INSTALL_PACKAGE_OPEN_FAILED (1619), the code seen live right after a verified-present MSI', function (): void {
+    // Confirmed live (2026-10-30): msiexec reported 1619 ("package could not
+    // be opened") against a file httpDownloadToFile() had just placed and
+    // verified on disk — consistent with antivirus real-time scanning
+    // briefly locking an unsigned, freshly-written installer. A retry a
+    // moment later succeeds against the exact same file.
+    Os::setForcedFamily('Windows');
+    $appData = Spatie\TemporaryDirectory\TemporaryDirectory::make()->deleteWhenDestroyed();
+    putenv('LOCALAPPDATA='.$appData->path());
+    $target = $appData->path().'/Programs/Amazon/AWSCLIV2/aws.exe';
+
+    Http::fake([
+        'https://awscli.amazonaws.com/AWSCLIV2-User.msi' => Http::response('fake-msi-bytes'),
+    ]);
+
+    $calls = 0;
+    Process::fake([
+        'msiexec.exe*' => function () use (&$calls, $target) {
+            $calls++;
+            if ($calls < 2) {
+                return Process::result('', exitCode: 1619);
+            }
+
+            @mkdir(dirname($target), 0755, true);
+            file_put_contents($target, 'fake-aws-binary');
+            @chmod($target, 0755);
+
+            return Process::result('', exitCode: 0);
+        },
+    ]);
+
+    expect(CliTool::AWS->install())->toBeTrue()
+        ->and(CliTool::AWS->lastError())->toBeNull();
+
+    Process::assertRanTimes(fn ($process) => str_contains($process->command, 'msiexec.exe'), 2);
+});
+
+test('install() gives up on msiexec after repeated ERROR_INSTALL_PACKAGE_OPEN_FAILED, rather than retrying forever', function (): void {
+    Os::setForcedFamily('Windows');
+    $appData = Spatie\TemporaryDirectory\TemporaryDirectory::make()->deleteWhenDestroyed();
+    putenv('LOCALAPPDATA='.$appData->path());
+
+    Http::fake([
+        'https://awscli.amazonaws.com/AWSCLIV2-User.msi' => Http::response('fake-msi-bytes'),
+    ]);
+
+    Process::fake([
+        'msiexec.exe*' => Process::result('', exitCode: 1619),
+    ]);
+
+    expect(CliTool::AWS->install())->toBeFalse()
+        ->and(CliTool::AWS->lastError())->toContain('1619');
+
+    Process::assertRanTimes(fn ($process) => str_contains($process->command, 'msiexec.exe'), 3);
+});
+
 test('a failed AWS CLI install surfaces the real msiexec exit code via lastError(), not just a bare false', function (): void {
     // Confirmed live (2026-10-30): runStreaming() kept only the bare exit
     // code and /qn alone gave msiexec nothing to log, so every failure here
