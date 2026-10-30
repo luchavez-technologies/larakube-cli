@@ -1156,9 +1156,8 @@ enum CliTool: string
             return false;
         }
 
-        // Streams straight to disk (see httpDownloadToFile()'s docblock) —
-        // ZipArchive itself already reads the downloaded file from disk, not
-        // memory, so only this initial download needed to avoid buffering.
+        // Streams straight to disk (see httpDownloadToFile()'s docblock) so
+        // the download itself never buffers in memory.
         $response = Http::timeout(120)->sink($tmpZip)->get($url);
         if (! $response->successful()) {
             @unlink($tmpZip);
@@ -1177,11 +1176,28 @@ enum CliTool: string
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $name = $zip->getNameIndex($i);
             if ($name !== false && basename($name) === $memberBasename) {
-                $contents = $zip->getFromIndex($i);
-                if ($contents !== false && file_put_contents($target, $contents) !== false) {
+                // getFromIndex() decompresses the whole member into a PHP
+                // string first — fine for a small config file, but a real
+                // binary (tofu.exe/k9s.exe, 100MB+ decompressed) blew past
+                // PHP's default 128M memory_limit here too, confirmed live
+                // (2026-10-30) even after the download itself was fixed to
+                // stream. getStream() instead hands back a read-only
+                // resource ZipArchive fills on demand as it's read, so
+                // stream_copy_to_stream() moves it to disk in chunks and
+                // never holds the whole decompressed file in memory at once.
+                $source = $zip->getStream($name);
+                $destination = $source !== false ? fopen($target, 'wb') : false;
+
+                if ($source !== false && $destination !== false) {
+                    $extracted = stream_copy_to_stream($source, $destination) !== false;
+                    fclose($destination);
                     @chmod($target, 0755);
-                    $extracted = true;
                 }
+
+                if (is_resource($source)) {
+                    fclose($source);
+                }
+
                 break;
             }
         }
