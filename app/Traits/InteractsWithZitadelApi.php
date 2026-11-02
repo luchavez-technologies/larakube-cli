@@ -32,6 +32,7 @@ use App\Http\Integrations\Zitadel\Requests\SearchProjectAppsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchProjectGrantsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchProjectRolesRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchProjectsRequest;
+use App\Http\Integrations\Zitadel\Requests\SearchProjectUserGrantsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchUserGrantsRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchUsersRequest;
 use App\Http\Integrations\Zitadel\Requests\SetFlowTriggerActionsRequest;
@@ -731,6 +732,41 @@ trait InteractsWithZitadelApi
         }
 
         return array_column($response->json('result', []), 'key');
+    }
+
+    /**
+     * Return every grant (resolved to email/role) on one project in a single API call.
+     *
+     * @return list<array{id: string, email: string, roleKeys: list<string>}>
+     */
+    protected function zitadelListProjectGrants(string $host, string $pat, string $projectId): array
+    {
+        $response = ZitadelConnector::make($host, $pat)->send(SearchProjectUserGrantsRequest::make($projectId));
+
+        if ($response->failed()) {
+            return [];
+        }
+
+        $grants = [];
+        foreach ($response->json('result', []) as $item) {
+            $email = (string) ($item['email'] ?? $item['userName'] ?? '');
+            $rawRoleKeys = (array) ($item['roleKeys'] ?? (isset($item['role']) ? [$item['role']] : ($item['roles'] ?? [])));
+
+            $roleKeys = [];
+            foreach ($rawRoleKeys as $k) {
+                if (is_string($k) && $k !== '') {
+                    $roleKeys[] = $k;
+                }
+            }
+
+            $grants[] = [
+                'id' => (string) ($item['id'] ?? $item['grantId'] ?? ''),
+                'email' => $email,
+                'roleKeys' => $roleKeys,
+            ];
+        }
+
+        return $grants;
     }
 
     /**
