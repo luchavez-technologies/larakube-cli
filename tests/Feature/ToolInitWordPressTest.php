@@ -83,7 +83,7 @@ test('tool:init --tool=wordpress --custom-env/--custom-env-secret seed the overl
     ));
 
     expect($configMapName)->not->toBeNull()
-        ->and(str_starts_with((string) $configMapName, 'wordpress-custom-'))->toBeTrue()
+        ->and((string) $configMapName)->toStartWith('wordpress-custom-')
         ->and($secretName)->toBe($configMapName);
 });
 
@@ -146,9 +146,8 @@ test('wordpress deployment wires the custom env overlay via envFrom, ahead of it
     $containerBlock = substr($rendered, (int) strpos($rendered, '- name: wordpress'));
 
     expect($containerBlock)
-        ->toContain("envFrom:\n            - configMapRef:\n                name: data-wordpress-test-custom\n            - secretRef:\n                name: data-wordpress-test-custom");
-
-    expect(strpos($containerBlock, 'envFrom:'))->toBeLessThan(strpos($containerBlock, "\n          env:"));
+        ->toContain("envFrom:\n            - configMapRef:\n                name: data-wordpress-test-custom\n            - secretRef:\n                name: data-wordpress-test-custom")
+        ->and(strpos($containerBlock, 'envFrom:'))->toBeLessThan(strpos($containerBlock, "\n          env:"));
 });
 
 test('wordpress manifest view renders valid resources for sqlite and mysql', function (): void {

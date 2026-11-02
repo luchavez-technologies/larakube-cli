@@ -337,7 +337,7 @@ test('tool:init --tool=pocketbase --custom-env/--custom-env-secret seed the over
     ));
 
     expect($configMapName)->not->toBeNull()
-        ->and(str_starts_with((string) $configMapName, 'pocketbase-custom-'))->toBeTrue()
+        ->and((string) $configMapName)->toStartWith('pocketbase-custom-')
         ->and($secretName)->toBe($configMapName);
 });
 

@@ -107,7 +107,7 @@ test('tool:init --tool=n8n names every n8n resource after its host and pins the 
         ->not->toContain('larakube-tool: flow')
         ->not->toContain('flow-secrets')
         ->not->toContain('  name: n8n'.PHP_EOL)
-        ->and(array_key_exists('n8n-secrets-flow-example-com', $seen['secrets']))->toBeTrue();
+        ->and($seen['secrets'])->toHaveKey('n8n-secrets-flow-example-com');
 });
 
 test('tool:init --tool=n8n reuses the instance\'s encryption key and never puts it in argv', function (): void {
