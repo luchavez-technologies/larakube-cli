@@ -127,7 +127,18 @@ class SecretsStatusCommand extends Command
      * role-name resolution as secrets:rotate (tenant name, falling back to
      * 'tenant-{tenant}') — no new OpenBao policy-listing plumbing.
      *
-     * @return list<array{tool: string, instance: string, role: string, rotationPeriod: string|null, wired: bool}>
+     * One OpenBao API call (staticRoleRotationInfo(), the same helper
+     * plex:show already uses) does double duty as both the existence check
+     * and the rotation-period/last-rotated read — it used to be two separate
+     * round trips (staticRoleExists() then a second GET), each opening and
+     * tearing down its own port-forward. At 9 real wired tools that was up
+     * to 18 port-forwards per sync, comfortably enough to blow past
+     * SyncOpenBaoJob's timeout in Desktop even though a direct CLI run
+     * (warmer, no job-queue overhead) stayed fast enough to look fine.
+     * Confirmed live 2026-11-03: Desktop's background sync kept landing
+     * empty while the same command run by hand returned all 9 roles.
+     *
+     * @return list<array{tool: string, slug: string, instance: string, role: string, rotationPeriod: string|null, lastRotatedAt: string|null, wired: bool}>
      */
     protected function staticRoleSummary(string $kubectl): array
     {
@@ -148,75 +159,38 @@ class SecretsStatusCommand extends Command
             }
 
             $roleName = $tenant;
-            $wired = $this->staticRoleExists($kubectl, $roleName);
-            if ($wired === false) {
-                $roleName = 'tenant-'.$tenant;
-                $wired = $this->staticRoleExists($kubectl, $roleName);
-            }
+            $info = $this->staticRoleRotationInfo($kubectl, $roleName);
+            $wired = $info !== null;
 
-            $rotationPeriod = $wired === true ? $this->staticRoleRotationPeriod($kubectl, $roleName) : null;
+            if (! $wired && ! str_contains((string) $this->lastSecretsBackendError, 'HTTP 404')) {
+                // Unreachable/sealed, not a confirmed "doesn't exist" — don't
+                // guess at the 'tenant-' fallback name off an unknown state.
+                $roleName = $tenant;
+            } elseif (! $wired) {
+                $roleName = 'tenant-'.$tenant;
+                $info = $this->staticRoleRotationInfo($kubectl, $roleName);
+                $wired = $info !== null;
+            }
 
             $rows[] = [
                 'tool' => $tool->getLabel(),
+                'slug' => $tool->value,
                 'instance' => $instance,
                 'role' => $roleName,
-                'rotationPeriod' => $rotationPeriod,
-                'wired' => $wired === true,
+                'rotationPeriod' => $info !== null ? self::formatDuration($info['rotation_period']) : null,
+                'lastRotatedAt' => $info !== null && $info['last_vault_rotation'] !== '' ? $info['last_vault_rotation'] : null,
+                'wired' => $wired,
             ];
         }
 
         return $rows;
     }
 
-    /** Best-effort read of a static role's configured rotation period — null if unreadable. */
-    protected function staticRoleRotationPeriod(string $kubectl, string $roleName): ?string
-    {
-        $ns = $this->secretsNamespace();
-        $token = $this->readOpenBaoBootstrapSecret($kubectl, $ns, 'root-token');
-        if ($token === null) {
-            return null;
-        }
-
-        $res = $this->openBaoApi($kubectl, 'GET', "/v1/database/static-roles/{$roleName}", null, $token);
-        $seconds = $res['data']['rotation_period'] ?? null;
-
-        return is_numeric($seconds) ? self::formatDuration((int) $seconds) : null;
-    }
-
-    /**
-     * Whole days/hours/minutes, e.g. "7d" or "168h" → "7d", "90m" → "1h 30m".
-     * gmdate('H:i:s', …) was wrong here: it wraps every 24h, so any
-     * whole-day period (168h = 7×24h) always rendered "00:00:00".
-     */
-    private static function formatDuration(int $seconds): string
-    {
-        if ($seconds <= 0) {
-            return '0m';
-        }
-
-        $days = intdiv($seconds, 86400);
-        $hours = intdiv($seconds % 86400, 3600);
-        $minutes = intdiv($seconds % 3600, 60);
-
-        $parts = [];
-        if ($days > 0) {
-            $parts[] = "{$days}d";
-        }
-        if ($hours > 0) {
-            $parts[] = "{$hours}h";
-        }
-        if ($minutes > 0 && $days === 0) {
-            $parts[] = "{$minutes}m";
-        }
-
-        return $parts === [] ? '<1m' : implode(' ', $parts);
-    }
-
     /**
      * Every registered tool instance's custom-env counts (keys only, never
      * values), reusing tool:env's own read path.
      *
-     * @return list<array{tool: string, instance: string, plainCount: int, secretCount: int, vaulted: bool}>
+     * @return list<array{tool: string, slug: string, instance: string, plainCount: int, secretCount: int, vaulted: bool}>
      */
     protected function customEnvSummary(string $kubectl, bool $vaulted): array
     {
@@ -249,6 +223,7 @@ class SecretsStatusCommand extends Command
 
             $rows[] = [
                 'tool' => $tool->getLabel(),
+                'slug' => $tool->value,
                 'instance' => $instance,
                 'plainCount' => count($configMap ?? []),
                 'secretCount' => count($secret ?? []),
@@ -257,5 +232,34 @@ class SecretsStatusCommand extends Command
         }
 
         return $rows;
+    }
+
+    /**
+     * Whole days/hours/minutes, e.g. "7d" or "168h" → "7d", "90m" → "1h 30m".
+     * gmdate('H:i:s', …) was wrong here: it wraps every 24h, so any
+     * whole-day period (168h = 7×24h) always rendered "00:00:00".
+     */
+    private static function formatDuration(int $seconds): string
+    {
+        if ($seconds <= 0) {
+            return '0m';
+        }
+
+        $days = intdiv($seconds, 86400);
+        $hours = intdiv($seconds % 86400, 3600);
+        $minutes = intdiv($seconds % 3600, 60);
+
+        $parts = [];
+        if ($days > 0) {
+            $parts[] = "{$days}d";
+        }
+        if ($hours > 0) {
+            $parts[] = "{$hours}h";
+        }
+        if ($minutes > 0 && $days === 0) {
+            $parts[] = "{$minutes}m";
+        }
+
+        return $parts === [] ? '<1m' : implode(' ', $parts);
     }
 }

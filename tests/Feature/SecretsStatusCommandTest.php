@@ -124,10 +124,11 @@ test('secrets:status --json reports a wired static role and its rotation period'
     Saloon::fake([
         // GET /v1/sys/seal-status
         MockResponse::make(['sealed' => false]),
-        // staticRoleExists('forgejo') -> GET /v1/database/static-roles/forgejo
-        MockResponse::make(['data' => ['username' => 'forgejo']]),
-        // staticRoleRotationPeriod('forgejo') -> same endpoint, read again
-        MockResponse::make(['data' => ['username' => 'forgejo', 'rotation_period' => 3600]]),
+        // staticRoleRotationInfo('forgejo') -> GET /v1/database/static-creds/forgejo
+        // (existence check and rotation-period read in the SAME call now —
+        // this used to be two separate port-forwards, which at 9 real wired
+        // tools was the actual cause of the background sync timing out.)
+        MockResponse::make(['data' => ['username' => 'forgejo', 'rotation_period' => 3600, 'last_vault_rotation' => '2026-11-01T00:00:00Z']]),
     ]);
 
     Artisan::call('secrets:status', ['--json' => true]);
@@ -135,8 +136,10 @@ test('secrets:status --json reports a wired static role and its rotation period'
 
     expect($output['staticRoles'])->toHaveCount(1)
         ->and($output['staticRoles'][0]['role'])->toBe('forgejo')
+        ->and($output['staticRoles'][0]['slug'])->toBe('forgejo')
         ->and($output['staticRoles'][0]['wired'])->toBeTrue()
-        ->and($output['staticRoles'][0]['rotationPeriod'])->toBe('1h');
+        ->and($output['staticRoles'][0]['rotationPeriod'])->toBe('1h')
+        ->and($output['staticRoles'][0]['lastRotatedAt'])->toBe('2026-11-01T00:00:00Z');
 });
 
 test('secrets:status formats a whole-week rotation period as days, not a wrapped time-of-day', function (): void {
@@ -160,7 +163,6 @@ test('secrets:status formats a whole-week rotation period as days, not a wrapped
 
     Saloon::fake([
         MockResponse::make(['sealed' => false]),
-        MockResponse::make(['data' => ['username' => 'forgejo']]),
         MockResponse::make(['data' => ['username' => 'forgejo', 'rotation_period' => 604800]]),
     ]);
 
@@ -168,4 +170,37 @@ test('secrets:status formats a whole-week rotation period as days, not a wrapped
     $output = json_decode(Artisan::output(), true);
 
     expect($output['staticRoles'][0]['rotationPeriod'])->toBe('7d');
+});
+
+test('secrets:status reports an unwired tool after a confirmed 404 on both role names', function (): void {
+    FakeToolRegistry::install([
+        ['tool' => 'openbao', 'instance' => 'secrets-example-com', 'host' => 'secrets.example.com'],
+    ]);
+
+    Process::fake([
+        '*get deployment forgejo*' => Process::result(output: 'forgejo'),
+        '*get deployment openbao*' => Process::result(output: 'openbao'),
+        '*get deployment*' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
+        '*port-forward*' => Process::result(output: ''),
+        '*get configmap/*' => Process::result(output: ''),
+        '*get secret/*' => Process::result(output: ''),
+        '*' => Process::result(),
+    ]);
+
+    Saloon::fake([
+        MockResponse::make(['sealed' => false]),
+        // staticRoleRotationInfo('forgejo') -> 404, confirmed not wired
+        MockResponse::make([], 404),
+        // falls back to 'tenant-forgejo' -> also 404
+        MockResponse::make([], 404),
+    ]);
+
+    Artisan::call('secrets:status', ['--json' => true]);
+    $output = json_decode(Artisan::output(), true);
+
+    expect($output['staticRoles'])->toHaveCount(1)
+        ->and($output['staticRoles'][0]['role'])->toBe('tenant-forgejo')
+        ->and($output['staticRoles'][0]['wired'])->toBeFalse()
+        ->and($output['staticRoles'][0]['rotationPeriod'])->toBeNull();
 });
