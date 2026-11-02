@@ -31,8 +31,15 @@ trait GeneratesProjectInfrastructure
     /** Marks a `server` block this CLI owns, so re-runs realign instead of advising. */
     public const VITE_MANAGED_SENTINEL = 'larakube:managed';
 
-    /** Caddy is the origin behind Traefik; pinned like every other vendored image. */
-    protected const CADDY_VERSION = '2.11.4';
+    /**
+     * Caddy is the origin behind Traefik; pinned like every other vendored
+     * image. Checked against Docker Hub (2026-11-02): 2.11.7 is current —
+     * bumped from the stale 2.11.4 pin that shipped a CRITICAL Alpine CVE,
+     * confirmed live. Dockerfile.static also runs `apk upgrade` on top of
+     * whatever this pin resolves to, so re-check this periodically rather
+     * than relying on that alone to cover drift between tag rebuilds.
+     */
+    protected const CADDY_VERSION = '2.11.7';
 
     /**
      * Dev-server config for a STANDALONE Vite/Astro SPA, where the framework's

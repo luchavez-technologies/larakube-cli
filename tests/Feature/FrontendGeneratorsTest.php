@@ -145,7 +145,7 @@ test('vite:new scaffolds a project with a complete, deployable blueprint', funct
         // so `npm run build` there finds no vite at all.
         expect(file_get_contents("{$project}/Dockerfile.static"))
             ->toContain('FROM docker.io/library/node:24-alpine AS assets')
-            ->toContain('FROM docker.io/library/caddy:2.11.4-alpine')
+            ->toContain('FROM docker.io/library/caddy:2.11.7-alpine')
             // The caddy:*-alpine tag's OS packages lag Alpine's own security
             // repo between image rebuilds — confirmed live (2026-11-02) via a
             // CRITICAL CVE in the base layer with an upstream fix already
@@ -217,11 +217,8 @@ test('vite:new --no-hsts omits Strict-Transport-Security but keeps the other sec
 
         $project = "{$tempDir}/my-vite-app";
         $config = ConfigData::loadFromFile($project);
-        expect($config->hsts)->toBeFalse();
-
-        expect(file_get_contents("{$project}/Caddyfile"))
-            ->toContain('X-Frame-Options DENY')
-            ->not->toContain('Strict-Transport-Security');
+        expect($config->hsts)->toBeFalse()
+            ->and(file_get_contents("{$project}/Caddyfile"))->toContain('X-Frame-Options DENY')->not->toContain('Strict-Transport-Security');
     } finally {
         chdir($oldCwd);
         $temporaryDirectory->delete();
