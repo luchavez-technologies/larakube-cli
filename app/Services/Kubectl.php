@@ -278,13 +278,17 @@ final readonly class Kubectl
      * Set some keys on an existing Secret, leaving its other keys alone. Fails
      * when the Secret doesn't exist. The values go on stdin, never in argv.
      *
+     * A JSON Merge Patch (RFC 7386) drops a map key whose value is `null`
+     * rather than storing it — so `null` here means "remove this key",
+     * unlike `putSecret()`'s full-replace `null` (= stored as empty).
+     *
      * @param  array<string, string|null>  $data
      */
     public function patchSecret(string $namespace, string $name, array $data): KubectlResult
     {
         return $this->run(
             ['patch', 'secret', $name, '-n', $namespace, '--type=merge', '--patch-file=/dev/stdin'],
-            (string) json_encode(['data' => array_map(fn ($value) => base64_encode((string) $value), $data)]),
+            (string) json_encode(['data' => array_map(fn (?string $value) => $value === null ? null : base64_encode($value), $data)]),
         );
     }
 
@@ -300,6 +304,103 @@ final readonly class Kubectl
             'metadata' => array_filter(['name' => $name, 'namespace' => $namespace, 'labels' => $labels ?: null]),
             'data' => $data === [] ? new stdClass : $data,
         ]));
+    }
+
+    /**
+     * Set some keys on an existing ConfigMap, leaving its other keys alone.
+     * Fails when the ConfigMap doesn't exist. `null` removes a key — see
+     * `patchSecret()`'s doc for why.
+     *
+     * @param  array<string, string|null>  $data
+     */
+    public function patchConfigMap(string $namespace, string $name, array $data): KubectlResult
+    {
+        return $this->run(
+            ['patch', 'configmap', $name, '-n', $namespace, '--type=merge', '--patch-file=/dev/stdin'],
+            (string) json_encode(['data' => $data]),
+        );
+    }
+
+    /**
+     * Idempotently ensure a Deployment's named container has `envFrom`
+     * entries for the given ConfigMap/Secret refs, without disturbing any
+     * `envFrom`/`env` entries already there. Every tool's OWN env wiring is
+     * baked into its Blade template at `apply()` time (ADR: manifest
+     * operations stay command-driven) — this is the one exception, for a
+     * ConfigMap/Secret pair that doesn't exist until the first custom env
+     * var is set, so there's nothing to template ahead of time.
+     *
+     * $container names the one container to wire — omit it to target the
+     * Deployment's first container (every Cluster Tool manifest defines
+     * exactly one app container; naming it explicitly is only needed for a
+     * multi-container Deployment).
+     *
+     * @param  list<array{kind: 'configMapRef'|'secretRef', name: string}>  $envFromRefs
+     */
+    public function ensureDeploymentEnvFrom(string $namespace, string $deployment, array $envFromRefs, ?string $container = null): KubectlResult
+    {
+        $ref = new ResourceRef('Deployment', $deployment, $namespace);
+        $current = $this->get($ref);
+        if ($current === null) {
+            return new KubectlResult(false, '', "deployment/{$deployment} not found in {$namespace}");
+        }
+
+        $containers = $current['spec']['template']['spec']['containers'] ?? [];
+        $index = null;
+        foreach ($containers as $i => $c) {
+            if ($container === null ? $i === 0 : ($c['name'] ?? null) === $container) {
+                $index = $i;
+                break;
+            }
+        }
+        if ($index === null) {
+            $label = $container ?? '(first container)';
+
+            return new KubectlResult(false, '', "container '{$label}' not found on deployment/{$deployment}");
+        }
+        $container ??= (string) ($containers[$index]['name'] ?? '');
+
+        /** @var list<array<string, mixed>> $existingEnvFrom */
+        $existingEnvFrom = $containers[$index]['envFrom'] ?? [];
+        $known = [];
+        foreach ($existingEnvFrom as $entry) {
+            foreach (['configMapRef', 'secretRef'] as $kind) {
+                if (isset($entry[$kind]['name'])) {
+                    $known["{$kind}:{$entry[$kind]['name']}"] = true;
+                }
+            }
+        }
+
+        $merged = $existingEnvFrom;
+        $changed = false;
+        foreach ($envFromRefs as $wanted) {
+            $key = "{$wanted['kind']}:{$wanted['name']}";
+            if (isset($known[$key])) {
+                continue;
+            }
+            // optional: true — a tool only ever touched on its plain-var
+            // side (or only its secret side) must not fail to start because
+            // the OTHER, never-created half of the pair doesn't exist yet.
+            $merged[] = [$wanted['kind'] => ['name' => $wanted['name'], 'optional' => true]];
+            $changed = true;
+        }
+
+        if (! $changed) {
+            return new KubectlResult(true, 'unchanged');
+        }
+
+        // A strategic merge patch, keyed by the containers list's `name`
+        // merge key, so this touches only the named container — a plain
+        // JSON merge patch (`--type=merge`) has no way to address one
+        // element of an array and would replace the whole `containers` list.
+        return $this->run(
+            ['patch', 'deployment', $deployment, '-n', $namespace, '--type=strategic', '--patch-file=/dev/stdin'],
+            (string) json_encode([
+                'spec' => ['template' => ['spec' => ['containers' => [
+                    ['name' => $container, 'envFrom' => $merged],
+                ]]]],
+            ]),
+        );
     }
 
     /**

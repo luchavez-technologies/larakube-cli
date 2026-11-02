@@ -25,4 +25,7 @@ enum SecretKind: string
 
     /** The Zitadel app's ids and client credentials, written by `sso:wire`. */
     case SSO_APP = 'sso';
+
+    /** User-added custom env vars (`tool:env:set`), never written by `:init`/`:wire`. */
+    case CUSTOM = 'custom';
 }
