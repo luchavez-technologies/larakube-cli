@@ -253,6 +253,32 @@ test('cloud:configure --only=registry with a bad flag exits 1 with a clear error
     expect(State::lastError())->toContain("Invalid --registry-provider 'bogus'");
 });
 
+function saveTargetOnlyProject(string $dir, string $existingContext): ConfigData
+{
+    $config = nonInteractiveConfig();
+    $config->setCloud('production', new CloudData(context: $existingContext, provider: 'doks'));
+    $config->setPath($dir);
+    $config->saveToFile($dir);
+
+    return $config;
+}
+
+test('non-interactive cloud:configure --only=target fails loudly naming --web-host when the environment has no real host yet, not a raw Prompts crash', function (): void {
+    // Confirmed live (2026-11-01): Desktop's "Link server" action dispatches
+    // exactly `cloud:configure {env} --only=target --context=... --rebind
+    // --web-hosts=` (note: the PLURAL --web-hosts, which only clears
+    // additional hostnames) and never the singular --web-host EnsuresRealHosts
+    // actually reads. Non-interactively, with the deploy target already
+    // resolved via --context, this used to fall through all the way to
+    // EnsuresRealHosts::ensureHosts()'s text(required: true) prompt, which
+    // Laravel Prompts' own non-interactive fallback (Interactivity::default())
+    // turns into a bare "Required." — no indication which flag was missing.
+    saveTargetOnlyProject($this->tempDir, 'do-nyc1-old-cluster');
+
+    expect(fn () => cloudConfigureFlagRunner(['--context' => 'do-nyc1-old-cluster'])->base('production'))
+        ->toThrow(MissingFlagException::class, 'Missing required --web-host');
+});
+
 test('cloud:configure --only=hosts with --web-host configures and persists headlessly', function (): void {
     saveNonInteractiveProject($this->tempDir);
 

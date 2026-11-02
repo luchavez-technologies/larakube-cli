@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Contracts\HasPromptableHosts;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Exceptions\MissingFlagException;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\text;
@@ -97,6 +98,20 @@ trait EnsuresRealHosts
             $this->line("   Remote deployments require a real web domain for '{$environment}'.");
             if ($currentHost) {
                 $this->line("   <fg=gray>Current:</> <fg=yellow>{$currentHost}</>");
+            }
+
+            // Non-interactive dispatch (Desktop's subprocess, CI, the `larakube`
+            // proxy, MCP) can't answer the text() prompt below — Laravel Prompts'
+            // non-interactive fallback would throw a bare "Required." with no
+            // indication which flag to pass. Fail loudly and name it instead,
+            // same contract as RequiresFlagsWhenNonInteractive::flagOrPrompt().
+            $interactive = ! isset($this->input) || $this->input->isInteractive();
+            if (! $interactive) {
+                throw new MissingFlagException(
+                    'web-host',
+                    "a real web domain for '{$environment}'",
+                    "larakube cloud:configure {$environment} --web-host=app.example.com",
+                );
             }
 
             $currentHost = text(
