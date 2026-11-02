@@ -101,9 +101,8 @@ test('secrets:status --json summarizes custom env var counts per registered tool
         ->and($output['customEnv'])->toHaveCount(1)
         ->and($output['customEnv'][0]['instance'])->toBe('pb-example-com')
         ->and($output['customEnv'][0]['plainCount'])->toBe(1)
-        ->and($output['customEnv'][0]['secretCount'])->toBe(1);
-
-    expect(Artisan::output())->not->toContain('super-secret');
+        ->and($output['customEnv'][0]['secretCount'])->toBe(1)
+        ->and(Artisan::output())->not->toContain('super-secret');
 });
 
 test('secrets:status --json reports a wired static role and its rotation period', function (): void {
@@ -137,5 +136,36 @@ test('secrets:status --json reports a wired static role and its rotation period'
     expect($output['staticRoles'])->toHaveCount(1)
         ->and($output['staticRoles'][0]['role'])->toBe('forgejo')
         ->and($output['staticRoles'][0]['wired'])->toBeTrue()
-        ->and($output['staticRoles'][0]['rotationPeriod'])->toBe('01:00:00');
+        ->and($output['staticRoles'][0]['rotationPeriod'])->toBe('1h');
+});
+
+test('secrets:status formats a whole-week rotation period as days, not a wrapped time-of-day', function (): void {
+    // Regression: gmdate('H:i:s', $seconds) wraps every 24h, so 168h (the
+    // default registerStaticRole() period) always rendered "00:00:00" —
+    // confirmed live 2026-11-02 across every real wired role on a cluster.
+    FakeToolRegistry::install([
+        ['tool' => 'openbao', 'instance' => 'secrets-example-com', 'host' => 'secrets.example.com'],
+    ]);
+
+    Process::fake([
+        '*get deployment forgejo*' => Process::result(output: 'forgejo'),
+        '*get deployment openbao*' => Process::result(output: 'openbao'),
+        '*get deployment*' => Process::result(output: '', exitCode: 1),
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
+        '*port-forward*' => Process::result(output: ''),
+        '*get configmap/*' => Process::result(output: ''),
+        '*get secret/*' => Process::result(output: ''),
+        '*' => Process::result(),
+    ]);
+
+    Saloon::fake([
+        MockResponse::make(['sealed' => false]),
+        MockResponse::make(['data' => ['username' => 'forgejo']]),
+        MockResponse::make(['data' => ['username' => 'forgejo', 'rotation_period' => 604800]]),
+    ]);
+
+    Artisan::call('secrets:status', ['--json' => true]);
+    $output = json_decode(Artisan::output(), true);
+
+    expect($output['staticRoles'][0]['rotationPeriod'])->toBe('7d');
 });

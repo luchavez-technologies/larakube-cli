@@ -180,7 +180,36 @@ class SecretsStatusCommand extends Command
         $res = $this->openBaoApi($kubectl, 'GET', "/v1/database/static-roles/{$roleName}", null, $token);
         $seconds = $res['data']['rotation_period'] ?? null;
 
-        return is_numeric($seconds) ? gmdate('H:i:s', (int) $seconds) : null;
+        return is_numeric($seconds) ? self::formatDuration((int) $seconds) : null;
+    }
+
+    /**
+     * Whole days/hours/minutes, e.g. "7d" or "168h" → "7d", "90m" → "1h 30m".
+     * gmdate('H:i:s', …) was wrong here: it wraps every 24h, so any
+     * whole-day period (168h = 7×24h) always rendered "00:00:00".
+     */
+    private static function formatDuration(int $seconds): string
+    {
+        if ($seconds <= 0) {
+            return '0m';
+        }
+
+        $days = intdiv($seconds, 86400);
+        $hours = intdiv($seconds % 86400, 3600);
+        $minutes = intdiv($seconds % 3600, 60);
+
+        $parts = [];
+        if ($days > 0) {
+            $parts[] = "{$days}d";
+        }
+        if ($hours > 0) {
+            $parts[] = "{$hours}h";
+        }
+        if ($minutes > 0 && $days === 0) {
+            $parts[] = "{$minutes}m";
+        }
+
+        return $parts === [] ? '<1m' : implode(' ', $parts);
     }
 
     /**
