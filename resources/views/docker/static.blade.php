@@ -47,6 +47,14 @@ RUN {{ $buildCommand }}
 ############################################
 FROM docker.io/library/caddy:{{ $caddyVersion }}-alpine
 
+{{-- The caddy:{{ $caddyVersion }}-alpine tag's OS packages lag Alpine's own
+     security repo between image rebuilds — confirmed live (2026-11-02): a
+     CRITICAL CVE in the Alpine base layer itself (not /usr/bin/caddy, which
+     scans clean) that already had an upstream Alpine fix, just not yet
+     baked into this tag. Pulling the latest packages at build time closes
+     that gap without waiting on upstream to rebuild. --}}
+RUN apk update && apk upgrade --no-cache
+
 COPY --from=assets /app/{{ $outputDir }} /srv
 COPY Caddyfile /etc/caddy/Caddyfile
 

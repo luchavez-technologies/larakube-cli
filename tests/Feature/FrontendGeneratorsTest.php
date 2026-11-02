@@ -146,6 +146,11 @@ test('vite:new scaffolds a project with a complete, deployable blueprint', funct
         expect(file_get_contents("{$project}/Dockerfile.static"))
             ->toContain('FROM docker.io/library/node:24-alpine AS assets')
             ->toContain('FROM docker.io/library/caddy:2.11.4-alpine')
+            // The caddy:*-alpine tag's OS packages lag Alpine's own security
+            // repo between image rebuilds — confirmed live (2026-11-02) via a
+            // CRITICAL CVE in the base layer with an upstream fix already
+            // available. Pulling it at build time closes that gap.
+            ->toContain('RUN apk update && apk upgrade --no-cache')
             // VITE_* values compile into the bundle, so .env must be readable
             // during the build and must never become an image layer.
             ->toContain('--mount=type=secret,id=dotenv');
@@ -154,7 +159,10 @@ test('vite:new scaffolds a project with a complete, deployable blueprint', funct
             // The deep-link failure a dev server structurally cannot show.
             ->toContain('try_files {path} {path}/index.html /index.html')
             ->toContain('max-age=31536000, immutable')
-            ->toContain('max-age=0, must-revalidate');
+            ->toContain('max-age=0, must-revalidate')
+            ->toContain('X-Frame-Options DENY')
+            ->toContain('Permissions-Policy "camera=(), microphone=(), geolocation=()"')
+            ->toContain('Strict-Transport-Security');
 
         // The dev-server config must declare the proxied host or Vite 6+ blocks
         // every request coming through Traefik.
@@ -175,6 +183,45 @@ test('vite:new scaffolds a project with a complete, deployable blueprint', funct
                 ->not->toContain('POCKETBASE')
                 ->not->toContain('dev.test');
         }
+    } finally {
+        chdir($oldCwd);
+        $temporaryDirectory->delete();
+    }
+});
+
+test('vite:new --no-hsts omits Strict-Transport-Security but keeps the other security headers', function (): void {
+    $temporaryDirectory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $tempDir = $temporaryDirectory->path();
+    $oldCwd = getcwd();
+
+    try {
+        Process::fake([
+            ...frontendGeneratorsPrereqFakes(),
+            '*create-vite*' => function ($process) use ($tempDir) {
+                mkdir("{$tempDir}/my-vite-app", 0755, true);
+                file_put_contents(
+                    "{$tempDir}/my-vite-app/vite.config.ts",
+                    "import { defineConfig } from 'vite'\n\nexport default defineConfig({\n  plugins: [],\n})\n",
+                );
+                file_put_contents("{$tempDir}/my-vite-app/.gitignore", "node_modules\ndist\n");
+                frontendGeneratorsPackageJson("{$tempDir}/my-vite-app", AppFramework::VITE);
+
+                return Process::result(output: 'Scaffolded');
+            },
+        ]);
+
+        chdir($tempDir);
+
+        $this->artisan('vite:new my-vite-app --template=react-ts --no-hsts --no-interaction')
+            ->assertExitCode(0);
+
+        $project = "{$tempDir}/my-vite-app";
+        $config = ConfigData::loadFromFile($project);
+        expect($config->hsts)->toBeFalse();
+
+        expect(file_get_contents("{$project}/Caddyfile"))
+            ->toContain('X-Frame-Options DENY')
+            ->not->toContain('Strict-Transport-Security');
     } finally {
         chdir($oldCwd);
         $temporaryDirectory->delete();

@@ -110,6 +110,18 @@ class ConfigData extends Data
         public bool $isScaffolding = false,
         public bool $withCompanions = true,
         public bool $provisionTestDb = false,
+        /**
+         * Whether the generated static-site Caddyfile sends
+         * Strict-Transport-Security. Default on — every LaraKube deploy sits
+         * behind Traefik + cert-manager, so HTTPS is normally there from the
+         * start. Opt out with `init --no-hsts` (or by hand-editing a locked
+         * Caddyfile) for a project whose apex domain has HTTP-only
+         * subdomains, or whose TLS rollout isn't complete yet: HSTS's
+         * `includeSubDomains` is cached by the browser for up to a year once
+         * sent, so a subdomain that briefly serves plain HTTP during initial
+         * cert issuance gets hard-blocked instead of just cert-warned.
+         */
+        public bool $hsts = true,
         public array $lockedFiles = [],
         /** @var array<int, string> */
         public array $watchPaths = [
@@ -335,6 +347,11 @@ class ConfigData extends Data
     public function getProvisionTestDb(): bool
     {
         return $this->provisionTestDb;
+    }
+
+    public function getHsts(): bool
+    {
+        return $this->hsts;
     }
 
     public function hasFeatures(): bool

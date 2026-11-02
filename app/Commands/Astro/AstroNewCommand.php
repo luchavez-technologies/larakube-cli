@@ -32,7 +32,8 @@ class AstroNewCommand extends Command
     protected $signature = 'astro:new
         {name? : The name of the Astro application}
         {--template= : Pass a create-astro template through (skips its wizard)}
-        {--fast : Skip create-astro\'s wizard and take the minimal template}';
+        {--fast : Skip create-astro\'s wizard and take the minimal template}
+        {--no-hsts : Omit Strict-Transport-Security from the generated Caddyfile}';
 
     protected $description = 'Scaffold a new Astro application (minimal, blog, portfolio, docs) with LaraKube infrastructure';
 
@@ -87,6 +88,7 @@ class AstroNewCommand extends Command
         // Cloud environments are opt-in — `larakube env production` adds one.
         $config = ConfigData::forStaticSite(AppFramework::ASTRO, $appName, $projectDir, PackageManager::NPM);
         $config->setIsScaffolding(true);
+        $config->hsts = ! $this->option('no-hsts');
 
         $this->saveProjectConfig($projectDir, $config);
 

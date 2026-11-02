@@ -620,6 +620,7 @@ trait GeneratesProjectInfrastructure
             file_put_contents("{$projectPath}/Caddyfile", view('docker.caddyfile', [
                 'multiPage' => $framework?->isMultiPageSite() ?? false,
                 'redirects' => $this->staticSiteRedirects($config),
+                'hsts' => $config->getHsts(),
             ])->render());
         }
     }

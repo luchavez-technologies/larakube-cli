@@ -33,7 +33,8 @@ class DocsNewCommand extends Command
         {name? : The name of the Docusaurus documentation site}
         {--template= : Pass a create-docusaurus template through (skips its wizard)}
         {--typescript : Use the TypeScript variant (skips its language prompt)}
-        {--fast : Skip create-docusaurus\'s wizard and take classic + TypeScript}';
+        {--fast : Skip create-docusaurus\'s wizard and take classic + TypeScript}
+        {--no-hsts : Omit Strict-Transport-Security from the generated Caddyfile}';
 
     protected $description = 'Scaffold a new Docusaurus documentation site with LaraKube infrastructure';
 
@@ -97,6 +98,7 @@ class DocsNewCommand extends Command
         // Cloud environments are opt-in — `larakube env production` adds one.
         $config = ConfigData::forStaticSite(AppFramework::DOCUSAURUS, $appName, $projectDir, PackageManager::NPM);
         $config->setIsScaffolding(true);
+        $config->hsts = ! $this->option('no-hsts');
 
         $this->saveProjectConfig($projectDir, $config);
 

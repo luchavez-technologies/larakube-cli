@@ -23,6 +23,20 @@
 	header {
 		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin
+		{{-- No legitimate static site needs to be iframed cross-origin or to
+		     use camera/mic/geolocation — both safe unconditional defaults. A
+		     project that genuinely needs an exception locks this file
+		     (`larakube lock Caddyfile`) and edits it by hand. --}}
+		X-Frame-Options DENY
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+@if($hsts)
+		{{-- Gated behind config (hsts: true by default, `init --no-hsts` to
+		     opt out) rather than forced: includeSubDomains is cached by the
+		     browser for up to a year once sent, so a subdomain that briefly
+		     serves plain HTTP during initial cert issuance would get
+		     hard-blocked instead of just cert-warned. --}}
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+@endif
 		-Server
 	}
 

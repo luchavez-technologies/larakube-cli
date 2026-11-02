@@ -36,7 +36,8 @@ class ViteNewCommand extends Command
         {name? : The name of the Vite application}
         {--template= : Pass a create-vite template through (skips its wizard)}
         {--pm=npm : Package manager (npm, pnpm, bun, yarn)}
-        {--fast : Skip create-vite\'s wizard and take the react-ts template}';
+        {--fast : Skip create-vite\'s wizard and take the react-ts template}
+        {--no-hsts : Omit Strict-Transport-Security from the generated Caddyfile}';
 
     protected $description = 'Scaffold a new Vite SPA (React, Vue, Svelte, Solid) with LaraKube infrastructure';
 
@@ -79,6 +80,7 @@ class ViteNewCommand extends Command
         // Cloud environments are opt-in — `larakube env production` adds one.
         $config = ConfigData::forStaticSite(AppFramework::VITE, $appName, $projectDir, $packageManager);
         $config->setIsScaffolding(true);
+        $config->hsts = ! $this->option('no-hsts');
 
         // No PocketBase/Directus variables are seeded. A landing page has no
         // backend, and `larakube data:wire` exists to add them on demand — a

@@ -47,7 +47,8 @@ class InitCommand extends Command
                                  {--dry-run : Show what will be done without making any changes}
                                  {--framework= : The project\'s framework (skips detection and the picker)}
                                  {--email= : Laravel, Statamic, WordPress: email for Let\'s Encrypt certificates (skips the email prompt)}
-                                 {--no-plex : Next.js only: use a self-hosted database and Redis instead of joining Plex Commons}';
+                                 {--no-plex : Next.js only: use a self-hosted database and Redis instead of joining Plex Commons}
+                                 {--no-hsts : Static sites only: omit Strict-Transport-Security from the generated Caddyfile}';
 
     /**
      * The console command description.
@@ -356,6 +357,7 @@ class InitCommand extends Command
             $config->setCacheDriver(ServerStack::caches($framework)[0]);
         } else {
             $config = ConfigData::forStaticSite($framework, $name, $path, $packageManager);
+            $config->hsts = ! $this->option('no-hsts');
         }
 
         $config->setIsScaffolding(false);

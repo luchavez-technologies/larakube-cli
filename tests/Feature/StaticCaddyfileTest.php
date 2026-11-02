@@ -12,7 +12,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  * a dev server resolves pages and redirects itself, so none of this shows up
  * locally.
  */
-function staticCaddyfileRender(AppFramework $framework, ?string $redirects = null): array
+function staticCaddyfileRender(AppFramework $framework, ?string $redirects = null, ?bool $hsts = null): array
 {
     $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
     $path = $dir->path();
@@ -46,7 +46,12 @@ function staticCaddyfileRender(AppFramework $framework, ?string $redirects = nul
         }
     };
 
-    $holder->generate(ConfigData::forStaticSite($framework, 'site', $path, PackageManager::NPM));
+    $config = ConfigData::forStaticSite($framework, 'site', $path, PackageManager::NPM);
+    if ($hsts !== null) {
+        $config->hsts = $hsts;
+    }
+
+    $holder->generate($config);
 
     return [(string) file_get_contents("{$path}/Caddyfile"), $holder->warnings, $dir];
 }
@@ -86,6 +91,24 @@ test('_redirects rules become Caddy redirects', function (): void {
         ->toContain('redir /docs/old/ /docs/new 301')
         ->toContain('redir /moved /elsewhere 302')
         ->and($warnings)->toBe([]);
+});
+
+test('the Caddyfile always sends X-Frame-Options and Permissions-Policy, and HSTS by default', function (): void {
+    [$caddyfile] = staticCaddyfileRender(AppFramework::ASTRO);
+
+    expect($caddyfile)
+        ->toContain('X-Frame-Options DENY')
+        ->toContain('Permissions-Policy "camera=(), microphone=(), geolocation=()"')
+        ->toContain('Strict-Transport-Security "max-age=31536000; includeSubDomains"');
+});
+
+test('HSTS is omitted entirely when a project opts out', function (): void {
+    [$caddyfile] = staticCaddyfileRender(AppFramework::ASTRO, hsts: false);
+
+    expect($caddyfile)
+        ->toContain('X-Frame-Options DENY')
+        ->toContain('Permissions-Policy "camera=(), microphone=(), geolocation=()"')
+        ->not->toContain('Strict-Transport-Security');
 });
 
 test('_redirects rules with no plain-redirect equivalent are left out and reported', function (): void {
