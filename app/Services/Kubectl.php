@@ -265,12 +265,16 @@ final readonly class Kubectl
      */
     public function putSecret(string $namespace, string $name, array $data, array $labels = [], bool $serverSide = false): KubectlResult
     {
+        $encoded = array_map(fn ($value) => base64_encode((string) $value), $data);
+
         return $this->apply(serverSide: $serverSide, yaml: (string) json_encode([
             'apiVersion' => 'v1',
             'kind' => 'Secret',
             'metadata' => array_filter(['name' => $name, 'namespace' => $namespace, 'labels' => $labels ?: null]),
             'type' => 'Opaque',
-            'data' => array_map(fn ($value) => base64_encode((string) $value), $data),
+            // An empty PHP array json-encodes to `[]`, which Kubernetes
+            // rejects for a Secret's `data` (it expects an object/map).
+            'data' => $encoded === [] ? new stdClass : $encoded,
         ]));
     }
 

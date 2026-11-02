@@ -16,6 +16,7 @@ use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithVolumeSizing;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ManagesToolCustomEnv;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
@@ -24,7 +25,7 @@ use Illuminate\Support\Str;
 
 abstract class N8nInitCommand extends AbstractToolInitCommand
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithFlow, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithFlow, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, ManagesToolCustomEnv, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 
     protected function runInit(): int
     {
@@ -39,6 +40,16 @@ abstract class N8nInitCommand extends AbstractToolInitCommand
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;
         $kubectl = Kubectl::forContext($context)->prefix();
+
+        [$customEnvSet, $customEnvSetErrors] = $this->parseEnvPairs((array) $this->option('custom-env'));
+        [$customEnvSetSecret, $customEnvSetSecretErrors] = $this->parseEnvPairs((array) $this->option('custom-env-secret'));
+        $customEnvErrors = [...$customEnvSetErrors, ...$customEnvSetSecretErrors];
+        if ($customEnvErrors !== []) {
+            $this->laraKubeError('Malformed --custom-env/--custom-env-secret KEY=VALUE pair(s): '.implode(', ', $customEnvErrors));
+
+            return 1;
+        }
+
         [$host, $instance] = $this->resolveInstanceAwareHost(SharedClusterService::FLOW, $this->tool(), $env, $kubectl, $toolBrand);
 
         $names = ToolInstance::forHost($this->tool(), $host, $engine);
@@ -91,6 +102,8 @@ abstract class N8nInitCommand extends AbstractToolInitCommand
             'db-password' => $dbPassword,
         ], $names->labels()));
 
+        $customEnv = $this->seedCustomEnvAtInit($cluster, $names, $kubectl, $env, $customEnvSet, $customEnvSetSecret);
+
         $manifest = view("k8s.{$engine}.shared", [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'engine' => $engine,
@@ -103,6 +116,8 @@ abstract class N8nInitCommand extends AbstractToolInitCommand
             'vpnOnly' => $vpnOnly,
             'isLocal' => $env === 'local',
             'proxied' => $this->resolveProxied($env === 'local'),
+            'customEnvConfigMap' => $customEnv['configMap'],
+            'customEnvSecret' => $customEnv['secret'],
         ])->render();
 
         if (! $this->guardClusterCapacity($kubectl, $manifest)) {

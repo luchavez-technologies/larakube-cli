@@ -16,13 +16,17 @@ function flowRegistryWrite(string $command): ?array
  * Fakes a cluster for tool:init --tool=n8n. $secret seeds the instance's existing
  * credentials Secret; $liveDeployments are Deployments already running.
  *
+ * `secrets` is keyed by Secret name — tool:init now applies more than one
+ * (the credentials Secret, and the always-created custom-env overlay
+ * Secret), so a single last-one-wins slot can't tell them apart.
+ *
  * @param  array<string, string>  $secret
  * @param  list<string>  $liveDeployments
- * @param  array{manifest: ?string, secret: ?array, commands: list<string>, registryWrite: ?array}|null  $seen
+ * @param  array{manifest: ?string, secrets: array<string, array<string, mixed>>, configMaps: array<string, array<string, mixed>>, commands: list<string>, registryWrite: ?array}|null  $seen
  */
 function fakeFlowInitCluster(?array &$seen, array $secret = [], array $liveDeployments = [], bool $rolloutFails = false, ?array $capacity = null): void
 {
-    $seen = ['manifest' => null, 'secret' => null, 'commands' => [], 'registryWrite' => null];
+    $seen = ['manifest' => null, 'secrets' => [], 'configMaps' => [], 'commands' => [], 'registryWrite' => null];
 
     Process::fake(function ($process) use (&$seen, $secret, $liveDeployments, $rolloutFails, $capacity) {
         $cmd = (string) $process->command;
@@ -46,7 +50,9 @@ function fakeFlowInitCluster(?array &$seen, array $secret = [], array $liveDeplo
             $input = (string) $process->input;
             $object = json_decode($input, true);
             if (($object['kind'] ?? null) === 'Secret') {
-                $seen['secret'] = $object;
+                $seen['secrets'][(string) ($object['metadata']['name'] ?? '')] = $object;
+            } elseif (($object['kind'] ?? null) === 'ConfigMap') {
+                $seen['configMaps'][(string) ($object['metadata']['name'] ?? '')] = $object;
             } elseif (str_contains($input, 'kind: Deployment')) {
                 $seen['manifest'] = $input;
             }
@@ -72,7 +78,7 @@ function fakeFlowInitCluster(?array &$seen, array $secret = [], array $liveDeplo
     });
 }
 
-function runFlowInit(string $engine = 'n8n'): Illuminate\Testing\PendingCommand
+function runFlowInit(string $engine = 'n8n', array $extra = []): Illuminate\Testing\PendingCommand
 {
     return test()->artisan('tool:init', [
         '--tool' => $engine === 'windmill' ? 'windmill' : 'n8n',
@@ -80,6 +86,7 @@ function runFlowInit(string $engine = 'n8n'): Illuminate\Testing\PendingCommand
         '--domain' => 'flow.example.com',
         '--force' => true,
         '--no-interaction' => true,
+        ...$extra,
     ]);
 }
 
@@ -100,7 +107,7 @@ test('tool:init --tool=n8n names every n8n resource after its host and pins the 
         ->not->toContain('larakube-tool: flow')
         ->not->toContain('flow-secrets')
         ->not->toContain('  name: n8n'.PHP_EOL)
-        ->and($seen['secret']['metadata']['name'] ?? null)->toBe('n8n-secrets-flow-example-com');
+        ->and(array_key_exists('n8n-secrets-flow-example-com', $seen['secrets']))->toBeTrue();
 });
 
 test('tool:init --tool=n8n reuses the instance\'s encryption key and never puts it in argv', function (): void {
@@ -108,8 +115,45 @@ test('tool:init --tool=n8n reuses the instance\'s encryption key and never puts 
 
     runFlowInit()->assertExitCode(0);
 
-    expect(base64_decode($seen['secret']['data']['encryption-key']))->toBe('kept-encryption-key')
-        ->and(base64_decode($seen['secret']['data']['db-password']))->toBe('kept-db-password')->and($seen['commands'])->each->not->toContain('kept-encryption-key');
+    $credentials = $seen['secrets']['n8n-secrets-flow-example-com'];
+
+    expect(base64_decode($credentials['data']['encryption-key']))->toBe('kept-encryption-key')
+        ->and(base64_decode($credentials['data']['db-password']))->toBe('kept-db-password')->and($seen['commands'])->each->not->toContain('kept-encryption-key');
+});
+
+test('tool:init --tool=n8n --custom-env/--custom-env-secret seed the overlay before the Deployment is first applied', function (): void {
+    fakeFlowInitCluster($seen);
+
+    runFlowInit(extra: ['--custom-env' => ['FEATURE_X=true'], '--custom-env-secret' => ['WEBHOOK_SECRET=super-secret']])
+        ->assertExitCode(0);
+
+    $configMap = $seen['configMaps']['n8n-custom-flow-example-com'] ?? null;
+    $secret = $seen['secrets']['n8n-custom-flow-example-com'] ?? null;
+
+    expect($configMap)->not->toBeNull()
+        ->and($configMap['data']['FEATURE_X'])->toBe('true')
+        ->and($secret)->not->toBeNull()
+        ->and(base64_decode($secret['data']['WEBHOOK_SECRET']))->toBe('super-secret')
+        ->and($seen['manifest'])->toContain('name: n8n-custom-flow-example-com');
+});
+
+test('tool:init --tool=n8n still creates the (empty) custom env overlay when no --custom-env is given', function (): void {
+    fakeFlowInitCluster($seen);
+
+    runFlowInit()->assertExitCode(0);
+
+    expect($seen['configMaps'])->toHaveKey('n8n-custom-flow-example-com')
+        ->and($seen['secrets'])->toHaveKey('n8n-custom-flow-example-com');
+});
+
+test('tool:init --tool=n8n refuses a malformed --custom-env pair before touching the cluster', function (): void {
+    fakeFlowInitCluster($seen);
+
+    runFlowInit(extra: ['--custom-env' => ['NOEQUALSSIGN']])
+        ->assertExitCode(1)
+        ->expectsOutputToContain('Malformed --custom-env/--custom-env-secret');
+
+    expect($seen['commands'])->toBeEmpty();
 });
 
 test('tool:init --tool=n8n refuses a second engine on a host that already runs one', function (): void {

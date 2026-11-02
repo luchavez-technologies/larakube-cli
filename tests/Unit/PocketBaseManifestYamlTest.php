@@ -14,6 +14,8 @@ function pocketbaseManifest(array $overrides = []): string
         'isLocal' => false,
         'vpnOnly' => false,
         'proxied' => false,
+        'customEnvConfigMap' => 'data-pocketbase-custom',
+        'customEnvSecret' => 'data-pocketbase-custom',
     ], $overrides))->render();
 }
 
@@ -55,6 +57,24 @@ test('pocketbase manifest includes a hooks ConfigMap that bridges mail/SSO env v
         ->toContain('$os.getenv("POCKETBASE_OIDC_CLIENT_SECRET")')
         ->toContain('$app.settings()')
         ->toContain('$app.save(settings)');
+});
+
+test('pocketbase deployment wires the custom env overlay via envFrom, ahead of its own managed env', function (): void {
+    $documents = pocketbaseDocuments(pocketbaseManifest());
+
+    $deployment = collect($documents)->firstWhere('kind', 'Deployment');
+    $container = $deployment['spec']['template']['spec']['containers'][0];
+
+    expect($container['envFrom'])->toBe([
+        ['configMapRef' => ['name' => 'data-pocketbase-custom']],
+        ['secretRef' => ['name' => 'data-pocketbase-custom']],
+    ]);
+
+    // envFrom must come before env in the container spec — on a key
+    // collision, Kubernetes lets the later source win, so a custom var can
+    // never accidentally clobber a key PocketBase itself manages.
+    $rendered = pocketbaseManifest();
+    expect(strpos($rendered, 'envFrom:'))->toBeLessThan(strpos($rendered, 'env:'));
 });
 
 test('pocketbase deployment mounts the hooks ConfigMap at /pb_hooks', function (): void {

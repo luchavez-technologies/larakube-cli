@@ -78,8 +78,8 @@ class ToolEnvSetCommand extends Command
         $instance = (string) ($entry['instance'] ?? '');
         $names = ToolInstance::forInstance($tool, $instance, (string) ($entry['engine'] ?? '') ?: null);
 
-        [$set, $setErrors] = $this->parsePairs((array) $this->option('set'));
-        [$setSecret, $setSecretErrors] = $this->parsePairs((array) $this->option('set-secret'));
+        [$set, $setErrors] = $this->parseEnvPairs((array) $this->option('set'));
+        [$setSecret, $setSecretErrors] = $this->parseEnvPairs((array) $this->option('set-secret'));
         $unset = array_values(array_unique(array_map('strval', (array) $this->option('unset'))));
         $errors = [...$setErrors, ...$setSecretErrors];
 
@@ -144,30 +144,6 @@ class ToolEnvSetCommand extends Command
         }
 
         return 0;
-    }
-
-    /**
-     * @param  list<string>  $raw
-     * @return array{0: array<string, string>, 1: list<string>}
-     */
-    private function parsePairs(array $raw): array
-    {
-        $pairs = [];
-        $malformed = [];
-
-        foreach ($raw as $entry) {
-            $pos = strpos($entry, '=');
-            if ($pos === false || $pos === 0) {
-                $malformed[] = $entry;
-
-                continue;
-            }
-
-            $key = substr($entry, 0, $pos);
-            $pairs[$key] = substr($entry, $pos + 1);
-        }
-
-        return [$pairs, $malformed];
     }
 
     private function failOut(bool $json, string $message): int

@@ -122,7 +122,9 @@ trait ManagesToolCustomEnv
 
     /**
      * Idempotently wire the custom ConfigMap/Secret into the instance's
-     * Deployment envFrom — a no-op once they're already referenced.
+     * Deployment envFrom — a no-op once they're already referenced. The
+     * post-deploy path (`tool:env:set` against a tool that predates
+     * seedCustomEnvAtInit(), or one that hasn't adopted it yet).
      */
     protected function ensureCustomEnvWired(Kubectl $kubectl, ToolInstance $names, string $configMapName, string $secretName): bool
     {
@@ -134,5 +136,68 @@ trait ManagesToolCustomEnv
                 ['kind' => 'secretRef', 'name' => $secretName],
             ],
         )->ok;
+    }
+
+    /**
+     * Seed the custom env overlay BEFORE the Deployment is first applied,
+     * from a tool's own `--env=`/`--env-secret=` init options, so a var a
+     * person needs can be present at the pod's very first boot — unlike
+     * applyCustomEnvChanges()/ensureCustomEnvWired(), which patch an
+     * ALREADY-applied Deployment after the fact. Always creates the
+     * ConfigMap + Secret, even with no entries, so the Deployment template's
+     * `envFrom` reference is never dangling — the same "always wired, never
+     * conditional" treatment every Project's `laravel-config`/
+     * `laravel-secrets` pair already gets.
+     *
+     * @param  array<string, string>  $set
+     * @param  array<string, string>  $setSecret
+     * @return array{configMap: string, secret: string}
+     */
+    protected function seedCustomEnvAtInit(Kubectl $kubectl, ToolInstance $names, string $kubectlPrefix, string $environment, array $set, array $setSecret): array
+    {
+        $namespace = $names->namespace();
+        $labels = $names->labels();
+        $configMapName = $this->customEnvConfigMapName($names);
+        $secretName = $this->customEnvSecretName($names);
+
+        $kubectl->putConfigMap($namespace, $configMapName, $set, $labels);
+        $kubectl->putSecret($namespace, $secretName, $setSecret, $labels);
+
+        if ($setSecret !== [] && $this->secretsBackendAvailable($kubectlPrefix)) {
+            foreach ($setSecret as $key => $value) {
+                $this->pushClusterSecret($kubectlPrefix, "CUSTOM_{$names->instance}_{$key}", $value, $environment);
+            }
+        }
+
+        return ['configMap' => $configMapName, 'secret' => $secretName];
+    }
+
+    /**
+     * Parse `KEY=VALUE` strings (as `--set=`/`--env=`-style repeatable
+     * options collect them) into a map, reporting any entry with no `=` (or
+     * an empty key) as malformed rather than silently dropping or
+     * misparsing it.
+     *
+     * @param  list<string>  $raw
+     * @return array{0: array<string, string>, 1: list<string>}
+     */
+    protected function parseEnvPairs(array $raw): array
+    {
+        $pairs = [];
+        $malformed = [];
+
+        foreach ($raw as $entry) {
+            $pos = strpos($entry, '=');
+            if ($pos === false || $pos === 0) {
+                $malformed[] = $entry;
+
+                continue;
+            }
+
+            $key = substr($entry, 0, $pos);
+            $pairs[$key] = substr($entry, $pos + 1);
+        }
+
+        return [$pairs, $malformed];
     }
 }

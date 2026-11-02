@@ -69,6 +69,15 @@ test('n8n:remove keeps the database, the encryption key and the data volume by d
         || str_contains($p->command, 'persistentvolumeclaim/'));
 });
 
+test('n8n:remove also deletes the custom env overlay', function (): void {
+    Process::fake(flowRemoveFakes(['* delete *' => Process::result(output: 'deleted')]));
+
+    $this->artisan('n8n:remove local --force')->assertExitCode(0);
+
+    Process::assertRan(fn ($p) => str_contains($p->command, 'configmap/n8n-custom-flow-example-com')
+        && str_contains($p->command, 'secret/n8n-custom-flow-example-com'));
+});
+
 test('n8n:remove --purge drops only the engine it ran, and its key and volume', function (): void {
     Process::fake(flowRemoveFakes([
         '*exec *' => Process::result(output: 'dropped'),

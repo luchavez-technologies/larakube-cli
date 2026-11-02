@@ -18,6 +18,7 @@ use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithSecrets;
 use App\Traits\InteractsWithVolumeSizing;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ManagesToolCustomEnv;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
@@ -33,7 +34,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 abstract class WordpressInitCommand extends AbstractToolInitCommand
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithData, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSecrets, InteractsWithVolumeSizing, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithData, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithSecrets, InteractsWithVolumeSizing, LaraKubeOutput, ManagesToolCustomEnv, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets, VerifiesKubernetesRollout;
 
     protected function runInit(): int
     {
@@ -48,6 +49,15 @@ abstract class WordpressInitCommand extends AbstractToolInitCommand
         $this->plexContext = $context;
         $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->dataNamespace();
+
+        [$customEnvSet, $customEnvSetErrors] = $this->parseEnvPairs((array) $this->option('custom-env'));
+        [$customEnvSetSecret, $customEnvSetSecretErrors] = $this->parseEnvPairs((array) $this->option('custom-env-secret'));
+        $customEnvErrors = [...$customEnvSetErrors, ...$customEnvSetSecretErrors];
+        if ($customEnvErrors !== []) {
+            $this->laraKubeError('Malformed --custom-env/--custom-env-secret KEY=VALUE pair(s): '.implode(', ', $customEnvErrors));
+
+            return 1;
+        }
 
         [$host, $instance] = $this->resolveInstanceAwareHost(SharedClusterService::DATA, ClusterTool::WORDPRESS, $env, $kubectl, 'WordPress');
         $aliasHosts = $this->resolveToolAliasHosts($kubectl, ClusterTool::WORDPRESS, $instance);
@@ -174,6 +184,8 @@ abstract class WordpressInitCommand extends AbstractToolInitCommand
 
         $ssoWired = $this->readClusterSecretKey($kubectl, $ns, $oidcSecretName, 'AUTH_ZITADEL_CLIENT_ID') !== null;
 
+        $customEnv = $this->seedCustomEnvAtInit(Kubectl::fromPrefix($kubectl), $names, $kubectl, $env, $customEnvSet, $customEnvSetSecret);
+
         $manifest = view('k8s.wordpress.wordpress', [
             'volumeSize' => $this->volumeSizeResolver($kubectl, $ns),
             'engine' => $engine,
@@ -193,6 +205,8 @@ abstract class WordpressInitCommand extends AbstractToolInitCommand
             'bucket' => null,
             'pvcName' => $pvcName,
             'configMapName' => $configMapName,
+            'customEnvConfigMap' => $customEnv['configMap'],
+            'customEnvSecret' => $customEnv['secret'],
             'host' => $host,
             'aliasHosts' => $aliasHosts,
             'namespace' => $ns,

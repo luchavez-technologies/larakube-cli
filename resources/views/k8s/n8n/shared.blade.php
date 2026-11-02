@@ -58,6 +58,15 @@ spec:
       containers:
         - name: n8n
           image: {{ $tool->image('n8n') }}
+          {{-- A person's own custom vars, never a key n8n itself manages —
+               loaded first so a name collision below always wins over a
+               custom one. Always present (tool:env:set / `--env=`/
+               `--env-secret=` at install), even empty. --}}
+          envFrom:
+            - configMapRef:
+                name: {{ $customEnvConfigMap }}
+            - secretRef:
+                name: {{ $customEnvSecret }}
           env:
             - name: N8N_ENCRYPTION_KEY
               valueFrom:

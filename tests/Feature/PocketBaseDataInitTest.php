@@ -299,3 +299,102 @@ test('pocketbase:remove tears down pocketbase\'s own Service and Ingress, not ju
         && str_contains($process->command, 'ingress/pocketbase-tool-example-com-ingress')
         && str_contains($process->command, 'configmap/pocketbase-hooks-tool-example-com'));
 });
+
+test('tool:init --tool=pocketbase --custom-env/--custom-env-secret seed the overlay before the Deployment is first applied', function (): void {
+    // PocketBase applies its Deployment manifest from a temp file (-f
+    // <path>), not stdin, so this asserts on the ConfigMap/Secret the
+    // overlay creates — the manifest's own envFrom wiring is covered by
+    // PocketBaseManifestYamlTest's direct Blade-render assertion.
+    $applied = ['configMaps' => [], 'secrets' => []];
+
+    Process::fake([
+        '*create namespace*' => Process::result(output: 'created'),
+        '*get secret*' => Process::result(output: ''),
+        '*apply*' => function ($process) use (&$applied) {
+            $object = json_decode((string) $process->input, true);
+            if (($object['kind'] ?? null) === 'ConfigMap') {
+                $applied['configMaps'][(string) $object['metadata']['name']] = $object;
+            } elseif (($object['kind'] ?? null) === 'Secret') {
+                $applied['secrets'][(string) $object['metadata']['name']] = $object;
+            }
+
+            return Process::result(output: 'created');
+        },
+        '*rollout status*' => Process::result(output: 'successfully rolled out'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('tool:init --tool=pocketbase local --admin-email=admin@example.com --custom-env=FEATURE_X=true --custom-env-secret=WEBHOOK_SECRET=super-secret --force')
+        ->assertExitCode(0);
+
+    $configMapName = array_key_first(array_filter(
+        $applied['configMaps'],
+        fn (array $o) => ($o['data']['FEATURE_X'] ?? null) === 'true',
+    ));
+    $secretName = array_key_first(array_filter(
+        $applied['secrets'],
+        fn (array $o) => base64_decode((string) ($o['data']['WEBHOOK_SECRET'] ?? '')) === 'super-secret',
+    ));
+
+    expect($configMapName)->not->toBeNull()
+        ->and(str_starts_with((string) $configMapName, 'pocketbase-custom-'))->toBeTrue()
+        ->and($secretName)->toBe($configMapName);
+});
+
+test('tool:init --tool=pocketbase still creates the (empty) custom env overlay when no --custom-env is given', function (): void {
+    $applied = ['configMaps' => [], 'secrets' => []];
+
+    Process::fake([
+        '*create namespace*' => Process::result(output: 'created'),
+        '*get secret*' => Process::result(output: ''),
+        '*apply*' => function ($process) use (&$applied) {
+            $object = json_decode((string) $process->input, true);
+            if (($object['kind'] ?? null) === 'ConfigMap') {
+                $applied['configMaps'][(string) $object['metadata']['name']] = $object;
+            } elseif (($object['kind'] ?? null) === 'Secret') {
+                $applied['secrets'][(string) $object['metadata']['name']] = $object;
+            }
+
+            return Process::result(output: 'created');
+        },
+        '*rollout status*' => Process::result(output: 'successfully rolled out'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('tool:init --tool=pocketbase local --admin-email=admin@example.com --force')
+        ->assertExitCode(0);
+
+    $customConfigMaps = array_values(array_filter(array_keys($applied['configMaps']), fn (string $n) => str_starts_with($n, 'pocketbase-custom-')));
+    $customSecrets = array_values(array_filter(array_keys($applied['secrets']), fn (string $n) => str_starts_with($n, 'pocketbase-custom-')));
+
+    expect($customConfigMaps)->not->toBeEmpty()
+        ->and($customSecrets)->toBe($customConfigMaps);
+});
+
+test('tool:init --tool=pocketbase refuses a malformed --custom-env pair before touching the cluster', function (): void {
+    $sawClusterCall = false;
+
+    Process::fake(function ($process) use (&$sawClusterCall) {
+        $sawClusterCall = true;
+
+        return Process::result(output: '');
+    });
+
+    $this->artisan('tool:init --tool=pocketbase local --admin-email=admin@example.com --custom-env=NOEQUALSSIGN --force')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('Malformed --custom-env/--custom-env-secret');
+
+    expect($sawClusterCall)->toBeFalse();
+});
+
+test('pocketbase:remove also deletes the custom env overlay', function (): void {
+    Process::fake([...registeredToolRemoveFakes('pocketbase:remove', 'tool-example-com'),
+        '*delete*' => Process::result(output: 'deleted'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('pocketbase:remove local --force')->assertExitCode(0);
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'configmap/pocketbase-custom-tool-example-com')
+        && str_contains($process->command, 'secret/pocketbase-custom-tool-example-com'));
+});

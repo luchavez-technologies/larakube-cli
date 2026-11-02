@@ -480,6 +480,14 @@
    "default": null,
    "kind": "value"
   },
+  "custom-env": {
+   "default": [],
+   "kind": "list"
+  },
+  "custom-env-secret": {
+   "default": [],
+   "kind": "list"
+  },
   "domain": {
    "default": null,
    "kind": "value"
@@ -687,6 +695,14 @@
   "context": {
    "default": null,
    "kind": "value"
+  },
+  "custom-env": {
+   "default": [],
+   "kind": "list"
+  },
+  "custom-env-secret": {
+   "default": [],
+   "kind": "list"
   },
   "domain": {
    "default": null,

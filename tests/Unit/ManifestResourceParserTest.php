@@ -32,6 +32,8 @@ function n8nRenderedManifest(): string
         'vpnOnly' => false,
         'isLocal' => false,
         'proxied' => false,
+        'customEnvConfigMap' => 'flow-n8n-custom',
+        'customEnvSecret' => 'flow-n8n-custom',
     ])->render();
 }
 

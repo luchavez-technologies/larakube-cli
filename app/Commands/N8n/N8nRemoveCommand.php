@@ -8,9 +8,12 @@ use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\FlowTool;
 use App\Enums\SecretKind;
+use App\Traits\ManagesToolCustomEnv;
 
 class N8nRemoveCommand extends AbstractToolRemoveCommand
 {
+    use ManagesToolCustomEnv;
+
     protected function tool(): ClusterTool
     {
         return ClusterTool::N8N;
@@ -63,6 +66,8 @@ class N8nRemoveCommand extends AbstractToolRemoveCommand
                 new ResourceRef('Service', $deployment, $ns),
                 new ResourceRef('Ingress', $deployment, $ns),
                 new ResourceRef('Secret', $names->secret(SecretKind::SMTP), $ns),
+                new ResourceRef('ConfigMap', $this->customEnvConfigMapName($names), $ns),
+                new ResourceRef('Secret', $this->customEnvSecretName($names), $ns),
             );
 
             if ($names->engine === FlowTool::WINDMILL->value) {

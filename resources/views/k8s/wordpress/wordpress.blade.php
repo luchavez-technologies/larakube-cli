@@ -205,6 +205,15 @@ EOF
           ports:
             - containerPort: 80
               name: http
+          {{-- A person's own custom vars, never a key WordPress itself
+               manages — loaded first so a name collision below always
+               wins over a custom one. Always present (tool:env:set /
+               `--env=`/`--env-secret=` at install), even empty. --}}
+          envFrom:
+            - configMapRef:
+                name: {{ $customEnvConfigMap }}
+            - secretRef:
+                name: {{ $customEnvSecret }}
           env:
 @if(($dbEngine ?? 'sqlite') === 'sqlite')
             - name: WORDPRESS_DB_NAME

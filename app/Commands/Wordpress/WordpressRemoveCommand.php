@@ -8,12 +8,13 @@ use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SecretKind;
 use App\Traits\InteractsWithData;
+use App\Traits\ManagesToolCustomEnv;
 use Illuminate\Support\Facades\Process;
 use LogicException;
 
 class WordpressRemoveCommand extends AbstractToolRemoveCommand
 {
-    use InteractsWithData;
+    use InteractsWithData, ManagesToolCustomEnv;
 
     protected $signature = 'wordpress:remove
         {environment=local : Environment to remove WordPress from}
@@ -55,6 +56,8 @@ class WordpressRemoveCommand extends AbstractToolRemoveCommand
             new ResourceRef('Ingress', $deploy, $namespace),
             new ResourceRef('Secret', $names->secret(), $namespace),
             new ResourceRef('Secret', $names->secret(SecretKind::SMTP), $namespace),
+            new ResourceRef('ConfigMap', $this->customEnvConfigMapName($names), $namespace),
+            new ResourceRef('Secret', $this->customEnvSecretName($names), $namespace),
         ]);
 
         if ($this->option('purge')) {
