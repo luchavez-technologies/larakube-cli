@@ -460,68 +460,6 @@ class MailWireCommand extends Command
         return $ok;
     }
 
-    protected function isToolInstalledForMail(string $kubectl, ClusterTool $tool): bool
-    {
-        if ($tool === ClusterTool::ZITADEL) {
-            return $this->isSsoInstalled($kubectl, $this->ssoNamespace());
-        }
-
-        $instance = $this->resolveWireInstance($kubectl, $tool);
-
-        // Resolve the live engine BEFORE checking existence — a tool whose
-        // smtpEnv() shape depends on $engine (DATA) would otherwise always
-        // be checked against its DEFAULT engine's Deployment name, so a
-        // PocketBase-only install (data-directus doesn't exist) was
-        // silently invisible to --all/the tool-selection prompt.
-        $engine = $tool->engines() !== [] ? $this->resolveInstanceEngine($kubectl, $tool, $instance, (string) ($this->option('engine') ?: '') ?: null) : null;
-        $schema = $tool->smtpEnv($engine, $instance);
-        if ($schema === null) {
-            return false;
-        }
-
-        return $this->deploymentExists($kubectl, $schema['namespace'], $schema['deployment']);
-    }
-
-    /**
-     * Which instance a tool's SMTP wiring targets. --instance= always wins.
-     * Otherwise: conventional single-instance tools (the vast majority)
-     * ignore whatever string lands here entirely — every smtpEnv()
-     * implementation except CRM's hardcodes its deployment name — so an
-     * empty placeholder is safe for them. Host-derived tools (CRM, and DATA
-     * once tool:init --tool=directus registers correctly) have no unsuffixed deployment at
-     * all; for those, the registry's real instance is the only name that
-     * will ever match a live Deployment. Multiple registered instances is
-     * genuinely ambiguous and needs an explicit --instance=, same as every
-     * other multi-instance command.
-     */
-    protected function resolveWireInstance(string $kubectl, ClusterTool $tool): string
-    {
-        // --domain names a HOST; the instance slug is derived from it. The
-        // flag it replaces took a slug directly, so the two spellings were not
-        // interchangeable even where both existed.
-        $explicit = (string) ($this->option('domain') ?: '');
-        if ($explicit !== '') {
-            return $this->resolveInstanceForDomain($kubectl, $tool, $this->normalizeTargetHost($explicit));
-        }
-
-        // The picker now resolves a concrete instance, so an interactive run no
-        // longer has to fall back to "only if there is exactly one". Picking
-        // the second of two instances used to land here as ambiguous and
-        // silently target the default.
-        if ($this->pickedHost !== null && $this->pickedHost !== '') {
-            return $this->resolveInstanceForDomain($kubectl, $tool, $this->pickedHost);
-        }
-
-        $registered = $this->getToolInstances($kubectl, $tool);
-
-        return count($registered) === 1 ? $registered[0] : '';
-    }
-
-    protected function deploymentExists(string $kubectl, string $ns, string $deployment): bool
-    {
-        return Kubectl::fromPrefix($kubectl)->hasDeployment($ns, $deployment);
-    }
-
     protected function senderDomain(string $host): string
     {
         $parts = explode('.', $host);

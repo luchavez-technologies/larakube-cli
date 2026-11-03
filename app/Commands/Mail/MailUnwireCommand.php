@@ -143,21 +143,6 @@ class MailUnwireCommand extends Command
         return $host !== '' ? $this->resolveInstanceForDomain($kubectl, $tool, $host) : '';
     }
 
-    protected function isToolInstalledForMail(string $kubectl, ClusterTool $tool): bool
-    {
-        if ($tool === ClusterTool::ZITADEL) {
-            return $this->isSsoInstalled($kubectl, $this->ssoNamespace());
-        }
-
-        $engine = $tool->engines() !== [] ? $this->resolveInstanceEngine($kubectl, $tool, '', (string) ($this->option('engine') ?: '') ?: null) : null;
-        $schema = $tool->smtpEnv($engine);
-        if ($schema === null) {
-            return false;
-        }
-
-        return Kubectl::fromPrefix($kubectl)->hasDeployment($schema['namespace'], $schema['deployment']);
-    }
-
     protected function unwireTargets(string $kubectl, array $targets, string $env): int
     {
         if ($targets === []) {

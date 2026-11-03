@@ -19,7 +19,7 @@ trait InteractsWithMail
     // InteractsWithMail also happens to compose InteractsWithToolRegistry
     // separately (confirmed live: several Mail command test doubles and
     // MailCheckCommand did not), so pull it in here rather than assume it.
-    use InteractsWithToolRegistry, ManagesToolFirewallPorts, ReadsClusterSecrets, ResolvesEnvironmentContext;
+    use InteractsWithSso, InteractsWithToolRegistry, ManagesToolFirewallPorts, ReadsClusterSecrets, ResolvesEnvironmentContext, ResolvesToolEngine;
 
     /**
      * Reverse the install-time port opening on teardown. A mail server that is
@@ -184,5 +184,57 @@ trait InteractsWithMail
             'host' => $this->resolveMailHostReadOnly($env, $config, $kubectl),
             'label' => 'Stalwart',
         ];
+    }
+
+    /**
+     * Whether a tool is installed on the cluster and capable of receiving
+     * Stalwart outbound SMTP configuration.
+     */
+    protected function isToolInstalledForMail(string $kubectl, ClusterTool $tool, ?string $instance = null): bool
+    {
+        if ($tool === ClusterTool::ZITADEL) {
+            return $this->isSsoInstalled($kubectl, $this->ssoNamespace());
+        }
+
+        $instance ??= $this->resolveWireInstance($kubectl, $tool);
+
+        // Resolve the live engine BEFORE checking existence — a tool whose
+        // smtpEnv() shape depends on $engine would otherwise always
+        // be checked against its DEFAULT engine's Deployment name, so a
+        // PocketBase-only install (data-directus doesn't exist) was
+        // silently invisible to --all/the tool-selection prompt.
+        $engineFlag = method_exists($this, 'hasOption') && $this->hasOption('engine')
+            ? ((string) ($this->option('engine') ?: '') ?: null)
+            : null;
+
+        $engine = $tool->engines() !== [] ? $this->resolveInstanceEngine($kubectl, $tool, $instance, $engineFlag) : null;
+        $schema = $tool->smtpEnv($engine, $instance);
+        if ($schema === null) {
+            return false;
+        }
+
+        return Kubectl::fromPrefix($kubectl)->hasDeployment($schema['namespace'], $schema['deployment']);
+    }
+
+    /**
+     * Which instance a tool's SMTP wiring targets. --domain= always wins.
+     */
+    protected function resolveWireInstance(string $kubectl, ClusterTool $tool): string
+    {
+        $explicit = method_exists($this, 'hasOption') && $this->hasOption('domain')
+            ? (string) ($this->option('domain') ?: '')
+            : '';
+        if ($explicit !== '') {
+            return $this->resolveInstanceForDomain($kubectl, $tool, $this->normalizeTargetHost($explicit));
+        }
+
+        $pickedHost = property_exists($this, 'pickedHost') ? $this->pickedHost : null;
+        if (is_string($pickedHost) && $pickedHost !== '') {
+            return $this->resolveInstanceForDomain($kubectl, $tool, $pickedHost);
+        }
+
+        $registered = $this->getToolInstances($kubectl, $tool);
+
+        return count($registered) === 1 ? $registered[0] : '';
     }
 }

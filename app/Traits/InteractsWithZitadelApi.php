@@ -222,6 +222,25 @@ trait InteractsWithZitadelApi
         }
     }
 
+    /** Check if Zitadel has at least one SMTP email provider configured. */
+    protected function zitadelHasSmtpProvider(string $host, string $pat): bool
+    {
+        try {
+            $connector = ZitadelConnector::make($host, $pat);
+            $search = $connector->send(SearchEmailProvidersRequest::make());
+
+            if (! $search->successful()) {
+                return false;
+            }
+
+            $results = $search->json('result', []);
+
+            return ! empty($results);
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
     /** Delete (or deactivate, if delete is refused) a Zitadel user by ID. */
     protected function zitadelDeleteUser(string $host, string $pat, string $userId): bool
     {
