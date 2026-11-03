@@ -32,7 +32,9 @@ class MeetUnwireCommand extends Command
     protected $signature = 'meet:unwire
         {environment=local : Environment whose Meet wiring to remove}
         {--tool= : The tool to disconnect from Meet (prompts when omitted)}
-        {--context= : Target a specific kube-context}';
+        {--domain= : The instance to target. Omit for the default instance}
+        {--context= : Target a specific kube-context}
+        {--force : Skip confirmation prompt}';
 
     protected $description = 'Disconnect a tool from the shared LiveKit SFU (Meet)';
 

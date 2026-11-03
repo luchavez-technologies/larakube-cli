@@ -187,6 +187,7 @@ test('tool:list --registry-only answers from the registry alone, with no live pr
     expect($rows['pocketbase']['installed'])->toBeTrue()
         ->and($rows['pocketbase']['host'])->toBe('pocket.example.com')
         ->and($rows['pocketbase']['verified'])->toBeFalse()
+        ->and($rows['pocketbase']['meet'])->toBe('unverified')
         ->and($rows['stalwart']['installed'])->toBeFalse()
         ->and($rows['stalwart']['verified'])->toBeFalse()
         ->and($rows['stalwart']['sso'])->toBe('unverified');
@@ -613,4 +614,24 @@ test('app:list command alias executes identically to tool:list', function (): vo
     expect($exit)->toBe(0)
         ->and($output)->toBeArray()
         ->and(collect($output)->pluck('tool'))->toContain('outline', 'pocketbase');
+});
+
+test('tool:list surfaces LiveKit Meet wiring status for Matrix chat', function (): void {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ['tool' => 'matrix', 'instance' => 'chat-luchtech-dev', 'host' => 'chat.luchtech.dev', 'installedAt' => '2026-09-01T00:00:00+00:00'],
+        ]))),
+        '*get secret synapse-meet-chat-luchtech-dev -n larakube-shared*' => Process::result(output: 'synapse-meet-chat-luchtech-dev'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $exit = Artisan::call('tool:list local --json');
+    $output = json_decode(Artisan::output(), true);
+
+    expect($exit)->toBe(0);
+    $matrixRow = collect($output)->firstWhere('tool', 'matrix');
+    $pocketRow = collect($output)->firstWhere('tool', 'pocketbase');
+
+    expect($matrixRow['meet'])->toBe('wired')
+        ->and($pocketRow['meet'])->toBe('N/A');
 });

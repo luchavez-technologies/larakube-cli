@@ -33,7 +33,8 @@ class SsoUnwireCommand extends Command
         {--engine= : Specific engine to target explicitly, skipping auto-detection (e.g. --engine=pocketbase)}
         {--domain= : The instance to target (e.g. --domain=blog.example.com). Omit for the default instance}
         {--context= : Target a specific kube-context}
-        {--project= : Zitadel project name (default: LaraKube Shared Tools)}';
+        {--project= : Zitadel project name (default: LaraKube Shared Tools)}
+        {--force : Skip confirmation prompt}';
 
     protected $description = 'Unwire a tool from Zitadel SSO and deregister its OIDC application';
 

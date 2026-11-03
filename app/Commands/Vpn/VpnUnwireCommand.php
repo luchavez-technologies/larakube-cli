@@ -23,7 +23,8 @@ class VpnUnwireCommand extends Command
         {environment=local : Environment whose deployment to unwire}
         {--tool= : The tool whose VPN restriction should be lifted}
         {--domain= : The instance to target (e.g. --domain=blog.example.com). Omit for the default instance}
-        {--context= : Target a specific kube-context}';
+        {--context= : Target a specific kube-context}
+        {--force : Skip confirmation prompt}';
 
     protected $description = "Lift a tool's VPN-only ingress restriction";
 

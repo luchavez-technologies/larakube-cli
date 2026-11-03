@@ -34,7 +34,8 @@ class MailUnwireCommand extends Command
         {--domain= : The instance to target (e.g. --domain=blog.example.com). Omit for the default instance. Ignored with --all}
         {--engine= : Specific engine to target explicitly, skipping auto-detection (e.g. --engine=pocketbase)}
         {--all   : Unwire every installed SMTP-capable tool}
-        {--context= : Target a specific kube-context}';
+        {--context= : Target a specific kube-context}
+        {--force : Skip confirmation prompt}';
 
     protected $description = 'Unwire SMTP mail settings from a tool and restart its deployment';
 

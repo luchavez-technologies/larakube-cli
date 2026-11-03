@@ -7,6 +7,7 @@ use App\Contracts\HasOidcWiring;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\UsesForwardAuth;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
 use App\Services\Tools\ToolInitSpec;
@@ -197,7 +198,7 @@ class ToolListCommand extends Command
 
         if ($registryOnly) {
             foreach ($rows as &$row) {
-                $row = array_merge($row, ['mail' => 'unverified', 'sso' => 'unverified', 'rotation' => 'unverified', 'sync' => 'unverified', 'vpn' => 'unverified', 'db_role' => null]);
+                $row = array_merge($row, ['mail' => 'unverified', 'sso' => 'unverified', 'rotation' => 'unverified', 'sync' => 'unverified', 'vpn' => 'unverified', 'meet' => 'unverified', 'db_role' => null]);
                 unset($row['vendor']);
             }
             unset($row);
@@ -298,6 +299,18 @@ class ToolListCommand extends Command
                 $mwNs = $vpnTarget['namespace'];
                 $wired = trim(Process::run("{$kubectl} get middleware {$mwName} -n {$mwNs} --no-headers --ignore-not-found")->output()) !== '';
                 $r['vpn'] = $wired ? 'mesh' : 'public';
+            }
+
+            // 6. Meet (LiveKit SFU)
+            if ($toolEnum !== ClusterTool::MATRIX) {
+                $r['meet'] = 'N/A';
+            } elseif (! $installed) {
+                $r['meet'] = '—';
+            } else {
+                $names = $instance !== '' ? ToolInstance::forInstance($toolEnum, $instance) : ToolInstance::first($kubectl, $toolEnum);
+                $meetSecret = $names !== null ? $names->name('meet', 'synapse') : 'synapse-meet';
+                $wired = trim(Process::run("{$kubectl} get secret {$meetSecret} -n {$ns} --no-headers --ignore-not-found")->output()) !== '';
+                $r['meet'] = $wired ? 'wired' : 'unwired';
             }
 
             unset($r['vendor']);
@@ -694,7 +707,7 @@ class ToolListCommand extends Command
         };
 
         table(
-            ['', 'Service', 'What it is', 'URL', 'Mail', 'SSO', 'Rotation', 'Secrets', 'VPN'],
+            ['', 'Service', 'What it is', 'URL', 'Mail', 'SSO', 'Rotation', 'Secrets', 'VPN', 'Meet'],
             array_map(fn (array $r) => [
                 $r['installed'] ? '<fg=green>●</>' : '<fg=gray>○</>',
                 $r['brand'],
@@ -705,6 +718,7 @@ class ToolListCommand extends Command
                 $color((string) $r['rotation']),
                 $color((string) $r['sync']),
                 $color((string) $r['vpn']),
+                $color((string) ($r['meet'] ?? 'N/A')),
             ], $rows),
         );
 

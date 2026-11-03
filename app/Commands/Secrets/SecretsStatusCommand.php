@@ -143,12 +143,49 @@ class SecretsStatusCommand extends Command
     protected function staticRoleSummary(string $kubectl): array
     {
         $capable = array_filter(ClusterTool::shippedCases(), fn (ClusterTool $t) => $t->dbSecretRef() !== null);
+        $registered = $this->getRegisteredTools($kubectl);
 
-        $rows = [];
+        $instancesToProbe = [];
+        $registeredToolsSeen = [];
+        foreach ($registered as $entry) {
+            $tool = ClusterTool::tryFrom((string) ($entry['tool'] ?? ''));
+            if ($tool === null || $tool->dbSecretRef() === null) {
+                continue;
+            }
+            $registeredToolsSeen[$tool->value] = true;
+            $instancesToProbe[] = [
+                'tool' => $tool,
+                'instance' => (string) ($entry['instance'] ?? ''),
+                'host' => $entry['host'] ?? null,
+                'engine' => (string) ($entry['engine'] ?? '') ?: null,
+            ];
+        }
+
         foreach ($capable as $tool) {
+            if (isset($registeredToolsSeen[$tool->value])) {
+                continue;
+            }
             $host = $this->getToolHost($kubectl, $tool);
             $instance = $host !== null ? $this->resolveInstanceForDomain($kubectl, $tool, $host) : '';
-            $engine = $tool->engines() !== [] ? $this->resolveInstanceEngine($kubectl, $tool, $instance, null) : null;
+            $instancesToProbe[] = [
+                'tool' => $tool,
+                'instance' => $instance,
+                'host' => $host,
+                'engine' => null,
+            ];
+        }
+
+        $rows = [];
+        foreach ($instancesToProbe as $probe) {
+            /** @var ClusterTool $tool */
+            $tool = $probe['tool'];
+            $host = $probe['host'];
+            $instance = $probe['instance'];
+            if ($instance === '' && $host !== null && $host !== '') {
+                $instance = $this->resolveInstanceForDomain($kubectl, $tool, $host);
+            }
+
+            $engine = $probe['engine'] ?? ($tool->engines() !== [] ? $this->resolveInstanceEngine($kubectl, $tool, $instance, null) : null);
             $tenant = $tool->commonsDatabases($instance, $engine)[0] ?? null;
             if ($tenant === null) {
                 continue;

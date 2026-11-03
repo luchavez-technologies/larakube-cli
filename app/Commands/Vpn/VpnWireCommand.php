@@ -22,7 +22,8 @@ class VpnWireCommand extends Command
         {environment=local : Environment whose deployment to wire}
         {--tool= : The tool to restrict to NetBird VPN peers only}
         {--domain= : The instance to target (e.g. --domain=blog.example.com). Omit for the default instance}
-        {--context= : Target a specific kube-context}';
+        {--context= : Target a specific kube-context}
+        {--force : Skip confirmation prompt}';
 
     protected $description = "Restrict a tool's ingress to NetBird VPN peers only — creates the Traefik Middleware --vpn-only's annotation already references";
 

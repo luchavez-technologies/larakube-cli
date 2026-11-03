@@ -43,7 +43,8 @@ class SsoWireCommand extends Command
         {--context= : Target a specific kube-context}
         {--project= : Zitadel project name to register the OIDC app under (default: LaraKube Shared Tools)}
         {--admin-email= : Email of the user to grant the tool\'s admin role to (tools with ssoAdminRoles(), e.g. drive)}
-        {--sso-only : Enforce SSO-only login and disable local password authentication}';
+        {--sso-only : Enforce SSO-only login and disable local password authentication}
+        {--force : Skip confirmation prompt}';
 
     protected $description = 'Register a tool as an OIDC client in Zitadel and wire its login to SSO';
 

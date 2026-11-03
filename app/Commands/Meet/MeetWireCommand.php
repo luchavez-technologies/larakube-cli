@@ -13,6 +13,7 @@ use App\Traits\LaraKubeOutput;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesMeetWireTarget;
 use App\Traits\ResolvesToolEnvironment;
+use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
@@ -29,12 +30,14 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  */
 class MeetWireCommand extends Command
 {
-    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMeet, InteractsWithToolRegistry, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesMeetWireTarget, ResolvesToolEnvironment, StreamsProcessOutput;
+    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMeet, InteractsWithToolRegistry, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesMeetWireTarget, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 
     protected $signature = 'meet:wire
         {environment=local : Environment whose Meet install to wire}
         {--tool= : The tool to connect to Meet (prompts when omitted)}
-        {--context= : Target a specific kube-context}';
+        {--domain= : The instance to target. Omit for the default instance}
+        {--context= : Target a specific kube-context}
+        {--force : Skip confirmation prompt}';
 
     protected $description = 'Connect a tool to the shared LiveKit SFU (Meet)';
 
@@ -58,8 +61,9 @@ class MeetWireCommand extends Command
             return 1;
         }
 
+        $domainOption = (string) ($this->option('domain') ?: '');
         $meetHost = $this->getToolHost($kubectl, ClusterTool::LIVEKIT);
-        $chatHost = $this->getToolHost($kubectl, ClusterTool::MATRIX);
+        $chatHost = $domainOption !== '' ? $this->sanitizeDomainInput($domainOption) : $this->getToolHost($kubectl, ClusterTool::MATRIX);
 
         if ($meetHost === null || $chatHost === null) {
             $this->laraKubeError('Could not resolve the Meet and Chat hosts from the tool registry — re-run their init commands.');

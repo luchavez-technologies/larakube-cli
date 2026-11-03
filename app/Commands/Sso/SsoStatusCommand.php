@@ -194,13 +194,18 @@ class SsoStatusCommand extends Command
     protected function wiredToolsSummary(string $kubectl, string $ssoNs): array
     {
         $rows = [];
-        foreach (ClusterTool::shippedCases() as $tool) {
-            $host = $this->getToolHost($kubectl, $tool);
-            $instance = $host !== null ? $this->resolveInstanceForDomain($kubectl, $tool, $host) : '';
+        foreach ($this->getRegisteredTools($kubectl) as $registered) {
+            $tool = ClusterTool::tryFrom((string) ($registered['tool'] ?? ''));
+            if ($tool === null || ! $tool->hasSsoWire()) {
+                continue;
+            }
+
+            $host = $registered['host'] ?? null;
+            $instance = (string) ($registered['instance'] ?? '');
+            if ($instance === '' && $host !== null && $host !== '') {
+                $instance = $this->resolveInstanceForDomain($kubectl, $tool, $host);
+            }
             if ($instance === '') {
-                // ssoAppSecretName()/ToolInstance::forInstance() require a
-                // real host-derived slug — nothing to check until this tool
-                // is registered under one.
                 continue;
             }
 
@@ -221,7 +226,7 @@ class SsoStatusCommand extends Command
                 'tool' => $tool->getLabel(),
                 'slug' => $tool->value,
                 'instance' => $instance,
-                'host' => $host !== '' ? $host : null,
+                'host' => ($host !== null && $host !== '') ? $host : null,
                 'wired' => true,
                 'projectId' => $projectId,
             ];

@@ -42,7 +42,8 @@ class MailWireCommand extends Command
         {--context=     : Target a specific kube-context}
         {--sender=      : Sender/login address (default: noreply@<domain>)}
         {--app-password= : Stalwart application password for the sender}
-        {--forget       : Delete the cached sender credentials and exit}';
+        {--forget       : Delete the cached sender credentials and exit}
+        {--force        : Skip confirmation prompt}';
 
     protected $description = 'Point a tool (n8n, …) at the Stalwart mail server for outbound email';
 

@@ -123,8 +123,9 @@ class MailStatusCommand extends Command
     protected function wiredToolsSummary(string $kubectl, string $env): array
     {
         $rows = [];
-        foreach (ClusterTool::shippedCases() as $tool) {
-            if (! $tool->hasMailWire()) {
+        foreach ($this->getRegisteredTools($kubectl) as $registered) {
+            $tool = ClusterTool::tryFrom((string) ($registered['tool'] ?? ''));
+            if ($tool === null || ! $tool->hasMailWire()) {
                 continue;
             }
 
@@ -132,8 +133,11 @@ class MailStatusCommand extends Command
                 continue;
             }
 
-            $host = $this->getToolHost($kubectl, $tool);
-            $instance = $host !== null ? $this->resolveInstanceForDomain($kubectl, $tool, $host) : '';
+            $host = $registered['host'] ?? null;
+            $instance = (string) ($registered['instance'] ?? '');
+            if ($instance === '' && $host !== null && $host !== '') {
+                $instance = $this->resolveInstanceForDomain($kubectl, $tool, $host);
+            }
 
             // Zitadel configures SMTP via its own Admin API rather than a
             // Kubernetes Deployment Secret (see MailWireCommand::wireTool()).
@@ -163,7 +167,7 @@ class MailStatusCommand extends Command
                 continue;
             }
 
-            $engine = $tool->engines() !== [] ? $this->resolveInstanceEngine($kubectl, $tool, $instance, null) : null;
+            $engine = (string) ($registered['engine'] ?? '') ?: ($tool->engines() !== [] ? $this->resolveInstanceEngine($kubectl, $tool, $instance, null) : null);
             $schema = $tool->smtpEnv($engine, $instance);
             if ($schema === null) {
                 continue;
