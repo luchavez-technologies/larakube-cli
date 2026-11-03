@@ -5,6 +5,7 @@ namespace App\Commands\Stalwart;
 use App\Commands\Tool\AbstractToolRemoveCommand;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
+use App\Services\Kubectl;
 use App\Traits\InteractsWithMail;
 use Illuminate\Support\Facades\Process;
 
@@ -58,7 +59,9 @@ class StalwartRemoveCommand extends AbstractToolRemoveCommand
         // Wait for the pod to fully terminate before reporting done.
         // Result is never read — `2>/dev/null || true` was only ever there
         // to keep the shell happy about a nonzero exit nothing checks.
-        Process::run("{$kubectl} wait --for=delete pod -l larakube.io/tool=mail -n {$namespace} --timeout=60s");
+        $k = Kubectl::fromPrefix($kubectl);
+        $k->raw(['wait', '--for=delete', 'pod', '-l', 'larakube.io/tool=mail', '-n', $namespace, '--timeout=60s']);
+        $k->raw(['wait', '--for=delete', 'pod', '-l', 'larakube.io/tool=stalwart', '-n', $namespace, '--timeout=60s']);
 
         // Mail-wire SMTP secrets (<tool>-smtp) — useless without Stalwart, and
         // they'd silently point a re-installed tool at a mail server that's

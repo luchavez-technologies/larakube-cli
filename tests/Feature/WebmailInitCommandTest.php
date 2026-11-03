@@ -138,3 +138,27 @@ test('bulwark:remove aborts when a delete step fails', function (): void {
         ->assertExitCode(1)
         ->expectsOutputToContain('failed to remove');
 });
+
+test('bulwarkAccess detects Bulwark when labeled with canonical larakube.io/tool=bulwark', function (): void {
+    $reader = new class
+    {
+        use App\Traits\InteractsWithBulwark;
+
+        public function access(string $env): ?array
+        {
+            return $this->bulwarkAccess($env, null);
+        }
+    };
+
+    Process::fake([
+        '*-l larakube.io/tool=webmail*' => Process::result(output: ''),
+        '*get deployment -n larakube-shared -l larakube.io/tool=bulwark*' => Process::result(output: 'bulwark-mail-example-com   1/1   1   1   5d'),
+        '*get ingress -n larakube-shared -l larakube.io/tool=bulwark*' => Process::result(output: 'mail.example.com'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $access = $reader->access('production');
+    expect($access)->not->toBeNull()
+        ->and($access['host'])->toBe('mail.example.com')
+        ->and($access['label'])->toBe('Bulwark');
+});

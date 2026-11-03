@@ -55,7 +55,16 @@ test('isVaultInstalled finds the Deployment by its identity label, whatever its 
     Process::fake(['*get deployment -l larakube.io/tool=passwords -n larakube-vault*' => 'vaultwarden-vault-example-com   1/1   1   1   5d']);
     expect(vaultReader()->installed('kubectl', 'larakube-vault'))->toBeTrue();
 
-    Process::fake(['*get deployment -l larakube.io/tool=passwords -n larakube-vault*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake([
+        '*get deployment -l larakube.io/tool=passwords -n larakube-vault*' => Process::result(output: ''),
+        '*-l larakube.io/tool=vaultwarden*' => 'vaultwarden-vault-example-com   1/1   1   1   5d',
+    ]);
+    expect(vaultReader()->installed('kubectl', 'larakube-vault'))->toBeTrue();
+
+    Process::fake([
+        '*get deployment -l larakube.io/tool=passwords -n larakube-vault*' => Process::result(output: '', exitCode: 1),
+        '*-l larakube.io/tool=vaultwarden*' => Process::result(output: '', exitCode: 1),
+    ]);
     expect(vaultReader()->installed('kubectl', 'larakube-vault'))->toBeFalse();
 });
 

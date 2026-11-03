@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Enums\ClusterTool;
 use App\Http\Integrations\Stalwart\Requests\JmapRequest;
 use App\Http\Integrations\Stalwart\StalwartConnector;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 use Saloon\Exceptions\Request\FatalRequestException;
 use stdClass;
@@ -57,10 +58,13 @@ trait InteractsWithStalwartApi
     protected function stalwartPodName(string $kubectl, string $ns): string
     {
         // By identity label, which avoids needing to resolve the instance just
-        // to find the pod.
-        $pod = trim(Process::run("{$kubectl} get pod -l larakube.io/tool=mail -n {$ns} -o name --no-headers 2>/dev/null | head -1")->output());
-        if ($pod !== '') {
-            return $pod;
+        // to find the pod. Checks both legacy 'mail' and canonical 'stalwart'.
+        $k = Kubectl::fromPrefix($kubectl);
+        foreach (['larakube.io/tool=mail', 'larakube.io/tool=stalwart'] as $selector) {
+            $lines = array_values(array_filter(array_map('trim', explode("\n", $k->raw(['get', 'pod', '-l', $selector, '-n', $ns, '-o', 'name', '--no-headers'])->output))));
+            if ($lines !== []) {
+                return $lines[0];
+            }
         }
 
         return 'deploy/'.ClusterTool::STALWART->deploymentName($this->resolveMailInstance($kubectl));

@@ -224,3 +224,39 @@ test('stalwart:show with production environment and explicit context emits json 
     expect($exitCode)->toBe(0)
         ->and($output)->toContain('"installed": true');
 });
+
+test('stalwart:show detects Stalwart when labeled with canonical larakube.io/tool=stalwart', function (): void {
+    ssoRegistered();
+    Process::fake([
+        '*larakube.io/tool=mail*' => Process::result(output: ''),
+        '*larakube.io/tool=stalwart*' => Process::result(output: 'stalwart-send-luchtech-dev   1/1   1   1   20h'),
+        '*get secret stalwart-secrets*' => Process::result(output: base64_encode('s3cret-p@ss')),
+        '*port-forward*' => Process::result(output: ''),
+    ]);
+
+    $exitCode = Illuminate\Support\Facades\Artisan::call('stalwart:show', ['--json' => true]);
+    $output = Illuminate\Support\Facades\Artisan::output();
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('"installed": true')
+        ->toContain('"adminPassword": "s3cret-p@ss"');
+});
+
+test('stalwartPodName resolves pod when labeled with canonical larakube.io/tool=stalwart', function (): void {
+    $helper = new class
+    {
+        use App\Traits\InteractsWithMail, App\Traits\InteractsWithStalwartApi;
+
+        public function pod(string $kubectl, string $ns): string
+        {
+            return $this->stalwartPodName($kubectl, $ns);
+        }
+    };
+
+    Process::fake([
+        '*get pod -l larakube.io/tool=mail*' => Process::result(output: ''),
+        '*get pod -l larakube.io/tool=stalwart*' => Process::result(output: "pod/stalwart-send-luchtech-dev-abc123\n"),
+    ]);
+
+    expect($helper->pod('kubectl', 'larakube-shared'))->toBe('pod/stalwart-send-luchtech-dev-abc123');
+});

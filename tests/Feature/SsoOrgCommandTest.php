@@ -8,6 +8,7 @@ use App\Http\Integrations\Zitadel\Requests\AddOrgMemberRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateActionRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateOrganizationRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateUserRequest;
+use App\Http\Integrations\Zitadel\Requests\DeleteOrganizationRequest;
 use App\Http\Integrations\Zitadel\Requests\GenerateOrgDomainValidationRequest;
 use App\Http\Integrations\Zitadel\Requests\GetFlowRequest;
 use App\Http\Integrations\Zitadel\Requests\SearchActionsRequest;
@@ -199,4 +200,64 @@ test('zitadelValidateOrgDomain gives up after exhausting its attempts', function
 
     expect($caller->call())->toBeFalse();
     Saloon::assertSentCount(2);
+});
+
+test('sso:org-delete deletes a partner organization by name', function (): void {
+    ssoRegistered();
+    Process::fake(ssoOrgBaseProcessFakes());
+    Saloon::fake([
+        SearchOrganizationsRequest::class => MockResponse::make([
+            'result' => [
+                ['id' => 'org-primary', 'name' => 'LuchTech'],
+                ['id' => '387690241006191311', 'name' => 'nexa-web.site'],
+            ],
+        ]),
+        DeleteOrganizationRequest::class => MockResponse::make([]),
+    ]);
+
+    $this->artisan('sso:org-delete', ['--org' => 'nexa-web.site', '--force' => true])
+        ->assertExitCode(0)
+        ->expectsOutputToContain("Partner organization 'nexa-web.site' (387690241006191311) removed from Zitadel SSO.");
+
+    Saloon::assertSent(fn ($request) => $request instanceof DeleteOrganizationRequest
+        && $request->resolveEndpoint() === 'v2/organizations/387690241006191311');
+});
+
+test('sso:org-delete refuses to delete the primary organization', function (): void {
+    ssoRegistered();
+    Process::fake(ssoOrgBaseProcessFakes());
+    Saloon::fake([
+        SearchOrganizationsRequest::class => MockResponse::make([
+            'result' => [
+                ['id' => 'org-primary', 'name' => 'LuchTech'],
+                ['id' => '387690241006191311', 'name' => 'nexa-web.site'],
+            ],
+        ]),
+    ]);
+
+    $this->artisan('sso:org-delete', ['--org' => 'LuchTech', '--force' => true])
+        ->assertExitCode(1)
+        ->expectsOutputToContain("Cannot delete the primary organization 'LuchTech'");
+
+    Saloon::assertNotSent(DeleteOrganizationRequest::class);
+});
+
+test('sso:org-delete requires typing the organization name when --force is omitted', function (): void {
+    ssoRegistered();
+    Process::fake(ssoOrgBaseProcessFakes());
+    Saloon::fake([
+        SearchOrganizationsRequest::class => MockResponse::make([
+            'result' => [
+                ['id' => 'org-primary', 'name' => 'LuchTech'],
+                ['id' => '387690241006191311', 'name' => 'nexa-web.site'],
+            ],
+        ]),
+        DeleteOrganizationRequest::class => MockResponse::make([]),
+    ]);
+
+    $this->artisan('sso:org-delete', ['--org' => 'nexa-web.site'])
+        ->expectsQuestion("To confirm, type the organization name 'nexa-web.site':", 'wrong-name')
+        ->assertExitCode(1);
+
+    Saloon::assertNotSent(DeleteOrganizationRequest::class);
 });

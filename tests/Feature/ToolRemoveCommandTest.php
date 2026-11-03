@@ -234,6 +234,9 @@ test('stalwart:remove closes the firewall ports it opened', function (): void {
     // A mail server that's gone but whose SMTP ports stay open is a real
     // exposure, so teardown must reach the firewall too.
     $this->artisan('stalwart:remove local --force')->assertExitCode(0);
+
+    Process::assertRan(fn ($job) => str_contains($job->command, 'wait --for=delete pod -l larakube.io/tool=mail'));
+    Process::assertRan(fn ($job) => str_contains($job->command, 'wait --for=delete pod -l larakube.io/tool=stalwart'));
 });
 
 test('--domain on a single-instance tool errors instead of silently no-opping', function (): void {

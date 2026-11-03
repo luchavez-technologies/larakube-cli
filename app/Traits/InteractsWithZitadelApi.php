@@ -16,6 +16,7 @@ use App\Http\Integrations\Zitadel\Requests\CreateUserGrantRequest;
 use App\Http\Integrations\Zitadel\Requests\CreateUserRequest;
 use App\Http\Integrations\Zitadel\Requests\DeactivateUserRequest;
 use App\Http\Integrations\Zitadel\Requests\DeleteEmailProviderRequest;
+use App\Http\Integrations\Zitadel\Requests\DeleteOrganizationRequest;
 use App\Http\Integrations\Zitadel\Requests\DeleteProjectAppRequest;
 use App\Http\Integrations\Zitadel\Requests\DeleteProjectRequest;
 use App\Http\Integrations\Zitadel\Requests\DeleteUserGrantRequest;
@@ -930,6 +931,16 @@ trait InteractsWithZitadelApi
         }
 
         return $this->zitadelCreateOrg($host, $pat, $name);
+    }
+
+    /**
+     * Permanently delete a secondary/partner Zitadel organization and cascade
+     * its users, domains, actions, and cross-org project grants.
+     * v2 API — DELETE /v2/organizations/{organizationId}.
+     */
+    protected function zitadelDeleteOrg(string $host, string $pat, string $orgId): bool
+    {
+        return ZitadelConnector::make($host, $pat)->send(DeleteOrganizationRequest::make($orgId))->successful();
     }
 
     /**

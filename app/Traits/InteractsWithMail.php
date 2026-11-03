@@ -48,7 +48,10 @@ trait InteractsWithMail
      */
     protected function isMailInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=mail');
+        $k = Kubectl::fromPrefix($kubectl);
+
+        return $k->hasDeploymentLabelled($ns, 'larakube.io/tool=mail')
+            || $k->hasDeploymentLabelled($ns, 'larakube.io/tool=stalwart');
     }
 
     /**

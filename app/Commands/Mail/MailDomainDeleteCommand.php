@@ -35,6 +35,7 @@ class MailDomainDeleteCommand extends Command
         {environment=local : Environment whose mail server to target}
         {--context=         : Target a specific kube-context}
         {--domain=          : Domain to permanently remove from Stalwart}
+        {--with-sso         : Also delete the matching partner organization from Zitadel SSO if present}
         {--force            : Skip the confirmation prompt}';
 
     protected $description = 'Permanently remove a domain and everything under it from Stalwart';
@@ -190,6 +191,18 @@ class MailDomainDeleteCommand extends Command
         $this->info("✅ '{$domain}' fully removed from Stalwart.");
         $this->line('  Removed '.count($accounts).' mailbox(es) and '.count($signatures).' key(s) total.');
         $this->line('  Cloudflare DNS was left alone — clean that up separately.');
+
+        if ($this->option('with-sso')) {
+            $ssoArgs = [
+                'environment' => $env,
+                '--org' => $domain,
+                '--force' => true,
+            ];
+            if ($context !== null && $context !== '') {
+                $ssoArgs['--context'] = $context;
+            }
+            $this->call('sso:org-delete', $ssoArgs);
+        }
 
         return 0;
     }

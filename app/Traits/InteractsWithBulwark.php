@@ -33,8 +33,10 @@ trait InteractsWithBulwark
      */
     protected function isBulwarkInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=webmail')
-            || $this->isToolRegistered($kubectl, ClusterTool::BULWARK)
+        $k = Kubectl::fromPrefix($kubectl);
+
+        return $k->hasDeploymentLabelled($ns, 'larakube.io/tool=webmail')
+            || $k->hasDeploymentLabelled($ns, 'larakube.io/tool=bulwark')
             || $this->isToolRegistered($kubectl, ClusterTool::BULWARK);
     }
 
@@ -55,19 +57,20 @@ trait InteractsWithBulwark
         $service = SharedClusterService::WEBMAIL;
 
         if ($kubectl !== null) {
-            $registered = $this->resolveLiveToolHost($kubectl, ClusterTool::BULWARK)
-                ?? $this->resolveLiveToolHost($kubectl, ClusterTool::BULWARK);
+            $registered = $this->resolveLiveToolHost($kubectl, ClusterTool::BULWARK);
             if ($registered !== null && $registered !== '') {
                 return $registered;
             }
 
-            $ingressHost = trim(Kubectl::fromPrefix($kubectl)->raw([
-                'get', 'ingress', '-n', $this->bulwarkNamespace(), '-l', 'larakube.io/tool=webmail',
-                '-o', 'jsonpath={.items[0].spec.rules[0].host}',
-            ])->output);
+            foreach (['webmail', 'bulwark'] as $label) {
+                $ingressHost = trim(Kubectl::fromPrefix($kubectl)->raw([
+                    'get', 'ingress', '-n', $this->bulwarkNamespace(), '-l', "larakube.io/tool={$label}",
+                    '-o', 'jsonpath={.items[0].spec.rules[0].host}',
+                ])->output);
 
-            if ($ingressHost !== '') {
-                return $ingressHost;
+                if ($ingressHost !== '') {
+                    return $ingressHost;
+                }
             }
         }
 

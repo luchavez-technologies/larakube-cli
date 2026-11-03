@@ -23,11 +23,15 @@ trait InteractsWithVault
     protected function isVaultInstalled(string $kubectl, string $ns): bool
     {
         // By label: the Deployment is named per instance.
-        $found = Kubectl::fromPrefix($kubectl)->raw(
+        $k = Kubectl::fromPrefix($kubectl);
+        $found = $k->raw(
             ['get', 'deployment', '-l', 'larakube.io/tool=passwords', '-n', $ns, '--no-headers', '--ignore-not-found'],
         );
+        if (trim($found->output) !== '') {
+            return true;
+        }
 
-        return trim($found->output) !== '';
+        return $k->hasDeploymentLabelled($ns, 'larakube.io/tool=vaultwarden');
     }
 
     /**
