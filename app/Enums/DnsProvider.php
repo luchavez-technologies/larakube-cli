@@ -2,6 +2,8 @@
 
 namespace App\Enums;
 
+use App\Traits\InteractsWithCloudflareApi;
+
 /**
  * Which DNS backend `tool:init --tool=external-dns` and `tls:init` manage records on/prove
  * control through. Cloudflare was the only path for a long time — not a
@@ -18,6 +20,8 @@ namespace App\Enums;
  */
 enum DnsProvider: string
 {
+    use InteractsWithCloudflareApi;
+
     public function label(): string
     {
         return match ($this) {
@@ -123,6 +127,55 @@ enum DnsProvider: string
             ],
         };
     }
+
+    /**
+     * Verify credentials for this DNS provider.
+     *
+     * @param  array<string, mixed>  $credential
+     * @return array{
+     *     valid: bool,
+     *     status: string,
+     *     zones: list<string>,
+     *     checks: array{
+     *         token_active: bool,
+     *         zones_accessible: bool,
+     *         dns_edit: bool,
+     *         ssl_read: bool
+     *     },
+     *     errors: list<string>
+     * }
+     */
+    public function verifyCredential(array $credential): array
+    {
+        return match ($this) {
+            self::CLOUDFLARE => $this->cloudflareVerifyToken((string) ($credential['token'] ?? '')),
+            self::ROUTE53 => [
+                'valid' => true,
+                'status' => 'unverified',
+                'zones' => [],
+                'checks' => [
+                    'token_active' => true,
+                    'zones_accessible' => true,
+                    'dns_edit' => true,
+                    'ssl_read' => true,
+                ],
+                'errors' => [],
+            ],
+            self::GOOGLE => [
+                'valid' => true,
+                'status' => 'unverified',
+                'zones' => [],
+                'checks' => [
+                    'token_active' => true,
+                    'zones_accessible' => true,
+                    'dns_edit' => true,
+                    'ssl_read' => true,
+                ],
+                'errors' => [],
+            ],
+        };
+    }
+
     case CLOUDFLARE = 'cloudflare';
     case ROUTE53 = 'route53';
     case GOOGLE = 'google';

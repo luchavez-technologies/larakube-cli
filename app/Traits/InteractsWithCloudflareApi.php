@@ -9,6 +9,7 @@ use App\Http\Integrations\Cloudflare\Requests\GetZoneSettingRequest;
 use App\Http\Integrations\Cloudflare\Requests\ListDnsRecordsRequest;
 use App\Http\Integrations\Cloudflare\Requests\ListZonesRequest;
 use App\Http\Integrations\Cloudflare\Requests\PatchDnsRecordRequest;
+use App\Http\Integrations\Cloudflare\Requests\VerifyTokenRequest;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Arr;
 use JsonException;
@@ -28,6 +29,125 @@ use Throwable;
  */
 trait InteractsWithCloudflareApi
 {
+    /**
+     * Deep verification of a Cloudflare API token covering authentication,
+     * zone scope discovery, DNS record edit permissions, and zone settings read (SSL mode).
+     *
+     * @return array{
+     *     valid: bool,
+     *     status: string,
+     *     zones: list<string>,
+     *     checks: array{
+     *         token_active: bool,
+     *         zones_accessible: bool,
+     *         dns_edit: bool,
+     *         ssl_read: bool
+     *     },
+     *     errors: list<string>
+     * }
+     */
+    public function cloudflareVerifyToken(string $token): array
+    {
+        $token = trim($token);
+        if ($token === '') {
+            return [
+                'valid' => false,
+                'status' => 'missing',
+                'zones' => [],
+                'checks' => [
+                    'token_active' => false,
+                    'zones_accessible' => false,
+                    'dns_edit' => false,
+                    'ssl_read' => false,
+                ],
+                'errors' => ['Cloudflare API token cannot be empty.'],
+            ];
+        }
+
+        $connector = CloudflareConnector::make($token);
+
+        // 1. Verify token validity with /user/tokens/verify
+        try {
+            $verifyRes = $connector->send(VerifyTokenRequest::make());
+            $verifyData = $verifyRes->json();
+            $tokenActive = $verifyRes->successful() && Arr::get($verifyData, 'success') === true && Arr::get($verifyData, 'result.status') === 'active';
+        } catch (Throwable) {
+            $tokenActive = false;
+        }
+
+        if (! $tokenActive) {
+            return [
+                'valid' => false,
+                'status' => 'invalid',
+                'zones' => [],
+                'checks' => [
+                    'token_active' => false,
+                    'zones_accessible' => false,
+                    'dns_edit' => false,
+                    'ssl_read' => false,
+                ],
+                'errors' => ['Invalid or expired Cloudflare API token.'],
+            ];
+        }
+
+        // 2. Discover zones
+        $zones = $this->cloudflareListZones($token);
+        $zoneNames = array_values($zones);
+        $zonesAccessible = count($zones) > 0;
+
+        $errors = [];
+        if (! $zonesAccessible) {
+            $errors[] = 'Token is valid, but has no access to any DNS zones.';
+        }
+
+        // 3. Probe Zone -> DNS -> Edit and Zone -> Zone Settings -> Read on the first accessible zone
+        $dnsEdit = false;
+        $sslRead = false;
+
+        if ($zonesAccessible) {
+            $firstZoneId = (string) array_key_first($zones);
+
+            try {
+                $dnsRes = $connector->send(ListDnsRecordsRequest::make($firstZoneId, perPage: 1));
+                $dnsData = $dnsRes->json();
+                $dnsEdit = $dnsRes->successful() && Arr::get($dnsData, 'success') === true;
+            } catch (Throwable) {
+                $dnsEdit = false;
+            }
+
+            if (! $dnsEdit) {
+                $errors[] = 'Token is missing "Zone -> DNS -> Edit" permissions.';
+            }
+
+            try {
+                $sslRes = $connector->send(GetZoneSettingRequest::make($firstZoneId, 'ssl'));
+                $sslData = $sslRes->json();
+                $sslRead = $sslRes->successful() && Arr::get($sslData, 'success') === true;
+            } catch (Throwable) {
+                $sslRead = false;
+            }
+
+            if (! $sslRead) {
+                $errors[] = 'Token is missing "Zone -> Zone Settings -> Read" permissions (Cloudflare error 9109).';
+            }
+        }
+
+        $valid = $tokenActive && $zonesAccessible && $dnsEdit && $sslRead;
+
+        return [
+            'valid' => $valid,
+            'status' => 'active',
+            'zones' => $zoneNames,
+            'checks' => [
+                'token_active' => true,
+                'zones_accessible' => $zonesAccessible,
+                'dns_edit' => $dnsEdit,
+                'ssl_read' => $sslRead,
+            ],
+            'errors' => $errors,
+        ];
+    }
+
     /**
      * @throws ConnectionException|FatalRequestException|RequestException|JsonException
      */

@@ -21,8 +21,9 @@ class ListDnsRecordsRequest extends Request
 
     public function __construct(
         protected readonly string $zoneId,
-        protected readonly string $type,
-        protected readonly string $name,
+        protected readonly ?string $type = null,
+        protected readonly ?string $name = null,
+        protected readonly int $perPage = 100,
     ) {}
 
     /**
@@ -35,6 +36,16 @@ class ListDnsRecordsRequest extends Request
 
     protected function defaultQuery(): array
     {
-        return ['type' => $this->type, 'name' => $this->name];
+        $query = ['per_page' => $this->perPage];
+
+        if ($this->type !== null) {
+            $query['type'] = $this->type;
+        }
+
+        if ($this->name !== null) {
+            $query['name'] = $this->name;
+        }
+
+        return $query;
     }
 }

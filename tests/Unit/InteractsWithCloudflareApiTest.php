@@ -6,6 +6,7 @@ use App\Http\Integrations\Cloudflare\Requests\GetZoneSettingRequest;
 use App\Http\Integrations\Cloudflare\Requests\ListDnsRecordsRequest;
 use App\Http\Integrations\Cloudflare\Requests\ListZonesRequest;
 use App\Http\Integrations\Cloudflare\Requests\PatchDnsRecordRequest;
+use App\Http\Integrations\Cloudflare\Requests\VerifyTokenRequest;
 use App\Traits\InteractsWithCloudflareApi;
 use Saloon\Http\Faking\MockClient;
 use Saloon\Http\Faking\MockResponse;
@@ -35,6 +36,11 @@ function cloudflareApiHarness(): object
         public function readZoneSslModes(string $token, array $zones): array
         {
             return $this->cloudflareReadZoneSslModes($token, $zones);
+        }
+
+        public function verifyToken(string $token): array
+        {
+            return $this->cloudflareVerifyToken($token);
         }
     };
 }
@@ -202,4 +208,67 @@ test('cloudflareReadZoneSslModes is null — the 9109 truth — when the token l
     ]);
 
     expect(cloudflareApiHarness()->readZoneSslModes('test-token', $zones))->toBe(['example.com' => null]);
+});
+
+test('cloudflareVerifyToken returns full validity when all checks pass', function (): void {
+    Saloon::fake([
+        VerifyTokenRequest::class => MockResponse::make(['success' => true, 'result' => ['status' => 'active']]),
+        ListZonesRequest::class => MockResponse::make(['success' => true, 'result' => [['id' => 'zone-1', 'name' => 'example.com']], 'result_info' => ['total_pages' => 1]]),
+        ListDnsRecordsRequest::class => MockResponse::make(['success' => true, 'result' => []]),
+        GetZoneSettingRequest::class => MockResponse::make(['success' => true, 'result' => ['value' => 'strict']]),
+    ]);
+
+    $res = cloudflareApiHarness()->verifyToken('valid-token');
+
+    expect($res['valid'])->toBeTrue()
+        ->and($res['status'])->toBe('active')
+        ->and($res['zones'])->toBe(['example.com'])
+        ->and($res['checks']['token_active'])->toBeTrue()
+        ->and($res['checks']['zones_accessible'])->toBeTrue()
+        ->and($res['checks']['dns_edit'])->toBeTrue()
+        ->and($res['checks']['ssl_read'])->toBeTrue()
+        ->and($res['errors'])->toBeEmpty();
+});
+
+test('cloudflareVerifyToken returns invalid when token verification fails', function (): void {
+    Saloon::fake([
+        VerifyTokenRequest::class => MockResponse::make(['success' => false, 'errors' => [['message' => 'Invalid token']]], 401),
+    ]);
+
+    $res = cloudflareApiHarness()->verifyToken('bad-token');
+
+    expect($res['valid'])->toBeFalse()
+        ->and($res['status'])->toBe('invalid')
+        ->and($res['checks']['token_active'])->toBeFalse();
+});
+
+test('cloudflareVerifyToken flags missing dns_edit when dns records probe fails', function (): void {
+    Saloon::fake([
+        VerifyTokenRequest::class => MockResponse::make(['success' => true, 'result' => ['status' => 'active']]),
+        ListZonesRequest::class => MockResponse::make(['success' => true, 'result' => [['id' => 'zone-1', 'name' => 'example.com']], 'result_info' => ['total_pages' => 1]]),
+        ListDnsRecordsRequest::class => MockResponse::make(['success' => false, 'errors' => [['code' => 10000]]], 403),
+        GetZoneSettingRequest::class => MockResponse::make(['success' => true, 'result' => ['value' => 'strict']]),
+    ]);
+
+    $res = cloudflareApiHarness()->verifyToken('partial-token');
+
+    expect($res['valid'])->toBeFalse()
+        ->and($res['checks']['token_active'])->toBeTrue()
+        ->and($res['checks']['dns_edit'])->toBeFalse()
+        ->and($res['checks']['ssl_read'])->toBeTrue();
+});
+
+test('cloudflareVerifyToken flags missing ssl_read when ssl settings probe fails', function (): void {
+    Saloon::fake([
+        VerifyTokenRequest::class => MockResponse::make(['success' => true, 'result' => ['status' => 'active']]),
+        ListZonesRequest::class => MockResponse::make(['success' => true, 'result' => [['id' => 'zone-1', 'name' => 'example.com']], 'result_info' => ['total_pages' => 1]]),
+        ListDnsRecordsRequest::class => MockResponse::make(['success' => true, 'result' => []]),
+        GetZoneSettingRequest::class => MockResponse::make(['success' => false, 'errors' => [['code' => 9109]]], 403),
+    ]);
+
+    $res = cloudflareApiHarness()->verifyToken('no-ssl-token');
+
+    expect($res['valid'])->toBeFalse()
+        ->and($res['checks']['dns_edit'])->toBeTrue()
+        ->and($res['checks']['ssl_read'])->toBeFalse();
 });
