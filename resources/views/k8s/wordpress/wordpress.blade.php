@@ -113,22 +113,22 @@ spec:
 
               if [ ! -f /var/www/html/.htaccess ]; then
                 cat << 'EOF' > /var/www/html/.htaccess
-# Preserve HTTPS behind reverse proxy on directory redirects
-RewriteEngine On
-RewriteCond %{HTTP:X-Forwarded-Proto} =https
-RewriteCond %{REQUEST_FILENAME} -d
-RewriteRule ^(.+[^/])$ https://%{HTTP_HOST}/$1/ [R=301,L]
+              # Preserve HTTPS behind reverse proxy on directory redirects
+              RewriteEngine On
+              RewriteCond %{HTTP:X-Forwarded-Proto} =https
+              RewriteCond %{REQUEST_FILENAME} -d
+              RewriteRule ^(.+[^/])$ https://%{HTTP_HOST}/$1/ [R=301,L]
 
-# BEGIN WordPress
-RewriteEngine On
-RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
-RewriteBase /
-RewriteRule ^index\.php$ - [L]
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule . /index.php [L]
-# END WordPress
-EOF
+              # BEGIN WordPress
+              RewriteEngine On
+              RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+              RewriteBase /
+              RewriteRule ^index\.php$ - [L]
+              RewriteCond %{REQUEST_FILENAME} !-f
+              RewriteCond %{REQUEST_FILENAME} !-d
+              RewriteRule . /index.php [L]
+              # END WordPress
+              EOF
               fi
               chown -R 33:33 /var/www/html 2>/dev/null || true
           volumeMounts:
