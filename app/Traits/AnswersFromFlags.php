@@ -28,6 +28,12 @@ trait AnswersFromFlags
             // Already registered.
         }
 
+        try {
+            $this->addOption('no-cache', null, InputOption::VALUE_NONE, 'No cache driver');
+        } catch (InvalidArgumentException) {
+            // Already registered.
+        }
+
         foreach ($enums as $enum) {
             foreach ($enum::cases() as $case) {
                 try {
@@ -73,6 +79,21 @@ trait AnswersFromFlags
         }
 
         return $given;
+    }
+
+    /**
+     * The cache driver answered by a flag: one of $allowed, or `none` for
+     * `--no-cache`. Null when no flag was given, so the wizard asks.
+     *
+     * @param  list<\App\Enums\CacheDriver>  $allowed
+     */
+    protected function answeredCache(array $allowed): ?string
+    {
+        if ($this->input->hasOption('no-cache') && $this->input->getOption('no-cache') === true) {
+            return 'none';
+        }
+
+        return $this->flaggedCase(\App\Enums\CacheDriver::class, $allowed)?->value;
     }
 
     /**

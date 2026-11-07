@@ -36,13 +36,18 @@ trait AsksServerStack
             : select(label: $label, options: $this->labelled($allowed), default: $allowed[0]->value));
     }
 
-    protected function askCache(AppFramework $framework): CacheDriver
+    protected function askCache(AppFramework $framework): ?CacheDriver
     {
         $allowed = ServerStack::caches($framework);
+        $optional = ServerStack::cacheIsOptional($framework);
+        $options = ($optional ? ['none' => 'None'] : []) + $this->labelled($allowed);
+        $default = $optional && $framework === AppFramework::NESTJS ? 'none' : $allowed[0]->value;
 
-        return $this->flaggedCase(CacheDriver::class, $allowed) ?? CacheDriver::from($this->option('fast')
-            ? $allowed[0]->value
-            : select(label: 'Which cache driver would you like to use?', options: $this->labelled($allowed), default: $allowed[0]->value));
+        $value = $this->answeredCache($allowed) ?? ($this->option('fast')
+            ? $default
+            : select(label: 'Which cache driver would you like to use?', options: $options, default: $default));
+
+        return $value === 'none' && $optional ? null : CacheDriver::from($value);
     }
 
     protected function askStorage(AppFramework $framework, string $label = 'Which S3-compatible object storage would you like to use?'): ?StorageDriver

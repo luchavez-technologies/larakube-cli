@@ -82,7 +82,9 @@ class NestjsNewCommand extends Command
         $config->setEnvironments(['local']);
         $config->framework = AppFramework::NESTJS;
         $config->setDatabase($database);
-        $config->setCacheDriver($cacheDriver);
+        if ($cacheDriver) {
+            $config->setCacheDriver($cacheDriver);
+        }
         if ($objectStorage) {
             $config->setObjectStorage($objectStorage);
         }
@@ -117,6 +119,9 @@ class NestjsNewCommand extends Command
         $this->line('  <fg=gray>Features configured:</>');
         $this->line('  <fg=gray>  • NestJS TypeScript modular architecture (Node.js 24)</>');
         $this->line('  <fg=gray>  • Prisma ORM ('.($database === DatabaseDriver::SQLITE ? 'SQLite' : $database->value).') configured</>');
+        if ($cacheDriver) {
+            $this->line('  <fg=gray>  • Cache ('.$cacheDriver->value.') configured</>');
+        }
         $this->line('  <fg=gray>  • Health check endpoint at /healthz</>');
         $this->line('  <fg=gray>  • Graceful shutdown hooks enabled</>');
         $this->newLine();

@@ -33,6 +33,12 @@ final class ServerStack
             : [CacheDriver::REDIS, CacheDriver::MEMCACHED];
     }
 
+    /** Cache is optional for frameworks that can run fully standalone without companion services. */
+    public static function cacheIsOptional(AppFramework $framework): bool
+    {
+        return $framework === AppFramework::NESTJS;
+    }
+
     /** @return list<StorageDriver> the first is the default */
     public static function storages(): array
     {

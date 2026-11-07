@@ -382,8 +382,12 @@ class ConfigData extends Data
         ]), SORT_REGULAR);
     }
 
-    public function getCacheDriver(): CacheDriver
+    public function getCacheDriver(): ?CacheDriver
     {
+        if ($this->framework?->isServerApp()) {
+            return $this->cacheDriver;
+        }
+
         return $this->cacheDriver ?? CacheDriver::DATABASE;
     }
 

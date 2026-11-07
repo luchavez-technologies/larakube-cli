@@ -191,10 +191,11 @@ class FrameworkCatalog
     {
         $databases = ServerStack::databases($framework);
         $caches = ServerStack::caches($framework);
+        $cacheOptional = ServerStack::cacheIsOptional($framework);
 
         $fields = [
             $this->select('database', 'Database', $this->options($databases, recommended: $databases[0]), $databases[0]->value),
-            $this->select('cache', 'Cache', $this->options($caches, recommended: $caches[0]), $caches[0]->value),
+            $this->cache($caches, optional: $cacheOptional, default: $cacheOptional && $framework === AppFramework::NESTJS ? 'none' : $caches[0]->value),
             $this->storage(ServerStack::storages(), ServerStack::storageIsOptional($framework)),
             $this->search(ServerStack::searches($framework)),
         ];
@@ -411,6 +412,22 @@ class FrameworkCatalog
             'default' => $default,
             'options' => $options,
         ];
+    }
+
+    /**
+     * Cache driver: a provider, or none (`--no-cache`).
+     *
+     * @param  list<CacheDriver>|null  $only
+     * @return array<string, mixed>
+     */
+    private function cache(?array $only = null, bool $optional = false, ?string $default = null): array
+    {
+        $cases = $only ?? CacheDriver::cases();
+
+        return $this->select('cache', 'Cache', [
+            ...($optional ? [['value' => 'none', 'label' => 'None', 'flag' => '--no-cache', 'recommended' => false]] : []),
+            ...$this->options($cases, recommended: $cases[0]),
+        ], default: $default ?? ($optional ? 'none' : $cases[0]->value));
     }
 
     /**
