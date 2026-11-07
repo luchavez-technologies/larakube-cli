@@ -204,6 +204,8 @@ abstract class PocketBaseInitCommand extends AbstractToolInitCommand
         $this->line("  <fg=gray>Admin Password:</>  <fg=yellow>{$adminPassword}</>");
         $this->line("  <fg=gray>Database:</>        <fg=blue>Embedded SQLite</> · PVC <fg=blue>{$pvcName}</>");
         $this->newLine();
+        $this->laraKubeWarn('  This password is now in your terminal history and screen — change it on first login.');
+        $this->newLine();
 
         return 0;
     }

@@ -28,6 +28,7 @@ class PocketBaseShowCommand extends AbstractToolShowCommand
             }
             if (isset($creds['admin_password'])) {
                 $this->line("  <fg=gray>Admin Password:</>  <fg=yellow>{$creds['admin_password']}</>");
+                $this->laraKubeWarn('  Visible in your terminal/screen — change it on first login if you haven\'t already.');
             }
             $this->newLine();
         }
