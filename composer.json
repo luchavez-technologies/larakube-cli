@@ -72,7 +72,7 @@
             "rector process",
             "pint"
         ],
-        "test": "pest --parallel",
+        "test": "pest --parallel --processes=4",
         "build": [
             "@format",
             "@test",

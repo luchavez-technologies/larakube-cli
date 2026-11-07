@@ -8,12 +8,12 @@ use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
-use Illuminate\Support\Facades\Process;
+use App\Traits\RemembersAppReplicaCounts;
 use LaravelZero\Framework\Commands\Command;
 
 class StartCommand extends Command
 {
-    use HasConsoleInteraction, InteractsWithEnvironments, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput;
+    use HasConsoleInteraction, InteractsWithEnvironments, InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, RemembersAppReplicaCounts;
 
     /**
      * The name and signature of the console command.
@@ -61,10 +61,8 @@ class StartCommand extends Command
 
         $this->laraKubeInfo("Resuming services in '{$environment}'...");
 
-        // We scale all deployments to at least 1 (Default LaraKube state)
-        // A more advanced version would read the blueprint to find exact replica counts.
-        $this->withSpin('Scaling up application pods...', function () use ($kubectl, $namespace) {
-            Process::run("{$kubectl} scale deployment --all --replicas=1 -n {$namespace}");
+        $this->withSpin('Scaling up application pods...', function () use ($cluster, $namespace) {
+            $this->startNamespaceDeployments($cluster, $namespace);
 
             return true;
         });

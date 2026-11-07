@@ -6,12 +6,12 @@ use App\Traits\HasConsoleInteraction;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
-use Illuminate\Support\Facades\Process;
+use App\Traits\RemembersAppReplicaCounts;
 use LaravelZero\Framework\Commands\Command;
 
 class StopCommand extends Command
 {
-    use HasConsoleInteraction, InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput;
+    use HasConsoleInteraction, InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput, RemembersAppReplicaCounts;
 
     /**
      * The name and signature of the console command.
@@ -36,12 +36,11 @@ class StopCommand extends Command
         if (($cluster = $this->environmentCluster($config, $environment)) === null) {
             return 1;
         }
-        $kubectl = $cluster->prefix();
 
         $this->laraKubeInfo("Pausing services in '{$environment}'...");
 
-        $this->withSpin('Scaling down application pods to zero...', function () use ($kubectl, $namespace) {
-            Process::run("{$kubectl} scale deployment --all --replicas=0 -n {$namespace}");
+        $this->withSpin('Scaling down application pods to zero...', function () use ($cluster, $namespace) {
+            $this->stopNamespaceDeployments($cluster, $namespace);
 
             return true;
         });

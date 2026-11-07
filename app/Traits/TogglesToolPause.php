@@ -8,6 +8,7 @@ use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
 use App\Services\Kubectl;
 use App\Services\ToolRegistry;
+use App\Support\K8sAnnotations;
 
 use function Laravel\Prompts\select;
 
@@ -25,8 +26,6 @@ use function Laravel\Prompts\select;
  */
 trait TogglesToolPause
 {
-    private const string PAUSED_REPLICAS_ANNOTATION = 'larakube.app/paused-replicas';
-
     protected function pauseTool(): int
     {
         return $this->toggleToolPause(pausing: true);
@@ -127,7 +126,7 @@ trait TogglesToolPause
 
         if (! $this->kubectlStep(
             "Pausing {$deployment}...",
-            fn () => $cluster->raw(['annotate', 'deployment', $deployment, '-n', $namespace, self::PAUSED_REPLICAS_ANNOTATION."={$replicas}", '--overwrite']),
+            fn () => $cluster->raw(['annotate', 'deployment', $deployment, '-n', $namespace, K8sAnnotations::PAUSED_REPLICAS_ANNOTATION."={$replicas}", '--overwrite']),
         )) {
             return null;
         }
@@ -161,7 +160,7 @@ trait TogglesToolPause
 
         $this->kubectlStep(
             "Clearing pause marker on {$deployment}...",
-            fn () => $cluster->raw(['annotate', 'deployment', $deployment, '-n', $namespace, self::PAUSED_REPLICAS_ANNOTATION.'-']),
+            fn () => $cluster->raw(['annotate', 'deployment', $deployment, '-n', $namespace, K8sAnnotations::PAUSED_REPLICAS_ANNOTATION.'-']),
         );
 
         return true;
@@ -177,7 +176,7 @@ trait TogglesToolPause
 
     private function pausedReplicas(Kubectl $cluster, string $namespace, string $deployment): ?int
     {
-        $result = $cluster->raw(['get', "deployment/{$deployment}", '-n', $namespace, '-o', 'jsonpath={.metadata.annotations.'.str_replace('.', '\\.', self::PAUSED_REPLICAS_ANNOTATION).'}', '--ignore-not-found']);
+        $result = $cluster->raw(['get', "deployment/{$deployment}", '-n', $namespace, '-o', 'jsonpath={.metadata.annotations.'.str_replace('.', '\\.', K8sAnnotations::PAUSED_REPLICAS_ANNOTATION).'}', '--ignore-not-found']);
         $output = trim($result->output);
 
         return $output === '' ? null : (int) $output;

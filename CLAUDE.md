@@ -4,7 +4,7 @@ Requires PHP 8.4 installed locally (see CONTRIBUTING.md for the extension list) 
 
 - `composer format` (automated refactoring and code formatting — runs `rector process` and `pint` per repo-wide hard rule)
 - `composer analyse` (static analysis — runs `phpstan analyse --memory-limit=2G`)
-- `composer test` (tests — runs `pest --parallel`)
+- `composer test` (tests — runs `pest --parallel --processes=4`; capped at 4 to match `phpstan.neon`'s memory-aware worker cap — this is an 8GB dev box and each worker bootstraps the full app)
 - `composer <args>` for dependency management
 - Never run `./build` yourself — tell the user to run it and wait.
 
