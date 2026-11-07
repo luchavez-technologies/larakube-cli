@@ -53,7 +53,6 @@ final class N8n implements ClusterToolVendor, HasCommonsDatabases, HasDeployment
         return ['n8n'];
     }
 
-    /** Shared by both engines: an instance is a host, whichever engine serves it. */
     public function vpnMiddlewareTarget(?string $instance = null): ?array
     {
         return [

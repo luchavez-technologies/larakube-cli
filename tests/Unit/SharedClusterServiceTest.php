@@ -4,10 +4,10 @@ use App\Enums\SharedClusterService;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\View;
 
-// SharedClusterService::templatePayload() for FLOW shells out to a live
-// `kubectl get deployment windmill` to detect the installed engine. Fake
-// Process so these tests never touch the real cluster — otherwise, when the
-// current kube-context points at a remote cluster, the call blocks and the run
+// SharedClusterService::templatePayload() for MEET shells out to a live
+// `kubectl get deployment` to detect the Matrix bridge. Fake Process so these
+// tests never touch the real cluster — otherwise, when the current
+// kube-context points at a remote cluster, the call blocks and the run
 // appears to hang on the *previous* test file (alphabetically ServicesManifestTest).
 beforeEach(fn () => Process::fake());
 
@@ -22,7 +22,7 @@ test('every shared service renders its manifest with the resolved host', functio
     foreach (SharedClusterService::cases() as $service) {
         $host = $service->hostFor('example.test');
         $params = ['host' => $host];
-        if (in_array($service, [SharedClusterService::FLOW, SharedClusterService::SHEET, SharedClusterService::INSIGHTS, SharedClusterService::DRIVE, SharedClusterService::DATA])) {
+        if (in_array($service, [SharedClusterService::SHEET, SharedClusterService::INSIGHTS, SharedClusterService::DRIVE, SharedClusterService::DATA])) {
             $params = array_merge($params, [
                 'noPlex' => true,
                 'plexNamespace' => 'larakube-system',
@@ -53,7 +53,8 @@ test('hostFor combines the host prefix with the given cluster domain', function 
         ->and(SharedClusterService::ERRORS->hostFor('example.com'))->toBe('errors.example.com')
         ->and(SharedClusterService::SECRETS->hostFor('example.com'))->toBe('secrets.example.com')
         ->and(SharedClusterService::FORGEJO->hostFor('example.com'))->toBe('git.example.com')
-        ->and(SharedClusterService::FLOW->hostFor('example.com'))->toBe('flow.example.com')
+        ->and(SharedClusterService::N8N->hostFor('example.com'))->toBe('n8n.example.com')
+        ->and(SharedClusterService::WINDMILL->hostFor('example.com'))->toBe('windmill.example.com')
         ->and(SharedClusterService::SHEET->hostFor('example.com'))->toBe('sheet.example.com')
         // TRAEFIK_DASHBOARD's value is the manifest name, its host label is "traefik".
         ->and(SharedClusterService::TRAEFIK_DASHBOARD->hostFor('localhost'))->toBe('traefik.localhost');
@@ -77,7 +78,7 @@ test('hostFor dash-suffixes the prefix for any named instance, and leaves the so
     expect(SharedClusterService::DATA->hostFor('data-blog.example.com', 'blog'))->toBe('data-blog.example.com');
 });
 
-test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, OpenBao, Forgejo, Flow, Sheet, Insights, Mail, Chat, SSO, Webmail, Notes, Drive, Record, and Startup OS tools target non-local environments; the rest are local-only', function (): void {
+test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, OpenBao, Forgejo, n8n, Windmill, Sheet, Insights, Mail, Chat, SSO, Webmail, Notes, Drive, Record, and Startup OS tools target non-local environments; the rest are local-only', function (): void {
     foreach (SharedClusterService::cases() as $service) {
         $localOnly = ! in_array($service, [
             SharedClusterService::GRAFANA,
@@ -87,7 +88,8 @@ test('only Grafana, Uptime Kuma, Vaultwarden, NetBird VPN, GlitchTip, OpenBao, F
             SharedClusterService::ERRORS,
             SharedClusterService::SECRETS,
             SharedClusterService::FORGEJO,
-            SharedClusterService::FLOW,
+            SharedClusterService::N8N,
+            SharedClusterService::WINDMILL,
             SharedClusterService::SHEET,
             SharedClusterService::INSIGHTS,
             SharedClusterService::MAIL,

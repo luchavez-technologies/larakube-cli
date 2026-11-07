@@ -38,7 +38,8 @@ enum SharedClusterService: string
             self::ERRORS => 'k8s.glitchtip.ingress',
             self::SECRETS => 'k8s.openbao.ingress',
             self::FORGEJO => 'k8s.forgejo.ingress',
-            self::FLOW => 'k8s.n8n.ingress',
+            self::N8N => 'k8s.n8n.ingress',
+            self::WINDMILL => 'k8s.windmill.ingress',
             self::SHEET => 'k8s.teable.ingress',
             self::INSIGHTS => 'k8s.metabase.ingress',
             self::MAIL => 'k8s.stalwart.ingress',
@@ -67,20 +68,12 @@ enum SharedClusterService: string
     public function templatePayload(): array
     {
         return match ($this) {
-            // Detect the installed Flow engine. Short timeout so that if the
-            // current kube-context is slow/unreachable this degrades to the
-            // default engine instead of blocking (default Process timeout is 60s).
-            self::FLOW => [
-                // Windmill and n8n each carry their own canonical larakube.io/tool
-                // value now (not a shared "flow" category label + engine sub-label),
-                // so a plain tool=windmill selector is enough on its own.
-                'engine' => trim(Process::timeout(10)->run(Kubectl::current()->prefix().' get deployment -l larakube.io/tool=windmill -n larakube-shared -o name --ignore-not-found 2>/dev/null')->output()) !== '' ? 'windmill' : 'n8n',
-            ],
             self::DRIVE => ['engine' => 'ocis'],
             // The Matrix bridge is a wiring artifact, not part of Meet itself —
             // it only exists once `meet:wire --tool=chat` has run. Probe for it
             // so a plain `up` reconcile re-renders the /jwt route it needs
-            // instead of dropping it. Same short-timeout degradation as FLOW.
+            // instead of dropping it. Same short-timeout degradation pattern
+            // as the deployment-presence probes below.
             self::MEET => [
                 // Label-based: the bridge's Deployment is named per instance,
                 // but the identity label every manifest carries holds.
@@ -106,7 +99,6 @@ enum SharedClusterService: string
             self::TRAEFIK_DASHBOARD => 'traefik',
             self::UPTIME_KUMA => 'status',
             self::FORGEJO => 'git',
-            self::FLOW => 'flow',
             self::SHEET => 'sheet',
             self::DRIVE => 'drive',
             self::INSIGHTS => 'insights',
@@ -154,7 +146,7 @@ enum SharedClusterService: string
     public function isLocalOnly(): bool
     {
         return match ($this) {
-            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::FORGEJO, self::FLOW, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM, self::DATA, self::RECORD, self::DASHBOARD, self::MEET, self::DESIGN, self::RESUME, self::PASTE => false,
+            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::FORGEJO, self::N8N, self::WINDMILL, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM, self::DATA, self::RECORD, self::DASHBOARD, self::MEET, self::DESIGN, self::RESUME, self::PASTE => false,
             default => true,
         };
     }
@@ -179,7 +171,8 @@ enum SharedClusterService: string
             self::ERRORS => 'GlitchTip',
             self::SECRETS => 'OpenBao',
             self::FORGEJO => 'Forgejo',
-            self::FLOW => 'n8n',
+            self::N8N => 'n8n',
+            self::WINDMILL => 'Windmill',
             self::SHEET => 'Sheet',
             self::DRIVE => 'Drive',
             self::INSIGHTS => 'Metabase',
@@ -235,7 +228,10 @@ enum SharedClusterService: string
             // By label: OpenBao's Deployment is named per instance.
             self::SECRETS => 'deployment -l larakube.io/tool=secrets -n larakube-secrets',
             self::FORGEJO => 'deployment -l larakube.io/tool=git -n larakube-shared',
-            self::FLOW => 'deployment -l larakube-tool=flow -n larakube-shared',
+            // Windmill and n8n each carry their own canonical larakube.io/tool
+            // value (not a shared "flow" category label + engine sub-label).
+            self::N8N => 'deployment -l larakube.io/tool=n8n -n larakube-shared',
+            self::WINDMILL => 'deployment -l larakube.io/tool=windmill -n larakube-shared',
             self::SHEET => 'deployment -l larakube-tool=sheets -n larakube-shared',
             self::DRIVE => 'deployment -l larakube.io/tool=ocis -n larakube-shared',
             self::INSIGHTS => 'deployment -l larakube.io/tool=insights -n larakube-shared',
@@ -362,7 +358,8 @@ enum SharedClusterService: string
             self::ERRORS => 'Refreshing GlitchTip ingress...',
             self::SECRETS => 'Refreshing OpenBao ingress...',
             self::FORGEJO => 'Refreshing Forgejo ingress...',
-            self::FLOW => 'Refreshing n8n (Flow) ingress...',
+            self::N8N => 'Refreshing n8n ingress...',
+            self::WINDMILL => 'Refreshing Windmill ingress...',
             self::SHEET => 'Refreshing Sheet ingress...',
             self::DRIVE => 'Refreshing Drive ingress...',
             self::INSIGHTS => 'Refreshing Insights (Metabase) ingress...',
@@ -406,7 +403,8 @@ enum SharedClusterService: string
     case ERRORS = 'errors';
     case SECRETS = 'secrets';
     case FORGEJO = 'forgejo';
-    case FLOW = 'flow';
+    case N8N = 'n8n';
+    case WINDMILL = 'windmill';
     case SHEET = 'sheet';
     case INSIGHTS = 'insights';
     case MAIL = 'mail';

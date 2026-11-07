@@ -60,7 +60,7 @@ test('n8n:remove keeps the database, the encryption key and the data volume by d
     $this->artisan('n8n:remove local --force')
         ->assertExitCode(0)
         ->doesntExpectOutputToContain('Dropping database')
-        ->expectsOutputToContain('Removing Flow resources...')
+        ->expectsOutputToContain('Removing n8n resources...')
         ->expectsOutputToContain('Persistent data (Plex Commons DB + S3 buckets) was preserved.');
 
     Process::assertRan(fn ($p) => str_contains($p->command, 'delete deployment/n8n-flow-example-com service/n8n-flow-example-com ingress/n8n-flow-example-com secret/n8n-smtp-flow-example-com')
@@ -88,7 +88,7 @@ test('n8n:remove --purge drops only the engine it ran, and its key and volume', 
         ->assertExitCode(0)
         ->expectsOutputToContain("Dropping database 'n8n_flow_example_com' from Plex Commons")
         ->doesntExpectOutputToContain("Dropping database 'windmill")
-        ->expectsOutputToContain('Removing Flow data volumes and keys...');
+        ->expectsOutputToContain('Removing n8n data volume and keys...');
 
     Process::assertRan(fn ($p) => str_contains($p->command, 'persistentvolumeclaim/n8n-storage-flow-example-com')
         && str_contains($p->command, 'secret/n8n-secrets-flow-example-com'));

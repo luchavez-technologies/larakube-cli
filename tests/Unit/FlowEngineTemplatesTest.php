@@ -1,6 +1,8 @@
 <?php
 
 use App\Enums\ClusterTool;
+use App\Tools\N8n;
+use App\Tools\Windmill;
 
 test('each Flow engine names its resources per instance through ToolInstance', function (): void {
     $n8n = App\Data\ToolInstance::forHost(ClusterTool::N8N, 'flow.example.com', 'n8n');
@@ -42,9 +44,9 @@ test('n8n sets fsGroup so a freshly provisioned PVC is writable by its non-root 
 });
 
 test('every Flow engine pins every image it declares to an explicit version', function (): void {
-    foreach (App\Enums\FlowTool::cases() as $engine) {
-        foreach ($engine->tool()->images() as $key => $image) {
-            expect($image)->toMatch('/:[0-9][^:\/]*$/', "{$engine->value}.{$key} is not pinned to a version");
+    foreach (['n8n' => new N8n, 'windmill' => new Windmill] as $engineName => $tool) {
+        foreach ($tool->images() as $key => $image) {
+            expect($image)->toMatch('/:[0-9][^:\/]*$/', "{$engineName}.{$key} is not pinned to a version");
         }
     }
 });

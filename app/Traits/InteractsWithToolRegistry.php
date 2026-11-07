@@ -195,8 +195,8 @@ trait InteractsWithToolRegistry
         }
 
         // Multi-engine tools (e.g. N8N vs WINDMILL, UMAMI vs PLAUSIBLE, POCKETBASE vs DIRECTUS)
-        // must never probe the generic shared service (like larakube-tool=flow) because that causes
-        // false positives where one installed engine makes the other engine appear installed.
+        // must never probe a shared/generic presence check because that causes false positives
+        // where one installed tool makes a sibling tool appear installed too.
         $multiEngineTools = [
             ClusterTool::N8N, ClusterTool::WINDMILL,
             ClusterTool::UMAMI, ClusterTool::PLAUSIBLE,

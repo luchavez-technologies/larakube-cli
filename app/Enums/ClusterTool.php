@@ -23,6 +23,8 @@ use App\Contracts\UsesCliOidc;
 use App\Contracts\UsesForwardAuth;
 use App\Data\ClusterToolComponentData;
 use App\Data\ToolInstance;
+use App\Tools\N8n;
+use App\Tools\Windmill;
 use App\Vendors\AnalyticsTool;
 use App\Vendors\CrmTool;
 use App\Vendors\DashboardTool;
@@ -67,8 +69,8 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::POCKETBASE => DataTool::POCKETBASE,
             self::DIRECTUS => DataTool::DIRECTUS,
             self::WORDPRESS => DataTool::WORDPRESS,
-            self::N8N => (FlowTool::tryFrom((string) $engine) ?? FlowTool::N8N)->tool(),
-            self::WINDMILL => FlowTool::WINDMILL->tool(),
+            self::N8N => new N8n,
+            self::WINDMILL => new Windmill,
             self::FORGEJO => GitForgeTool::FORGEJO,
             self::MATRIX => ChatTool::MATRIX,
             self::PENPOT => DesignTool::PENPOT,
@@ -267,7 +269,8 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         return match ($this) {
             self::POCKETBASE, self::DIRECTUS, self::WORDPRESS => SharedClusterService::DATA,
-            self::N8N, self::WINDMILL => SharedClusterService::FLOW,
+            self::N8N => SharedClusterService::N8N,
+            self::WINDMILL => SharedClusterService::WINDMILL,
             self::FORGEJO => SharedClusterService::FORGEJO,
             self::MATRIX => SharedClusterService::CHAT,
             self::TWENTY => SharedClusterService::CRM,
@@ -328,18 +331,6 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         return $this->namespace() !== 'larakube-shared';
     }
-
-    /**
-     * The Plex Commons Postgres database(s) `{tool}:remove` must drop, keyed so
-     * the tenant name and role name match what the matching `*:init` created.
-     * Multi-entry lists are engine-switchable tools (flow: n8n|windmill)
-     * where either engine's database may exist — the
-     * teardown drops both to guarantee a clean slate, matching the existing
-     * hand-written behaviour in N8nRemoveCommand/WindmillRemoveCommand's teardown().
-     * Empty for tools with no Commons tenant (they bundle storage or are
-     * stateless controllers).
-     *
-
 
     /** The tool that owns a given Commons tenant, or null if none claims it. */
     public static function forCommonsTenant(string $tenant): ?self

@@ -216,9 +216,8 @@ class PlexShowCommand extends Command
                 // for a catalog listing — brandName()/tagline() (same pair tool:list
                 // --json already sends) are what a compact UI needs. canonicalTool()
                 // resolves a legacy category case (GIT, NOTES, ...) to its real
-                // product (FORGEJO, OUTLINE, ...) first; both methods call it with
-                // no engine hint, so an engine-family tool (Flow) always agrees on
-                // its default engine (n8n) between the two.
+                // product (FORGEJO, OUTLINE, ...); N8N and WINDMILL are each their
+                // own case now, so no engine hint is needed for them either.
                 'clusterTool' => $tool !== null ? [
                     'tool' => $tool->value,
                     'name' => $tool->canonicalTool()->brandName(),

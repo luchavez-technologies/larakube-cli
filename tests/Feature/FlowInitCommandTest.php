@@ -156,15 +156,10 @@ test('tool:init --tool=n8n refuses a malformed --custom-env pair before touching
     expect($seen['commands'])->toBeEmpty();
 });
 
-test('tool:init --tool=n8n refuses a second engine on a host that already runs one', function (): void {
-    fakeFlowInitCluster($seen, liveDeployments: ['n8n-flow-example-com']);
-
-    runFlowInit('windmill')
-        ->expectsOutputToContain('flow.example.com already runs n8n')
-        ->assertExitCode(1);
-
-    expect($seen['manifest'])->toBeNull();
-});
+// n8n and Windmill are fully independent now (SharedClusterService::N8N /
+// ::WINDMILL, not a shared FLOW category), so the cross-engine same-host
+// exclusivity check this used to assert is gone by design — each install
+// now only ever touches its own tool's resources.
 
 test('windmill names its resources after its host too', function (): void {
     fakeFlowInitCluster($seen);

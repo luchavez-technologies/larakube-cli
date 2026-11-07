@@ -9,14 +9,14 @@ use App\Services\Kubectl;
 /**
  * Resolve which engine a tool's instance is actually running, for the
  * *:wire/*:unwire commands that need to target the right Deployment/secret
- * once a tool has more than one implementation (DATA: pocketbase|directus,
- * FLOW: n8n|windmill). Before this existed, three DIFFERENT ad-hoc copies of
- * "guess the engine" lived in SsoWireCommand (CHAT+DATA only),
- * SsoUnwireCommand (FLOW only, via a hardcoded flow-windmill probe), and
- * MailWireCommand/MailUnwireCommand (CHAT only) — none of them covered every
- * multi-engine tool, which is exactly how a PocketBase-only `data` instance
- * ended up handed Directus's OIDC/SMTP/db-secret schema by commands that
- * never learned it might not be Directus.
+ * once a tool has more than one implementation (DATA: pocketbase|directus).
+ * Before this existed, three DIFFERENT ad-hoc copies of "guess the engine"
+ * lived in SsoWireCommand (CHAT+DATA only), SsoUnwireCommand (via a
+ * hardcoded n8n/windmill probe, back when they shared one FLOW category),
+ * and MailWireCommand/MailUnwireCommand (CHAT only) — none of them covered
+ * every multi-engine tool, which is exactly how a PocketBase-only `data`
+ * instance ended up handed Directus's OIDC/SMTP/db-secret schema by
+ * commands that never learned it might not be Directus.
  *
  * The registry's InstanceData->engine field is a HINT, never authoritative —
  * mirrors DataRemoveCommand's existing "live-probe, registry is

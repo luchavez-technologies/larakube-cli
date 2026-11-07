@@ -5,13 +5,11 @@ namespace App\Commands\N8n;
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Data\ToolInstance;
 use App\Enums\DatabaseDriver;
-use App\Enums\FlowTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
-use App\Traits\InteractsWithFlow;
 use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithVolumeSizing;
@@ -25,14 +23,14 @@ use Illuminate\Support\Str;
 
 abstract class N8nInitCommand extends AbstractToolInitCommand
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithFlow, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, ManagesToolCustomEnv, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, InteractsWithVolumeSizing, LaraKubeOutput, ManagesToolCustomEnv, RequiresFlagsWhenNonInteractive, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput;
 
     protected function runInit(): int
     {
-        return $this->deployFlow();
+        return $this->deployN8n();
     }
 
-    protected function deployFlow(): int
+    protected function deployN8n(): int
     {
         $engine = 'n8n';
         $toolBrand = $this->tool()->brandName();
@@ -50,21 +48,13 @@ abstract class N8nInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        [$host, $instance] = $this->resolveInstanceAwareHost(SharedClusterService::FLOW, $this->tool(), $env, $kubectl, $toolBrand);
+        [$host, $instance] = $this->resolveInstanceAwareHost(SharedClusterService::N8N, $this->tool(), $env, $kubectl, $toolBrand);
 
         $names = ToolInstance::forHost($this->tool(), $host, $engine);
         $ns = $names->namespace();
         $noPlex = (bool) $this->option('no-plex');
         $vpnOnly = (bool) $this->option('vpn-only');
         $cluster = Kubectl::forContext(($context ?? '') !== '' ? $context : null);
-
-        $other = $this->otherFlowEngineOnHost($cluster, $host, $engine);
-        if ($other !== null) {
-            $otherLabel = FlowTool::from($other->value)->tool()->getLabel();
-            $this->laraKubeError("{$host} already runs {$otherLabel}. A host runs one engine: remove it first with `larakube {$other->value}:remove {$env} --domain={$host}`, or pick another --domain.");
-
-            return 1;
-        }
 
         if ($vpnOnly && ! $this->ensureVpnMiddleware($this->tool(), $kubectl, $names->instance, $names->engine)) {
             $this->laraKubeError('Failed to create the VPN-only Middleware — check kubectl access to the cluster above and re-run.');

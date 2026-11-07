@@ -6,7 +6,6 @@ use App\Commands\Tool\AbstractToolRemoveCommand;
 use App\Data\ResourceRef;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
-use App\Enums\FlowTool;
 use App\Enums\SecretKind;
 
 class WindmillRemoveCommand extends AbstractToolRemoveCommand
@@ -16,82 +15,64 @@ class WindmillRemoveCommand extends AbstractToolRemoveCommand
         return ClusterTool::WINDMILL;
     }
 
-    /** The engine whose Deployment serves this instance. */
     protected function instanceEngine(string $kubectl, ?string $instance): ?string
     {
-        foreach ($this->installedNames($instance) as $names) {
-            if ($this->cluster()->exists(new ResourceRef('Deployment', $names->deployment(), $names->namespace()))) {
-                return $names->engine;
-            }
-        }
-
-        return null;
+        return 'windmill';
     }
 
     /** `tool:init --tool=windmill --no-plex` labels its Deployment; that install leased no Commons tenant. */
     protected function usesBundledStorage(string $kubectl, string $namespace): bool
     {
-        foreach ($this->installedNames($this->resolveInstance($kubectl)) as $names) {
-            $deployment = $this->cluster()->get(new ResourceRef('Deployment', $names->deployment(), $names->namespace()));
-            if ($deployment !== null) {
-                return ($deployment['metadata']['labels']['larakube-storage'] ?? null) === 'bundled';
-            }
+        $names = $this->names($kubectl);
+        if ($names === null) {
+            return false;
         }
 
-        return false;
+        $deployment = $this->cluster()->get(new ResourceRef('Deployment', $names->deployment(), $names->namespace()));
+
+        return ($deployment['metadata']['labels']['larakube-storage'] ?? null) === 'bundled';
     }
 
     /**
-     * Only this instance's resources, for both engines (a host runs one, and
-     * the rest are absent). The Secret holding the encryption key and the
-     * data volumes stay unless --purge: without that key, every credential
-     * saved in n8n is unreadable, even with its database intact.
+     * The Secret holding the encryption key and the data volumes stay unless
+     * --purge: without that key, every credential saved in Windmill is
+     * unreadable, even with its database intact.
      */
     protected function teardown(string $kubectl, string $namespace): bool
     {
-        $instance = $this->resolveInstance($kubectl);
-        $workloads = [];
-        $data = [];
-
-        foreach ($this->installedNames($instance) as $names) {
-            $deployment = $names->deployment();
-            $ns = $names->namespace();
-
-            array_push(
-                $workloads,
-                new ResourceRef('Deployment', $deployment, $ns),
-                new ResourceRef('Service', $deployment, $ns),
-                new ResourceRef('Ingress', $deployment, $ns),
-                new ResourceRef('Secret', $names->secret(SecretKind::SMTP), $ns),
-            );
-
-            if ($names->engine === FlowTool::WINDMILL->value) {
-                array_push(
-                    $workloads,
-                    new ResourceRef('Deployment', $names->name('db'), $ns),
-                    new ResourceRef('Service', $names->name('db'), $ns),
-                );
-                $data[] = new ResourceRef('PersistentVolumeClaim', $names->volume('db-storage'), $ns);
-            } else {
-                $data[] = new ResourceRef('PersistentVolumeClaim', $names->volume(), $ns);
-            }
-
-            $data[] = new ResourceRef('Secret', $names->secret(), $ns);
-
-            // Per engine, not once per instance: the Middleware is named after
-            // the engine that owns it, so a single instance-only lookup would
-            // strand Windmill's and delete an n8n one that was never created.
-            $middleware = $names->vpnMiddleware();
-            if ($middleware !== null) {
-                $workloads[] = $middleware;
-            }
+        $names = $this->names($kubectl);
+        if ($names === null) {
+            return true;
         }
 
-        $ok = $this->deleteResources('Removing Flow resources...', $workloads);
+        $ns = $names->namespace();
+        $deployment = $names->deployment();
+
+        $workloads = [
+            new ResourceRef('Deployment', $deployment, $ns),
+            new ResourceRef('Service', $deployment, $ns),
+            new ResourceRef('Ingress', $deployment, $ns),
+            new ResourceRef('Secret', $names->secret(SecretKind::SMTP), $ns),
+            // Windmill's own bundled database, distinct from any Commons tenant.
+            new ResourceRef('Deployment', $names->name('db'), $ns),
+            new ResourceRef('Service', $names->name('db'), $ns),
+        ];
+
+        $middleware = $names->vpnMiddleware();
+        if ($middleware !== null) {
+            $workloads[] = $middleware;
+        }
+
+        $data = [
+            new ResourceRef('PersistentVolumeClaim', $names->volume('db-storage'), $ns),
+            new ResourceRef('Secret', $names->secret(), $ns),
+        ];
+
+        $ok = $this->deleteResources('Removing Windmill resources...', $workloads);
 
         // A volume can only go once its pod has: the Deployments are deleted first.
         if ($this->option('purge')) {
-            $ok = $this->deleteResources('Removing Flow data volumes and keys...', $data) && $ok;
+            $ok = $this->deleteResources('Removing Windmill data volumes and keys...', $data) && $ok;
         }
 
         return $ok;
@@ -102,22 +83,18 @@ class WindmillRemoveCommand extends AbstractToolRemoveCommand
         $lines = parent::teardownWarning($env);
 
         $lines[] = $this->option('purge')
-            ? 'Flow data volumes and the n8n encryption key WILL BE DESTROYED.'
-            : 'Flow data volumes and the n8n encryption key WILL BE PRESERVED.';
+            ? 'Data volumes and the Windmill encryption key WILL BE DESTROYED.'
+            : 'Data volumes and the Windmill encryption key WILL BE PRESERVED.';
 
         return $lines;
     }
 
-    /** @return list<ToolInstance> one per engine; none without an instance */
-    private function installedNames(?string $instance): array
+    private function names(string $kubectl): ?ToolInstance
     {
-        if ($instance === null || $instance === '') {
-            return [];
-        }
+        $instance = $this->resolveInstance($kubectl);
 
-        return array_map(
-            fn (FlowTool $engine) => ToolInstance::forInstance(ClusterTool::from($engine->value), $instance, $engine->value),
-            FlowTool::cases(),
-        );
+        return ($instance === null || $instance === '')
+            ? null
+            : ToolInstance::forInstance(ClusterTool::WINDMILL, $instance, 'windmill');
     }
 }
