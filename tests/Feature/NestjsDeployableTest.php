@@ -246,3 +246,48 @@ test('the NestJS workflow builds Dockerfile.nestjs, checks the pushed runtime en
         ->toContain('kubectl rollout status deployment/shop-nestjs -n shop-production')
         ->and(Yaml::parse($workflow)['jobs'])->toHaveKeys(['build', 'deploy']);
 });
+
+test('a NestJS app with SQLite configures a PVC, mounts /app/prisma, pins 1 replica, and uses Recreate strategy', function (): void {
+    $directory = TemporaryDirectory::make()->deleteWhenDestroyed();
+    $dir = $directory->path();
+    nestjsDeployableProject($dir);
+
+    $config = ConfigData::from([
+        'name' => 'shop',
+        'path' => $dir,
+        'framework' => 'nestjs',
+        'database' => 'sqlite',
+        'environments' => [
+            'local' => [],
+            'production' => ['hosts' => ['web' => 'shop.example.com']],
+        ],
+    ]);
+
+    nestjsDeployableGenerator()->manifests($config);
+
+    $previewOverlay = "{$dir}/.infrastructure/k8s/overlays/local/preview";
+    $prodOverlay = "{$dir}/.infrastructure/k8s/overlays/production";
+
+    expect(file_exists("{$previewOverlay}/sqlite-pvc.yaml"))->toBeTrue()
+        ->and(file_exists("{$prodOverlay}/sqlite-pvc.yaml"))->toBeTrue();
+
+    $previewKust = Yaml::parse((string) file_get_contents("{$previewOverlay}/kustomization.yaml"));
+    expect($previewKust['resources'])->toContain('sqlite-pvc.yaml');
+
+    $prodKust = Yaml::parse((string) file_get_contents("{$prodOverlay}/kustomization.yaml"));
+    expect($prodKust['resources'])->toContain('sqlite-pvc.yaml');
+
+    $deployment = nestjsDeployableDocs("{$prodOverlay}/deployment.yaml")['Deployment/shop-nestjs'];
+    expect($deployment['spec']['replicas'])->toBe(1)
+        ->and($deployment['spec']['strategy']['type'])->toBe('Recreate')
+        ->and($deployment['spec']['template']['spec']['containers'][0]['volumeMounts'])->toContain([
+            'name' => 'sqlite-data',
+            'mountPath' => '/app/prisma',
+        ])
+        ->and($deployment['spec']['template']['spec']['volumes'])->toContain([
+            'name' => 'sqlite-data',
+            'persistentVolumeClaim' => ['claimName' => 'shop-sqlite-data'],
+        ]);
+
+    $directory->delete();
+});

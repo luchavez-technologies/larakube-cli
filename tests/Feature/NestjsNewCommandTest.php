@@ -32,10 +32,12 @@ test('AppFramework NESTJS framework value is correct', function (): void {
         ->and(AppFramework::NESTJS->proxyCommand())->toBe('node');
 });
 
-test('NestJS DatabaseDriver matrix: PostgreSQL, MySQL, MariaDB are valid', function (): void {
-    $supported = [DatabaseDriver::POSTGRESQL, DatabaseDriver::MYSQL, DatabaseDriver::MARIADB];
+test('NestJS DatabaseDriver matrix: SQLite, PostgreSQL, MySQL, MariaDB are valid', function (): void {
+    $supported = App\Services\Scaffolding\ServerStack::databases(AppFramework::NESTJS);
 
-    expect($supported)->toHaveCount(3)->toContainOnlyInstancesOf(DatabaseDriver::class);
+    expect($supported)->toHaveCount(4)
+        ->toContainOnlyInstancesOf(DatabaseDriver::class)
+        ->toContain(DatabaseDriver::SQLITE, DatabaseDriver::POSTGRESQL, DatabaseDriver::MYSQL, DatabaseDriver::MARIADB);
 });
 
 test('NestJS CacheDriver matrix: Redis, Memcached are valid', function (): void {

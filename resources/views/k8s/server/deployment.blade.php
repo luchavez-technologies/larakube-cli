@@ -18,12 +18,16 @@ kind: Deployment
 metadata:
   name: {{ $resourceName }}
 spec:
-  replicas: {{ $config->getReplicas($environment, 'web') }}
+  replicas: {{ $config->getDatabase() === \App\Enums\DatabaseDriver::SQLITE ? 1 : $config->getReplicas($environment, 'web') }}
   strategy:
+@if($config->getDatabase() === \App\Enums\DatabaseDriver::SQLITE)
+    type: Recreate
+@else
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
+@endif
   selector:
     matchLabels:
       app: {{ $resourceName }}
@@ -52,6 +56,11 @@ spec:
                 optional: true
             - secretRef:
                 name: laravel-secrets
+@endif
+@if($config->getDatabase() === \App\Enums\DatabaseDriver::SQLITE)
+          volumeMounts:
+            - name: sqlite-data
+              mountPath: /app/prisma
 @endif
 @endif
       containers:
@@ -111,3 +120,14 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 10
+@if($config->getDatabase() === \App\Enums\DatabaseDriver::SQLITE)
+          volumeMounts:
+            - name: sqlite-data
+              mountPath: /app/prisma
+@endif
+@if($config->getDatabase() === \App\Enums\DatabaseDriver::SQLITE)
+      volumes:
+        - name: sqlite-data
+          persistentVolumeClaim:
+            claimName: {{ $config->getName() }}-sqlite-data
+@endif

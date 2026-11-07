@@ -2,9 +2,12 @@
 
 namespace App\Traits;
 
+use App\Data\ConfigData;
+use App\Enums\DatabaseDriver;
+
 /**
- * What makes a NestJS project deployable: the /healthz endpoint the probes hit.
- * Shared by `nestjs:new` and, once NestJS is deployable, `init`.
+ * What makes a NestJS project deployable: health endpoint, shutdown hooks,
+ * and database wiring. Shared by `nestjs:new` and, once NestJS is deployable, `init`.
  */
 trait PreparesNestjsProject
 {
@@ -57,5 +60,83 @@ TS);
         $this->laraKubeInfo('Added a /healthz endpoint (src/health.controller.ts).');
 
         return true;
+    }
+
+    /**
+     * Enable shutdown hooks in main.ts so NestJS finishes in-flight requests and
+     * disconnects from the database cleanly when SIGTERM is received.
+     */
+    protected function enableNestjsShutdownHooks(string $projectDir): bool
+    {
+        $main = "{$projectDir}/src/main.ts";
+        if (! file_exists($main)) {
+            return false;
+        }
+
+        $content = @file_get_contents($main);
+        if ($content === false || str_contains($content, 'enableShutdownHooks')) {
+            return true;
+        }
+
+        $pattern = '/(const\s+app\s*=\s*await\s+NestFactory\.create[^\;]*;)/';
+        if (! preg_match($pattern, $content, $matches)) {
+            return false;
+        }
+
+        $replacement = $matches[1]."\n  app.enableShutdownHooks();";
+        file_put_contents($main, str_replace($matches[1], $replacement, $content));
+        $this->laraKubeInfo('Enabled NestJS shutdown hooks for clean Kubernetes rolling updates.');
+
+        return true;
+    }
+
+    /**
+     * Scaffold Prisma into the NestJS project with the chosen datasource provider.
+     */
+    protected function scaffoldNestjsPrisma(string $projectDir, DatabaseDriver $database): void
+    {
+        if (file_exists("{$projectDir}/prisma/schema.prisma")) {
+            return;
+        }
+
+        $provider = match ($database) {
+            DatabaseDriver::SQLITE => 'sqlite',
+            DatabaseDriver::POSTGRESQL => 'postgresql',
+            default => 'mysql',
+        };
+
+        $this->laraKubeInfo("Scaffolding Prisma ($provider datasource)...");
+        $this->runInNodeContainer(
+            $projectDir,
+            "npm install prisma@6 @prisma/client@6 && npx --yes prisma@6 init --datasource-provider {$provider}",
+        );
+    }
+
+    /**
+     * Seed DATABASE_URL in .env based on the database driver chosen.
+     */
+    protected function wireNestjsDatabaseEnv(ConfigData $config, string $projectDir, DatabaseDriver $database): void
+    {
+        if ($database === DatabaseDriver::SQLITE) {
+            $this->syncEnvFile($projectDir, [
+                'DATABASE_URL' => 'file:./dev.db',
+            ], false, 'local');
+
+            return;
+        }
+
+        $scheme = $database === DatabaseDriver::POSTGRESQL ? 'postgresql' : 'mysql';
+        $dbName = $config->getName();
+        $dbHost = $config->getName().'-'.$database->value;
+        $port = $database->dbPort();
+        $password = bin2hex(random_bytes(16));
+
+        $this->syncEnvFile($projectDir, [
+            'DATABASE_URL' => "{$scheme}://{$dbName}:{$password}@{$dbHost}:{$port}/{$dbName}",
+            'REDIS_URL' => 'redis://redis:6379',
+            'DB_DATABASE' => $dbName,
+            'DB_USERNAME' => $dbName,
+            'DB_PASSWORD' => $password,
+        ], false, 'local');
     }
 }

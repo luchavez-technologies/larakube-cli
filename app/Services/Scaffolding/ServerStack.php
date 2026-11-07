@@ -18,9 +18,11 @@ final class ServerStack
     /** @return list<DatabaseDriver> the first is the default */
     public static function databases(AppFramework $framework): array
     {
-        return $framework === AppFramework::WORDPRESS
-            ? [DatabaseDriver::MYSQL, DatabaseDriver::MARIADB]
-            : [DatabaseDriver::POSTGRESQL, DatabaseDriver::MYSQL, DatabaseDriver::MARIADB];
+        return match ($framework) {
+            AppFramework::WORDPRESS => [DatabaseDriver::MYSQL, DatabaseDriver::MARIADB],
+            AppFramework::NESTJS => [DatabaseDriver::SQLITE, DatabaseDriver::POSTGRESQL, DatabaseDriver::MYSQL, DatabaseDriver::MARIADB],
+            default => [DatabaseDriver::POSTGRESQL, DatabaseDriver::MYSQL, DatabaseDriver::MARIADB],
+        };
     }
 
     /** @return list<CacheDriver> the first is the default */

@@ -22,8 +22,11 @@ Whenever you modify the LaraKube CLI codebase, you **must** proactively run form
 ```bash
 composer format    # Runs rector process && pint
 composer analyse   # Runs phpstan analyse with memory limit
-composer test      # Runs pest --parallel
+composer test      # Runs pest --parallel (MANDATORY: Run FULL suite after targeted tests!)
 ```
+
+**CRITICAL MANDATORY RULE: ALWAYS RUN THE FULL TEST SUITE (`composer test` / `pest --parallel`)**
+Running targeted tests (e.g. `pest tests/Feature/SpecificTest.php`) during active development is fine for fast iteration, but AI agents are STRICTLY FORBIDDEN from declaring work complete, stating code is ready, or instructing the user to run `./build` until they have executed the ENTIRE test suite (`composer test` or `pest --parallel`) and confirmed that ALL tests (3,500+) pass with 0 failures. Changes to enums, catalogs, shared traits, or configurations routinely break distant matrix tests. ALWAYS run the whole test suite after targeted tests.
 
 **CRITICAL RULE FOR AI AGENTS**: You are STRICTLY FORBIDDEN from running the `./build` command. When a build is required to update the global binary, you must tell the user to run `./build` and wait for them to do it.
 

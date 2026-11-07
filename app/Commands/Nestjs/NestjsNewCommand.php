@@ -4,6 +4,7 @@ namespace App\Commands\Nestjs;
 
 use App\Data\ConfigData;
 use App\Enums\AppFramework;
+use App\Enums\DatabaseDriver;
 use App\Traits\AsksServerStack;
 use App\Traits\CheckPrerequisites;
 use App\Traits\GeneratesProjectInfrastructure;
@@ -99,6 +100,9 @@ class NestjsNewCommand extends Command
         }
 
         $this->addNestjsHealthController($projectDir);
+        $this->enableNestjsShutdownHooks($projectDir);
+        $this->scaffoldNestjsPrisma($projectDir, $database);
+        $this->wireNestjsDatabaseEnv($config, $projectDir, $database);
 
         // 6. Generate K8s manifests
         $this->withSpin('Orchestrating NestJS infrastructure manifests...', function () use ($config): void {
@@ -111,9 +115,10 @@ class NestjsNewCommand extends Command
         $this->line("  <fg=yellow>cd $appName && larakube up</>");
         $this->newLine();
         $this->line('  <fg=gray>Features configured:</>');
-        $this->line('  <fg=gray>  • NestJS TypeScript modular architecture (Node.js 24 Alpine)</>');
-        $this->line('  <fg=gray>  • Migrations run before each rollout once the project has prisma/schema.prisma</>');
+        $this->line('  <fg=gray>  • NestJS TypeScript modular architecture (Node.js 24)</>');
+        $this->line('  <fg=gray>  • Prisma ORM ('.($database === DatabaseDriver::SQLITE ? 'SQLite' : $database->value).') configured</>');
         $this->line('  <fg=gray>  • Health check endpoint at /healthz</>');
+        $this->line('  <fg=gray>  • Graceful shutdown hooks enabled</>');
         $this->newLine();
         $this->line('  <fg=gray>Ready to deploy? Create a cloud environment first:</>');
         $this->line('  <fg=yellow>larakube env production</> <fg=gray>(or</> <fg=yellow>larakube cloud:configure</><fg=gray>)</>');

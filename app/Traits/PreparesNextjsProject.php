@@ -316,28 +316,6 @@ JS;
     }
 
     /**
-     * Run a command in the Node builder image against the project dir, under the
-     * active runtime, reusing the shared npm cache volume and handing the tree
-     * back to the host user afterward (0:0 under rootless Podman — see
-     * containerChownSpec).
-     */
-    protected function runInNodeContainer(string $projectDir, string $command): void
-    {
-        $runtime = $this->containerRuntime();
-        $dir = escapeshellarg($projectDir);
-        $cache = '-v '.self::NPM_CACHE_VOLUME.':/npm-cache -e npm_config_cache=/npm-cache';
-
-        $this->runStreaming(
-            "$runtime run --rm -v $dir:/app -w /app $cache --user root ".self::NODE_IMAGE.' sh -c '.escapeshellarg($command),
-        );
-
-        $this->runStreaming(
-            "$runtime run --rm -v $dir:/app --user root ".self::NODE_IMAGE
-            .' chown -R '.$this->containerChownSpec($this->hostUid(), $this->hostGid()).' /app',
-        );
-    }
-
-    /**
      * Generate a /api/health route handler.
      */
     protected function generateHealthRoute(string $projectDir): void

@@ -1037,6 +1037,9 @@ trait GeneratesProjectInfrastructure
         $render('overlays/local/preview/deployment.yaml', 'k8s.server.deployment', $previewData);
         $render('overlays/local/preview/service.yaml', 'k8s.server.service', $previewData);
         $render('overlays/local/preview/ingress.yaml', 'k8s.server.ingress', $previewData);
+        if ($config->getDatabase() === DatabaseDriver::SQLITE) {
+            $render('overlays/local/preview/sqlite-pvc.yaml', 'k8s.server.sqlite-pvc', $previewData);
+        }
         $render('overlays/local/preview/secret.yaml', 'k8s.server.secret', [
             'envSecret' => $envSecret,
             'secrets' => array_filter($env, fn ($value): bool => $value !== ''),
@@ -1057,6 +1060,9 @@ trait GeneratesProjectInfrastructure
             $render("overlays/$cloudEnv/deployment.yaml", 'k8s.server.deployment', $cloudData);
             $render("overlays/$cloudEnv/service.yaml", 'k8s.server.service', $cloudData);
             $render("overlays/$cloudEnv/ingress.yaml", 'k8s.server.ingress', $cloudData);
+            if ($config->getDatabase() === DatabaseDriver::SQLITE) {
+                $render("overlays/$cloudEnv/sqlite-pvc.yaml", 'k8s.server.sqlite-pvc', $cloudData);
+            }
         }
     }
 

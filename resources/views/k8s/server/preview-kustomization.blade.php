@@ -11,6 +11,9 @@ resources:
   - service.yaml
   - ingress.yaml
   - secret.yaml
+@if($config->getDatabase() === \App\Enums\DatabaseDriver::SQLITE)
+  - sqlite-pvc.yaml
+@endif
 
 images:
   - name: {{ $config->getName() }}:latest

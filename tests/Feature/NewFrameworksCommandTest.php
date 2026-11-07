@@ -134,8 +134,10 @@ test('every server framework asks database, cache, storage and search from one s
     foreach (['django', 'fastapi', 'nestjs', 'adonisjs', 'springboot', 'dotnet', 'gin', 'axum'] as $slug) {
         $fields = collect($catalog[$slug]['fields'])->keyBy('key');
 
+        $defaultDb = $slug === 'nestjs' ? 'sqlite' : 'postgres';
+
         expect($fields->keys()->all())->toBe(['name', 'database', 'cache', 'storage', 'search'], $slug)
-            ->and($fields['database']['default'])->toBe('postgres')
+            ->and($fields['database']['default'])->toBe($defaultDb)
             ->and(array_column($fields['storage']['options'], 'value'))->toContain('none')
             ->and(array_column($fields['search']['options'], 'flag'))->toBe([null, '--meilisearch', '--typesense']);
     }
