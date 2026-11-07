@@ -78,6 +78,51 @@ test('delete groups resources by namespace and tolerates missing ones', function
         ->and(array_filter($kube->calls(), fn ($args) => $args[0] === 'delete'))->each->toContain('--ignore-not-found');
 });
 
+test('delete drops an unsupported resource type and retries the rest of the batch', function (): void {
+    // Regression: a batched `kubectl delete a/x b/y` fails VALIDATION for
+    // EVERY resource in the call if just one type isn't registered on this
+    // cluster (e.g. a Traefik Middleware on a cluster whose Traefik CRDs
+    // were never installed) — --ignore-not-found only covers a missing
+    // INSTANCE of a known type, not a type the API server has never heard
+    // of, which fails as 'the server doesn't have a resource type "x"'
+    // instead. That must not leave the Deployment/Secret in the same batch
+    // undeleted too.
+    Process::fake([
+        '*middleware/web-vpn-only*' => Process::result(
+            errorOutput: 'error: the server doesn\'t have a resource type "middleware"',
+            exitCode: 1,
+        ),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $result = Kubectl::forContext('ctx')->delete(
+        new ResourceRef('Deployment', 'web', 'apps'),
+        new ResourceRef('Middleware', 'web-vpn-only', 'apps'),
+        new ResourceRef('Secret', 'web', 'apps'),
+    );
+
+    expect($result->ok)->toBeTrue();
+
+    Process::assertRan(fn (PendingProcess $p): bool => str_contains($p->command, 'middleware/web-vpn-only'));
+    Process::assertRan(fn (PendingProcess $p): bool => str_contains($p->command, 'deployment/web')
+        && str_contains($p->command, 'secret/web')
+        && ! str_contains($p->command, 'middleware'));
+});
+
+test('delete still fails when the unsupported-type error names something not actually in the batch', function (): void {
+    // Guards the retry's own base case: if the match can't be stripped
+    // (count unchanged), stop instead of retrying the identical call forever.
+    Process::fake(['*' => Process::result(
+        errorOutput: 'error: the server doesn\'t have a resource type "widget"',
+        exitCode: 1,
+    )]);
+
+    $result = Kubectl::forContext('ctx')->delete(new ResourceRef('Deployment', 'web', 'apps'));
+
+    expect($result->ok)->toBeFalse();
+    Process::assertRanTimes(fn (PendingProcess $p): bool => str_contains($p->command, 'delete'), 1);
+});
+
 test('apply, get, exists and list see the same objects', function (): void {
     FakeKubectl::install();
     $kubectl = Kubectl::forContext('ctx');

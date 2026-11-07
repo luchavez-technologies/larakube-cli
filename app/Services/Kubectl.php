@@ -195,7 +195,7 @@ final readonly class Kubectl
     {
         $output = '';
         foreach ($this->byNamespace($refs) as $namespace => $group) {
-            $result = $this->run(['delete', ...array_map(fn (ResourceRef $ref) => $ref->ref(), $group), '-n', $namespace, '--ignore-not-found']);
+            $result = $this->deleteGroup($group, $namespace);
             if (! $result->ok) {
                 return $result;
             }
@@ -444,6 +444,49 @@ final readonly class Kubectl
     public function raw(array $args, ?string $stdin = null, ?int $timeoutSeconds = null): KubectlResult
     {
         return $this->run($args, $stdin, $timeoutSeconds);
+    }
+
+    /**
+     * kubectl validates every resource TYPE named in a `delete a/x b/y` call
+     * up front, before deleting anything — so one unsupported type (e.g. a
+     * Traefik Middleware on a cluster whose Traefik's CRDs were never
+     * installed — a managed provider using a different ingress controller)
+     * blocks deletion of every OTHER resource in the same batch too, not
+     * just itself. `--ignore-not-found` only covers a missing INSTANCE of a
+     * known type; it does nothing for a type the API server has never heard
+     * of, which fails as "error: the server doesn't have a resource type
+     * \"x\"" instead. Detect that specific failure, drop the offending type
+     * from the batch, and retry — the same "never existed on this cluster"
+     * outcome --ignore-not-found already gives for a single missing one.
+     *
+     * @param  list<ResourceRef>  $group
+     */
+    private function deleteGroup(array $group, string $namespace, int $attemptsLeft = 5): KubectlResult
+    {
+        $result = $this->run(['delete', ...array_map(fn (ResourceRef $ref) => $ref->ref(), $group), '-n', $namespace, '--ignore-not-found']);
+
+        if ($result->ok || $attemptsLeft <= 0) {
+            return $result;
+        }
+
+        if (! preg_match('/the server doesn\'t have a resource type "([^"]+)"/i', $result->error, $matches)) {
+            return $result;
+        }
+
+        $missingKind = strtolower($matches[1]);
+        $remaining = array_values(array_filter($group, fn (ResourceRef $ref): bool => strtolower($ref->kind) !== $missingKind));
+
+        if ($remaining === []) {
+            return new KubectlResult(true, '');
+        }
+
+        if (count($remaining) === count($group)) {
+            // The matched type wasn't actually in this batch — nothing to
+            // strip, so retrying would just repeat the same failure forever.
+            return $result;
+        }
+
+        return $this->deleteGroup($remaining, $namespace, $attemptsLeft - 1);
     }
 
     /** @param  list<string>  $args */
