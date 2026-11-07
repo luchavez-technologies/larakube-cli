@@ -430,6 +430,11 @@ final readonly class Kubectl
         return $this->run(['rollout', 'restart', "deployment/{$deployment}", '-n', $namespace]);
     }
 
+    public function scale(string $namespace, string $deployment, int $replicas): KubectlResult
+    {
+        return $this->run(['scale', "deployment/{$deployment}", '-n', $namespace, "--replicas={$replicas}"]);
+    }
+
     /**
      * Anything the typed methods don't cover yet. Kept deliberately visible:
      * its use should only shrink.

@@ -78,8 +78,55 @@ abstract class AbstractToolShowCommand extends Command
             return $this->handleAllInstances($tool, $env, $kubectl);
         }
 
+        // No --domain and more than one instance registered: resolving this
+        // silently to "whichever instance happens to be first" is exactly the
+        // guessed-default this project's non-interactive flag rule warns
+        // against (RequiresFlagsWhenNonInteractive) — it could return the
+        // wrong instance's credentials/host with no indication anything was
+        // ambiguous. Return the full set instead of guessing one: null (via
+        // the normal not-installed path below) when there are none, a single
+        // object when there is exactly one, an array when there is more
+        // than one — the caller can always tell which shape it got.
+        if ($domain === '' && $tool->supportsMultipleInstances()) {
+            $registered = $this->getToolInstances($kubectl, $tool);
+            if (count($registered) > 1) {
+                return $this->showEveryInstanceDetail($tool, $env, $kubectl, $registered);
+            }
+        }
+
         $instance = $this->resolveInstanceForDomain($kubectl, $tool, $domain);
 
+        $detail = $this->buildInstanceDetail($tool, $env, $kubectl, $instance);
+
+        if ($this->option('json')) {
+            $this->line((string) json_encode($detail, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+            return $detail['installed'] ? 0 : 1;
+        }
+
+        if (! $detail['installed']) {
+            $this->warn("  {$tool->getLabel()} is not installed in {$tool->namespace()} ('{$env}').");
+            $this->line("  Run <fg=yellow>larakube {$tool->initInvocation($env)}</> to deploy it.");
+
+            return 1;
+        }
+
+        table(['Component', 'Access'], $this->rows($detail['host'], $env, $kubectl, $instance));
+
+        $this->afterTable($detail['host'], $env, $instance);
+
+        return 0;
+    }
+
+    /**
+     * One instance's full detail, the same shape --json has always returned
+     * for a single result — factored out so the multi-instance array below
+     * is a list of exactly this, not a thinner summary.
+     *
+     * @return array{tool: string, instance: string, environment: string, installed: bool, namespace: string, host: string|null, url: string|null, wirings: array<string, bool>, components: list<array<string, mixed>>, credentials: array<string, string>|null}
+     */
+    protected function buildInstanceDetail(ClusterTool $tool, string $env, string $kubectl, string $instance): array
+    {
         // The registry is a convenience index, NOT the source of truth: only a
         // handful of {tool}:init commands ever call registerDeployedTool(), so
         // trusting it alone reported long-running installs as "not installed"
@@ -89,37 +136,51 @@ abstract class AbstractToolShowCommand extends Command
         $installed = $this->isToolRegistered($kubectl, $tool, $instance)
             || $this->isToolPresentOnCluster($kubectl, $tool, $instance);
         $host = $this->resolveHost($tool, $env, $kubectl, $instance);
-        $rows = $this->rows($host, $env, $kubectl, $instance);
+
+        return [
+            'tool' => $tool->value,
+            'instance' => $instance,
+            'environment' => $env,
+            'installed' => $installed,
+            'namespace' => $tool->namespace(),
+            'host' => $host,
+            'url' => $host !== null ? "https://{$host}" : null,
+            'wirings' => $this->supportedWirings($tool),
+            'components' => $this->componentSummary($tool, $instance, $kubectl),
+            // null when the tool has none (e.g. n8n, where the first
+            // visitor claims admin) — never guessed or left stale.
+            'credentials' => $installed ? $this->credentials($host, $env, $instance) : null,
+        ];
+    }
+
+    /**
+     * More than one instance is registered and no --domain was given to pick
+     * one: the full detail for every instance, as an array of the same shape
+     * a single result returns — never a silent pick of just one.
+     *
+     * @param  list<string>  $instances
+     */
+    protected function showEveryInstanceDetail(ClusterTool $tool, string $env, string $kubectl, array $instances): int
+    {
+        $details = array_map(
+            fn (string $instance) => $this->buildInstanceDetail($tool, $env, $kubectl, $instance),
+            $instances,
+        );
 
         if ($this->option('json')) {
-            $this->line((string) json_encode([
-                'tool' => $tool->value,
-                'instance' => $instance,
-                'environment' => $env,
-                'installed' => $installed,
-                'namespace' => $tool->namespace(),
-                'host' => $host,
-                'url' => $host !== null ? "https://{$host}" : null,
-                'wirings' => $this->supportedWirings($tool),
-                'components' => $this->componentSummary($tool, $instance, $kubectl),
-                // null when the tool has none (e.g. n8n, where the first
-                // visitor claims admin) — never guessed or left stale.
-                'credentials' => $installed ? $this->credentials($host, $env, $instance) : null,
-            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            $this->line((string) json_encode($details, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
-            return $installed ? 0 : 1;
+            return 0;
         }
 
-        if (! $installed) {
-            $this->warn("  {$tool->getLabel()} is not installed in {$tool->namespace()} ('{$env}').");
-            $this->line("  Run <fg=yellow>larakube {$tool->initInvocation($env)}</> to deploy it.");
-
-            return 1;
+        $this->laraKubeInfo("  {$tool->getLabel()} has ".count($details).' instances registered — no --domain was given, so here is every one.');
+        foreach ($details as $detail) {
+            $this->newLine();
+            $this->line("  <fg=gray>Instance:</> <fg=blue>{$detail['instance']}</> <fg=gray>—</> ".
+                ($detail['url'] ?? '<fg=gray>host not configured</>'));
+            table(['Component', 'Access'], $this->rows($detail['host'], $env, $kubectl, $detail['instance']));
+            $this->afterTable($detail['host'], $env, $detail['instance']);
         }
-
-        table(['Component', 'Access'], $rows);
-
-        $this->afterTable($host, $env, $instance);
 
         return 0;
     }
@@ -190,7 +251,7 @@ abstract class AbstractToolShowCommand extends Command
      * The instance's workloads with the names and identity labels ToolInstance
      * derives, so a UI never has to compose either.
      *
-     * @return list<array{key: string, name: string, role: string, deployment: string, labels: array<string, string>, deployed?: bool, ready?: bool, replicas?: string}>
+     * @return list<array{key: string, name: string, role: string, deployment: string, labels: array<string, string>, deployed?: bool, ready?: bool, replicas?: string, paused?: bool}>
      */
     protected function componentSummary(ClusterTool $tool, string $instance, ?string $kubectl = null): array
     {
@@ -220,6 +281,7 @@ abstract class AbstractToolShowCommand extends Command
                             'deployed' => true,
                             'ready' => $readyReplicas > 0,
                             'replicas' => "{$readyReplicas}/{$desiredReplicas}",
+                            'paused' => isset($item['metadata']['annotations']['larakube.app/paused-replicas']),
                         ];
                     }
                 }
@@ -253,6 +315,7 @@ abstract class AbstractToolShowCommand extends Command
                 $summary['deployed'] = $depStatus !== null;
                 $summary['ready'] = $depStatus['ready'] ?? false;
                 $summary['replicas'] = $depStatus['replicas'] ?? '0/0';
+                $summary['paused'] = $depStatus['paused'] ?? false;
             }
 
             return $summary;

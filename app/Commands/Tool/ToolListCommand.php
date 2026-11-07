@@ -198,7 +198,7 @@ class ToolListCommand extends Command
 
         if ($registryOnly) {
             foreach ($rows as &$row) {
-                $row = array_merge($row, ['mail' => 'unverified', 'sso' => 'unverified', 'rotation' => 'unverified', 'sync' => 'unverified', 'vpn' => 'unverified', 'meet' => 'unverified', 'db_role' => null]);
+                $row = array_merge($row, ['mail' => 'unverified', 'sso' => 'unverified', 'rotation' => 'unverified', 'sync' => 'unverified', 'vpn' => 'unverified', 'meet' => 'unverified', 'db_role' => null, 'paused' => false]);
                 unset($row['vendor']);
             }
             unset($row);
@@ -211,7 +211,25 @@ class ToolListCommand extends Command
             ? $this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())
             : false;
 
+        // Paused Deployments carry a `larakube.app/paused-replicas` annotation
+        // (set by `tool:pause`). One `get deployment -o json` per DISTINCT
+        // namespace among installed tools — not one per tool or per component —
+        // covers every row's components in that namespace at once.
+        $pausedDeployments = [];
+        foreach (array_unique(array_map(fn ($r) => $r['namespace'], array_filter($rows, fn ($r) => $r['installed']))) as $ns) {
+            $rawJson = trim(Process::run("{$kubectl} get deployment -n {$ns} -o json --ignore-not-found")->output());
+            $decoded = json_decode($rawJson, true);
+            foreach (($decoded['items'] ?? []) as $item) {
+                $name = (string) ($item['metadata']['name'] ?? '');
+                if ($name !== '' && isset($item['metadata']['annotations']['larakube.app/paused-replicas'])) {
+                    $pausedDeployments[$name] = true;
+                }
+            }
+        }
+
         foreach ($rows as &$r) {
+            $r['paused'] = $r['installed'] && count(array_filter($r['components'], fn ($c) => isset($pausedDeployments[$c['deployment']]))) > 0;
+
             /** @var ClusterToolVendor $vendor */
             $vendor = $r['vendor'];
             $installed = $r['installed'];

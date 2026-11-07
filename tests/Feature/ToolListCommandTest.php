@@ -635,3 +635,44 @@ test('tool:list surfaces LiveKit Meet wiring status for Matrix chat', function (
     expect($matrixRow['meet'])->toBe('wired')
         ->and($pocketRow['meet'])->toBe('N/A');
 });
+
+test('tool:list reports a row paused when its Deployment carries the pause-replicas annotation', function (): void {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ['tool' => 'n8n', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'engine' => 'n8n', 'installedAt' => '2026-09-01T00:00:00+00:00'],
+            ['tool' => 'pocketbase', 'instance' => 'data-example-com', 'host' => 'data.example.com', 'installedAt' => '2026-09-01T00:00:00+00:00'],
+        ]))),
+        '*get deployment -n larakube-shared -o json*' => Process::result(output: (string) json_encode([
+            'items' => [
+                ['metadata' => ['name' => 'n8n-flow-example-com', 'annotations' => ['larakube.app/paused-replicas' => '1']]],
+                ['metadata' => ['name' => 'pocketbase-data-example-com']],
+            ],
+        ])),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $exit = Artisan::call('tool:list local --json');
+    $output = json_decode(Artisan::output(), true);
+
+    expect($exit)->toBe(0);
+    $n8nRow = collect($output)->firstWhere('tool', 'n8n');
+    $pocketRow = collect($output)->firstWhere('tool', 'pocketbase');
+
+    expect($n8nRow['paused'])->toBeTrue()
+        ->and($pocketRow['paused'])->toBeFalse();
+});
+
+test('tool:list --registry-only never reports paused (unverified)', function (): void {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ['tool' => 'n8n', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'engine' => 'n8n', 'installedAt' => '2026-09-01T00:00:00+00:00'],
+        ]))),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $exit = Artisan::call('tool:list local --registry-only --json');
+    $output = json_decode(Artisan::output(), true);
+
+    expect($exit)->toBe(0)
+        ->and(collect($output)->firstWhere('tool', 'n8n')['paused'])->toBeFalse();
+});
