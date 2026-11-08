@@ -173,14 +173,13 @@ trait InteractsWithTrust
      * resolution is what makes every host "just work" without per-hostname
      * /etc/hosts entries, and every platform benefits equally from it.
      *
-     * WSL2 without mirrored networking is the one exception: dnsmasq runs
-     * inside the WSL2 VM on its own network namespace, invisible to the
-     * Windows browser that actually renders pages, so it would do nothing
-     * useful there — host resolution falls back entirely to the Windows
-     * side instead (see ensureWindowsHostsAreSet()). With mirrored
-     * networking active, Windows and WSL share localhost, so dnsmasq here
-     * works exactly like macOS/Linux once a Windows NRPT rule points the
-     * TLD at it (see ensureWindowsNrptRule() below).
+     * WSL2 is always the exception, even with mirrored networking active:
+     * Windows' own DNS Client service permanently owns UDP 0.0.0.0:53 on the
+     * host, so dnsmasq inside the WSL2 VM can never actually serve DNS to
+     * the Windows browser — host resolution falls back entirely to the
+     * Windows hosts file instead (see ensureWindowsHostsAreSet()). A
+     * dnsmasq-via-Windows-NRPT-rule approach was tried and reverted for
+     * exactly this reason; see git history around 2026-10-19.
      */
     protected function setupDnsmasq(): void
     {
@@ -401,140 +400,6 @@ trait InteractsWithTrust
         $this->runInteractive('sudo cp '.escapeshellarg($tmp).' '.escapeshellarg(self::RESOLVED_DROP_IN));
         $temporaryDirectory->delete();
         $this->runInteractive('sudo systemctl restart systemd-resolved');
-    }
-
-    /**
-     * Ensure Windows's own DNS resolver asks dnsmasq (reachable at the
-     * Windows/WSL shared loopback under mirrored networking) for every
-     * given TLD, via a Windows NRPT rule — admin-elevated once per TLD,
-     * never per-host. This is what makes dnsmasq on WSL behave exactly like
-     * dnsmasq on macOS/Linux (where /etc/resolver/<tld> does the same job),
-     * instead of falling back to syncing the Windows hosts file per host
-     * (InteractsWithHosts::ensureWindowsHostsAreSet()).
-     *
-     * No-op off WSL or without mirrored networking active — the hosts-file
-     * fallback keeps handling those cases exactly as before. Idempotent: a
-     * TLD an existing rule already covers triggers no elevation at all.
-     *
-     * Known limitation: NRPT only steers apps that use Windows's built-in
-     * DNS resolver. A browser with its own DNS-over-HTTPS resolver can
-     * bypass it — no different in kind from the existing hosts-file path,
-     * which the same browsers can also route around.
-     *
-     * @param  array<int, string>  $tlds
-     */
-    protected function ensureWindowsNrptRule(array $tlds): void
-    {
-        if (! $this->isWsl() || ! $this->mirroredNetworkingActive()) {
-            return;
-        }
-
-        $covered = $this->windowsNrptCoveredTlds();
-        $missing = array_values(array_filter(
-            array_unique($tlds),
-            fn (string $tld): bool => ! in_array(strtolower($tld), $covered, true),
-        ));
-
-        if ($missing === []) {
-            return;
-        }
-
-        $this->laraKubeInfo('Windows DNS needs a one-time rule so your browser resolves *.'.implode(', *.', $missing).' via dnsmasq.');
-
-        if (! $this->applyWindowsNrptRule($missing)) {
-            $this->laraKubeWarn('Could not add the Windows DNS rule automatically. From an elevated PowerShell, run:');
-            foreach ($missing as $tld) {
-                $this->line("     Add-DnsClientNrptRule -Namespace \".{$tld}\" -NameServers \"127.0.0.1\"");
-            }
-
-            return;
-        }
-
-        $this->laraKubeInfo('Windows DNS rule added: *.'.implode(', *.', $missing).' → 127.0.0.1 (dnsmasq).');
-    }
-
-    /**
-     * Every TLD namespace an existing Windows NRPT rule already routes to a
-     * nameserver — regardless of which one, so a rule a previous run or the
-     * user set up by hand is still recognised as "covered" and left alone.
-     *
-     * @return array<int, string>
-     */
-    protected function windowsNrptCoveredTlds(): array
-    {
-        $powershell = $this->windowsCommand('powershell.exe');
-        $output = trim(Process::run(
-            "{$powershell} -NoProfile -Command \"Get-DnsClientNrptRule | Select-Object -ExpandProperty Namespace | ConvertTo-Json -Compress\"",
-        )->output());
-
-        if ($output === '') {
-            return [];
-        }
-
-        $decoded = json_decode($output, true);
-        $namespaces = is_array($decoded) ? $decoded : [$decoded];
-
-        return array_values(array_filter(array_map(
-            fn (mixed $ns): string => is_string($ns) ? strtolower(ltrim($ns, '.')) : '',
-            $namespaces,
-        )));
-    }
-
-    /**
-     * Add a Windows NRPT rule for each given TLD via an elevated PowerShell
-     * (the standard UAC prompt) — the same staging pattern
-     * InteractsWithHosts::syncWindowsHostsFile() uses: stage the .ps1 under
-     * the Windows %TEMP% (via windowsTempDir()), not WSL's /tmp, since the
-     * elevated Administrator logon session can't see WSL's 9P share.
-     *
-     * @param  array<int, string>  $tlds
-     */
-    protected function applyWindowsNrptRule(array $tlds): bool
-    {
-        $winTempDir = $this->windowsTempDir();
-        if ($winTempDir === null) {
-            return false;
-        }
-
-        $temporaryDirectory = (new TemporaryDirectory($winTempDir))->deleteWhenDestroyed()->create();
-        $scriptTmp = $temporaryDirectory->path().'/win-nrpt-sync.ps1';
-
-        $lines = array_map(
-            fn (string $tld): string => "Add-DnsClientNrptRule -Namespace \".{$tld}\" -NameServers \"127.0.0.1\"",
-            $tlds,
-        );
-        file_put_contents($scriptTmp, implode("\n", $lines)."\n");
-
-        $winScript = trim(Process::run('wslpath -w '.escapeshellarg($scriptTmp))->output());
-        if ($winScript === '') {
-            $temporaryDirectory->delete();
-
-            return false;
-        }
-
-        $startProcess = 'Start-Process -FilePath powershell -Verb RunAs -Wait '
-            ."-ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{$winScript}'";
-
-        // -Wait blocks until the UAC dialog resolves. On multi-monitor setups
-        // (or Windows Terminal in general) that dialog can render off the
-        // active window/monitor — without this line it just looks like
-        // `setup`/`up` hung.
-        $this->line('  <fg=gray>Look for a Windows security prompt (it may be behind this window or on another monitor)...</>');
-
-        $powershell = $this->windowsCommand('powershell.exe');
-        $ok = Process::run("{$powershell} -NoProfile -Command ".escapeshellarg($startProcess))->successful();
-
-        $temporaryDirectory->delete();
-
-        // Trust, but verify: a declined/dismissed UAC prompt still exits
-        // the outer powershell.exe "successfully" — only re-querying the
-        // actual rule table confirms the rule exists now.
-        if ($ok) {
-            $nowCovered = $this->windowsNrptCoveredTlds();
-            $ok = array_diff(array_map('strtolower', $tlds), $nowCovered) === [];
-        }
-
-        return $ok;
     }
 
     /**

@@ -178,7 +178,7 @@ test('syncWindowsHostsFile queues a handoff file instead of self-elevating when 
     // LARAKUBE_NATIVE_DISPATCH=1 is set by WslBridge::dispatchToWsl() -- see its
     // own docblock. Confirms this path never attempts the two-hop
     // wslpath+Start-Process bridge that's confirmed live to silently drop the
-    // UAC prompt (same root cause as applyWindowsNrptRule()).
+    // UAC prompt.
     putenv('LARAKUBE_NATIVE_DISPATCH=1');
     Process::fake([]);
 

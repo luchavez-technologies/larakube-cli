@@ -32,11 +32,6 @@ function trustHelperOnLinux(): object
             return $this->isDnsmasqConfigured();
         }
 
-        public function ensureNrptRule(array $tlds): void
-        {
-            $this->ensureWindowsNrptRule($tlds);
-        }
-
         protected function isWsl(): bool
         {
             return false;
@@ -122,16 +117,6 @@ function trustHelperOnWsl(bool $mirrored): object
             return $this->isDnsmasqConfigured();
         }
 
-        public function ensureNrptRule(array $tlds): void
-        {
-            $this->ensureWindowsNrptRule($tlds);
-        }
-
-        public function nrptCovered(): array
-        {
-            return $this->windowsNrptCoveredTlds();
-        }
-
         protected function isWsl(): bool
         {
             return true;
@@ -159,40 +144,4 @@ test('isDnsmasqConfigured on WSL is always false because WSL uses the Windows ho
 
     expect(trustHelperOnWsl(true)->dnsmasqConfigured())->toBeFalse();
     Process::assertNothingRan();
-});
-
-test('windowsNrptCoveredTlds parses a single-namespace PowerShell result (bare JSON string)', function (): void {
-    Process::fake(['*Get-DnsClientNrptRule*' => '".kube"']);
-
-    expect(trustHelperOnWsl(true)->nrptCovered())->toBe(['kube']);
-});
-
-test('windowsNrptCoveredTlds parses a multi-namespace PowerShell result (JSON array)', function (): void {
-    Process::fake(['*Get-DnsClientNrptRule*' => '[".kube",".test"]']);
-
-    expect(trustHelperOnWsl(true)->nrptCovered())->toBe(['kube', 'test']);
-});
-
-test('windowsNrptCoveredTlds is empty when PowerShell reports no rules at all', function (): void {
-    Process::fake(['*Get-DnsClientNrptRule*' => '']);
-
-    expect(trustHelperOnWsl(true)->nrptCovered())->toBe([]);
-});
-
-test('ensureWindowsNrptRule never shells out off WSL or without mirrored networking', function (): void {
-    Process::fake(['*' => fn () => throw new RuntimeException('no process should run')]);
-
-    trustHelperOnLinux()->ensureNrptRule(['kube']); // not WSL at all
-    trustHelperOnWsl(false)->ensureNrptRule(['kube']); // WSL, not mirrored
-
-    Process::assertNothingRan();
-});
-
-test('ensureWindowsNrptRule is a no-op (no elevation attempted) when every TLD is already covered', function (): void {
-    Process::fake(['*Get-DnsClientNrptRule*' => '[".kube"]']);
-
-    trustHelperOnWsl(true)->ensureNrptRule(['kube']);
-
-    Process::assertRan(fn ($process) => str_contains($process->command, 'Get-DnsClientNrptRule'));
-    Process::assertNotRan(fn ($process) => str_contains($process->command, 'Start-Process'));
 });

@@ -235,33 +235,6 @@ test('dispatchToWsl always pins --user larakube, never the distro\'s own default
         ->and($dispatchedCommand[array_search('--user', $dispatchedCommand, true) + 1])->toBe('larakube');
 });
 
-test('ensureNrptRuleForLocalTld skips entirely when the TLD is already covered', function (): void {
-    Process::fake([
-        '*Get-DnsClientNrptRule*' => Process::result(output: '["test"]'),
-    ]);
-
-    (new WslBridge)->ensureNrptRuleForLocalTld();
-
-    Process::assertNotRan(fn ($p) => str_contains(implode(' ', (array) $p->command), 'Start-Process'));
-});
-
-test('ensureNrptRuleForLocalTld applies the rule natively, one hop, when not yet covered', function (): void {
-    // Generalizes SetupCommand's own pre-dispatch check (previously `setup`-only)
-    // to every dispatched command, since trust/up/hosts all reach the same
-    // confirmed-unreliable two-hop WSL-side bridge via configureDnsmasq().
-    Process::fake([
-        '*Get-DnsClientNrptRule*' => Process::sequence()
-            ->push(Process::result(output: '[]'))
-            ->push(Process::result(output: '["test"]')),
-        '*Start-Process*-Verb*RunAs*' => Process::result(),
-    ]);
-
-    (new WslBridge)->ensureNrptRuleForLocalTld();
-
-    Process::assertRan(fn ($p) => str_contains(implode(' ', (array) $p->command), 'Start-Process')
-        && str_contains(implode(' ', (array) $p->command), '-Verb'));
-});
-
 test('applyPendingWindowsHostsSync is a no-op when nothing was queued', function (): void {
     $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
     Process::fake([]);
@@ -277,9 +250,11 @@ test('applyPendingWindowsHostsSync is a no-op when nothing was queued', function
 test('applyPendingWindowsHostsSync applies the queued content via one elevated hop and clears the handoff file', function (): void {
     // Native counterpart to InteractsWithHosts::queuePendingWindowsHostsSync():
     // the WSL-side sync writes the merged content here instead of
-    // self-elevating across the WSL boundary (unreliable — same root cause as
-    // applyNrptRule()'s own docblock). This picks it up once dispatchToWsl()
-    // returns and applies it with one direct elevation hop, same shape.
+    // self-elevating across the WSL boundary (unreliable — a UAC prompt
+    // spawned at the end of a WSL-interop-then-elevate chain doesn't
+    // reliably attach to the interactive desktop session). This picks it up
+    // once dispatchToWsl() returns and applies it with one direct elevation
+    // hop, same shape.
     $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
     $pendingPath = $dir->path().'/pending-windows-hosts';
     file_put_contents($pendingPath, "127.0.0.1 myapp.test\n");

@@ -466,11 +466,9 @@ trait InteractsWithHosts
         // Dispatched from native Windows (see WslBridge::dispatchToWsl()): hand
         // the merged content off to the native process instead of attempting
         // the two-hop bridge-then-elevate below -- confirmed live to silently
-        // drop the UAC prompt (same root cause as
-        // InteractsWithTrust::applyWindowsNrptRule(); see
-        // WslBridge::applyNrptRule()'s docblock). That native process is
-        // already waiting on this very command, so it's in the right place
-        // to finish the job in one hop once this command exits -- see
+        // drop the UAC prompt. That native process is already waiting on this
+        // very command, so it's in the right place to finish the job in one
+        // hop once this command exits -- see
         // WslBridge::applyPendingWindowsHostsSync().
         if (getenv('LARAKUBE_NATIVE_DISPATCH') !== false) {
             return $this->queuePendingWindowsHostsSync($content, $entry);

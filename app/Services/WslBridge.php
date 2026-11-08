@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Data\GlobalConfigData;
 use App\Traits\ConfiguresWslNetworking;
 use Illuminate\Support\Facades\Process;
 
@@ -480,146 +479,18 @@ class WslBridge
     }
 
     /**
-     * Every TLD namespace an existing Windows NRPT rule already routes to a
-     * nameserver — a rule from a previous run or set up by hand is still
-     * recognised as "covered" and left alone.
-     *
-     * Native-Windows counterpart to InteractsWithTrust::windowsNrptCoveredTlds()
-     * (CLI/app/Traits/InteractsWithTrust.php) — that one bridges out from
-     * inside WSL via windowsCommand()'s interop path; running natively, this
-     * calls powershell.exe directly, no bridge needed.
-     *
-     * @return list<string>
-     */
-    public function windowsNrptCoveredTlds(): array
-    {
-        $output = trim(Process::run(
-            'powershell.exe -NoProfile -Command "Get-DnsClientNrptRule | Select-Object -ExpandProperty Namespace | ConvertTo-Json -Compress"',
-        )->output());
-
-        if ($output === '') {
-            return [];
-        }
-
-        $decoded = json_decode($output, true);
-        $namespaces = is_array($decoded) ? $decoded : [$decoded];
-
-        return array_values(array_filter(array_map(
-            fn (mixed $ns): string => is_string($ns) ? strtolower(ltrim($ns, '.')) : '',
-            $namespaces,
-        )));
-    }
-
-    /**
-     * Remove any stale Windows NRPT rules pointing to 127.0.0.1 (created by
-     * earlier LaraKube versions before retiring WSL2 dnsmasq) and flush the
-     * Windows DNS client cache so browsers immediately fall back to the
-     * Windows hosts file.
-     */
-    public function removeStaleLocalNrptRules(): bool
-    {
-        $tempDir = sys_get_temp_dir();
-        $scriptPath = $tempDir.DIRECTORY_SEPARATOR.'larakube-nrpt-cleanup-'.bin2hex(random_bytes(6)).'.ps1';
-
-        file_put_contents(
-            $scriptPath,
-            "Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object { \$_.NameServers -contains '127.0.0.1' } | Remove-DnsClientNrptRule -Force -ErrorAction SilentlyContinue\n"
-            ."Clear-DnsClientCache -ErrorAction SilentlyContinue\n",
-        );
-
-        $startProcess = 'Start-Process -FilePath powershell -Verb RunAs -Wait '
-            ."-ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{$scriptPath}'";
-
-        $ok = Process::run(['powershell.exe', '-NoProfile', '-Command', $startProcess])->successful();
-
-        @unlink($scriptPath);
-
-        return $ok;
-    }
-
-    /**
-     * Add a Windows NRPT rule for each given TLD via a directly-elevated
-     * PowerShell (the standard UAC prompt) — one hop, since we're already
-     * native Windows. The WSL-side equivalent (applyWindowsNrptRule() in
-     * InteractsWithTrust) needs two: bridge out to a non-elevated
-     * powershell.exe via WSL interop, which then requests elevation for a
-     * second, child powershell.exe — a UAC prompt spawned at the end of
-     * that chain doesn't reliably attach to the interactive desktop
-     * session. Confirmed live: that path silently failed with no visible
-     * prompt during this session's own Windows testing.
-     *
-     * @param  list<string>  $tlds
-     */
-    public function applyNrptRule(array $tlds): bool
-    {
-        $tempDir = sys_get_temp_dir();
-        $scriptPath = $tempDir.DIRECTORY_SEPARATOR.'larakube-nrpt-'.bin2hex(random_bytes(6)).'.ps1';
-
-        $lines = array_map(
-            fn (string $tld): string => "Add-DnsClientNrptRule -Namespace \".{$tld}\" -NameServers \"127.0.0.1\"",
-            $tlds,
-        );
-        file_put_contents($scriptPath, implode("\n", $lines)."\n");
-
-        $startProcess = 'Start-Process -FilePath powershell -Verb RunAs -Wait '
-            ."-ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{$scriptPath}'";
-
-        $ok = Process::run(['powershell.exe', '-NoProfile', '-Command', $startProcess])->successful();
-
-        @unlink($scriptPath);
-
-        if (! $ok) {
-            return false;
-        }
-
-        // Trust, but verify: a declined/dismissed UAC prompt still exits the
-        // outer powershell.exe "successfully" — only re-querying the actual
-        // rule table confirms the rule exists now.
-        return array_diff(array_map('strtolower', $tlds), $this->windowsNrptCoveredTlds()) === [];
-    }
-
-    /**
-     * Applies the Windows NRPT rule for the globally configured TLD before
-     * dispatching into WSL — generalizes SetupCommand::handleWindowsSetup()'s
-     * own native, one-hop check (which only ran for `setup`) to every
-     * dispatched command. trust/up/hosts all reach the WSL-side
-     * InteractsWithTrust::ensureWindowsNrptRule() too (via
-     * configureDnsmasq()), which still uses the old two-hop bridge
-     * confirmed live to silently drop the UAC prompt — this makes that
-     * WSL-side call a no-op in practice by the time it runs. Cheap once
-     * already covered: a single PowerShell query, no elevation attempted.
-     */
-    public function ensureNrptRuleForLocalTld(): void
-    {
-        $tld = strtolower(GlobalConfigData::load()->getLocalTld());
-
-        if (in_array($tld, $this->windowsNrptCoveredTlds(), true)) {
-            return;
-        }
-
-        fwrite(STDERR, "Windows DNS needs a one-time rule so your browser resolves *.{$tld} via dnsmasq.".PHP_EOL);
-        fwrite(STDERR, 'Look for a Windows security prompt (it may be behind this window or on another monitor)...'.PHP_EOL);
-
-        if ($this->applyNrptRule([$tld])) {
-            fwrite(STDERR, "Windows DNS rule added: *.{$tld} -> 127.0.0.1 (dnsmasq).".PHP_EOL);
-        } else {
-            fwrite(STDERR, 'Could not add the Windows DNS rule automatically. From an elevated PowerShell, run:'.PHP_EOL);
-            fwrite(STDERR, "  Add-DnsClientNrptRule -Namespace \".{$tld}\" -NameServers \"127.0.0.1\"".PHP_EOL);
-        }
-    }
-
-    /**
      * Native-Windows counterpart to InteractsWithHosts::syncWindowsHostsFile().
      * When dispatchToWsl() marks the dispatched process with
      * LARAKUBE_NATIVE_DISPATCH=1, that WSL-side sync queues its merged
      * content into a handoff file instead of attempting its own two-hop
-     * self-elevation (unreliable for the same reason applyNrptRule() exists
-     * — see its docblock). This runs right after dispatchToWsl()'s real
-     * process exits, reads that file via its \\wsl.localhost UNC path (a
-     * plain, non-elevated read — no WSL interop bridging needed, since
-     * we're already native Windows), and applies it with one direct
-     * elevation hop, same shape as applyNrptRule(). No-op when nothing
-     * queued a sync.
+     * self-elevation (unreliable — a UAC prompt spawned at the end of a
+     * WSL-interop-then-elevate chain doesn't reliably attach to the
+     * interactive desktop session; confirmed live during this session's own
+     * Windows testing). This runs right after dispatchToWsl()'s real process
+     * exits, reads that file via its \\wsl.localhost UNC path (a plain,
+     * non-elevated read — no WSL interop bridging needed, since we're
+     * already native Windows), and applies it with one direct elevation
+     * hop. No-op when nothing queued a sync.
      */
     public function applyPendingWindowsHostsSync(): void
     {
