@@ -43,3 +43,4 @@ Consequences**. Statuses: `Accepted`, `Superseded by NNNN`, `Proposed`.
 | [0025](0025-conventional-commits-and-automated-releases.md) | Conventional Commits, Semantic Versioning pre-v1, and automated releases | Accepted |
 | [0026](0026-pre-install-cluster-capacity-guard.md) | A tool install is checked against live cluster capacity, derived from its own manifest | Accepted |
 | [0027](0027-least-privilege-cloud-iam-policies.md) | Prioritize least privilege and minimal IAM access across all cloud integrations | Accepted |
+| [0028](0028-video-production-and-voiceover-standards.md) | Video production, AI voiceover, and OpenScreen remastering standards | Accepted |
