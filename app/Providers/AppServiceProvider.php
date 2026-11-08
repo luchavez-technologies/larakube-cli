@@ -111,5 +111,11 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->register(LaravelDataServiceProvider::class);
         $this->app->singleton(\App\Services\RuntimeContext::class);
+
+        // Bound (not hardcoded `new LoopbackHttpServer`) specifically so OAuth
+        // connect-flow commands/tests can swap in FakeLoopbackHttpServer — a
+        // real bound socket + browser redirect isn't something Process::fake()/
+        // Http::fake() can stand in for. See cli/plans/active/oauth-provider-connect.md.
+        $this->app->bind(\App\Services\Cloud\LoopbackHttpServerInterface::class, \App\Services\Cloud\LoopbackHttpServer::class);
     }
 }

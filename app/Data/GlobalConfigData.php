@@ -3,6 +3,7 @@
 namespace App\Data;
 
 use App\Enums\AiProvider;
+use App\Services\Cloud\OAuthTokenResult;
 use App\Traits\InteractsWithJsonFile;
 use Illuminate\Support\Carbon;
 use Spatie\LaravelData\Data;
@@ -71,7 +72,13 @@ class GlobalConfigData extends Data
          * Named accounts registry for token-based cloud providers (do, hetzner).
          * Shape: ['do' => [['id' => 'do-1', 'name' => 'Agency Main', 'token' => '...', 'default' => true, 'createdAt' => '...']], ...]
          *
-         * @var array<string, list<array{id: string, name: string, token: string, default: bool, createdAt: string}>>
+         * ADR 0029: every OAuth-connected entry additionally carries
+         * `authMethod: 'oauth'`, `providerAccountId` (the provider's own
+         * account id — the dedupe key upsertOAuthCloudAccount() matches on,
+         * never a name the user typed), `refreshToken`, and `expiresAt`. A
+         * manually-pasted token (addCloudAccount()) carries none of those.
+         *
+         * @var array<string, list<array{id: string, name: string, token: string, default: bool, createdAt: string, authMethod?: string, providerAccountId?: string, refreshToken?: ?string, expiresAt?: string}>>
          */
         public array $cloudAccounts = [],
         public array $shareDomains = [],
@@ -171,11 +178,12 @@ class GlobalConfigData extends Data
     {
         $accounts = $this->cloudAccounts[$provider] ?? [];
 
-        // Backwards compatibility migration for legacy doToken / hetznerToken
+        // Backwards compatibility migration for legacy doToken / hetznerToken / cloudflareToken
         if ($accounts === []) {
             $legacyToken = match ($provider) {
                 'do' => $this->doToken,
                 'hetzner' => $this->hetznerToken,
+                'cloudflare' => $this->cloudflareToken,
                 default => null,
             };
 
@@ -218,11 +226,7 @@ class GlobalConfigData extends Data
         $this->cloudAccounts[$provider] = $accounts;
 
         if ($asDefault || count($accounts) === 1) {
-            if ($provider === 'do') {
-                $this->doToken = $token;
-            } elseif ($provider === 'hetzner') {
-                $this->hetznerToken = $token;
-            }
+            $this->mirrorDefaultCloudAccountToken($provider);
         }
 
         return $id;
@@ -243,12 +247,7 @@ class GlobalConfigData extends Data
 
         $this->cloudAccounts[$provider] = $filtered;
 
-        $default = $this->getDefaultCloudAccount($provider);
-        if ($provider === 'do') {
-            $this->doToken = $default['token'] ?? null;
-        } elseif ($provider === 'hetzner') {
-            $this->hetznerToken = $default['token'] ?? null;
-        }
+        $this->mirrorDefaultCloudAccountToken($provider);
 
         return true;
     }
@@ -262,11 +261,6 @@ class GlobalConfigData extends Data
             if ($account['id'] === $id) {
                 $account['default'] = true;
                 $found = true;
-                if ($provider === 'do') {
-                    $this->doToken = $account['token'];
-                } elseif ($provider === 'hetzner') {
-                    $this->hetznerToken = $account['token'];
-                }
             } else {
                 $account['default'] = false;
             }
@@ -275,6 +269,7 @@ class GlobalConfigData extends Data
 
         if ($found) {
             $this->cloudAccounts[$provider] = $accounts;
+            $this->mirrorDefaultCloudAccountToken($provider);
         }
 
         return $found;
@@ -294,6 +289,61 @@ class GlobalConfigData extends Data
         }
 
         return $accounts[0] ?? null;
+    }
+
+    /**
+     * Add or refresh an OAuth-connected cloud account — see ADR 0029. Keyed by
+     * $providerAccountId (the provider's own account identity, e.g.
+     * DigitalOcean's `/v2/account` `uuid`), never a name the user invents:
+     * signing in again with the SAME provider account updates that entry in
+     * place; a DIFFERENT provider account becomes a separate entry. This is
+     * the OAuth counterpart to addCloudAccount() (which is for a manually
+     * pasted token, where no provider-verified identity exists to dedupe on).
+     *
+     * @return string the account's id (new or existing)
+     */
+    public function upsertOAuthCloudAccount(string $provider, string $providerAccountId, string $name, OAuthTokenResult $result): string
+    {
+        $accounts = $this->getCloudAccounts($provider);
+        $expiresAt = $result->expiresAt->toIso8601String();
+
+        foreach ($accounts as $index => $account) {
+            if (($account['providerAccountId'] ?? null) === $providerAccountId) {
+                $accounts[$index]['name'] = $name;
+                $accounts[$index]['token'] = $result->accessToken;
+                $accounts[$index]['authMethod'] = 'oauth';
+                $accounts[$index]['refreshToken'] = $result->refreshToken;
+                $accounts[$index]['expiresAt'] = $expiresAt;
+
+                $this->cloudAccounts[$provider] = $accounts;
+                $this->mirrorDefaultCloudAccountToken($provider);
+
+                return $account['id'];
+            }
+        }
+
+        $id = 'acc_'.substr(md5(uniqid($providerAccountId, true)), 0, 8);
+        $isFirst = $accounts === [];
+
+        $accounts[] = [
+            'id' => $id,
+            'name' => $name,
+            'token' => $result->accessToken,
+            'default' => $isFirst,
+            'createdAt' => Carbon::now()->toIso8601String(),
+            'authMethod' => 'oauth',
+            'providerAccountId' => $providerAccountId,
+            'refreshToken' => $result->refreshToken,
+            'expiresAt' => $expiresAt,
+        ];
+
+        $this->cloudAccounts[$provider] = $accounts;
+
+        if ($isFirst) {
+            $this->mirrorDefaultCloudAccountToken($provider);
+        }
+
+        return $id;
     }
 
     public function getDoToken(): ?string
@@ -330,12 +380,18 @@ class GlobalConfigData extends Data
 
     public function getCloudflareToken(): ?string
     {
-        return $this->cloudflareToken;
+        return $this->getDefaultCloudAccount('cloudflare')['token'] ?? $this->cloudflareToken;
     }
 
     public function setCloudflareToken(?string $token): void
     {
         $this->cloudflareToken = $token ? trim($token) : null;
+        if ($this->cloudflareToken) {
+            $accounts = $this->getCloudAccounts('cloudflare');
+            if ($accounts === []) {
+                $this->addCloudAccount('cloudflare', 'Default Account', $this->cloudflareToken, asDefault: true);
+            }
+        }
     }
 
     public function getGcpAccount(): ?string
@@ -481,5 +537,24 @@ class GlobalConfigData extends Data
         }
 
         self::atomicWriteJson($path, $data, 0600);
+    }
+
+    /**
+     * Mirrors the default account's token into the legacy single-slot field
+     * ($doToken/$hetznerToken), matching the mirroring addCloudAccount()/
+     * removeCloudAccount()/setDefaultCloudAccount() already do for their own
+     * writes — pulled out so upsertOAuthCloudAccount() doesn't duplicate it.
+     */
+    private function mirrorDefaultCloudAccountToken(string $provider): void
+    {
+        $default = $this->getDefaultCloudAccount($provider);
+
+        if ($provider === 'do') {
+            $this->doToken = $default['token'] ?? null;
+        } elseif ($provider === 'hetzner') {
+            $this->hetznerToken = $default['token'] ?? null;
+        } elseif ($provider === 'cloudflare') {
+            $this->cloudflareToken = $default['token'] ?? null;
+        }
     }
 }

@@ -4,6 +4,7 @@ namespace App\Commands;
 
 use App\Data\GlobalConfigData;
 use App\Enums\SharedClusterService;
+use App\Services\BrowserOpener;
 use App\Services\Kubectl;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithHosts;
@@ -145,13 +146,7 @@ class ConsoleCommand extends Command
 
         $this->laraKubeInfo("Opening: {$url}");
 
-        $command = match (PHP_OS_FAMILY) {
-            'Darwin' => 'open',
-            'Windows' => 'start',
-            default => 'xdg-open',
-        };
-
-        Process::run("{$command} {$url}");
+        BrowserOpener::open($url);
 
         return 0;
     }

@@ -3,11 +3,11 @@
 namespace App\Commands\Traefik;
 
 use App\Data\GlobalConfigData;
+use App\Services\BrowserOpener;
 use App\Services\Kubectl;
 use App\Traits\InteractsWithSslTrust;
 use App\Traits\LaraKubeOutput;
 use App\Traits\StreamsProcessOutput;
-use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
 
@@ -60,13 +60,7 @@ class DashboardCommand extends Command
 
         $this->laraKubeInfo("Opening: {$url}");
 
-        $command = match (PHP_OS_FAMILY) {
-            'Darwin' => 'open',
-            'Windows' => 'start',
-            default => 'xdg-open',
-        };
-
-        Process::run("{$command} {$url}");
+        BrowserOpener::open($url);
 
         return 0;
     }
