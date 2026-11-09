@@ -350,8 +350,7 @@ trait LaraKubeOutput
         return env('AI_AGENT') === 'true' ||
                env('CURSOR') === 'true' ||
                env('GEMINI_CLI') === 'true' ||
-               env('LARAKUBE_JSON') === '1' ||
-               str_contains(implode(' ', $_SERVER['argv'] ?? []), 'mcp:start');
+               env('LARAKUBE_JSON') === '1';
     }
 
     /**

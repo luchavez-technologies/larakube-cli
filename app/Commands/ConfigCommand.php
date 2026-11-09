@@ -42,7 +42,6 @@ class ConfigCommand extends Command
 
         $this->line('');
         $this->info('👉 To update AI settings: larakube config:ai --anthropic=KEY');
-        $this->info('👉 To register global MCP: larakube mcp:register --all');
         $this->info('👉 To update email: larakube config --email=example@email.com');
         $this->info('👉 To change local TLD: larakube config:tld localhost');
 

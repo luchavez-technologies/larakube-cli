@@ -9,12 +9,6 @@ use Illuminate\Foundation\Console\ConsoleMakeCommand;
 use Illuminate\Foundation\Console\ModelMakeCommand;
 use Illuminate\Foundation\Console\TestMakeCommand;
 use Illuminate\Foundation\Console\VendorPublishCommand;
-use Laravel\Mcp\Console\Commands\InspectorCommand;
-use Laravel\Mcp\Console\Commands\MakePromptCommand;
-use Laravel\Mcp\Console\Commands\MakeResourceCommand;
-use Laravel\Mcp\Console\Commands\MakeServerCommand;
-use Laravel\Mcp\Console\Commands\MakeToolCommand as McpMakeToolCommand;
-use Laravel\Mcp\Console\Commands\StartCommand;
 use LaravelZero\Framework\Commands\BuildCommand;
 use LaravelZero\Framework\Commands\InstallCommand;
 use LaravelZero\Framework\Commands\RenameCommand;
@@ -88,13 +82,5 @@ return [
         TestMakeCommand::class,
         FactoryMakeCommand::class,
         ModelMakeCommand::class,
-
-        // Hide AI/Agent and MCP development tools
-        InspectorCommand::class,
-        MakePromptCommand::class,
-        MakeResourceCommand::class,
-        MakeServerCommand::class,
-        McpMakeToolCommand::class,
-        StartCommand::class,
     ] : [],
 ];

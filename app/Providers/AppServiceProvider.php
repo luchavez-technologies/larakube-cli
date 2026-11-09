@@ -64,14 +64,6 @@ class AppServiceProvider extends ServiceProvider
                     'make:agent-middleware',
                     'make:tool',
 
-                    // MCP Boilerplate
-                    'make:mcp-app-resource',
-                    'make:mcp-prompt',
-                    'make:mcp-resource',
-                    'make:mcp-server',
-                    'make:mcp-tool',
-                    'mcp:inspector',
-
                     // Laravel Generators
                     'make:command',
                     'make:factory',
