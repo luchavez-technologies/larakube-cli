@@ -34,6 +34,15 @@ trait InteractsWithSign
      * The Secret holding Documenso's P12 signing certificate and its
      * passphrase. Generated once and never rotated: documents already signed
      * keep verifying against it.
+     *
+     * Built via ext-openssl (PHP's bundled OpenSSL functions), never the
+     * `openssl` CLI binary: `tool:init` dispatches natively on Windows (see
+     * WslBridge::NATIVE_WINDOWS_COMMANDS), and Windows has no `openssl.exe`
+     * on PATH by default. ext-openssl's openssl_pkcs12_export() already
+     * writes the older PBE encryption Documenso's P12 parser (node-forge)
+     * needs — it's the `openssl` CLI's own default that changed with OpenSSL
+     * 3 (hence the old `-legacy` flag this replaced), not the underlying
+     * library function PHP calls directly.
      */
     protected function ensureSignSigningCert(string $kubectl, ToolInstance $names): bool
     {
@@ -43,23 +52,36 @@ trait InteractsWithSign
             return true;
         }
 
+        $passphrase = bin2hex(random_bytes(16));
+        $cn = $names->host !== '' ? $names->host : $names->instance;
+
+        $privateKey = openssl_pkey_new([
+            'private_key_bits' => 2048,
+            'private_key_type' => OPENSSL_KEYTYPE_RSA,
+        ]);
+
+        if ($privateKey === false) {
+            return false;
+        }
+
+        $csr = openssl_csr_new(['commonName' => $cn], $privateKey);
+
+        if ($csr === false) {
+            return false;
+        }
+
+        $certificate = openssl_csr_sign($csr, null, $privateKey, 3650);
+
+        if ($certificate === false || ! openssl_pkcs12_export($certificate, $p12, $privateKey, $passphrase)) {
+            return false;
+        }
+
         $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
         $dir = $temporaryDirectory->path();
-        file_put_contents("{$dir}/passphrase", bin2hex(random_bytes(16)));
+        file_put_contents("{$dir}/cert.p12", $p12);
+        file_put_contents("{$dir}/passphrase", $passphrase);
 
-        // Documenso's P12 parser (node-forge) only reads the older PBE
-        // encryption. OpenSSL 3 needs -legacy for it; LibreSSL and OpenSSL 1.1
-        // already write it and reject the flag.
-        $legacy = str_starts_with(trim(Process::run('openssl version')->output()), 'OpenSSL 3') ? ' -legacy' : '';
-
-        $generated = Process::run(
-            "openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -keyout {$dir}/key.pem -out {$dir}/cert.pem -subj "
-            .escapeshellarg('/CN='.($names->host !== '' ? $names->host : $names->instance)),
-        )->successful() && Process::run(
-            "openssl pkcs12 -export{$legacy} -inkey {$dir}/key.pem -in {$dir}/cert.pem -out {$dir}/cert.p12 -passout file:{$dir}/passphrase",
-        )->successful();
-
-        $stored = $generated && Process::run(
+        $stored = Process::run(
             "{$kubectl} create secret generic {$secret} -n {$names->namespace()} "
             ."--from-file=cert.p12={$dir}/cert.p12 --from-file=passphrase={$dir}/passphrase "
             ."--dry-run=client -o yaml | {$kubectl} apply -f -",

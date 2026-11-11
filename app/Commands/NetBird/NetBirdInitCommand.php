@@ -29,6 +29,7 @@ use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
 use App\Traits\VerifiesKubernetesRollout;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
@@ -875,28 +876,45 @@ abstract class NetBirdInitCommand extends AbstractToolInitCommand
      * resolver, which may hold a stale negative-cached NXDOMAIN from before
      * the record existed — confirmed live 2026-08-24) until the host
      * resolves to something on all of them.
+     *
+     * Queried over DNS-over-HTTPS rather than shelling to `dig`: `tool:init`
+     * dispatches natively on Windows (see WslBridge::NATIVE_WINDOWS_COMMANDS),
+     * and Windows has no `dig`/BIND tools on PATH by default. Cloudflare's and
+     * Google's DoH endpoints are the same two resolvers this already queried,
+     * just reached over HTTPS instead of a local `dig` binary.
      */
     protected function pollForDnsPropagation(string $host, int $maxWait): bool
     {
-        $resolvers = ['1.1.1.1', '8.8.8.8'];
-        $start = time();
+        $deadline = now()->addSeconds($maxWait);
 
-        while (time() - $start < $maxWait) {
-            $allResolved = true;
-            foreach ($resolvers as $resolver) {
-                $answer = trim(Process::run('dig +short +time=3 +tries=1 '.escapeshellarg($host)." @{$resolver}")->output());
-                if ($answer === '') {
-                    $allResolved = false;
-                    break;
-                }
-            }
-            if ($allResolved) {
+        while (now()->lessThan($deadline)) {
+            if ($this->resolvesViaDoh($host, 'https://cloudflare-dns.com/dns-query', ['Accept' => 'application/dns-json'])
+                && $this->resolvesViaDoh($host, 'https://dns.google/resolve')) {
                 return true;
             }
             Sleep::sleep(5);
         }
 
         return false;
+    }
+
+    /**
+     * One DNS-over-HTTPS lookup against a public resolver's JSON API. Any
+     * failure (timeout, non-200, malformed body) counts as "not resolved yet"
+     * rather than throwing — this is a poll, the caller just retries.
+     */
+    protected function resolvesViaDoh(string $host, string $endpoint, array $headers = []): bool
+    {
+        try {
+            $response = Http::timeout(5)->withHeaders($headers)->get($endpoint, [
+                'name' => $host,
+                'type' => 'A',
+            ]);
+        } catch (Throwable) {
+            return false;
+        }
+
+        return $response->successful() && filled($response->json('Answer'));
     }
 
     /**

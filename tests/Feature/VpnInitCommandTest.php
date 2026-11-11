@@ -909,6 +909,47 @@ test('waitForTls still forces a fresh ACME attempt when the name resolves fine',
         ->and($command->forcedAcme)->toBe(['vpn.example.com']);
 });
 
+test('pollForDnsPropagation resolves over DNS-over-HTTPS, not the dig binary', function (): void {
+    // Confirms the real implementation (not a test double) never shells to
+    // `dig` — tool:init dispatches natively on Windows, which has no `dig`
+    // on PATH by default. Both public resolvers must answer before this
+    // reports propagated.
+    Http::fake([
+        'cloudflare-dns.com/*' => Http::response(['Answer' => [['data' => '203.0.113.10']]]),
+        'dns.google/*' => Http::response(['Answer' => [['data' => '203.0.113.10']]]),
+    ]);
+
+    $command = new class(ClusterTool::NETBIRD) extends App\Commands\NetBird\NetBirdInitCommand
+    {
+        public function callPollForDnsPropagation(string $host): bool
+        {
+            return $this->pollForDnsPropagation($host, 5);
+        }
+    };
+
+    expect($command->callPollForDnsPropagation('vpn.example.com'))->toBeTrue();
+
+    Process::assertNothingRan();
+});
+
+test('pollForDnsPropagation gives up once the deadline passes if either resolver never answers', function (): void {
+    Http::fake([
+        'cloudflare-dns.com/*' => Http::response(['Answer' => [['data' => '203.0.113.10']]]),
+        // Google never answers inside the deadline — propagation never completes.
+        'dns.google/*' => Http::response(['Answer' => []]),
+    ]);
+
+    $command = new class(ClusterTool::NETBIRD) extends App\Commands\NetBird\NetBirdInitCommand
+    {
+        public function callPollForDnsPropagation(string $host): bool
+        {
+            return $this->pollForDnsPropagation($host, 1);
+        }
+    };
+
+    expect($command->callPollForDnsPropagation('vpn.example.com'))->toBeFalse();
+});
+
 test('the bootstrap owner gets an address inside the SSO domain, not the operator\'s own', function (): void {
     // NetBird claims an account's private domain from the owner's email on login.
     // A personal gmail.com address is a PUBLIC domain and leaves the account with
