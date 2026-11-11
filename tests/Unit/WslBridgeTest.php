@@ -464,7 +464,7 @@ test('WSL probe methods never execute wsl.exe when WSL feature is disabled', fun
 
     expect($bridge->isWslFeatureEnabled())->toBeFalse()
         ->and($bridge->isWslInstalled())->toBeFalse()
-        ->and($bridge->runningDistros())->toBe([])
+        ->and($bridge->runningDistros())->toBeEmpty()
         ->and($bridge->distroIsRunning())->toBeFalse()
         ->and($bridge->distroExists())->toBeFalse()
         ->and($bridge->shutdown())->toBeFalse()
