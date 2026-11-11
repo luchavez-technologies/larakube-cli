@@ -338,7 +338,7 @@ class LiveProviderCatalog
      */
     private function fetchAws(array $env): ?array
     {
-        $bin = CliTool::AWS->resolveBinary() ?? 'aws';
+        $bin = \App\Support\Os::quoteExecutable(CliTool::AWS->resolveBinary() ?? 'aws');
 
         $regions = Process::env($env)->timeout(10)->run("{$bin} ec2 describe-regions --output json");
         $types = Process::env($env)->timeout(15)->run("{$bin} ec2 describe-instance-types --output json --filters Name=current-generation,Values=true Name=bare-metal,Values=false");
@@ -352,7 +352,7 @@ class LiveProviderCatalog
 
     private function fetchGcp(string $projectId): ?array
     {
-        $bin = CliTool::GCLOUD->resolveBinary() ?? 'gcloud';
+        $bin = \App\Support\Os::quoteExecutable(CliTool::GCLOUD->resolveBinary() ?? 'gcloud');
         $zone = CloudProvider::GCP->defaultRegion().'-a';
         $env = ['CLOUDSDK_CORE_DISABLE_PROMPTS' => '1'];
 

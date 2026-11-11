@@ -148,13 +148,22 @@ enum CliTool: string
         // short-circuiting install() before it ever ran — install() returned
         // true, but nothing was actually downloaded to the test's own binDir.
         if (self::hostOs() === 'windows') {
+            $localAppData = rtrim((string) getenv('LOCALAPPDATA'), '/\\');
+            $programFilesX86 = rtrim((string) getenv('ProgramFiles(x86)'), '/\\');
+            $programFiles = rtrim((string) getenv('ProgramFiles'), '/\\');
+
             return match ($this) {
-                self::GCLOUD => array_merge($base, [home_path('google-cloud-sdk/bin/'.$this->binary())]),
+                self::GCLOUD => array_values(array_filter(array_merge($base, [
+                    home_path('google-cloud-sdk/bin/'.$this->binary()),
+                    $localAppData !== '' ? $localAppData.'/Google/Cloud SDK/google-cloud-sdk/bin/'.$this->binary() : null,
+                    $programFilesX86 !== '' ? $programFilesX86.'/Google/Cloud SDK/google-cloud-sdk/bin/'.$this->binary() : null,
+                    $programFiles !== '' ? $programFiles.'/Google/Cloud SDK/google-cloud-sdk/bin/'.$this->binary() : null,
+                ]))),
                 self::AWS => array_merge($base, [
                     // The per-user Windows MSI (AWSCLIV2-User.msi) always
                     // installs here — fixed by the installer, not by us —
                     // never into binDir.
-                    rtrim((string) getenv('LOCALAPPDATA'), '/\\').'/Programs/Amazon/AWSCLIV2/aws.exe',
+                    $localAppData.'/Programs/Amazon/AWSCLIV2/aws.exe',
                 ]),
                 default => $base,
             };
@@ -214,9 +223,12 @@ enum CliTool: string
             }
         }
 
-        // Check fallback candidate paths (handles non-login shells and custom install dirs)
+        // Check fallback candidate paths (handles non-login shells and custom install dirs).
+        // On Windows, .cmd/.bat wrappers (like gcloud.cmd) are not PE executables,
+        // and PHP's is_executable() is unreliable for them (and ZipArchive does not
+        // set POSIX +x bits when testing on macOS/Linux), so check is_file() there.
         foreach ($this->candidatePaths() as $path) {
-            if ($path !== '' && @is_executable($path)) {
+            if ($path !== '' && (self::hostOs() === 'windows' ? @is_file($path) : @is_executable($path))) {
                 return $path;
             }
         }
@@ -301,7 +313,8 @@ enum CliTool: string
     {
         if ($this === self::GCLOUD) {
             $bin = $this->resolveBinary() ?? 'gcloud';
-            $authed = Process::run("{$bin} auth print-access-token 2>/dev/null")->successful();
+            $quotedBin = Os::quoteExecutable($bin);
+            $authed = Process::run($quotedBin.' auth print-access-token'.Os::silenceStderr())->successful();
             if ($authed) {
                 return true;
             }
@@ -315,7 +328,7 @@ enum CliTool: string
                     return true;
                 }
 
-                return $this->runInteractive("{$bin} auth login --update-adc") === 0;
+                return $this->runInteractive("{$quotedBin} auth login --update-adc") === 0;
             }
 
             return false;
@@ -323,7 +336,8 @@ enum CliTool: string
 
         if ($this === self::AWS) {
             $bin = $this->resolveBinary() ?? 'aws';
-            $authed = Process::run("{$bin} sts get-caller-identity 2>/dev/null")->successful();
+            $quotedBin = Os::quoteExecutable($bin);
+            $authed = Process::run($quotedBin.' sts get-caller-identity'.Os::silenceStderr())->successful();
             if ($authed) {
                 return true;
             }
@@ -337,7 +351,7 @@ enum CliTool: string
                     return true;
                 }
 
-                return $this->runInteractive("{$bin} configure") === 0;
+                return $this->runInteractive("{$quotedBin} configure") === 0;
             }
 
             return false;
@@ -588,18 +602,23 @@ enum CliTool: string
      */
     protected function updateGcloud(): bool
     {
+        State::setTransient($this->lastErrorKey(), null);
         $bin = $this->resolveBinary() ?? 'gcloud';
 
         $python = $this->resolvePython() ?? $this->installPython();
 
         if ($python === null) {
+            $message = self::hostOs() === 'windows'
+                ? 'Google Cloud SDK needs Python '.self::GCLOUD_MIN_PYTHON.' or newer. Install Python from https://www.python.org/downloads/windows/, then retry.'
+                : 'Could not download a standalone Python build (check your network connection) and no Homebrew/python.org install was found. Install Python from https://www.python.org/downloads/macos/ (or Homebrew: brew install python), then retry.';
             warning('Google Cloud SDK needs Python '.self::GCLOUD_MIN_PYTHON.' or newer, and no usable interpreter could be installed.');
-            warning('Could not download a standalone Python build (check your network connection) and no Homebrew/python.org install was found. Install Python from https://www.python.org/downloads/macos/ (or Homebrew: brew install python), then retry.');
+            warning($message);
+            State::setTransient($this->lastErrorKey(), $message);
 
             return false;
         }
 
-        return $this->runStreaming(escapeshellarg($bin).' components update --quiet', env: ['CLOUDSDK_PYTHON' => $python]) === 0;
+        return $this->runStreaming(Os::quoteExecutable($bin).' components update --quiet', env: ['CLOUDSDK_PYTHON' => $python]) === 0;
     }
 
     /**
@@ -822,6 +841,52 @@ enum CliTool: string
             return $fromEnv;
         }
 
+        if (Os::isWindows()) {
+            // Check Google Cloud SDK's own bundled Python when present (e.g.
+            // installed by GoogleCloudSDKInstaller.exe).
+            $gcloud = $this->resolveBinary();
+            if ($gcloud !== null) {
+                $bundled = dirname($gcloud, 2).DIRECTORY_SEPARATOR.'platform'.DIRECTORY_SEPARATOR.'bundledpython'.DIRECTORY_SEPARATOR.'python.exe';
+                if (is_file($bundled) && $this->pythonIsSupported($bundled)) {
+                    return $bundled;
+                }
+            }
+
+            // Windows has no `command -v` and names its binary `python.exe`.
+            foreach (['python', 'python3'] as $name) {
+                $output = Process::run('where '.$name)->output();
+                foreach (preg_split('/\R/', trim($output)) ?: [] as $candidate) {
+                    $candidate = trim($candidate);
+                    if ($candidate !== '' && $this->pythonIsSupported($candidate)) {
+                        return $candidate;
+                    }
+                }
+            }
+
+            if (! Process::isRecording()) {
+                $localAppData = rtrim((string) (getenv('LOCALAPPDATA') ?: ''), '\\/');
+                $programFiles = rtrim((string) (getenv('ProgramFiles') ?: ''), '\\/');
+                $patterns = array_filter([
+                    $localAppData !== '' ? $localAppData.'/Programs/Python/Python3*/python.exe' : null,
+                    $programFiles !== '' ? $programFiles.'/Python3*/python.exe' : null,
+                    'C:/Python3*/python.exe',
+                ]);
+
+                foreach ($patterns as $pattern) {
+                    $installs = glob($pattern) ?: [];
+                    rsort($installs);
+
+                    foreach ($installs as $path) {
+                        if ($this->pythonIsSupported($path)) {
+                            return $path;
+                        }
+                    }
+                }
+            }
+
+            return null;
+        }
+
         $names = ['python3.14', 'python3.13', 'python3.12', 'python3.11', 'python3.10', 'python3'];
 
         foreach ($names as $name) {
@@ -853,20 +918,6 @@ enum CliTool: string
             $standalone = self::pythonStandaloneDir().'/bin/python3';
             if (is_file($standalone) && $this->pythonIsSupported($standalone)) {
                 return $standalone;
-            }
-        }
-
-        // python.org's per-user Windows installer lands here rather than on
-        // PATH when installed without the "Add to PATH" option checked.
-        if (Os::isWindows() && ! Process::isRecording()) {
-            $localAppData = (string) (getenv('LOCALAPPDATA') ?: '');
-            $installs = $localAppData !== '' ? (glob($localAppData.'/Programs/Python/Python3*/python.exe') ?: []) : [];
-            rsort($installs);
-
-            foreach ($installs as $path) {
-                if ($this->pythonIsSupported($path)) {
-                    return $path;
-                }
             }
         }
 
@@ -1114,7 +1165,15 @@ enum CliTool: string
     {
         $url = 'https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-windows-x86_64.zip';
 
-        if (! $this->httpDownloadZipExtractAll($url, home_path()) || ! $this->isInstalledAfterSettle()) {
+        if (! $this->httpDownloadZipExtractAll($url, home_path())) {
+            State::setTransient($this->lastErrorKey(), 'Could not download or extract the Google Cloud SDK archive.');
+
+            return false;
+        }
+
+        if (! $this->isInstalledAfterSettle()) {
+            State::setTransient($this->lastErrorKey(), 'Google Cloud SDK archive extracted, but gcloud.cmd was not found at '.home_path('google-cloud-sdk/bin/'.$this->binary()).'.');
+
             return false;
         }
 
@@ -1124,6 +1183,7 @@ enum CliTool: string
         if ($this->resolvePython() === null) {
             warning('Google Cloud SDK needs Python '.self::GCLOUD_MIN_PYTHON.' or newer, and none was found.');
             warning('Install Python from https://www.python.org/downloads/windows/, then retry.');
+            State::setTransient($this->lastErrorKey(), 'Google Cloud SDK requires Python '.self::GCLOUD_MIN_PYTHON.' or newer. Install Python from https://www.python.org/downloads/windows/ and retry.');
 
             return false;
         }

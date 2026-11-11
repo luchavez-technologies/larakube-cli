@@ -91,7 +91,7 @@ class CloudLoginCommand extends Command
             return $this->failed('Google Cloud CLI (gcloud) is not installed. Run: larakube setup --tools=gcloud');
         }
 
-        $gcloud = CliTool::GCLOUD->resolveBinary() ?? 'gcloud';
+        $gcloud = \App\Support\Os::quoteExecutable(CliTool::GCLOUD->resolveBinary() ?? 'gcloud');
 
         // A person at a terminal gets the browser sign-in; a caller with no terminal gets the address and the code prompt.
         $code = $this->flag('json') || ! SymfonyProcess::isTtySupported()

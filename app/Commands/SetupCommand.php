@@ -698,12 +698,21 @@ class SetupCommand extends Command
      */
     protected function installGkeAuthPluginQuietly(): void
     {
-        if (trim(Process::run('command -v gke-gcloud-auth-plugin')->output()) !== '') {
+        $bin = CliTool::GCLOUD->resolveBinary();
+
+        if ($this->isWindows()) {
+            if ($bin !== null && is_file(dirname($bin).DIRECTORY_SEPARATOR.'gke-gcloud-auth-plugin.exe')) {
+                return;
+            }
+            if (trim(Process::run('where gke-gcloud-auth-plugin.exe')->output()) !== '') {
+                return;
+            }
+        } elseif (trim(Process::run('command -v gke-gcloud-auth-plugin')->output()) !== '') {
             return;
         }
 
-        $bin = CliTool::GCLOUD->resolveBinary() ?? 'gcloud';
-        Process::forever()->run("{$bin} components install gke-gcloud-auth-plugin --quiet");
+        $gcloud = \App\Support\Os::quoteExecutable($bin ?? 'gcloud');
+        Process::forever()->run("{$gcloud} components install gke-gcloud-auth-plugin --quiet");
     }
 
     protected function resolveLocalClusterContext(): ?string

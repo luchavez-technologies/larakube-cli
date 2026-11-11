@@ -335,10 +335,10 @@ class CloudProvidersCommand extends Command
             return $this->status(false, 'Google Cloud CLI (gcloud) is not installed.');
         }
 
-        $bin = CliTool::GCLOUD->resolveBinary() ?? 'gcloud';
+        $bin = \App\Support\Os::quoteExecutable(CliTool::GCLOUD->resolveBinary() ?? 'gcloud');
 
         return $this->status(
-            Process::run("{$bin} auth print-access-token 2>/dev/null")->successful(),
+            Process::run($bin.' auth print-access-token'.\App\Support\Os::silenceStderr())->successful(),
             'Not logged in to Google Cloud.',
         );
     }
@@ -350,7 +350,7 @@ class CloudProvidersCommand extends Command
             return $this->status(false, 'AWS CLI is not installed.');
         }
 
-        $bin = CliTool::AWS->resolveBinary() ?? 'aws';
+        $bin = \App\Support\Os::quoteExecutable(CliTool::AWS->resolveBinary() ?? 'aws');
         $profile = $this->getAwsProfile();
         $profileArg = $profile ? ' --profile '.escapeshellarg($profile) : '';
 

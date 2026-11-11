@@ -196,9 +196,9 @@ class CloudAccountsCommand extends Command
             $config->save();
 
             if (\App\Enums\CliTool::GCLOUD->isInstalled()) {
-                $gcloud = \App\Enums\CliTool::GCLOUD->resolveBinary() ?? 'gcloud';
-                \Illuminate\Support\Facades\Process::run("{$gcloud} auth activate-service-account --key-file=".escapeshellarg($filePath).' 2>/dev/null');
-                \Illuminate\Support\Facades\Process::run("{$gcloud} config set project ".escapeshellarg($projectId).' 2>/dev/null');
+                $gcloud = \App\Support\Os::quoteExecutable(\App\Enums\CliTool::GCLOUD->resolveBinary() ?? 'gcloud');
+                \Illuminate\Support\Facades\Process::run("{$gcloud} auth activate-service-account --key-file=".escapeshellarg($filePath).\App\Support\Os::silenceStderr());
+                \Illuminate\Support\Facades\Process::run("{$gcloud} config set project ".escapeshellarg($projectId).\App\Support\Os::silenceStderr());
             }
 
             if ($this->flag('json')) {
@@ -320,8 +320,8 @@ class CloudAccountsCommand extends Command
         }
 
         if ($provider === 'gcp') {
-            $gcloudBin = \App\Enums\CliTool::GCLOUD->resolveBinary() ?? 'gcloud';
-            \Illuminate\Support\Facades\Process::run("{$gcloudBin} auth revoke ".escapeshellarg($id).' 2>/dev/null');
+            $gcloudBin = \App\Support\Os::quoteExecutable(\App\Enums\CliTool::GCLOUD->resolveBinary() ?? 'gcloud');
+            \Illuminate\Support\Facades\Process::run("{$gcloudBin} auth revoke ".escapeshellarg($id).\App\Support\Os::silenceStderr());
 
             if ($config->gcpAccount === $id) {
                 $config->setGcpAccount(null);

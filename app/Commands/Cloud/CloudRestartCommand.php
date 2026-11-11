@@ -78,7 +78,8 @@ class CloudRestartCommand extends Command
         $this->laraKubeInfo("Restarting {$name}...");
 
         // The reboot ends this SSH session at once: a non-zero exit is the expected result.
-        Process::timeout(15)->run("ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no -i {$stack->sshKey} -p {$port} {$user}@{$stack->ip} 'sudo reboot'");
+        $sshKeyArg = \App\Support\Os::quoteExecutable($stack->sshKey);
+        Process::timeout(15)->run("ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no -i {$sshKeyArg} -p {$port} {$user}@{$stack->ip} \"sudo reboot\"");
 
         // Let it actually go down before polling, or the first poll answers from the old boot.
         Sleep::sleep(10);

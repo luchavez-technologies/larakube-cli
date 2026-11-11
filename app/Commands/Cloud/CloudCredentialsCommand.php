@@ -87,7 +87,7 @@ class CloudCredentialsCommand extends Command
         $verified = null;
 
         if (CliTool::AWS->isInstalled()) {
-            $bin = CliTool::AWS->resolveBinary() ?? 'aws';
+            $bin = \App\Support\Os::quoteExecutable(CliTool::AWS->resolveBinary() ?? 'aws');
             $verified = Process::timeout(20)->env(['AWS_ACCESS_KEY_ID' => $keyId, 'AWS_SECRET_ACCESS_KEY' => $secret])->run("{$bin} sts get-caller-identity --profile ".escapeshellarg($profile))->successful();
         }
 
@@ -147,11 +147,11 @@ class CloudCredentialsCommand extends Command
 
         $activated = null;
         if (CliTool::GCLOUD->isInstalled()) {
-            $gcloud = CliTool::GCLOUD->resolveBinary() ?? 'gcloud';
-            $proc = Process::run("{$gcloud} auth activate-service-account --key-file=".escapeshellarg($filePath).' 2>/dev/null');
+            $gcloud = \App\Support\Os::quoteExecutable(CliTool::GCLOUD->resolveBinary() ?? 'gcloud');
+            $proc = Process::run("{$gcloud} auth activate-service-account --key-file=".escapeshellarg($filePath).\App\Support\Os::silenceStderr());
             $activated = $proc->successful();
             if ($activated) {
-                Process::run("{$gcloud} config set project ".escapeshellarg($projectId).' 2>/dev/null');
+                Process::run("{$gcloud} config set project ".escapeshellarg($projectId).\App\Support\Os::silenceStderr());
             }
         }
 

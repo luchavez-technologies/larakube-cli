@@ -53,10 +53,20 @@ class WslBridge
      * is a `kubectl exec` argument that runs inside the remote pod, not on
      * the local host.
      *
+     * `cloud:providers`/`cloud:login`/`cloud:projects`/`cloud:project`/
+     * `cloud:credentials`/`cloud:accounts`/`cloud:stacks`/`cloud:destroy`/
+     * `cloud:scale`/`cloud:restart`/`cloud:repair` joined so Setup, Cloud
+     * Auth, and Server lifecycle management run natively on Windows without
+     * requiring WSL — after removing hardcoded `2>/dev/null` redirects and
+     * quoting executable paths across them and their shared cloud traits.
+     *
      * @var list<string>
      */
     private const NATIVE_WINDOWS_COMMANDS = [
-        'setup', 'update', 'cloud:create',
+        'setup', 'update',
+        'cloud:create', 'cloud:providers', 'cloud:login', 'cloud:projects', 'cloud:project',
+        'cloud:credentials', 'cloud:accounts', 'cloud:stacks', 'cloud:destroy',
+        'cloud:scale', 'cloud:restart', 'cloud:repair',
         'tool:init', 'tool:add', 'tool:rebind', 'tool:remove', 'tls:init',
         'context', 'context:import', 'context:remove', 'context:backup', 'context:restore',
         'backup:init', 'backup:run', 'backup:restore', 'backup:schedule', 'backup:unschedule', 'backup:prune',

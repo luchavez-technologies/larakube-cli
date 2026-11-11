@@ -121,10 +121,12 @@ class CloudDestroyCommand extends Command
 
         if ($flagAccount = $this->option('gcp-account')) {
             State::setTransientGcpAccount($flagAccount);
-            Process::run('gcloud config set account '.escapeshellarg(State::transientGcpAccount()).' 2>/dev/null');
+            $gcloud = \App\Support\Os::quoteExecutable(\App\Enums\CliTool::GCLOUD->resolveBinary() ?? 'gcloud');
+            Process::run("{$gcloud} config set account ".escapeshellarg(State::transientGcpAccount()).\App\Support\Os::silenceStderr());
         } elseif ($stack->provider === 'gcp' && $stack->account) {
             State::setTransientGcpAccount($stack->account);
-            Process::run('gcloud config set account '.escapeshellarg($stack->account).' 2>/dev/null');
+            $gcloud = \App\Support\Os::quoteExecutable(\App\Enums\CliTool::GCLOUD->resolveBinary() ?? 'gcloud');
+            Process::run("{$gcloud} config set account ".escapeshellarg($stack->account).\App\Support\Os::silenceStderr());
         }
 
         if ($flagProject = $this->option('gcp-project')) {

@@ -257,8 +257,8 @@ trait InteractsWithAws
             return [];
         }
 
-        $awsBin = CliTool::AWS->resolveBinary() ?? 'aws';
-        $result = Process::run("{$awsBin} configure list-profiles 2>/dev/null");
+        $awsBin = \App\Support\Os::quoteExecutable(CliTool::AWS->resolveBinary() ?? 'aws');
+        $result = Process::run("{$awsBin} configure list-profiles".\App\Support\Os::silenceStderr());
         if (! $result->successful()) {
             return [];
         }

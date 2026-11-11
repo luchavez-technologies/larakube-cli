@@ -156,3 +156,28 @@ test('setup --tools=hcloud on Windows still dispatches into WSL — no native in
         putenv('USERPROFILE');
     }
 });
+
+test('setup --tools=gcloud --update on Windows updates the existing install instead of falling back to install', function (): void {
+    Os::setForcedFamily('Windows');
+    WslBridge::setForceNativeWindows(true);
+
+    $sdkBin = $_SERVER['HOME'].'/google-cloud-sdk/bin';
+    @mkdir($sdkBin, 0755, true);
+    file_put_contents($sdkBin.'/gcloud.cmd', '@echo off');
+
+    Process::fake([
+        'where python' => Process::result("C:\\Python312\\python.exe\n"),
+        '*python.exe* -c *' => Process::result('3.12'),
+        '*components update --quiet*' => Process::result('All components are up to date.'),
+        '*auth print-access-token*' => Process::result('ya29.token'),
+        'where gke-gcloud-auth-plugin.exe' => Process::result("C:\\Users\\test\\google-cloud-sdk\\bin\\gke-gcloud-auth-plugin.exe\n"),
+    ]);
+
+    $this->artisan('setup', ['--tools' => 'gcloud', '--update' => true, '--no-interaction' => true])
+        ->assertExitCode(0)
+        ->expectsOutputToContain('Google Cloud SDK (gcloud CLI) updated successfully.')
+        ->doesntExpectOutputToContain('Failed to install Google Cloud SDK');
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'components update --quiet'));
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'command -v'));
+});

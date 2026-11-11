@@ -46,18 +46,18 @@ trait InteractsWithGcp
             }
         }
 
-        $gcloudBin = CliTool::GCLOUD->resolveBinary() ?? 'gcloud';
+        $gcloudBin = \App\Support\Os::quoteExecutable(CliTool::GCLOUD->resolveBinary() ?? 'gcloud');
 
         // Switch to explicit account if specified
         if ($account = $this->getGcpAccount()) {
             if (CliTool::GCLOUD->isInstalled()) {
-                Process::run("{$gcloudBin} config set account ".escapeshellarg($account).' 2>/dev/null');
+                Process::run("{$gcloudBin} config set account ".escapeshellarg($account).\App\Support\Os::silenceStderr());
             }
         }
 
         // Step 1: Handle non-interactive mode cleanly
         $credentials = $this->getGcpCredentials();
-        $gcloudAuthed = CliTool::GCLOUD->isInstalled() && Process::run("{$gcloudBin} auth print-access-token 2>/dev/null")->successful();
+        $gcloudAuthed = CliTool::GCLOUD->isInstalled() && Process::run("{$gcloudBin} auth print-access-token".\App\Support\Os::silenceStderr())->successful();
 
         if ($this->flag('no-interaction')) {
             $projectId = $this->getGcpProjectId();
@@ -88,7 +88,7 @@ trait InteractsWithGcp
                     $loginCode = $this->runInteractive("{$gcloudBin} auth login --update-adc");
                     if ($loginCode === 0) {
                         $this->line('  <fg=green>✓</> <fg=gray>Successfully authenticated with Google Cloud.</>');
-                        $gcloudAuthed = Process::run("{$gcloudBin} auth print-access-token 2>/dev/null")->successful();
+                        $gcloudAuthed = Process::run("{$gcloudBin} auth print-access-token".\App\Support\Os::silenceStderr())->successful();
                         $credentials = $this->getGcpCredentials();
                         $accounts = $this->listGcpAccounts($gcloudBin);
                     }
@@ -133,7 +133,7 @@ trait InteractsWithGcp
                 $singleAccount = array_key_first($accounts);
                 State::setTransientGcpAccount($singleAccount);
                 $this->setGcpAccount($singleAccount);
-                Process::run("{$gcloudBin} config set account ".escapeshellarg($singleAccount).' 2>/dev/null');
+                Process::run("{$gcloudBin} config set account ".escapeshellarg($singleAccount).\App\Support\Os::silenceStderr());
             }
         }
 
@@ -193,7 +193,8 @@ trait InteractsWithGcp
     {
         $defaultProjectId = $this->getGlobalConfig()->getGcpProjectId();
         if (! $defaultProjectId && CliTool::GCLOUD->isInstalled()) {
-            $detected = trim(Process::run("{$gcloudBin} config get-value project 2>/dev/null")->output());
+            $quotedBin = \App\Support\Os::quoteExecutable($gcloudBin);
+            $detected = trim(Process::run("{$quotedBin} config get-value project".\App\Support\Os::silenceStderr())->output());
             if ($detected !== '' && $detected !== '(unset)' && ! str_contains($detected, 'ERROR')) {
                 $defaultProjectId = $detected;
             }
@@ -337,7 +338,8 @@ trait InteractsWithGcp
     {
         $account = $this->getGcpAccount();
         $accountArg = $account ? ' --account='.escapeshellarg($account) : '';
-        $billingCmd = "{$gcloudBin} billing accounts list --format=\"json(name,displayName,open)\" --filter=\"open=true\"{$accountArg} 2>/dev/null";
+        $quotedBin = \App\Support\Os::quoteExecutable($gcloudBin);
+        $billingCmd = "{$quotedBin} billing accounts list --format=\"json(name,displayName,open)\" --filter=\"open=true\"{$accountArg}".\App\Support\Os::silenceStderr();
         $billingResult = Process::run($billingCmd);
 
         if (! $billingResult->successful() || empty(trim($billingResult->output()))) {
@@ -442,7 +444,8 @@ trait InteractsWithGcp
             return [];
         }
 
-        $result = Process::run("{$gcloudBin} auth list --format=\"json(account,status)\" 2>/dev/null");
+        $quotedBin = \App\Support\Os::quoteExecutable($gcloudBin);
+        $result = Process::run("{$quotedBin} auth list --format=\"json(account,status)\"".\App\Support\Os::silenceStderr());
         if (! $result->successful() || empty(trim($result->output()))) {
             return [];
         }

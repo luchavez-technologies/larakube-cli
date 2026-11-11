@@ -143,7 +143,8 @@ trait InteractsWithGlobalConfig
         }
 
         // Auto-detect from local gcloud CLI if available
-        $gcloudAccount = trim(Process::run('gcloud config get-value account 2>/dev/null')->output());
+        $gcloud = \App\Support\Os::quoteExecutable(CliTool::GCLOUD->resolveBinary() ?? 'gcloud');
+        $gcloudAccount = trim(Process::run("{$gcloud} config get-value account".\App\Support\Os::silenceStderr())->output());
         if ($gcloudAccount !== '' && $gcloudAccount !== '(unset)' && ! str_contains($gcloudAccount, 'ERROR:')) {
             return $gcloudAccount;
         }
@@ -175,7 +176,8 @@ trait InteractsWithGlobalConfig
         }
 
         // Auto-detect from local gcloud CLI if available
-        $gcloudProject = trim(Process::run('gcloud config get-value project 2>/dev/null')->output());
+        $gcloud = \App\Support\Os::quoteExecutable(CliTool::GCLOUD->resolveBinary() ?? 'gcloud');
+        $gcloudProject = trim(Process::run("{$gcloud} config get-value project".\App\Support\Os::silenceStderr())->output());
         if ($gcloudProject !== '' && $gcloudProject !== '(unset)' && ! str_contains($gcloudProject, 'ERROR:')) {
             return $gcloudProject;
         }

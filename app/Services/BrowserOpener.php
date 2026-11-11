@@ -9,9 +9,12 @@ final class BrowserOpener
 {
     public static function open(string $url): bool
     {
+        if (\App\Support\Os::isWindows()) {
+            return Process::run('start "" '.escapeshellarg($url))->successful();
+        }
+
         $command = match (PHP_OS_FAMILY) {
             'Darwin' => 'open',
-            'Windows' => 'start',
             default => 'xdg-open',
         };
 

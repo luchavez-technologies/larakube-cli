@@ -61,4 +61,26 @@ class Os
     {
         return self::isWindows() ? ';' : ':';
     }
+
+    /**
+     * Quote an executable path only when it contains whitespace or shell
+     * metacharacters, so bare names (`gcloud`) and simple POSIX paths keep
+     * their clean form while paths with spaces (e.g. Windows user profiles or
+     * `C:\Program Files\...`) survive shell invocation intact.
+     */
+    public static function quoteExecutable(string $binary): string
+    {
+        return preg_match('/[\s"\'&|<>^()]/', $binary) === 1
+            ? escapeshellarg($binary)
+            : $binary;
+    }
+
+    /**
+     * POSIX stderr suppression (` 2>/dev/null`), empty on Windows where
+     * `cmd.exe` rejects `/dev/null` as a missing path.
+     */
+    public static function silenceStderr(): string
+    {
+        return self::isWindows() ? '' : ' 2>/dev/null';
+    }
 }

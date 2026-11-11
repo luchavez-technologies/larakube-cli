@@ -826,14 +826,10 @@ test('install() fails the Google Cloud SDK on Windows rather than leaving a non-
     // separately putenv'd one.
     putenv('LOCALAPPDATA='.$_SERVER['HOME'].'/AppData/Local');
 
-    // resolvePython()'s `command -v pythonX.Y` loop runs unconditionally,
-    // on every OS (it's only the Windows-specific glob fallback below it
-    // that's gated) — without faking this, the test's outcome depends on
-    // whether the machine actually running it happens to expose a real
-    // Python 3.10+ via `command -v`, which varies by host (confirmed live:
-    // passed locally, failed in CI, for exactly this reason).
+    // On Windows, resolvePython() uses `where python`/`where python3` instead
+    // of POSIX `command -v`.
     Process::fake([
-        'command -v python*' => Process::result('', exitCode: 1),
+        'where python*' => Process::result('', exitCode: 1),
     ]);
 
     Http::fake([
@@ -843,5 +839,67 @@ test('install() fails the Google Cloud SDK on Windows rather than leaving a non-
     ]);
 
     expect(CliTool::GCLOUD->install())->toBeFalse()
-        ->and(file_exists($_SERVER['HOME'].'/google-cloud-sdk/bin/gcloud.cmd'))->toBeTrue();
+        ->and(file_exists($_SERVER['HOME'].'/google-cloud-sdk/bin/gcloud.cmd'))->toBeTrue()
+        ->and(CliTool::GCLOUD->lastError())->toContain('Python');
+});
+
+test('gcloud is detected and updated via components update on Windows even without +x bits on gcloud.cmd', function (): void {
+    Os::setForcedFamily('Windows');
+    $sdkBin = $_SERVER['HOME'].'/google-cloud-sdk/bin';
+    $bundledDir = $_SERVER['HOME'].'/google-cloud-sdk/platform/bundledpython';
+    @mkdir($sdkBin, 0755, true);
+    @mkdir($bundledDir, 0755, true);
+    file_put_contents($sdkBin.'/gcloud.cmd', '@echo off');
+    chmod($sdkBin.'/gcloud.cmd', 0644);
+    file_put_contents($bundledDir.'/python.exe', 'fake-python');
+
+    Process::fake([
+        '*python.exe* -c *' => Process::result('3.12'),
+        '*components update --quiet*' => Process::result('All components are up to date.'),
+    ]);
+
+    expect(CliTool::GCLOUD->isInstalled())->toBeTrue()
+        ->and(CliTool::GCLOUD->resolveBinary())->toBe($_SERVER['HOME'].'/google-cloud-sdk/bin/gcloud.cmd')
+        ->and(CliTool::GCLOUD->update())->toBeTrue();
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'components update --quiet')
+        && ($process->environment['CLOUDSDK_PYTHON'] ?? null) === $_SERVER['HOME'].DIRECTORY_SEPARATOR.'google-cloud-sdk'.DIRECTORY_SEPARATOR.'platform'.DIRECTORY_SEPARATOR.'bundledpython'.DIRECTORY_SEPARATOR.'python.exe');
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'command -v'));
+});
+
+test('gcloud is detected at Google official Windows installer LOCALAPPDATA location', function (): void {
+    Os::setForcedFamily('Windows');
+    $localAppData = Spatie\TemporaryDirectory\TemporaryDirectory::make()->deleteWhenDestroyed();
+    $oldLocalAppData = getenv('LOCALAPPDATA');
+    putenv('LOCALAPPDATA='.$localAppData->path());
+
+    $sdkBin = $localAppData->path().'/Google/Cloud SDK/google-cloud-sdk/bin';
+    @mkdir($sdkBin, 0755, true);
+    file_put_contents($sdkBin.'/gcloud.cmd', '@echo off');
+
+    try {
+        expect(CliTool::GCLOUD->isInstalled())->toBeTrue()
+            ->and(CliTool::GCLOUD->resolveBinary())->toBe($sdkBin.'/gcloud.cmd');
+    } finally {
+        $oldLocalAppData === false ? putenv('LOCALAPPDATA') : putenv("LOCALAPPDATA={$oldLocalAppData}");
+    }
+});
+
+test('home_path() uses USERPROFILE on Windows when HOME is unset', function (): void {
+    $oldHome = $_SERVER['HOME'] ?? null;
+    $oldEnvHome = getenv('HOME');
+    $oldProfile = getenv('USERPROFILE');
+    unset($_SERVER['HOME']);
+    putenv('HOME');
+    putenv('USERPROFILE=C:\\Users\\tester');
+
+    try {
+        expect(home_path('.larakube'))->toBe('C:\\Users\\tester'.DIRECTORY_SEPARATOR.'.larakube');
+    } finally {
+        if ($oldHome !== null) {
+            $_SERVER['HOME'] = $oldHome;
+        }
+        $oldEnvHome === false ? putenv('HOME') : putenv("HOME={$oldEnvHome}");
+        $oldProfile === false ? putenv('USERPROFILE') : putenv("USERPROFILE={$oldProfile}");
+    }
 });

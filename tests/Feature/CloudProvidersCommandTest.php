@@ -95,6 +95,34 @@ test('gcloud logged in with a project selected reports ready', function (): void
     }
 });
 
+test('gcloud status on Windows never emits 2>/dev/null and quotes paths with spaces', function (): void {
+    App\Support\Os::setForcedFamily('Windows');
+    cloudProvidersClearCredentialEnv();
+    putenv('GOOGLE_PROJECT=demo-project');
+
+    $localAppData = Spatie\TemporaryDirectory\TemporaryDirectory::make()->deleteWhenDestroyed();
+    $oldLocalAppData = getenv('LOCALAPPDATA');
+    putenv('LOCALAPPDATA='.$localAppData->path());
+    $sdkBin = $localAppData->path().'/Google/Cloud SDK/google-cloud-sdk/bin';
+    @mkdir($sdkBin, 0755, true);
+    file_put_contents($sdkBin.'/gcloud.cmd', '@echo off');
+
+    Process::fake([
+        '*auth print-access-token*' => Process::result(output: 'ya29.token'),
+        '*' => Process::result(exitCode: 1),
+    ]);
+
+    try {
+        expect(cloudProvidersRunJson()['gcp']['credentials'])->toBe(['ready' => true, 'hint' => null]);
+        Process::assertRan(fn ($process): bool => str_contains($process->command, 'auth print-access-token')
+            && ! str_contains($process->command, '2>/dev/null'));
+    } finally {
+        App\Support\Os::setForcedFamily(null);
+        putenv('GOOGLE_PROJECT');
+        $oldLocalAppData === false ? putenv('LOCALAPPDATA') : putenv("LOCALAPPDATA={$oldLocalAppData}");
+    }
+});
+
 test('missing GCP project and missing AWS CLI each report a hint', function (): void {
     cloudProvidersClearCredentialEnv();
     Process::fake(['*' => Process::result(exitCode: 1)]);

@@ -53,7 +53,7 @@ class CloudProjectsCommand extends Command
             return $this->failed('Google Cloud CLI (gcloud) is not installed. Run: larakube setup --tools=gcloud');
         }
 
-        $gcloud = CliTool::GCLOUD->resolveBinary() ?? 'gcloud';
+        $gcloud = \App\Support\Os::quoteExecutable(CliTool::GCLOUD->resolveBinary() ?? 'gcloud');
         $result = Process::timeout(60)->run("{$gcloud} projects list --format=\"json(projectId,name)\"");
         $decoded = json_decode($result->output(), true);
 

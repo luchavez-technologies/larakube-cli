@@ -8,10 +8,18 @@ if (! function_exists('home_path')) {
      */
     function home_path(string $path = ''): string
     {
-        $home = $_SERVER['HOME'] ?? getenv('HOME');
+        $home = $_SERVER['HOME'] ?? (getenv('HOME') ?: null);
 
         if (! $home) {
-            $home = ($_SERVER['HOMEDRIVE'] ?? '').($_SERVER['HOMEPATH'] ?? '');
+            $home = $_SERVER['USERPROFILE'] ?? (getenv('USERPROFILE') ?: null);
+        }
+
+        if (! $home) {
+            $drive = $_SERVER['HOMEDRIVE'] ?? (getenv('HOMEDRIVE') ?: '');
+            $homePath = $_SERVER['HOMEPATH'] ?? (getenv('HOMEPATH') ?: '');
+            if ($drive !== '' && $homePath !== '') {
+                $home = $drive.$homePath;
+            }
         }
 
         if (! $home) {
