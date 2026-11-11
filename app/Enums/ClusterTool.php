@@ -23,6 +23,7 @@ use App\Contracts\UsesCliOidc;
 use App\Contracts\UsesForwardAuth;
 use App\Data\ClusterToolComponentData;
 use App\Data\ToolInstance;
+use App\Services\Tools\ToolInitSpec;
 use App\Tools\N8n;
 use App\Tools\Windmill;
 use App\Vendors\AnalyticsTool;
@@ -1074,6 +1075,61 @@ enum ClusterTool: string implements HasWorkloadComponents
                 'mail' => [],
             ],
         };
+    }
+
+    /**
+     * Relational database engines this tool can lease from Plex Commons
+     * (excluding embedded storage like SQLite).
+     *
+     * @return list<string>
+     */
+    public function plexDatabases(?string $engine = null): array
+    {
+        $databases = $this->commonsCapabilities($engine)['databases'];
+
+        return array_values(array_filter(
+            $databases,
+            fn (string $db): bool => $db !== 'sqlite',
+        ));
+    }
+
+    public function supportsSqlite(?string $engine = null): bool
+    {
+        return in_array('sqlite', $this->commonsCapabilities($engine)['databases'], true);
+    }
+
+    /**
+     * Catalog definition shared by `tool:list --json` and `tool:catalog --json`
+     * so consumers receive one consistent schema for compatibility & init options.
+     *
+     * @return array<string, mixed>
+     */
+    public function toCatalogRow(?string $engine = null, bool $isLocal = false): array
+    {
+        $caps = $this->commonsCapabilities($engine);
+
+        return [
+            'tool' => $this->value,
+            'icon' => $this->icon(),
+            'brand' => $this->brandName(),
+            'label' => $this->getLabel(),
+            'name' => $this->canonicalTool($engine)->brandName(),
+            'tagline' => $this->tagline(),
+            'logo' => $this->logo(),
+            'paid' => $this->isPaid(),
+            'stack' => $this->stack(),
+            'categories' => array_map(fn (ToolCategory $cat): string => $cat->value, $this->categories()),
+            'source' => 'official',
+            'requiresAdminEmail' => $this->requiresAdminEmail($engine),
+            'multiInstance' => $this->supportsMultipleInstances(),
+            'supportsNoPlex' => $this->supportsNoPlex(),
+            'commonsCapabilities' => [
+                ...$caps,
+                'plexDatabases' => $this->plexDatabases($engine),
+                'supportsSqlite' => $this->supportsSqlite($engine),
+            ],
+            'initFields' => ToolInitSpec::fields($this, $engine, $isLocal),
+        ];
     }
 
     /**

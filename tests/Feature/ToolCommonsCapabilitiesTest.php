@@ -64,8 +64,21 @@ test('tool:list includes commonsCapabilities in json output', function (): void 
     expect($rows)->toBeArray()->not->toBeEmpty();
 
     foreach ($rows as $row) {
-        expect($row)->toHaveKey('commonsCapabilities')
+        expect($row)->toHaveKeys(['commonsCapabilities', 'supportsNoPlex'])
+            ->and($row['supportsNoPlex'])->toBeBool()
             ->and($row['commonsCapabilities'])->toBeArray()
-            ->toHaveKeys(['databases', 'cache', 'storage', 'auth', 'mail']);
+            ->toHaveKeys(['databases', 'plexDatabases', 'supportsSqlite', 'cache', 'storage', 'auth', 'mail']);
     }
+});
+
+test('plexDatabases excludes sqlite while supportsSqlite accurately reflects standalone sqlite support', function (): void {
+    expect(ClusterTool::N8N->plexDatabases())->toBe(['postgresql'])
+        ->and(ClusterTool::N8N->supportsSqlite())->toBeTrue()
+        ->and(ClusterTool::N8N->supportsNoPlex())->toBeTrue()
+        ->and(ClusterTool::WINDMILL->plexDatabases())->toBe(['postgresql'])
+        ->and(ClusterTool::WINDMILL->supportsSqlite())->toBeFalse()
+        ->and(ClusterTool::WORDPRESS->plexDatabases())->toBe(['mysql', 'mariadb'])
+        ->and(ClusterTool::WORDPRESS->supportsSqlite())->toBeTrue()
+        ->and(ClusterTool::POCKETBASE->plexDatabases())->toBeEmpty()
+        ->and(ClusterTool::POCKETBASE->supportsSqlite())->toBeTrue();
 });

@@ -98,6 +98,164 @@ solve CLI bloat (content would still have to ship in every release).
 
 ### Schema (LaraKube Cloud's own Postgres — already decided stack, §10 of `larakube-cloud.md`)
 
+> **CLI → Desktop Sync Contract Implemented (`catalog_tools`)**: The Desktop app and CLI already prepare the downstream catalog shape via `larakube tool:catalog --updated-since= --page= --json` and Desktop's `catalog_tools` SQLite cache (see [`mcp-enums-and-plex-compatibility-matrix.md`](./mcp-enums-and-plex-compatibility-matrix.md)).
+
+```mermaid
+erDiagram
+    users ||--o{ cluster_apps : submits
+    users ||--o{ cluster_tool_templates : authors
+    users ||--o{ template_upvotes : casts
+    teams ||--o{ template_entitlement_grants : holds
+
+    cluster_apps ||--o{ cluster_app_categories : has
+    categories ||--o{ cluster_app_categories : classifies
+    cluster_apps ||--o{ cluster_app_db_compatibilities : supports
+    cluster_apps ||--o{ cluster_tool_templates : provides_variants
+    cluster_apps ||--o{ template_upvotes : receives
+
+    cluster_tool_templates ||--o{ cluster_tool_template_releases : versions
+    cluster_tool_template_releases ||--o{ cluster_tool_template_files : contains
+    cluster_tool_template_releases ||--o{ template_entitlement_grants : grants
+
+    cluster_apps ||..o{ catalog_tools : "syncs via tool:catalog --updated-since"
+    servers ||--o{ cluster_tools : runs_installed
+    catalog_tools ||..o{ cluster_tools : "enriches by slug"
+
+    users {
+        bigint id PK
+        string email UK
+        string name
+    }
+
+    teams {
+        bigint id PK
+        bigint owner_id FK
+        string plan_tier
+    }
+
+    cluster_apps {
+        bigint id PK
+        string slug UK "n8n, wordpress, community slug"
+        string name
+        string brand
+        string tagline
+        string icon
+        string logo_url
+        string source "official | community"
+        string status "draft | approved | rejected | promoted"
+        bigint author_id FK "nullable when official"
+        string repo_url "optional GitHub repo"
+        string default_image "nullable for marketplace-only"
+        boolean paid
+        boolean supports_no_plex
+        boolean supports_sqlite
+        boolean multi_instance
+        boolean requires_admin_email
+        json commons_capabilities "cache, storage, auth, mail"
+        json init_fields "CLI Form schema"
+        int upvotes_count
+        timestamp updated_at "cursor for --updated-since"
+    }
+
+    categories {
+        bigint id PK
+        string slug UK
+        string label
+    }
+
+    cluster_app_categories {
+        bigint cluster_app_id FK
+        bigint category_id FK
+    }
+
+    cluster_app_db_compatibilities {
+        bigint id PK
+        bigint cluster_app_id FK
+        string driver "postgresql | mysql | mariadb | sqlite"
+        boolean is_default
+        boolean requires_no_plex_flag
+    }
+
+    cluster_tool_templates {
+        bigint id PK
+        bigint cluster_app_id FK
+        string engine "nullable, e.g. synapse"
+        string slug "official, minimal, etc."
+        string title
+        text description
+        bigint author_id FK
+        string visibility "official | community"
+        string access_tier "free | premium"
+        int upvotes_count
+    }
+
+    cluster_tool_template_releases {
+        bigint id PK
+        bigint cluster_tool_template_id FK
+        string version "semver"
+        string status "draft | published | deprecated | yanked"
+        boolean is_security_patch
+        string commit_sha "GitHub attestation SHA"
+        text changelog
+        string min_cli_version
+        text signature
+        timestamp published_at
+    }
+
+    cluster_tool_template_files {
+        bigint id PK
+        bigint release_id FK
+        string relative_path "k8s/{tool}/..."
+        text content "raw Blade manifest"
+    }
+
+    template_upvotes {
+        bigint cluster_tool_template_id FK
+        bigint user_id FK
+    }
+
+    template_entitlement_grants {
+        bigint team_id FK
+        bigint cluster_tool_template_release_id FK
+        timestamp granted_at
+    }
+
+    catalog_tools {
+        bigint id PK
+        string slug UK
+        string name
+        string brand
+        string tagline
+        string source "official | community"
+        boolean paid
+        int upvotes_count
+        json categories
+        json commons_capabilities
+        json init_fields
+        boolean supports_no_plex
+        timestamp remote_updated_at
+        timestamp synced_at
+    }
+
+    servers {
+        bigint id PK
+        string name UK
+        string context
+        json plex_data
+    }
+
+    cluster_tools {
+        bigint id PK
+        bigint server_id FK
+        string tool
+        string instance
+        boolean installed
+        string host
+        json data
+    }
+```
+
+- **`cluster_apps` + normalized compatibility/category tables** (`categories`, `cluster_app_categories`, `cluster_app_db_compatibilities`) — unifies official and community-submitted app metadata, DB engine compatibility (`postgresql`, `mysql`, `mariadb`, `sqlite`, `--no-plex` flag support), capabilities, and `init_fields` so Cloud's `GET /api/catalog?updated_since=&page=` feeds CLI (`tool:catalog`) and Desktop (`catalog_tools`) incrementally.
 - **`cluster_tool_templates`** — one row per template *variant* for a tool
   (a tool can have several: "official", a leaner community "minimal-resources"
   variant, etc.). `tool_slug`, `engine` (nullable, for multi-engine tools like

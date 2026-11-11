@@ -10,7 +10,6 @@ use App\Contracts\UsesForwardAuth;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
-use App\Services\Tools\ToolInitSpec;
 use App\Traits\InteractsWithToolRegistry;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesStandaloneEnvironment;
@@ -150,17 +149,9 @@ class ToolListCommand extends Command
                 }
 
                 $rows[] = [
-                    'tool' => $tool->value,
+                    ...$tool->toCatalogRow($entry['engine'] ?? null, $env === 'local'),
                     'instance' => $instance,
-                    'icon' => $tool->icon(),
                     'brand' => $serviceLabel,
-                    'label' => $tool->getLabel(),
-                    'name' => $tool->canonicalTool($entry['engine'] ?? null)->brandName(),
-                    'tagline' => $tool->tagline(),
-                    'logo' => $tool->logo(),
-                    'paid' => $tool->isPaid(),
-                    'stack' => $tool->stack(),
-                    'categories' => array_map(fn ($cat) => $cat->value, $tool->categories()),
                     'installed' => $installed,
                     'removeCommand' => $tool->removeCommand($entry['engine'] ?? null),
                     'namespace' => $tool->namespace(),
@@ -169,8 +160,6 @@ class ToolListCommand extends Command
                     'url' => $host !== null ? 'https://'.$host.$aliasSuffix : null,
                     'installedAt' => $entry['installedAt'] ?? null,
                     'verified' => ! $registryOnly,
-                    'requiresAdminEmail' => $tool->requiresAdminEmail($entry['engine'] ?? null),
-                    'multiInstance' => $tool->supportsMultipleInstances(),
                     // The names this instance holds on the shared Commons, so a GUI can find its
                     // tenants — none of them when this instance bypassed Commons (--no-plex):
                     // these are still just templated names, never confirmed against a live
@@ -180,8 +169,6 @@ class ToolListCommand extends Command
                         'redis' => array_values($tool->commonsRedisTenants($instance)),
                         'buckets' => array_values($tool->commonsBuckets($instance, $entry['engine'] ?? null)),
                     ],
-                    'commonsCapabilities' => $tool->commonsCapabilities($entry['engine'] ?? null),
-                    'initFields' => ToolInitSpec::fields($tool, $entry['engine'] ?? null, $env === 'local'),
                     'vendor' => $vendor,
                     'components' => array_map(fn ($c) => [
                         'key' => $c->key,
