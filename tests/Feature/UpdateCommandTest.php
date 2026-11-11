@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\WslBridge;
 use App\Support\Os;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
@@ -85,6 +86,7 @@ test('update --canary --yes on Windows skips the WSL2 lockstep binary download w
 test('update --canary --yes on Windows still downloads and syncs the Linux binary when a WSL distro exists', function (): void {
     Os::setForcedFamily('Windows');
     Os::setForcedMachine('AMD64');
+    WslBridge::setForceWslFeatureEnabled(true);
     $userProfile = Spatie\TemporaryDirectory\TemporaryDirectory::make()->deleteWhenDestroyed();
     putenv('USERPROFILE='.$userProfile->path());
 
@@ -108,8 +110,56 @@ test('update --canary --yes on Windows still downloads and syncs the Linux binar
     } finally {
         Os::setForcedFamily(null);
         Os::setForcedMachine(null);
+        WslBridge::setForceWslFeatureEnabled(null);
         putenv('USERPROFILE');
     }
+});
+
+test('update --canary --yes on Windows never invokes wsl.exe when WSL is uninstalled or disabled', function (): void {
+    Os::setForcedFamily('Windows');
+    Os::setForcedMachine('AMD64');
+    WslBridge::setForceWslFeatureEnabled(false);
+    $userProfile = Spatie\TemporaryDirectory\TemporaryDirectory::make()->deleteWhenDestroyed();
+    putenv('USERPROFILE='.$userProfile->path());
+
+    Http::fake([
+        'api.github.com/repos/luchavez-technologies/larakube-cli/releases/tags/canary' => Http::response(['tag_name' => 'canary']),
+        'github.com/luchavez-technologies/larakube-cli/releases/download/canary/*' => Http::response(str_repeat('x', 4096)),
+    ]);
+    Process::fake(['*' => Process::result()]);
+
+    try {
+        $this->artisan('update --canary --yes')
+            ->expectsOutputToContain('LaraKube Windows binary updated successfully to canary')
+            ->assertExitCode(0);
+
+        Process::assertNotRan(fn ($process): bool => in_array('wsl.exe', (array) $process->command, true));
+    } finally {
+        Os::setForcedFamily(null);
+        Os::setForcedMachine(null);
+        WslBridge::setForceWslFeatureEnabled(null);
+        putenv('USERPROFILE');
+    }
+});
+
+test('CLI boots cleanly even when Desktop passes empty Laravel bootstrap cache env vars', function (): void {
+    $process = new Symfony\Component\Process\Process(
+        [PHP_BINARY, base_path('larakube'), '--version'],
+        base_path(),
+        [
+            'APP_CONFIG_CACHE' => '',
+            'APP_SERVICES_CACHE' => '',
+            'APP_PACKAGES_CACHE' => '',
+            'APP_ROUTES_CACHE' => '',
+            'APP_EVENTS_CACHE' => '',
+            'VIEW_COMPILED_PATH' => '',
+            'LARAVEL_STORAGE_PATH' => '',
+        ],
+    );
+    $process->run();
+
+    expect($process->getExitCode())->toBe(0)
+        ->and($process->getOutput())->toContain('LaraKube');
 });
 
 test('update command detects if version is up to date', function (): void {

@@ -16,6 +16,7 @@ function wslBridgeListing(string ...$lines): string
 
 afterEach(function (): void {
     WslBridge::setForceNativeWindows(null);
+    WslBridge::setForceWslFeatureEnabled(null);
 });
 
 test('isNativeWindows can be forced for testing', function (): void {
@@ -453,4 +454,36 @@ test('ensureWslBinarySynced syncs cached linux binary into WSL when UNC target d
 
     Process::assertRan(fn ($p) => in_array('root', (array) $p->command, true)
         && in_array('/usr/local/bin/larakube', (array) $p->command, true));
+});
+
+test('WSL probe methods never execute wsl.exe when WSL feature is disabled', function (): void {
+    WslBridge::setForceWslFeatureEnabled(false);
+    Process::fake(['*' => Process::result(output: 'unexpected')]);
+
+    $bridge = new WslBridge(nativeWindows: true);
+
+    expect($bridge->isWslFeatureEnabled())->toBeFalse()
+        ->and($bridge->isWslInstalled())->toBeFalse()
+        ->and($bridge->runningDistros())->toBe([])
+        ->and($bridge->distroIsRunning())->toBeFalse()
+        ->and($bridge->distroExists())->toBeFalse()
+        ->and($bridge->shutdown())->toBeFalse()
+        ->and($bridge->mirroredNetworkingActive())->toBeFalse();
+
+    Process::assertNothingRan();
+});
+
+test('distroExists returns false without invoking wsl.exe when Windows has no WSL distros or optional feature disabled', function (): void {
+    WslBridge::setForceNativeWindows(true);
+    Process::fake([
+        '*reg.exe*' => Process::result(exitCode: 1, errorOutput: 'ERROR: The system was unable to find the specified registry key or value.'),
+        '*powershell.exe*' => Process::result(output: "Disabled\n"),
+    ]);
+
+    $bridge = new WslBridge(nativeWindows: true);
+
+    expect($bridge->isWslFeatureEnabled())->toBeFalse()
+        ->and($bridge->distroExists())->toBeFalse();
+
+    Process::assertNotRan(fn ($p) => in_array('wsl.exe', (array) $p->command, true));
 });

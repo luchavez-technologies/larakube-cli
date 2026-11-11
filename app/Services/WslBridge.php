@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\Os;
 use App\Traits\ConfiguresWslNetworking;
 use Illuminate\Support\Facades\Process;
 
@@ -74,6 +75,10 @@ class WslBridge
 
     private static ?bool $forceNativeWindows = null;
 
+    private static ?bool $forceWslFeatureEnabled = null;
+
+    private ?bool $wslFeatureEnabled = null;
+
     /**
      * @var (callable(list<string>, ?string=): int)|null Custom process dispatcher for tests
      */
@@ -89,6 +94,11 @@ class WslBridge
         private ?bool $nativeWindows = null,
         private ?string $distro = null,
     ) {}
+
+    public static function setForceWslFeatureEnabled(?bool $force): void
+    {
+        self::$forceWslFeatureEnabled = $force;
+    }
 
     public static function setForceNativeWindows(?bool $force): void
     {
@@ -122,9 +132,56 @@ class WslBridge
         return str_replace("\u{FEFF}", '', $output);
     }
 
+    /**
+     * Checks whether WSL is enabled/installed on Windows without running
+     * `wsl.exe` — calling `wsl.exe` on a machine with WSL uninstalled can
+     * trigger the interactive Store/install prompt and hang until timeout.
+     */
+    public function isWslFeatureEnabled(): bool
+    {
+        if (self::$forceWslFeatureEnabled !== null) {
+            return self::$forceWslFeatureEnabled;
+        }
+
+        if (! Os::isWindows() && ! self::isNativeWindows()) {
+            return true;
+        }
+
+        if ($this->wslFeatureEnabled !== null) {
+            return $this->wslFeatureEnabled;
+        }
+
+        $storeWsl = trim((string) (getenv('ProgramFiles') ?: 'C:\\Program Files'), '\\/').'\\WSL\\wsl.exe';
+        if (is_file($storeWsl)) {
+            return $this->wslFeatureEnabled = true;
+        }
+
+        $reg = Process::timeout(5)->input('')->run([
+            'reg.exe', 'query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Lxss', '/s', '/v', 'DistributionName',
+        ]);
+        if ($reg->successful() && str_contains($reg->output(), 'DistributionName')) {
+            return $this->wslFeatureEnabled = true;
+        }
+
+        $feature = Process::timeout(10)->input('')->run([
+            'powershell.exe',
+            '-NoProfile',
+            '-NonInteractive',
+            '-Command',
+            '(Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux).State',
+        ]);
+
+        return $this->wslFeatureEnabled = $feature->successful()
+            && strtolower(trim($feature->output())) === 'enabled';
+    }
+
     public function isWslInstalled(): bool
     {
-        return Process::timeout(10)->run(['wsl.exe', '--status'])->successful();
+        if (! $this->isWslFeatureEnabled()) {
+            return false;
+        }
+
+        return Process::timeout(10)->input('')->run(['wsl.exe', '--status'])->successful();
     }
 
     /**
@@ -132,7 +189,11 @@ class WslBridge
      */
     public function runningDistros(): array
     {
-        $listing = Process::timeout(30)->run(['wsl.exe', '--list', '--running', '--verbose']);
+        if (! $this->isWslFeatureEnabled()) {
+            return [];
+        }
+
+        $listing = Process::timeout(30)->input('')->run(['wsl.exe', '--list', '--running', '--verbose']);
 
         if (! $listing->successful()) {
             return [];
@@ -167,8 +228,12 @@ class WslBridge
 
     public function distroExists(?string $distro = null): bool
     {
+        if (! $this->isWslFeatureEnabled()) {
+            return false;
+        }
+
         $target = strtolower($distro ?? $this->distroName());
-        $listing = Process::timeout(30)->run(['wsl.exe', '--list', '--quiet']);
+        $listing = Process::timeout(30)->input('')->run(['wsl.exe', '--list', '--quiet']);
 
         if (! $listing->successful()) {
             return false;
@@ -187,7 +252,11 @@ class WslBridge
 
     public function shutdown(): bool
     {
-        return Process::timeout(30)->run(['wsl.exe', '--shutdown'])->successful();
+        if (! $this->isWslFeatureEnabled()) {
+            return false;
+        }
+
+        return Process::timeout(30)->input('')->run(['wsl.exe', '--shutdown'])->successful();
     }
 
     public function restartForNetworkingChange(?string $distro = null): bool
@@ -227,8 +296,12 @@ class WslBridge
 
     public function mirroredNetworkingActive(?string $distro = null): bool
     {
+        if (! $this->isWslFeatureEnabled()) {
+            return false;
+        }
+
         $target = $distro ?? $this->distroName();
-        $result = Process::timeout(30)->run(['wsl.exe', '-d', $target, '--', 'wslinfo', '--networking-mode']);
+        $result = Process::timeout(30)->input('')->run(['wsl.exe', '-d', $target, '--', 'wslinfo', '--networking-mode']);
 
         return strtolower(trim($this->text($result->output()))) === 'mirrored';
     }

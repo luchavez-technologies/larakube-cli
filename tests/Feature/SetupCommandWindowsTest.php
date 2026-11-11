@@ -9,6 +9,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 afterEach(function (): void {
     Os::setForcedFamily(null);
     WslBridge::setForceNativeWindows(null);
+    WslBridge::setForceWslFeatureEnabled(null);
 });
 
 test('setup on Windows fails if WSL is not installed', function (): void {
@@ -27,6 +28,7 @@ test('setup on Windows fails if WSL is not installed', function (): void {
 test('setup on Windows fails if distro is missing', function (): void {
     Os::setForcedFamily('Windows');
     WslBridge::setForceNativeWindows(true);
+    WslBridge::setForceWslFeatureEnabled(true);
 
     $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
     putenv('USERPROFILE='.$dir->path());
@@ -50,6 +52,7 @@ test('setup on Windows fails if distro is missing', function (): void {
 test('setup on Windows configures mirrored networking and dispatches into WSL without adding NRPT rules', function (): void {
     Os::setForcedFamily('Windows');
     WslBridge::setForceNativeWindows(true);
+    WslBridge::setForceWslFeatureEnabled(true);
 
     $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
     putenv('USERPROFILE='.$dir->path());
@@ -126,6 +129,7 @@ test('setup --tools=kubectl on Windows installs natively, skipping the WSL distr
 test('setup --tools=hcloud on Windows still dispatches into WSL — no native installer exists for it yet', function (): void {
     Os::setForcedFamily('Windows');
     WslBridge::setForceNativeWindows(true);
+    WslBridge::setForceWslFeatureEnabled(true);
 
     $dir = TemporaryDirectory::make()->deleteWhenDestroyed();
     putenv('USERPROFILE='.$dir->path());
