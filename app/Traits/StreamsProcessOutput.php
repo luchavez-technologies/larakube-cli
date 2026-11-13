@@ -107,8 +107,13 @@ trait StreamsProcessOutput
      */
     protected function runWithStdinLine(string $command, int $timeoutSeconds = 900): int
     {
+        $stdinFile = getenv('LARAKUBE_STDIN_FILE');
+        $input = is_string($stdinFile) && $stdinFile !== ''
+            ? StdinRelay::fromFile($stdinFile)
+            : StdinRelay::firstLine(STDIN);
+
         return Process::timeout($timeoutSeconds)
-            ->input(StdinRelay::firstLine(STDIN))
+            ->input($input)
             ->run($command, function (string $type, string $output): void {
                 State::isJsonMode() ? fwrite(STDERR, $output) : print $output;
             })->exitCode();

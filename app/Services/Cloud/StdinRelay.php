@@ -45,4 +45,34 @@ final class StdinRelay
             }
         }
     }
+
+    /**
+     * Poll a file for a single line without touching STDIN (safe on Windows pipes where stream_set_blocking is a no-op).
+     *
+     * @return Generator<int, string>
+     */
+    public static function fromFile(string $path, int $pollMicroseconds = 50_000): Generator
+    {
+        while (true) {
+            clearstatcache(true, $path);
+
+            if (is_file($path)) {
+                $contents = @file_get_contents($path);
+
+                if ($contents !== false && $contents !== '') {
+                    @unlink($path);
+                    $first = strstr($contents, "\n", true);
+                    $line = rtrim($first === false ? $contents : $first, "\r");
+
+                    yield $line."\n";
+
+                    return;
+                }
+            }
+
+            usleep($pollMicroseconds);
+
+            yield '';
+        }
+    }
 }

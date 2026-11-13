@@ -15,3 +15,25 @@ test('a stream that ends without a line hands the child nothing', function (): v
 
     expect(iterator_to_array(StdinRelay::firstLine($stream), false))->toBeEmpty();
 });
+
+test('fromFile polls without blocking until the code file exists, then yields the first line and unlinks it', function (): void {
+    $path = sys_get_temp_dir().'/stdin-relay-'.bin2hex(random_bytes(6)).'.txt';
+    @unlink($path);
+
+    $generator = StdinRelay::fromFile($path, 1_000);
+
+    expect($generator->current())->toBe('');
+    $generator->next();
+    expect($generator->valid())->toBeTrue();
+    expect($generator->current())->toBe('');
+
+    file_put_contents($path, "4/0AbCdEf\r\nsecond line\r\n");
+
+    $generator->next();
+    expect($generator->valid())->toBeTrue();
+    expect($generator->current())->toBe("4/0AbCdEf\n");
+    expect(is_file($path))->toBeFalse();
+
+    $generator->next();
+    expect($generator->valid())->toBeFalse();
+});
