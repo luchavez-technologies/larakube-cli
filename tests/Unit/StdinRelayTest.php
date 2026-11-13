@@ -22,17 +22,17 @@ test('fromFile polls without blocking until the code file exists, then yields th
 
     $generator = StdinRelay::fromFile($path, 1_000);
 
-    expect($generator->current())->toBe('');
+    expect($generator->current())->toBeEmpty();
     $generator->next();
-    expect($generator->valid())->toBeTrue();
-    expect($generator->current())->toBe('');
+    expect($generator->valid())->toBeTrue()
+        ->and($generator->current())->toBeEmpty();
 
     file_put_contents($path, "4/0AbCdEf\r\nsecond line\r\n");
 
     $generator->next();
-    expect($generator->valid())->toBeTrue();
-    expect($generator->current())->toBe("4/0AbCdEf\n");
-    expect(is_file($path))->toBeFalse();
+    expect($generator->valid())->toBeTrue()
+        ->and($generator->current())->toBe("4/0AbCdEf\n")
+        ->and($path)->not->toBeFile();
 
     $generator->next();
     expect($generator->valid())->toBeFalse();
