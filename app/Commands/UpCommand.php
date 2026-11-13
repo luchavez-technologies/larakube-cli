@@ -2,8 +2,6 @@
 
 namespace App\Commands;
 
-use App\Contracts\HasReloadCommand;
-use App\Data\ConfigData;
 use App\Enums\AppFramework;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
@@ -607,15 +605,10 @@ class UpCommand extends Command
             $this->call('console', ['environment' => $environment]);
         }
 
-        $this->renderHotReloadTip($config, $environment);
-
         if ($environment === 'local') {
             $this->ensureProjectCompanions($config, $appName);
             $this->syncCompanionHosts($config);
         }
-
-        $this->newLine();
-        $this->showServiceLinks($config, $environment);
 
         // A project made public by `share` keeps its tunnel: the scale-down above spares the connector, and a
         // stop that left it at zero is undone here. The names are already the project's hosts.
@@ -623,49 +616,13 @@ class UpCommand extends Command
             Process::run(Kubectl::current()->prefix().' scale deployment/larakube-share --replicas=1 -n '.escapeshellarg($namespace));
         }
 
-        $this->showCompanionAccess($config, $appName, $environment);
-
-        $this->showArchitecturalInstructions($config, $environment);
-
         $this->renderReminders();
-
-        $this->renderStarPrompt();
 
         if ($config->id) {
             $this->logToConsole($config->id, 'up', "Deployed project '{$config->getName()}' to {$environment} environment.");
         }
 
         return 0;
-    }
-
-    /**
-     * Print a one-line tip about `larakube watch` if the project has anything
-     * that benefits from hot-reload (Octane workers, Horizon, queues). Skipped
-     * for non-local environments and projects with nothing to reload.
-     */
-    protected function renderHotReloadTip(ConfigData $config, string $environment): void
-    {
-        if ($environment !== 'local') {
-            return;
-        }
-
-        $services = [];
-        foreach ([$config->getServerVariation(), ...$config->getFeatures()] as $candidate) {
-            if (! $candidate instanceof HasReloadCommand) {
-                continue;
-            }
-            if ($candidate->getReloadCommand() === null) {
-                continue;
-            }
-            $services[] = $candidate->getPodName($config);
-        }
-
-        if (empty($services)) {
-            return;
-        }
-
-        $this->newLine();
-        $this->line('  <fg=cyan>💡 Hot-reload tip:</> run <fg=yellow;options=bold>larakube watch</> in another terminal to auto-reload '.implode(' + ', $services).' on code changes.');
     }
 
     /**
