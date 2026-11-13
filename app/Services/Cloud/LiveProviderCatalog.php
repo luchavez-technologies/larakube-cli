@@ -340,8 +340,8 @@ class LiveProviderCatalog
     {
         $bin = \App\Support\Os::quoteExecutable(CliTool::AWS->resolveBinary() ?? 'aws');
 
-        $regions = Process::env($env)->timeout(10)->run("{$bin} ec2 describe-regions --output json");
-        $types = Process::env($env)->timeout(15)->run("{$bin} ec2 describe-instance-types --output json --filters Name=current-generation,Values=true Name=bare-metal,Values=false");
+        $regions = Process::env($env)->timeout(30)->run("{$bin} ec2 describe-regions --output json");
+        $types = Process::env($env)->timeout(30)->run("{$bin} ec2 describe-instance-types --output json --filters Name=current-generation,Values=true Name=bare-metal,Values=false");
 
         if (! $regions->successful() || ! $types->successful()) {
             return null;
@@ -356,8 +356,8 @@ class LiveProviderCatalog
         $zone = CloudProvider::GCP->defaultRegion().'-a';
         $env = ['CLOUDSDK_CORE_DISABLE_PROMPTS' => '1'];
 
-        $regions = Process::env($env)->timeout(10)->run("{$bin} compute regions list --quiet --project=".escapeshellarg($projectId).' --format=json');
-        $types = Process::env($env)->timeout(15)->run("{$bin} compute machine-types list --quiet --project=".escapeshellarg($projectId).' --filter='.escapeshellarg("zone:{$zone}").' --format=json');
+        $regions = Process::env($env)->timeout(30)->run("{$bin} compute regions list --quiet --project=".escapeshellarg($projectId).' --format=json');
+        $types = Process::env($env)->timeout(30)->run("{$bin} compute machine-types list --quiet --project=".escapeshellarg($projectId).' --filter='.escapeshellarg("zone:{$zone}").' --format=json');
 
         if (! $regions->successful() || ! $types->successful()) {
             return null;
