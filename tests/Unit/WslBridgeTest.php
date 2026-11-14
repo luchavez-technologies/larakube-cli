@@ -1,6 +1,7 @@
 <?php
 
 use App\Services\WslBridge;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Process;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
@@ -157,7 +158,7 @@ test('mirroredRestartPending is true when configured but not active', function (
 test('shouldDispatchToWsl routes only local WSL commands into WSL on Windows', function (): void {
     $bridge = new WslBridge(nativeWindows: true);
 
-    // Local development and k3d runtime commands -> dispatch into WSL
+    // Local development and k3s runtime commands -> dispatch into WSL
     expect($bridge->shouldDispatchToWsl(['larakube', 'up']))->toBeTrue()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'up', '--env=local']))->toBeTrue()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'up', '--context=local']))->toBeTrue()
@@ -168,7 +169,9 @@ test('shouldDispatchToWsl routes only local WSL commands into WSL on Windows', f
         ->and($bridge->shouldDispatchToWsl(['larakube', 'companion:remove']))->toBeTrue()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'feature:remove']))->toBeTrue()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'share:remove']))->toBeTrue()
-        ->and($bridge->shouldDispatchToWsl(['larakube', 'workspace:remove']))->toBeTrue();
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'nextjs:new']))->toBeTrue()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'wp:new']))->toBeTrue()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'trust:reset']))->toBeTrue();
 
     // Non-local project targets, cloud/server management, cluster tools, DNS, and lifecycle -> stay on Windows host
     expect($bridge->shouldDispatchToWsl(['larakube', 'up', 'production']))->toBeFalse()
@@ -190,12 +193,15 @@ test('shouldDispatchToWsl routes only local WSL commands into WSL on Windows', f
         ->and($bridge->shouldDispatchToWsl(['larakube', 'cluster:users']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'cluster:grant']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'devbox:list']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'workspace:create']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'workspace:remove']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'setup']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'setup', '--tools=docker']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'update']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'version']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:init']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:create']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:new']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:create', 'production', '--provider=do']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:providers', '--json']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:login', '--provider=gcp', '--json']))->toBeFalse()
@@ -535,4 +541,103 @@ test('distroExists returns false without invoking wsl.exe when Windows has no WS
         ->and($bridge->distroExists())->toBeFalse();
 
     Process::assertNotRan(fn ($p) => in_array('wsl.exe', (array) $p->command, true));
+});
+
+/**
+ * @return list<string>
+ */
+function wslBridgeRoutedCommands(): array
+{
+    $reflection = new ReflectionClass(WslBridge::class);
+
+    return [
+        ...$reflection->getConstant('WSL_LOCAL_COMMANDS'),
+        ...$reflection->getConstant('WSL_LOCAL_ENV_COMMANDS'),
+    ];
+}
+
+/**
+ * @return list<string>
+ */
+function wslBridgeRegisteredCommandNames(): array
+{
+    $names = [];
+
+    foreach (Artisan::all() as $name => $command) {
+        $names[] = $name;
+        array_push($names, ...$command->getAliases());
+    }
+
+    return array_values(array_unique($names));
+}
+
+test('every command WslBridge routes into WSL is a registered command', function (): void {
+    $phantoms = array_values(array_diff(wslBridgeRoutedCommands(), wslBridgeRegisteredCommandNames()));
+
+    expect($phantoms)->toBeEmpty();
+});
+
+test('every command in a local-only namespace is routed into WSL', function (): void {
+    $routed = wslBridgeRoutedCommands();
+
+    $missing = array_values(array_filter(
+        wslBridgeRegisteredCommandNames(),
+        fn (string $name): bool => ! in_array($name, $routed, true) && (
+            preg_match('/^(companion|feature|share|trust):/', $name) === 1
+            || (str_ends_with($name, ':new') && $name !== 'cloud:new')
+        ),
+    ));
+
+    expect($missing)->toBeEmpty();
+});
+
+test('dispatchToWsl hands the distro the Windows .kube folder as a /mnt path', function (): void {
+    $previous = getenv('USERPROFILE');
+    putenv('USERPROFILE=C:\\Users\\demo');
+
+    try {
+        $bridge = new WslBridge(nativeWindows: true);
+        $dispatchedCommand = null;
+        $bridge->setCustomDispatcher(function (array $cmd) use (&$dispatchedCommand): int {
+            $dispatchedCommand = $cmd;
+
+            return 0;
+        });
+
+        $bridge->dispatchToWsl(['larakube', 'cluster:setup'], null);
+
+        expect($dispatchedCommand)->toContain('LARAKUBE_HOST_KUBE_DIR=/mnt/c/Users/demo/.kube')
+            ->and(array_slice($dispatchedCommand, -2))->toBe(['larakube', 'cluster:setup']);
+    } finally {
+        $previous === false ? putenv('USERPROFILE') : putenv("USERPROFILE={$previous}");
+    }
+});
+
+test('linkHostKubeDirectory links ~/.kube to the host folder, idempotently, moving a real directory aside', function (): void {
+    $root = (new TemporaryDirectory)->create();
+    $home = $root->path().'/home';
+    $host = $root->path().'/host-kube';
+    mkdir($home.'/.kube/cache', 0755, true);
+    file_put_contents($home.'/.kube/config', 'distro-only');
+    mkdir($host);
+
+    expect(WslBridge::linkHostKubeDirectory($host, $home))->toBeTrue()
+        ->and(readlink($home.'/.kube'))->toBe($host)
+        ->and(file_get_contents($home.'/.kube.distro/config'))->toBe('distro-only')
+        ->and(WslBridge::linkHostKubeDirectory($host, $home))->toBeTrue()
+        ->and(readlink($home.'/.kube'))->toBe($host)
+        ->and(file_exists($home.'/.kube.distro.1'))->toBeFalse();
+
+    $root->delete();
+});
+
+test('linkHostKubeDirectory leaves ~/.kube alone when the host folder does not exist', function (): void {
+    $root = (new TemporaryDirectory)->create();
+    $home = $root->path().'/home';
+    mkdir($home.'/.kube', 0755, true);
+
+    expect(WslBridge::linkHostKubeDirectory($root->path().'/missing', $home))->toBeFalse()
+        ->and(is_link($home.'/.kube'))->toBeFalse();
+
+    $root->delete();
 });

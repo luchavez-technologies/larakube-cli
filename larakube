@@ -108,6 +108,12 @@ if (\App\Services\WslBridge::isNativeWindows()) {
     }
 }
 
+if (! \App\Services\WslBridge::isNativeWindows() && is_string($hostKubeDir = getenv('LARAKUBE_HOST_KUBE_DIR')) && $hostKubeDir !== '') {
+    // Dispatched from a native-Windows larakube.exe: share the host's
+    // kubeconfig instead of keeping a second one inside the distro.
+    \App\Services\WslBridge::linkHostKubeDirectory($hostKubeDir, (string) ($_SERVER['HOME'] ?? getenv('HOME') ?: ''));
+}
+
 /*
 |--------------------------------------------------------------------------
 | Run The Artisan Application

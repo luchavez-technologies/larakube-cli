@@ -15,31 +15,35 @@ class WslBridge
     public const string DEFAULT_USER = 'larakube';
 
     /**
-     * Commands that ALWAYS require the local WSL2 container/k3d runtime and
-     * Linux filesystem when invoked on Windows.
+     * Commands that ALWAYS need the local k3s cluster or the distro's Linux
+     * filesystem (projects live in /home/larakube/projects) when invoked on
+     * Windows.
      *
      * Every other CLI command (cloud provisioning, Cluster Tools, secrets,
      * DNS verification, backups, kubeconfig contexts, access management,
-     * dev boxes, setup/update, version, wsl:*) runs natively on the Windows
-     * host by default instead of opting in via a fragile allowlist.
+     * dev boxes, remote workspaces, setup/update, version, wsl:*) runs
+     * natively on the Windows host. WslBridgeTest asserts every entry here is
+     * a registered command and that no local-only namespace has a command
+     * missing from this list.
      *
      * @var list<string>
      */
     private const WSL_LOCAL_COMMANDS = [
-        // Local k3d cluster & SSL trust
+        // Local k3s cluster & the Local CA
         'cluster:setup', 'cluster:start', 'cluster:stop', 'cluster:destroy',
-        'trust', 'trust:check',
+        'trust', 'trust:check', 'trust:remove', 'trust:reset',
         // Local container execution & dev workflows
-        'art', 'artisan', 'exec', 'php', 'node', 'composer', 'npm', 'yarn', 'pnpm', 'bun',
-        'tinker', 'shell', 'test', 'logs', 'tunnel',
+        'art', 'exec', 'php', 'node', 'composer', 'npm', 'yarn', 'pnpm', 'bun',
+        'shell', 'test', 'logs', 'tunnel',
         // Local project scaffolding & local image builds
-        'new', 'laravel:new', 'springboot:new', 'statamic:new', 'wordpress:new',
+        'new', 'docs:new',
+        'adonisjs:new', 'astro:new', 'axum:new', 'django:new', 'dotnet:new', 'fastapi:new',
+        'gin:new', 'nestjs:new', 'nextjs:new', 'next:new', 'springboot:new', 'statamic:new', 'vite:new', 'wordpress:new', 'wp:new',
         'clone', 'init', 'purge', 'build', 'static:build', 'smoke',
-        // Local companions, features, shares & workspaces
+        // Local companions, features & shares
         'companion:add', 'companion:remove', 'companion:start', 'companion:stop', 'companion:list',
         'feature:add', 'feature:remove',
         'share:show', 'share:domains', 'share:remove',
-        'workspace:create', 'workspace:list', 'workspace:start', 'workspace:stop', 'workspace:remove',
     ];
 
     /**
@@ -51,7 +55,7 @@ class WslBridge
      */
     private const WSL_LOCAL_ENV_COMMANDS = [
         'up', 'down', 'heal', 'start', 'stop', 'reload',
-        'status', 'about', 'doctor', 'services:show',
+        'about', 'doctor', 'services:show',
         'dotenv', 'dotenv:audit', 'dotenv:push', 'dotenv:pull', 'env:remove',
     ];
 
@@ -496,10 +500,18 @@ class WslBridge
         // being driven by a native-Windows host that's still waiting on it —
         // see InteractsWithHosts::syncWindowsHostsFile() and
         // applyPendingWindowsHostsSync() below for what that unlocks.
+        //
+        // LARAKUBE_HOST_KUBE_DIR hands the dispatched process the Windows
+        // kubeconfig folder so it can keep ~/.kube linked to it — see
+        // linkHostKubeDirectory().
+        $hostKubeDir = $this->hostKubeDirectoryForWsl();
+
         $command = [
             'wsl.exe', '-d', $this->distroName(), '--user', self::DEFAULT_USER,
             ...($linuxCwd !== null ? ['--cd', $linuxCwd] : []),
-            '--', 'env', 'LARAKUBE_NATIVE_DISPATCH=1', 'larakube', ...$args,
+            '--', 'env', 'LARAKUBE_NATIVE_DISPATCH=1',
+            ...($hostKubeDir !== null ? ['LARAKUBE_HOST_KUBE_DIR='.$hostKubeDir] : []),
+            'larakube', ...$args,
         ];
 
         if ($this->customDispatcher !== null) {
@@ -602,6 +614,47 @@ class WslBridge
 
         @unlink($contentPath);
         @unlink($scriptPath);
+    }
+
+    /**
+     * Inside the distro, keep `~/.kube` a symlink to the Windows host's
+     * `.kube` folder, so the host's kubectl.exe (Desktop, cloud commands) and
+     * the distro's kubectl (local commands) read and write ONE kubeconfig.
+     * The local k3s context (`https://127.0.0.1:6443`) works from both sides
+     * via WSL2 localhost forwarding; cloud contexts use public endpoints.
+     *
+     * kubectl creates a real `~/.kube` (its discovery cache) on any run, so a
+     * real directory found here is moved aside, never deleted. Idempotent:
+     * a correct link is left untouched.
+     */
+    public static function linkHostKubeDirectory(string $hostKubeDir, string $home): bool
+    {
+        if ($home === '' || ! is_dir($hostKubeDir)) {
+            return false;
+        }
+
+        $link = rtrim($home, '/').'/.kube';
+
+        if (is_link($link)) {
+            if (readlink($link) === $hostKubeDir) {
+                return true;
+            }
+
+            @unlink($link);
+        } elseif (file_exists($link)) {
+            $aside = $link.'.distro';
+            $suffix = 1;
+
+            while (file_exists($aside)) {
+                $aside = $link.'.distro.'.$suffix++;
+            }
+
+            if (! @rename($link, $aside)) {
+                return false;
+            }
+        }
+
+        return @symlink($hostKubeDir, $link);
     }
 
     /**
@@ -731,6 +784,28 @@ class WslBridge
      * path, a UNC path into a DIFFERENT distro, or unrecognized) rather than
      * guessing — callers fall back to no --cd at all in that case.
      */
+    /**
+     * The Windows `%USERPROFILE%\.kube` folder as a `/mnt/<drive>/...` path,
+     * created on the host first so the WSL side always has something to link
+     * to. Null when the profile is unknown or not on a drive letter.
+     */
+    private function hostKubeDirectoryForWsl(): ?string
+    {
+        $profile = $this->userProfilePath();
+
+        if ($profile === null) {
+            return null;
+        }
+
+        $hostKubeDir = rtrim($profile, '\\/').'\\.kube';
+
+        if (PHP_OS_FAMILY === 'Windows' && ! is_dir($hostKubeDir)) {
+            @mkdir($hostKubeDir, 0700, true);
+        }
+
+        return $this->translateCwdToWsl($hostKubeDir);
+    }
+
     private function translateCwdToWsl(?string $cwd): ?string
     {
         if ($cwd === null || $cwd === '') {
