@@ -105,3 +105,15 @@ Where the build differs from the plan above, and why:
 - **`ToolLocator::WINDOWS_NATIVE_TOOLS` stays until Phase 3.** A test pins it to the registry's `runsOnWindowsHost()` set.
 
 Still to do: Phase 3 (the CLI owns tool knowledge, plus `tools:status --json`) and the Desktop half of Phase 4 (a read-only "Bundled in larakube-ubuntu" list).
+
+## Phase 3: as built
+
+- **One class per tool.** The `CliTool` enum is a thin facade over `app/Services/CliTools/*Tool.php`. `AbstractCliTool` runs install, update and reinstall once; tools declare capabilities through `InstallsViaHomebrew` and `InstallsOnWindows` (`app/Contracts/CliTools`). Shared pieces live in traits: `DownloadsReleaseArtifacts`, `RepairsHomebrewPermissions`, `ManagesHomebrewPackage`.
+- **`InstallChannel` (Homebrew / LaraKube / System / Other)** decides update and reinstall. Homebrew is detected from the real path, so Intel `Cellar` links count. Copies owned by System or Other are refused with the reason, never shadowed by a second copy. On the author's Mac this caught OrbStack's `/usr/local/bin/kubectl`.
+- **New commands:** `setup:status [tool] --json` and `setup:reinstall {tool}`. The name `tools:status` was dropped because `tool:*` is the Cluster Tools namespace.
+- **Desktop:** reads `setup:status <tool> --json` for the 7 CLI-managed tools (falling back to its own lookup for an older CLI). Reinstall runs `setup:reinstall`, and a row the CLI won't manage says who owns it.
+
+Still open:
+- Desktop's *runtime* `ToolLocator::find('kubectl')` (about 40 call sites) still uses its own lookup. Routing it through the CLI trades a CLI boot on cold paths for a single source of truth. That's a decision for the user.
+- Desktop half of Phase 4: a read-only "Bundled in larakube-ubuntu" list.
+- gh and tea have no native Windows installer, but CI setup (`cloud:configure --only=ci`) now runs on the host.
