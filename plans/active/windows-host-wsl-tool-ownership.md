@@ -113,7 +113,9 @@ Still to do: Phase 3 (the CLI owns tool knowledge, plus `tools:status --json`) a
 - **New commands:** `setup:status [tool] --json` and `setup:reinstall {tool}`. The name `tools:status` was dropped because `tool:*` is the Cluster Tools namespace.
 - **Desktop:** reads `setup:status <tool> --json` for the 7 CLI-managed tools (falling back to its own lookup for an older CLI). Reinstall runs `setup:reinstall`, and a row the CLI won't manage says who owns it.
 
-Still open:
-- Desktop's *runtime* `ToolLocator::find('kubectl')` (about 40 call sites) still uses its own lookup. Routing it through the CLI trades a CLI boot on cold paths for a single source of truth. That's a decision for the user.
-- Desktop half of Phase 4: a read-only "Bundled in larakube-ubuntu" list.
-- gh and tea have no native Windows installer, but CI setup (`cloud:configure --only=ci`) now runs on the host.
+Follow-ups, done after the user's decisions:
+- **Runtime lookups go through the CLI.** `ToolLocator::find()` for setup-managed tools uses `setup:status`, sharing a cache key with the Setup screen. A CLI that can't answer is remembered for a minute. On Windows only the native `larakube.exe` is asked, and only about host-run tools.
+- **gh/tea stay in the distro.** Projects live there. The image bundles them again. On Windows the host CLI runs them through `wsl.exe` (`RunsInWslOnWindows`, `CliTool::command()`), forwarding named env vars through WSLENV.
+- **Bundled list.** On Windows, Setup shows gh, tea, git, Podman, k3s and kubectl read-only, from `/etc/larakube-rootfs.json`, instead of offering installs.
+
+Still open: the `~/.larakube` split between host and WSL (see Deferred above).
