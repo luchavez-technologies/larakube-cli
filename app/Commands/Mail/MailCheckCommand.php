@@ -90,7 +90,7 @@ class MailCheckCommand extends Command
         // --- Cluster -------------------------------------------------------
         $deployment = ClusterTool::STALWART->deploymentName($this->resolveMailInstance($kubectl));
         $ready = trim(Process::run(
-            "{$kubectl} get deployment {$deployment} -n {$ns} -o jsonpath='{.status.readyReplicas}'",
+            "{$kubectl} get deployment {$deployment} -n {$ns} -o jsonpath=".escapeshellarg('{.status.readyReplicas}'),
         )->output());
         $this->report($ready === '1' ? 'ok' : 'fail', 'Mail server pod is running',
             "Deploy it: larakube tool:init --tool=stalwart {$env}");

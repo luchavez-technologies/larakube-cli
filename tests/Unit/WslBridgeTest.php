@@ -154,19 +154,47 @@ test('mirroredRestartPending is true when configured but not active', function (
     }
 });
 
-test('shouldDispatchToWsl filters lifecycle commands on Windows', function (): void {
+test('shouldDispatchToWsl routes only local WSL commands into WSL on Windows', function (): void {
     $bridge = new WslBridge(nativeWindows: true);
 
-    // Operational commands -> dispatch into WSL
+    // Local development and k3d runtime commands -> dispatch into WSL
     expect($bridge->shouldDispatchToWsl(['larakube', 'up']))->toBeTrue()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'up', '--env=local']))->toBeTrue()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'up', '--context=local']))->toBeTrue()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'down']))->toBeTrue()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'art', 'migrate']))->toBeTrue()
-        ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:list']))->toBeTrue();
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'cluster:setup']))->toBeTrue()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'trust']))->toBeTrue()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'companion:remove']))->toBeTrue()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'feature:remove']))->toBeTrue()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'share:remove']))->toBeTrue()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'workspace:remove']))->toBeTrue();
 
-    // Lifecycle and provisioning commands -> stay on host
-    expect($bridge->shouldDispatchToWsl(['larakube', 'setup']))->toBeFalse()
+    // Non-local project targets, cloud/server management, cluster tools, DNS, and lifecycle -> stay on Windows host
+    expect($bridge->shouldDispatchToWsl(['larakube', 'up', 'production']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'up', '--env=production']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'status', '--context=do-sgp1']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'up', '--context=do-sgp1']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'dns:verify', '--provider=cloudflare', '--json']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:list']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:catalog']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:show', 'forgejo']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:init', '--tool=forgejo', 'production']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:add']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:rebind']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:remove', '--tool=forgejo', 'production']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'plex:status']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'mail:status']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'openbao:status']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'sso:status']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'cluster:users']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'cluster:grant']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'devbox:list']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'setup']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'setup', '--tools=docker']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'update']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'version']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:init']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:create']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:create', 'production', '--provider=do']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:providers', '--json']))->toBeFalse()
@@ -180,10 +208,6 @@ test('shouldDispatchToWsl filters lifecycle commands on Windows', function (): v
         ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:scale', 'prod', '--size=s-2vcpu-4gb']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:restart', '--stack=prod']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:repair', '--stack=prod']))->toBeFalse()
-        ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:init', '--tool=forgejo', 'production']))->toBeFalse()
-        ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:add']))->toBeFalse()
-        ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:rebind']))->toBeFalse()
-        ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:remove', '--tool=forgejo', 'production']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'tls:init', 'production']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'context', 'production']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'context:import', 'lloyd.kubeconfig']))->toBeFalse()
@@ -196,19 +220,44 @@ test('shouldDispatchToWsl filters lifecycle commands on Windows', function (): v
         ->and($bridge->shouldDispatchToWsl(['larakube', 'backup:schedule', 'production', '--context=do-sgp1']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'backup:unschedule', 'production', '--context=do-sgp1']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'backup:prune', 'production', '--context=do-sgp1']))->toBeFalse()
-        // A command outside the Cluster-Tool install/remove and kubeconfig
-        // management families still dispatches to WSL, even sharing a
-        // `tool:`/`context:`-style prefix — these dev-box/local-only
-        // features were deliberately not part of this sweep.
-        ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:list']))->toBeTrue()
-        ->and($bridge->shouldDispatchToWsl(['larakube', 'companion:remove']))->toBeTrue()
-        ->and($bridge->shouldDispatchToWsl(['larakube', 'feature:remove']))->toBeTrue()
-        ->and($bridge->shouldDispatchToWsl(['larakube', 'share:remove']))->toBeTrue()
-        ->and($bridge->shouldDispatchToWsl(['larakube', 'workspace:remove']))->toBeTrue()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'wsl:restart']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'wsl:status']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', '--version']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', '-V']))->toBeFalse();
+});
+
+test('shouldDispatchToWsl returns false when LARAKUBE_EXECUTION_CONTEXT is host or LARAKUBE_NO_WSL is 1', function (): void {
+    $bridge = new WslBridge(nativeWindows: true);
+    $prevContext = getenv('LARAKUBE_EXECUTION_CONTEXT');
+    $prevNoWsl = getenv('LARAKUBE_NO_WSL');
+
+    try {
+        putenv('LARAKUBE_EXECUTION_CONTEXT=host');
+        putenv('LARAKUBE_NO_WSL');
+        expect($bridge->shouldDispatchToWsl(['larakube', 'up']))->toBeFalse()
+            ->and($bridge->shouldDispatchToWsl(['larakube', 'cluster:setup']))->toBeFalse();
+
+        putenv('LARAKUBE_EXECUTION_CONTEXT');
+        putenv('LARAKUBE_NO_WSL=1');
+        expect($bridge->shouldDispatchToWsl(['larakube', 'up']))->toBeFalse();
+    } finally {
+        if ($prevContext === false) {
+            putenv('LARAKUBE_EXECUTION_CONTEXT');
+        } else {
+            putenv('LARAKUBE_EXECUTION_CONTEXT='.$prevContext);
+        }
+        if ($prevNoWsl === false) {
+            putenv('LARAKUBE_NO_WSL');
+        } else {
+            putenv('LARAKUBE_NO_WSL='.$prevNoWsl);
+        }
+    }
+});
+
+test('shouldDispatchToWsl uses invoking WSL UNC cwd when no command is passed', function (): void {
+    $bridge = new WslBridge(nativeWindows: true);
+
+    expect($bridge->shouldDispatchToWsl(['larakube'], '\\\\wsl.localhost\\larakube-ubuntu\\home\\larakube'))->toBeTrue();
 });
 
 test('dispatchToWsl uses custom dispatcher when set', function (): void {

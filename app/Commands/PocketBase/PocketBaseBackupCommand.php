@@ -41,7 +41,7 @@ class PocketBaseBackupCommand extends Command
 
         $this->laraKubeInfo("Creating PocketBase backup for {$deployment} into {$output}...");
 
-        $pod = trim(Process::run("{$kubectl} get pod -l app={$deployment} -n {$ns} -o jsonpath='{.items[0].metadata.name}'")->output());
+        $pod = trim(Process::run("{$kubectl} get pod -l app={$deployment} -n {$ns} -o jsonpath=".escapeshellarg('{.items[0].metadata.name}'))->output());
         if ($pod === '') {
             $this->laraKubeError("No running PocketBase pod found for {$deployment}.");
 

@@ -39,8 +39,9 @@ trait InteractsWithClusterIdentity
     {
         $ns = $this->clusterIdentityNamespace();
 
+        $jsonpath = escapeshellarg('{.data.cluster-id}');
         $existing = trim(Process::run(
-            "{$kubectl} get configmap larakube-cluster -n {$ns} -o jsonpath='{.data.cluster-id}' 2>/dev/null",
+            "{$kubectl} get configmap larakube-cluster -n {$ns} -o jsonpath={$jsonpath}",
         )->output());
 
         if ($existing !== '') {
@@ -67,13 +68,13 @@ trait InteractsWithClusterIdentity
         // create (not apply) so a concurrent writer can't silently overwrite an
         // ID another process just claimed — losing it would orphan every DNS
         // record already tagged with the old owner.
-        $ok = Process::run("{$kubectl} create -f ".escapeshellarg($tmp).' 2>/dev/null')->successful();
+        $ok = Process::run("{$kubectl} create -f ".escapeshellarg($tmp))->successful();
         $temporaryDirectory->delete();
 
         if (! $ok) {
             // Lost the race (or the namespace is missing) — re-read.
             $existing = trim(Process::run(
-                "{$kubectl} get configmap larakube-cluster -n {$ns} -o jsonpath='{.data.cluster-id}' 2>/dev/null",
+                "{$kubectl} get configmap larakube-cluster -n {$ns} -o jsonpath={$jsonpath}",
             )->output());
 
             return $existing !== '' ? $existing : null;

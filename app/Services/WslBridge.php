@@ -15,62 +15,44 @@ class WslBridge
     public const string DEFAULT_USER = 'larakube';
 
     /**
-     * Commands that run natively on the Windows host rather than being
-     * forwarded into the larakube-ubuntu distro. `cloud:create` joined
-     * `setup`/`update`/`wsl:*` once its own POSIX-only call sites
-     * (`Kubectl::prefix()`'s shell-prefix syntax, `InteractsWithOpenTofu`'s
-     * `command -v`/`exec ... 2>&1`, the EKS/GKE init commands' jsonpath
-     * quoting and gke-gcloud-auth-plugin lookup) were fixed to be
-     * Windows-aware the same way `CliTool.php` already is — see
-     * `InteractsWithOpenTofu`, `Kubectl::prefix()`, `EnsuresGkeAuthPlugin`.
+     * Commands that ALWAYS require the local WSL2 container/k3d runtime and
+     * Linux filesystem when invoked on Windows.
      *
-     * `tool:init`/`tool:add`/`tool:rebind`/`tool:remove`/`tls:init` joined
-     * after the same sweep across every Cluster Tool's own `:init`/`:remove`
-     * command (not the generic router files themselves, which were already
-     * clean) for the same shell-specific patterns — single-quoted jsonpath,
-     * `2>/dev/null`, a literal `bash`/`grep`/`head` dependency. Each hit was
-     * fixed in place (OpenBao/Matrix/NetBird/Zitadel's `:init`,
-     * Forgejo/Ocis/PocketBase/Stalwart/WordPress's `:remove`). This covers
-     * the install/configure/remove path for Cluster Tools specifically.
-     *
-     * `context`/`context:import`/`context:remove`/`context:backup`/
-     * `context:restore` (kubeconfig management — not dev-box-only, unlike
-     * the ones below) joined after auditing all five: all already built
-     * exclusively on `Kubectl::prefix()` (already Windows-safe) or plain PHP
-     * file I/O, with no shell-specific syntax to begin with.
-     *
-     * `companion:remove`/`feature:remove`/`share:remove`/`workspace:remove`
-     * are dev-box/local-development-only features, not part of the
-     * "provision a server, install apps on it" path this sweep targets —
-     * deliberately left dispatching to WSL, not an oversight.
-     *
-     * `backup:init`/`backup:run`/`backup:restore`/`backup:schedule`/
-     * `backup:unschedule`/`backup:prune` (every backup command Desktop's
-     * Backups page actually dispatches) joined after auditing their shared
-     * `InteractsWithBackup`/`DeploysClusterTool` traits for shell-specific
-     * patterns — none found: all cluster calls already go through the
-     * already-Windows-safe `Kubectl::prefix()`, the one local `aws s3 ...`
-     * call is built with OS-aware `escapeshellarg()`, and the only `sh -c`
-     * is a `kubectl exec` argument that runs inside the remote pod, not on
-     * the local host.
-     *
-     * `cloud:providers`/`cloud:login`/`cloud:projects`/`cloud:project`/
-     * `cloud:credentials`/`cloud:accounts`/`cloud:stacks`/`cloud:destroy`/
-     * `cloud:scale`/`cloud:restart`/`cloud:repair` joined so Setup, Cloud
-     * Auth, and Server lifecycle management run natively on Windows without
-     * requiring WSL — after removing hardcoded `2>/dev/null` redirects and
-     * quoting executable paths across them and their shared cloud traits.
+     * Every other CLI command (cloud provisioning, Cluster Tools, secrets,
+     * DNS verification, backups, kubeconfig contexts, access management,
+     * dev boxes, setup/update, version, wsl:*) runs natively on the Windows
+     * host by default instead of opting in via a fragile allowlist.
      *
      * @var list<string>
      */
-    private const NATIVE_WINDOWS_COMMANDS = [
-        'setup', 'update',
-        'cloud:create', 'cloud:providers', 'cloud:login', 'cloud:projects', 'cloud:project',
-        'cloud:credentials', 'cloud:accounts', 'cloud:stacks', 'cloud:destroy',
-        'cloud:scale', 'cloud:restart', 'cloud:repair',
-        'tool:init', 'tool:add', 'tool:rebind', 'tool:remove', 'tls:init',
-        'context', 'context:import', 'context:remove', 'context:backup', 'context:restore',
-        'backup:init', 'backup:run', 'backup:restore', 'backup:schedule', 'backup:unschedule', 'backup:prune',
+    private const WSL_LOCAL_COMMANDS = [
+        // Local k3d cluster & SSL trust
+        'cluster:setup', 'cluster:start', 'cluster:stop', 'cluster:destroy',
+        'trust', 'trust:check',
+        // Local container execution & dev workflows
+        'art', 'artisan', 'exec', 'php', 'node', 'composer', 'npm', 'yarn', 'pnpm', 'bun',
+        'tinker', 'shell', 'test', 'logs', 'tunnel',
+        // Local project scaffolding & local image builds
+        'new', 'laravel:new', 'springboot:new', 'statamic:new', 'wordpress:new',
+        'clone', 'init', 'purge', 'build', 'static:build', 'smoke',
+        // Local companions, features, shares & workspaces
+        'companion:add', 'companion:remove', 'companion:start', 'companion:stop', 'companion:list',
+        'feature:add', 'feature:remove',
+        'share:show', 'share:domains', 'share:remove',
+        'workspace:create', 'workspace:list', 'workspace:start', 'workspace:stop', 'workspace:remove',
+    ];
+
+    /**
+     * Project commands that dispatch to WSL only when targeting the local
+     * environment (or when no non-local environment / kubeconfig context is
+     * specified). Deploying or inspecting a remote environment stays on host.
+     *
+     * @var list<string>
+     */
+    private const WSL_LOCAL_ENV_COMMANDS = [
+        'up', 'down', 'heal', 'start', 'stop', 'reload',
+        'status', 'about', 'doctor', 'services:show',
+        'dotenv', 'dotenv:audit', 'dotenv:push', 'dotenv:pull', 'env:remove',
     ];
 
     private static ?bool $forceNativeWindows = null;
@@ -327,46 +309,55 @@ class WslBridge
 
     /**
      * Determines whether the given CLI invocation should be forwarded into WSL.
-     * Lifecycle management commands (setup, update, wsl:*) and cloud:create
-     * remain on the Windows host.
+     * Only explicit local-development commands (and local-environment runs of
+     * project lifecycle commands) dispatch into WSL; all other commands run
+     * natively on the Windows host.
      *
      * @param  list<string>  $argv
      */
-    public function shouldDispatchToWsl(array $argv): bool
+    public function shouldDispatchToWsl(array $argv, ?string $cwd = null): bool
     {
         if (! $this->isRunningNatively()) {
             return false;
         }
 
-        // Find the command (first non-option argument after script name)
-        $command = null;
-        $count = count($argv);
-        for ($i = 1; $i < $count; $i++) {
-            $arg = $argv[$i];
-            if (! str_starts_with($arg, '-')) {
-                $command = $arg;
-                break;
-            }
-        }
-
-        if ($command === null) {
-            // Version check on the host binary
-            foreach ($argv as $arg) {
-                if ($arg === '--version' || $arg === '-V') {
-                    return false;
-                }
-            }
-
-            // If no command is provided, forward to WSL if distro exists so full help/list is displayed
-            return $this->distroExists();
-        }
-
-        // Native lifecycle and provisioning commands run outside WSL
-        if (in_array($command, self::NATIVE_WINDOWS_COMMANDS, true) || str_starts_with($command, 'wsl:')) {
+        if (getenv('LARAKUBE_EXECUTION_CONTEXT') === 'host' || getenv('LARAKUBE_NO_WSL') === '1') {
             return false;
         }
 
-        return true;
+        if (in_array('--version', $argv, true) || in_array('-V', $argv, true)) {
+            return false;
+        }
+
+        $command = $this->extractCommandName($argv);
+
+        if ($command === null) {
+            return ($cwd !== null && $this->isWslUncPath($cwd)) || $this->distroExists();
+        }
+
+        if ($command === 'version' || str_starts_with($command, 'wsl:')) {
+            return false;
+        }
+
+        if ($this->hasNonLocalContextFlag($argv)) {
+            return false;
+        }
+
+        if (in_array($command, self::WSL_LOCAL_COMMANDS, true)) {
+            return true;
+        }
+
+        if (in_array($command, self::WSL_LOCAL_ENV_COMMANDS, true)) {
+            $environment = $this->extractTargetEnvironment($argv, $command);
+
+            if ($environment !== null && $environment !== 'local') {
+                return false;
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -611,6 +602,109 @@ class WslBridge
 
         @unlink($contentPath);
         @unlink($scriptPath);
+    }
+
+    /**
+     * Extracts the command name (first non-option argument after the binary).
+     *
+     * @param  list<string>  $argv
+     */
+    private function extractCommandName(array $argv): ?string
+    {
+        $count = count($argv);
+        for ($i = 1; $i < $count; $i++) {
+            $arg = $argv[$i];
+            if (! str_starts_with($arg, '-')) {
+                return $arg;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Returns true when a working directory points at a WSL UNC share.
+     */
+    private function isWslUncPath(string $cwd): bool
+    {
+        return str_starts_with($cwd, '\\\\wsl.localhost\\') || str_starts_with($cwd, '\\\\wsl$\\');
+    }
+
+    /**
+     * Returns true when `--context` explicitly targets a non-local cluster.
+     *
+     * @param  list<string>  $argv
+     */
+    private function hasNonLocalContextFlag(array $argv): bool
+    {
+        $context = $this->extractOptionValue($argv, ['--context']);
+
+        return $context !== null && $context !== '' && ! in_array($context, ['local', 'k3d-larakube'], true);
+    }
+
+    /**
+     * Extracts the target environment from `--env`/`--environment` or the
+     * first positional argument after the command name.
+     *
+     * @param  list<string>  $argv
+     */
+    private function extractTargetEnvironment(array $argv, string $command): ?string
+    {
+        $optionEnv = $this->extractOptionValue($argv, ['--env', '--environment']);
+        if ($optionEnv !== null && $optionEnv !== '') {
+            return $optionEnv;
+        }
+
+        $seenCommand = false;
+        $count = count($argv);
+        for ($i = 1; $i < $count; $i++) {
+            $arg = $argv[$i];
+            if (! $seenCommand) {
+                if ($arg === $command) {
+                    $seenCommand = true;
+                }
+
+                continue;
+            }
+
+            if ($arg === '--env' || $arg === '--environment' || $arg === '--context') {
+                $i++;
+
+                continue;
+            }
+
+            if (! str_starts_with($arg, '-')) {
+                return $arg;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Extracts the value of any matching `--name=value` or `--name value` flag.
+     *
+     * @param  list<string>  $argv
+     * @param  list<string>  $names
+     */
+    private function extractOptionValue(array $argv, array $names): ?string
+    {
+        $count = count($argv);
+        for ($i = 1; $i < $count; $i++) {
+            $arg = $argv[$i];
+
+            foreach ($names as $name) {
+                if (str_starts_with($arg, $name.'=')) {
+                    return substr($arg, strlen($name) + 1);
+                }
+
+                if ($arg === $name && isset($argv[$i + 1]) && ! str_starts_with($argv[$i + 1], '-')) {
+                    return $argv[$i + 1];
+                }
+            }
+        }
+
+        return null;
     }
 
     /**

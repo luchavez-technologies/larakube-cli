@@ -77,7 +77,7 @@ enum SharedClusterService: string
             self::MEET => [
                 // Label-based: the bridge's Deployment is named per instance,
                 // but the identity label every manifest carries holds.
-                'jwtWired' => trim(Process::timeout(10)->run(Kubectl::current()->prefix().' get deployment -l larakube.io/tool=meet,larakube.io/component=lk-jwt -n larakube-shared --ignore-not-found 2>/dev/null')->output()) !== '',
+                'jwtWired' => trim(Process::timeout(10)->run(Kubectl::current()->prefix().' get deployment -l larakube.io/tool=meet,larakube.io/component=lk-jwt -n larakube-shared --ignore-not-found')->output()) !== '',
             ],
             self::TASKS => [
                 'engine' => 'planka',

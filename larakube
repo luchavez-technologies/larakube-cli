@@ -98,7 +98,7 @@ if (\App\Services\WslBridge::isNativeWindows()) {
 
     /** @var \App\Services\WslBridge $wslBridge */
     $wslBridge = $app->make(\App\Services\WslBridge::class);
-    if ($wslBridge->shouldDispatchToWsl($_SERVER['argv'] ?? [])) {
+    if ($wslBridge->shouldDispatchToWsl($_SERVER['argv'] ?? [], $invokingCwd)) {
         if ($wslBridge->mirroredRestartPending() && $wslBridge->otherRunningDistros() === []) {
             $wslBridge->shutdown();
         }

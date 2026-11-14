@@ -113,7 +113,7 @@ class VpnWireCommand extends Command
     {
         return str_contains(Process::run(
             "{$kubectl} get ingress {$tool->value} -n {$tool->namespace()} "
-            ."-o jsonpath='{.metadata.annotations}' --ignore-not-found",
+            .'-o jsonpath='.escapeshellarg('{.metadata.annotations}').' --ignore-not-found',
         )->output(), 'cloudflare-proxied');
     }
 

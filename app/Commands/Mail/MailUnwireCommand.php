@@ -244,7 +244,7 @@ class MailUnwireCommand extends Command
             $oidc = $this->readChatWiredOidc($kubectl, $ns);
             $mas = $this->readChatWiredMas($kubectl, $ns);
 
-            $raw = Process::run("{$kubectl} get secret {$chat->secret(SecretKind::CONFIG)} -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'")->output();
+            $raw = Process::run("{$kubectl} get secret {$chat->secret(SecretKind::CONFIG)} -n {$ns} -o jsonpath=".escapeshellarg('{.data.homeserver\.yaml}'))->output();
             if (trim($raw) === '') {
                 $ok = false;
 

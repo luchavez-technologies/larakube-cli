@@ -76,7 +76,7 @@ class ClusterUsersCommand extends Command
     /** List every identity (teammates + deploy SA) bound to one namespace. */
     protected function showAccess(string $kubectl, string $namespace): int
     {
-        $bindings = $this->kubectlItems($kubectl.' get rolebinding -n '.escapeshellarg($namespace).' -l app.kubernetes.io/managed-by=larakube -o json 2>/dev/null');
+        $bindings = $this->kubectlItems($kubectl.' get rolebinding -n '.escapeshellarg($namespace).' -l app.kubernetes.io/managed-by=larakube -o json');
 
         if (empty($bindings)) {
             $this->laraKubeInfo("No LaraKube access grants in '{$namespace}'.");
@@ -88,7 +88,7 @@ class ClusterUsersCommand extends Command
 
         // One lookup of teammate SAs → friendly person names for the rows.
         $people = [];
-        foreach ($this->kubectlItems($kubectl.' get sa -A -l larakube.dev/access-user -o json 2>/dev/null') as $sa) {
+        foreach ($this->kubectlItems($kubectl.' get sa -A -l larakube.dev/access-user -o json') as $sa) {
             $n = $sa['metadata']['name'] ?? '';
             $people[$n] = $sa['metadata']['annotations']['larakube.dev/person'] ?? $n;
         }
@@ -118,7 +118,7 @@ class ClusterUsersCommand extends Command
     /** List larakube-managed deploy SAs and teammate identities across the cluster. */
     protected function listUsers(string $kubectl): int
     {
-        $items = $this->kubectlItems($kubectl.' get sa -A -l app.kubernetes.io/managed-by=larakube -o json 2>/dev/null');
+        $items = $this->kubectlItems($kubectl.' get sa -A -l app.kubernetes.io/managed-by=larakube -o json');
 
         // Teammates carry an access-user label; everything else is a deploy SA.
         $deployers = [];

@@ -164,7 +164,7 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
         // Argon2id HASH Vaultwarden itself consumes (irreversible); the raw
         // token an operator actually logs in with is plain-token.
         $tokenVal = trim(Process::run(
-            "{$kubectl} get secret {$secret} -n {$ns} -o jsonpath='{.data.plain-token}' --ignore-not-found",
+            "{$kubectl} get secret {$secret} -n {$ns} -o jsonpath=".escapeshellarg('{.data.plain-token}').' --ignore-not-found',
         )->output());
         $decodedToken = $tokenVal !== '' ? (base64_decode($tokenVal, true) ?: '<unknown>') : '<unknown>';
 

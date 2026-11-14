@@ -2060,8 +2060,8 @@ class ConfigData extends Data
     public static function restoreFromCluster(?string $namespace = null, ?string $appName = null): ?self
     {
         $command = $namespace
-            ? Kubectl::current()->prefix()." get secret larakube-blueprint -n {$namespace} -o jsonpath='{.data.\\.larakube\\.json}'"
-            : Kubectl::current()->prefix()." get secrets -A -l larakube.io/project={$appName},larakube.io/config=blueprint -o jsonpath='{.items[0].data.\\.larakube\\.json}'";
+            ? Kubectl::current()->prefix()." get secret larakube-blueprint -n {$namespace} -o jsonpath=".escapeshellarg('{.data.\\.larakube\\.json}')
+            : Kubectl::current()->prefix()." get secrets -A -l larakube.io/project={$appName},larakube.io/config=blueprint -o jsonpath=".escapeshellarg('{.items[0].data.\\.larakube\\.json}');
 
         $encoded = Process::run($command)->output();
         if ($encoded === '') {

@@ -196,7 +196,7 @@ final class PlexService
     public function commonsSpec(): ?array
     {
         $json = trim(Process::run(
-            $this->kubectl().' get configmap plex-commons -n '.self::NAMESPACE." -o jsonpath='{.data.commons\\.json}'",
+            $this->kubectl().' get configmap plex-commons -n '.self::NAMESPACE.' -o jsonpath='.escapeshellarg('{.data.commons\\.json}'),
         )->output());
 
         if ($json === '') {
@@ -373,7 +373,7 @@ final class PlexService
     public function registry(): array
     {
         $json = trim(Process::run(
-            $this->kubectl().' get configmap plex-registry -n '.self::NAMESPACE." -o jsonpath='{.data.registry\\.json}'",
+            $this->kubectl().' get configmap plex-registry -n '.self::NAMESPACE.' -o jsonpath='.escapeshellarg('{.data.registry\\.json}'),
         )->output());
 
         $registry = $json === '' ? [] : json_decode($json, true);

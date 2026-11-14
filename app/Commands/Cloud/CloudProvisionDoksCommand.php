@@ -229,7 +229,7 @@ class CloudProvisionDoksCommand extends Command
     private function traefikInstalled(string $context): bool
     {
         $kubectl = Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context);
-        $ready = trim(Process::run("{$kubectl} get deployment -n traefik traefik -o jsonpath='{.status.readyReplicas}' 2>/dev/null")->output());
+        $ready = trim(Process::run("{$kubectl} get deployment -n traefik traefik -o jsonpath=".escapeshellarg('{.status.readyReplicas}'))->output());
 
         return (int) $ready > 0;
     }
@@ -254,9 +254,9 @@ class CloudProvisionDoksCommand extends Command
         $kubectl = Kubectl::forContext(null)->prefix().' --context '.escapeshellarg($context);
 
         // If a previous attempt left an unbound Pending PVC, clean it up so apply succeeds.
-        $pvcStatus = trim(Process::run("{$kubectl} get pvc -n traefik traefik-acme -o jsonpath='{.status.phase}' 2>/dev/null")->output());
+        $pvcStatus = trim(Process::run("{$kubectl} get pvc -n traefik traefik-acme -o jsonpath=".escapeshellarg('{.status.phase}'))->output());
         if ($pvcStatus === 'Pending') {
-            Process::run("{$kubectl} delete pvc -n traefik traefik-acme --wait=false 2>/dev/null");
+            Process::run("{$kubectl} delete pvc -n traefik traefik-acme --wait=false");
         }
 
         $manifest = view('k8s.traefik-managed', [

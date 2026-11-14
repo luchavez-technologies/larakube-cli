@@ -77,7 +77,7 @@ trait ReconcilesPenpotFlags
     protected function designPenpotFlagIsLive(string $kubectl, string $ns, string $deployment, string $oidcSecretName, string $flag): bool
     {
         $literal = trim(Process::run(
-            "{$kubectl} get deployment {$deployment} -n {$ns} -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name==\"PENPOT_FLAGS\")].value}' --ignore-not-found",
+            "{$kubectl} get deployment {$deployment} -n {$ns} -o jsonpath=".escapeshellarg('{.spec.template.spec.containers[0].env[?(@.name=="PENPOT_FLAGS")].value}').' --ignore-not-found',
         )->output());
 
         $current = $literal !== '' ? $literal : ($this->readClusterSecretKey($kubectl, $ns, $oidcSecretName, 'PENPOT_FLAGS') ?? '');

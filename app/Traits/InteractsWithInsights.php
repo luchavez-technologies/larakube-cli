@@ -28,7 +28,7 @@ trait InteractsWithInsights
     protected function readInsightsDbPassword(string $kubectl, string $ns, string $secret): ?string
     {
         $out = trim(Process::run(
-            "{$kubectl} get secret {$secret} -n {$ns} -o jsonpath='{.data.db-password}'",
+            "{$kubectl} get secret {$secret} -n {$ns} -o jsonpath=".escapeshellarg('{.data.db-password}'),
         )->output());
 
         return $out !== '' ? (string) base64_decode($out) : null;

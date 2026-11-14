@@ -77,7 +77,7 @@ trait InteractsWithSecrets
             return false;
         }
 
-        $openbao = Process::run("{$kubectl} get secret {$names->secret()} -n {$ns} --no-headers 2>/dev/null")->output();
+        $openbao = Process::run("{$kubectl} get secret {$names->secret()} -n {$ns} --no-headers")->output();
 
         return trim($openbao) !== '';
     }

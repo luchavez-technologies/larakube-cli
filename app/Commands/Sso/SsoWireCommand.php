@@ -919,7 +919,7 @@ class SsoWireCommand extends Command
 
             $annotations = Process::run(
                 "{$kubectl} get ingress {$candidate->value} -n {$candidate->namespace()} "
-                ."-o jsonpath='{.metadata.annotations}' --ignore-not-found",
+                .'-o jsonpath='.escapeshellarg('{.metadata.annotations}').' --ignore-not-found',
             )->output();
 
             if (str_contains($annotations, 'sso-forwardauth')) {
@@ -954,7 +954,7 @@ class SsoWireCommand extends Command
     {
         return str_contains(Process::run(
             "{$kubectl} get ingress {$tool->value} -n {$tool->namespace()} "
-            ."-o jsonpath='{.metadata.annotations}' --ignore-not-found",
+            .'-o jsonpath='.escapeshellarg('{.metadata.annotations}').' --ignore-not-found',
         )->output(), 'vpn-only');
     }
 
@@ -968,7 +968,7 @@ class SsoWireCommand extends Command
     {
         return str_contains(Process::run(
             "{$kubectl} get ingress {$name} -n {$namespace} "
-            ."-o jsonpath='{.metadata.annotations}' --ignore-not-found",
+            .'-o jsonpath='.escapeshellarg('{.metadata.annotations}').' --ignore-not-found',
         )->output(), 'cloudflare-proxied');
     }
 
@@ -1236,7 +1236,7 @@ class SsoWireCommand extends Command
         $mas = $this->readChatWiredMas($kubectl, $ns);
 
         $raw = trim(Process::run(
-            "{$kubectl} get secret {$chat->secret(SecretKind::CONFIG)} -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'",
+            "{$kubectl} get secret {$chat->secret(SecretKind::CONFIG)} -n {$ns} -o jsonpath=".escapeshellarg('{.data.homeserver\.yaml}'),
         )->output());
 
         if ($raw === '') {
@@ -1283,7 +1283,7 @@ class SsoWireCommand extends Command
         $mas = $this->readChatWiredMas($kubectl, $ns);
 
         $raw = trim(Process::run(
-            "{$kubectl} get secret {$chat->secret(SecretKind::CONFIG)} -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'",
+            "{$kubectl} get secret {$chat->secret(SecretKind::CONFIG)} -n {$ns} -o jsonpath=".escapeshellarg('{.data.homeserver\.yaml}'),
         )->output());
 
         if ($raw === '') {
@@ -1502,7 +1502,7 @@ class SsoWireCommand extends Command
             // dashboard — on a first wire it does not exist yet, and the next
             // tool:init --tool=netbird creates it with these values already in place.
             $this->withSpin('Restarting the NetBird dashboard...', fn () => Process::run(
-                "{$kubectl} rollout restart deployment/".$this->vpnDeployment($kubectl, 'dashboard')." -n {$ns} >/dev/null 2>&1",
+                "{$kubectl} rollout restart deployment/".$this->vpnDeployment($kubectl, 'dashboard')." -n {$ns}",
             ));
 
             $this->retireDomainlessNetbirdAccount($kubectl, $ns, $toolHost, $netbirdPat);

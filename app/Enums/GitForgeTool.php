@@ -163,7 +163,7 @@ enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, Has
         // Git always deploys into the single shared larakube-shared namespace
         // — the instance suffixes the SECRET name, never the namespace.
         $adminPassword = trim(Process::run(
-            "{$kubectl} get secret ".self::credentialsSecret($instance)." -n larakube-shared -o jsonpath='{.data.password}' --ignore-not-found",
+            "{$kubectl} get secret ".self::credentialsSecret($instance).' -n larakube-shared -o jsonpath='.escapeshellarg('{.data.password}').' --ignore-not-found',
         )->output());
         $decodedPass = $adminPassword !== '' ? (base64_decode($adminPassword, true) ?: '<unknown>') : '<unknown>';
 

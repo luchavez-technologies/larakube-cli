@@ -179,7 +179,7 @@ class StorageResizeCommand extends Command
     protected function discoverNamespace(string $kubectl, string $claim): ?string
     {
         $result = Process::run(
-            "{$kubectl} get pvc --all-namespaces -o jsonpath='{range .items[?(@.metadata.name==\"{$claim}\")]}{.metadata.namespace}{\"\\n\"}{end}'",
+            "{$kubectl} get pvc --all-namespaces -o jsonpath=".escapeshellarg('{range .items[?(@.metadata.name=="'.$claim.'")]}{.metadata.namespace}{"\n"}{end}'),
         );
 
         if (! $result->successful()) {
@@ -194,7 +194,7 @@ class StorageResizeCommand extends Command
     protected function claimStorageClass(string $kubectl, string $namespace, string $claim): ?string
     {
         $result = Process::run(
-            "{$kubectl} get pvc {$claim} -n {$namespace} -o jsonpath='{.spec.storageClassName}'",
+            "{$kubectl} get pvc {$claim} -n {$namespace} -o jsonpath=".escapeshellarg('{.spec.storageClassName}'),
         );
 
         $name = $result->successful() ? trim($result->output()) : '';
@@ -210,7 +210,7 @@ class StorageResizeCommand extends Command
     protected function owningDeployments(string $kubectl, string $namespace, string $claim): array
     {
         $result = Process::run(
-            "{$kubectl} get deployments -n {$namespace} -o jsonpath='{range .items[?(@.spec.template.spec.volumes[*].persistentVolumeClaim.claimName==\"{$claim}\")]}{.metadata.name}{\"\\n\"}{end}'",
+            "{$kubectl} get deployments -n {$namespace} -o jsonpath=".escapeshellarg('{range .items[?(@.spec.template.spec.volumes[*].persistentVolumeClaim.claimName=="'.$claim.'")]}{.metadata.name}{"\n"}{end}'),
         );
 
         if (! $result->successful()) {
@@ -223,7 +223,7 @@ class StorageResizeCommand extends Command
     protected function resizePending(string $kubectl, string $namespace, string $claim): bool
     {
         $result = Process::run(
-            "{$kubectl} get pvc {$claim} -n {$namespace} -o jsonpath='{.status.conditions[*].type}'",
+            "{$kubectl} get pvc {$claim} -n {$namespace} -o jsonpath=".escapeshellarg('{.status.conditions[*].type}'),
         );
 
         return $result->successful() && str_contains($result->output(), 'FileSystemResizePending');
@@ -236,7 +236,7 @@ class StorageResizeCommand extends Command
         }
 
         $result = Process::run(
-            "{$kubectl} get pvc --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}={.spec.resources.requests.storage}{\"\\n\"}{end}'",
+            "{$kubectl} get pvc --all-namespaces -o jsonpath=".escapeshellarg('{range .items[*]}{.metadata.namespace}/{.metadata.name}={.spec.resources.requests.storage}{"\n"}{end}'),
         );
 
         $options = [];

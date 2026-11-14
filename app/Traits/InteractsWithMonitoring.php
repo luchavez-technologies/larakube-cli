@@ -28,7 +28,7 @@ trait InteractsWithMonitoring
             return true;
         }
 
-        $allDeployments = Process::run("{$kubectl} get deployment -n {$ns} -o jsonpath='{.items[*].metadata.name}'")->output();
+        $allDeployments = Process::run("{$kubectl} get deployment -n {$ns} -o jsonpath=".escapeshellarg('{.items[*].metadata.name}'))->output();
 
         return str_contains($allDeployments, 'grafana');
     }

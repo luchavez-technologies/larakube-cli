@@ -199,7 +199,7 @@ class MeetWireCommand extends Command
             Kubectl::fromPrefix($kubectl)->putSecret($ns, $chat->name('meet', 'synapse'), ['jwt-url' => $jwtUrl]);
 
             $raw = Process::run(
-                "{$kubectl} get secret {$chat->secret(SecretKind::CONFIG)} -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'",
+                "{$kubectl} get secret {$chat->secret(SecretKind::CONFIG)} -n {$ns} -o jsonpath=".escapeshellarg('{.data.homeserver\.yaml}'),
             )->output();
 
             if (trim($raw) === '') {

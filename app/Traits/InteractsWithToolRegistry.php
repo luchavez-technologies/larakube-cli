@@ -191,7 +191,10 @@ trait InteractsWithToolRegistry
     protected function isToolPresentOnCluster(string $kubectl, ClusterTool $tool, ?string $instance = null): bool
     {
         if ($tool === ClusterTool::EXTERNAL_DNS) {
-            return trim(Process::run("{$kubectl} get deployment -n larakube-shared --no-headers --ignore-not-found 2>/dev/null | grep external-dns")->output()) !== '';
+            return str_contains(
+                Process::run("{$kubectl} get deployment -n larakube-shared --no-headers --ignore-not-found")->output(),
+                'external-dns',
+            );
         }
 
         // Multi-engine tools (e.g. N8N vs WINDMILL, UMAMI vs PLAUSIBLE, POCKETBASE vs DIRECTUS)
@@ -206,7 +209,7 @@ trait InteractsWithToolRegistry
         if (! in_array($tool, $multiEngineTools, true)) {
             $probe = $tool->service()?->presenceProbe();
 
-            if ($probe !== null && trim(Process::run("{$kubectl} get {$probe} --no-headers --ignore-not-found 2>/dev/null")->output()) !== '') {
+            if ($probe !== null && trim(Process::run("{$kubectl} get {$probe} --no-headers --ignore-not-found")->output()) !== '') {
                 return true;
             }
         }

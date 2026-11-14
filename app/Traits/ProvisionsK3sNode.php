@@ -379,7 +379,7 @@ BASH;
     {
         $args = Process::run(
             Kubectl::forContext($context)->prefix().' get deployment traefik -n traefik '
-            ."-o jsonpath='{.spec.template.spec.containers[0].args}' --ignore-not-found",
+            .'-o jsonpath='.escapeshellarg('{.spec.template.spec.containers[0].args}').' --ignore-not-found',
         )->output();
 
         if (preg_match('/ingressendpoint\.ip=([0-9.]+)/', $args, $m) === 1) {

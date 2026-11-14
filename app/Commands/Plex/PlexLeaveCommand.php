@@ -409,7 +409,7 @@ class PlexLeaveCommand extends Command
     {
         $ready = trim(Process::run(
             $this->plexKubectl().' get deploy '.escapeshellarg($podName).
-            ' -n '.escapeshellarg($namespace)." -o jsonpath='{.status.readyReplicas}'",
+            ' -n '.escapeshellarg($namespace).' -o jsonpath='.escapeshellarg('{.status.readyReplicas}'),
         )->output());
 
         return $ready !== '' && (int) $ready >= 1;

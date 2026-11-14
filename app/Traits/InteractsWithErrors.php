@@ -30,7 +30,7 @@ trait InteractsWithErrors
     protected function readErrorsAdminPassword(string $kubectl, string $ns, string $secret): ?string
     {
         $out = trim(Process::run(
-            "{$kubectl} get secret {$secret} -n {$ns} -o jsonpath='{.data.password}'",
+            "{$kubectl} get secret {$secret} -n {$ns} -o jsonpath=".escapeshellarg('{.data.password}'),
         )->output());
 
         return $out !== '' ? (string) base64_decode($out) : null;

@@ -250,7 +250,7 @@ class ToolRegistry
     protected function read(): array
     {
         $encoded = trim(Process::run(
-            "{$this->kubectl} get secret ".self::SECRET.' -n '.self::NAMESPACE." -o jsonpath='{.data.registry\\.json}'",
+            "{$this->kubectl} get secret ".self::SECRET.' -n '.self::NAMESPACE.' -o jsonpath='.escapeshellarg('{.data.registry\\.json}'),
         )->output());
         $decoded = $encoded === '' ? null : json_decode((string) base64_decode($encoded), true);
 

@@ -418,7 +418,7 @@ abstract class AbstractToolShowCommand extends Command
     {
         $escaped = str_replace('.', '\\.', $key);
         $value = trim(Process::run(
-            "{$kubectl} get secret {$secret} -n {$namespace} -o jsonpath='{.data.{$escaped}}' --ignore-not-found",
+            "{$kubectl} get secret {$secret} -n {$namespace} -o jsonpath=".escapeshellarg("{.data.{$escaped}}").' --ignore-not-found',
         )->output());
 
         if ($value === '') {

@@ -663,7 +663,7 @@ abstract class StalwartInitCommand extends AbstractToolInitCommand
         if ($synced) {
             // Restart Stalwart deployment so its container process inherits the freshly synced
             // env vars from the newly created stalwart secret.
-            Process::run("{$kubectl} rollout restart deployment/{$deployment} -n {$ns} >/dev/null 2>&1");
+            Process::run("{$kubectl} rollout restart deployment/{$deployment} -n {$ns}");
         }
 
         if (! $synced) {

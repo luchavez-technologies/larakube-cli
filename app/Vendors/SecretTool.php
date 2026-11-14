@@ -101,7 +101,7 @@ final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasOid
             ? 'openbao-secrets'
             : ToolInstance::forInstance(ClusterTool::OPENBAO, $instance)->secret();
         $tokenVal = trim(Process::run(
-            "{$kubectl} get secret {$secretName} -n {$ns} -o jsonpath='{.data.root-token}' --ignore-not-found",
+            "{$kubectl} get secret {$secretName} -n {$ns} -o jsonpath=".escapeshellarg('{.data.root-token}').' --ignore-not-found',
         )->output());
         $decodedToken = $tokenVal !== '' ? (base64_decode($tokenVal, true) ?: '<unknown>') : null;
 

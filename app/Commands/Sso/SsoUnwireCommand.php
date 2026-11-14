@@ -305,7 +305,7 @@ class SsoUnwireCommand extends Command
 
             $annotations = Process::run(
                 "{$kubectl} get ingress {$candidate->value} -n {$candidate->namespace()} "
-                ."-o jsonpath='{.metadata.annotations}' --ignore-not-found",
+                .'-o jsonpath='.escapeshellarg('{.metadata.annotations}').' --ignore-not-found',
             )->output();
 
             if (str_contains($annotations, 'sso-forwardauth')) {
@@ -329,8 +329,8 @@ class SsoUnwireCommand extends Command
             'host' => $host,
             'ssoWired' => $ssoWired,
             'isLocal' => $isLocal,
-            'vpnOnly' => str_contains(Process::run("{$kubectl} get ingress {$tool->value} -n {$tool->namespace()} -o jsonpath='{.metadata.annotations}' --ignore-not-found")->output(), 'vpn-only'),
-            'proxied' => str_contains(Process::run("{$kubectl} get ingress {$tool->value} -n {$tool->namespace()} -o jsonpath='{.metadata.annotations}' --ignore-not-found")->output(), 'cloudflare-proxied'),
+            'vpnOnly' => str_contains(Process::run("{$kubectl} get ingress {$tool->value} -n {$tool->namespace()} -o jsonpath=".escapeshellarg('{.metadata.annotations}').' --ignore-not-found')->output(), 'vpn-only'),
+            'proxied' => str_contains(Process::run("{$kubectl} get ingress {$tool->value} -n {$tool->namespace()} -o jsonpath=".escapeshellarg('{.metadata.annotations}').' --ignore-not-found')->output(), 'cloudflare-proxied'),
         ])->render(), "{$tool->value}-ingress");
     }
 
@@ -358,7 +358,7 @@ class SsoUnwireCommand extends Command
         // this is a safe no-op on the auth block whenever MAS is active
         // (there's no oidc_providers: block for it to unwire in that case).
         $mas = $this->readChatWiredMas($kubectl, $ns);
-        $raw = trim(Process::run("{$kubectl} get secret {$chat->secret(SecretKind::CONFIG)} -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'")->output());
+        $raw = trim(Process::run("{$kubectl} get secret {$chat->secret(SecretKind::CONFIG)} -n {$ns} -o jsonpath=".escapeshellarg('{.data.homeserver\.yaml}'))->output());
         if ($raw === '') {
             return;
         }

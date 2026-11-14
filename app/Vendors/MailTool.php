@@ -138,7 +138,7 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
             ? 'stalwart-secrets'
             : ToolInstance::forInstance(ClusterTool::STALWART, $instance)->secret();
         $passVal = trim(Process::run(
-            "{$kubectl} get secret {$secretName} -n {$ns} -o jsonpath='{.data.admin-password}' --ignore-not-found",
+            "{$kubectl} get secret {$secretName} -n {$ns} -o jsonpath=".escapeshellarg('{.data.admin-password}').' --ignore-not-found',
         )->output());
         $decodedPass = $passVal !== '' ? (base64_decode($passVal, true) ?: '<unknown>') : '<unknown>';
 

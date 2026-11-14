@@ -267,7 +267,7 @@ class SecretsWireCommand extends Command
         // tenant). Registering a phantom static role would silently fail every
         // rotation, so skip instead.
         $password = trim(Process::run(
-            "{$kubectl} get secret {$ref['secret']} -n {$ref['namespace']} -o jsonpath='{.data.{$ref['key']}}'",
+            "{$kubectl} get secret {$ref['secret']} -n {$ref['namespace']} -o jsonpath=".escapeshellarg("{.data.{$ref['key']}}"),
         )->output());
 
         if ($password === '') {

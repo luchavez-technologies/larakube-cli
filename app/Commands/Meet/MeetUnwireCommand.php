@@ -142,7 +142,7 @@ class MeetUnwireCommand extends Command
 
         $this->withSpin('Removing the focus from Synapse...', function () use ($kubectl, $ns, $chat, &$ok): void {
             $raw = Process::run(
-                "{$kubectl} get secret {$chat->secret(SecretKind::CONFIG)} -n {$ns} -o jsonpath='{.data.homeserver\.yaml}'",
+                "{$kubectl} get secret {$chat->secret(SecretKind::CONFIG)} -n {$ns} -o jsonpath=".escapeshellarg('{.data.homeserver\.yaml}'),
             )->output();
 
             if (trim($raw) === '') {

@@ -2,6 +2,7 @@
 
 namespace App\Commands\Backup;
 
+use App\Enums\CliTool;
 use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\EmitsJsonOutput;
@@ -97,7 +98,7 @@ class BackupStatusCommand extends Command
      */
     protected function backupsAt(array $config): array
     {
-        if (trim(Process::run('command -v aws')->output()) === '') {
+        if (! CliTool::AWS->isInstalled()) {
             return ['available' => false, 'count' => 0, 'incomplete' => 0, 'last' => null, 'entries' => []];
         }
 
