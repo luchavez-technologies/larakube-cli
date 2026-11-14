@@ -35,6 +35,8 @@ abstract class AbstractCliTool
 {
     use DownloadsReleaseArtifacts, RepairsHomebrewPermissions, StreamsProcessOutput;
 
+    public function __construct(private ?ToolPaths $paths = null) {}
+
     abstract public function slug(): string;
 
     abstract public function label(): string;
@@ -97,40 +99,47 @@ abstract class AbstractCliTool
         return array_values(array_filter([...$base, ...$extra], fn (?string $path): bool => $path !== null && $path !== ''));
     }
 
-    /** Resolve the absolute path to the executable binary on the host, or null if missing. */
-    public function resolveBinary(): ?string
+    /**
+     * The absolute path to the executable binary on this side, or null if
+     * missing. The recorded location (~/.larakube/tools.json) is used while
+     * it still holds a usable binary; otherwise it is evicted, the tool is
+     * located again, and the result recorded. $fresh skips the record (the
+     * explicit "check again" of `setup:status`, and after an install).
+     */
+    public function resolveBinary(bool $fresh = false): ?string
     {
-        // `command -v` is POSIX-only; on Windows it never resolves via the
-        // shell, so skip straight to the candidate-path check below.
-        if (self::hostOs() !== 'windows') {
-            foreach ([$this->binary(), ...$this->alternateBinaries()] as $name) {
-                $result = Process::run('command -v '.$name);
-                $which = trim($result->output());
+        // Under Process::fake() the record is bypassed, so a test's fakes
+        // always decide (the same rule locateBinary() applies to `command -v`).
+        $useRecord = ! Process::isRecording();
+        $recorded = $fresh || ! $useRecord ? null : $this->paths()->entry($this->slug());
 
-                if ($result->successful() && $which !== '' && (@is_executable($which) || Process::isRecording())) {
-                    return $which;
-                }
+        if ($recorded !== null) {
+            if ($this->isUsable($recorded['path'])) {
+                return $recorded['path'];
             }
 
-            // When Process::fake() is active, do not let host candidate paths
-            // leak through and override the mock — only for this `command -v`
-            // flow: Windows never calls Process for lookup at all, so a faked
-            // `msiexec`/similar elsewhere in the same test must not suppress
-            // the real, on-disk candidate-path check below.
-            if (Process::isRecording()) {
-                return null;
-            }
+            $this->paths()->forget($this->slug());
         }
 
-        // On Windows, .cmd wrappers (gcloud.cmd) are not PE executables and
-        // PHP's is_executable() is unreliable for them, so check is_file().
-        foreach ($this->candidatePaths() as $path) {
-            if (self::hostOs() === 'windows' ? @is_file($path) : @is_executable($path)) {
-                return $path;
-            }
+        $path = $this->locateBinary();
+
+        if (! $useRecord) {
+            return $path;
         }
 
-        return null;
+        if ($path === null) {
+            $this->paths()->forget($this->slug());
+
+            return null;
+        }
+
+        $this->paths()->remember(
+            $this->slug(),
+            $path,
+            channel: InstallChannel::detect($path, self::binDir(), $this->managedPathMarkers())->value,
+        );
+
+        return $path;
     }
 
     public function isInstalled(): bool
@@ -182,7 +191,7 @@ abstract class AbstractCliTool
             return true;
         }
 
-        return $this->freshInstall();
+        return $this->recordAfter($this->freshInstall());
     }
 
     /**
@@ -195,12 +204,12 @@ abstract class AbstractCliTool
         $path = $this->resolveBinary();
 
         if ($path === null) {
-            return $this->freshInstall();
+            return $this->recordAfter($this->freshInstall());
         }
 
         return match (InstallChannel::detect($path, self::binDir(), $this->managedPathMarkers())) {
-            InstallChannel::Homebrew => $this->runHomebrew('upgrade', $path),
-            InstallChannel::LaraKube => $this->updateManagedCopy(),
+            InstallChannel::Homebrew => $this->recordAfter($this->runHomebrew('upgrade', $path)),
+            InstallChannel::LaraKube => $this->recordAfter($this->updateManagedCopy()),
             InstallChannel::System, InstallChannel::Other => $this->refuseUnmanaged('update', $path),
         };
     }
@@ -216,12 +225,12 @@ abstract class AbstractCliTool
         $path = $this->resolveBinary();
 
         if ($path === null) {
-            return $this->freshInstall();
+            return $this->recordAfter($this->freshInstall());
         }
 
         return match (InstallChannel::detect($path, self::binDir(), $this->managedPathMarkers())) {
-            InstallChannel::Homebrew => $this->runHomebrew('reinstall', $path),
-            InstallChannel::LaraKube => $this->reinstallManagedCopy(),
+            InstallChannel::Homebrew => $this->recordAfter($this->runHomebrew('reinstall', $path)),
+            InstallChannel::LaraKube => $this->recordAfter($this->reinstallManagedCopy()),
             InstallChannel::System, InstallChannel::Other => $this->refuseUnmanaged('reinstall', $path),
         };
     }
@@ -231,9 +240,9 @@ abstract class AbstractCliTool
      *
      * @return array{slug: string, label: string, binary: string, default: bool, installed: bool, path: ?string, channel: ?string, managed: bool, installable: bool, version: ?string}
      */
-    public function status(): array
+    public function status(bool $fresh = false): array
     {
-        $path = $this->resolveBinary();
+        $path = $this->resolveBinary($fresh);
         $channel = $path === null ? null : InstallChannel::detect($path, self::binDir(), $this->managedPathMarkers());
 
         return [
@@ -250,23 +259,28 @@ abstract class AbstractCliTool
         ];
     }
 
-    /** First line of the tool's own version output, or null if it cannot say. */
+    /**
+     * First line of the tool's own version output, or null if it cannot say.
+     * Recorded alongside the location and re-used while the binary's
+     * fingerprint (real path, size, mtime) is unchanged, so it is a stat, not
+     * a process, until the binary is upgraded or replaced.
+     */
     public function version(string $path): ?string
     {
-        try {
-            $result = Process::timeout(30)->run([$path, ...$this->versionArguments()]);
-        } catch (Throwable) {
-            return null;
+        $useRecord = ! Process::isRecording();
+        $recorded = $useRecord ? $this->paths()->version($this->slug(), $path) : null;
+
+        if ($recorded !== null) {
+            return $recorded;
         }
 
-        if (! $result->successful()) {
-            return null;
+        $version = $this->probeVersion($path);
+
+        if ($version !== null && $useRecord) {
+            $this->paths()->remember($this->slug(), $path, $version);
         }
 
-        $first = trim((string) strtok(trim($result->output()) ?: trim($result->errorOutput()), "\n"));
-        $first = (string) preg_replace(['/\e\[[0-9;]*m/', '/\s+/'], ['', ' '], $first);
-
-        return $first !== '' ? $first : null;
+        return $version;
     }
 
     /** For tools that support browser/interactive login after installation. */
@@ -299,6 +313,75 @@ abstract class AbstractCliTool
     public static function hostArch(): string
     {
         return in_array(strtolower(Os::machine()), ['arm64', 'aarch64'], true) ? 'arm64' : 'amd64';
+    }
+
+    /** Where the tool is right now, by searching: `command -v` (Darwin/Linux), then candidatePaths(). */
+    protected function locateBinary(): ?string
+    {
+        // `command -v` is POSIX-only; on Windows it never resolves via the
+        // shell, so skip straight to the candidate-path check below.
+        if (self::hostOs() !== 'windows') {
+            foreach ([$this->binary(), ...$this->alternateBinaries()] as $name) {
+                $result = Process::run('command -v '.$name);
+                $which = trim($result->output());
+
+                if ($result->successful() && $which !== '' && (@is_executable($which) || Process::isRecording())) {
+                    return $which;
+                }
+            }
+
+            // When Process::fake() is active, do not let host candidate paths
+            // leak through and override the mock — only for this `command -v`
+            // flow: Windows never calls Process for lookup at all, so a faked
+            // `msiexec`/similar elsewhere in the same test must not suppress
+            // the real, on-disk candidate-path check below.
+            if (Process::isRecording()) {
+                return null;
+            }
+        }
+
+        // On Windows, .cmd wrappers (gcloud.cmd) are not PE executables and
+        // PHP's is_executable() is unreliable for them, so check is_file().
+        foreach ($this->candidatePaths() as $path) {
+            if (self::hostOs() === 'windows' ? @is_file($path) : @is_executable($path)) {
+                return $path;
+            }
+        }
+
+        return null;
+    }
+
+    /** A recorded path is only trusted while a binary is still there. */
+    protected function isUsable(string $path): bool
+    {
+        if (self::hostOs() === 'windows') {
+            return @is_file($path);
+        }
+
+        return @is_executable($path);
+    }
+
+    protected function paths(): ToolPaths
+    {
+        return $this->paths ??= app(ToolPaths::class);
+    }
+
+    protected function probeVersion(string $path): ?string
+    {
+        try {
+            $result = Process::timeout(30)->run([$path, ...$this->versionArguments()]);
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (! $result->successful()) {
+            return null;
+        }
+
+        $first = trim((string) strtok(trim($result->output()) ?: trim($result->errorOutput()), "\n"));
+        $first = (string) preg_replace(['/\e\[[0-9;]*m/', '/\s+/'], ['', ' '], $first);
+
+        return $first !== '' ? $first : null;
     }
 
     /**
@@ -511,6 +594,16 @@ abstract class AbstractCliTool
     protected function setLastError(?string $message): void
     {
         State::setTransient($this->lastErrorKey(), $message);
+    }
+
+    /** After a successful install/update/reinstall, record where the tool now is: it may have moved, and its version changed. */
+    private function recordAfter(bool $succeeded): bool
+    {
+        if ($succeeded) {
+            $this->resolveBinary(fresh: true);
+        }
+
+        return $succeeded;
     }
 
     private function operationVerb(string $operation): string

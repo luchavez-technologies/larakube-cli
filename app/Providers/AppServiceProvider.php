@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\CliTools\ToolPaths;
 use Illuminate\Console\Application as Artisan;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -55,6 +56,15 @@ class AppServiceProvider extends ServiceProvider
             }
         }
 
+        // Record this CLI's own location and version in ~/.larakube/tools.json
+        // (a stat and a no-op write when unchanged), so LaraKube Desktop can
+        // show it without starting `larakube --version`. Only a built binary:
+        // the dev `./larakube` script is not what Desktop runs.
+        $self = Phar::running(false);
+        if ($self !== '' && is_file($self)) {
+            rescue(fn () => $this->app->make(ToolPaths::class)->remember('larakube', $self, trim(config('app.name').' '.config('app.version'))), report: false);
+        }
+
         // Hide/Remove commands from binary for clean DX
         if (Phar::running() !== '') {
             Artisan::starting(function ($artisan): void {
@@ -103,6 +113,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->register(LaravelDataServiceProvider::class);
         $this->app->singleton(\App\Services\RuntimeContext::class);
+        $this->app->singleton(ToolPaths::class);
 
         // Bound (not hardcoded `new LoopbackHttpServer`) specifically so OAuth
         // connect-flow commands/tests can swap in FakeLoopbackHttpServer — a

@@ -52,7 +52,8 @@ class SetupStatusCommand extends Command
             $tools = [$tool];
         }
 
-        $rows = array_map(fn (CliTool $tool): array => $tool->status(), $tools);
+        // The explicit "check again": resolve every tool afresh and re-record it in ~/.larakube/tools.json.
+        $rows = array_map(fn (CliTool $tool): array => $tool->status(fresh: true), $tools);
 
         if ($this->flag('json')) {
             $this->jsonOutput(['success' => true, 'os' => AbstractCliTool::hostOs(), 'binDir' => CliTool::binDir(), 'tools' => $rows]);

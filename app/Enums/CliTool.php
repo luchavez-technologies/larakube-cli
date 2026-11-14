@@ -24,14 +24,14 @@ enum CliTool: string
     public function service(): AbstractCliTool
     {
         return match ($this) {
-            self::KUBECTL => new KubectlTool,
-            self::K9S => new K9sTool,
-            self::TOFU => new TofuTool,
-            self::GCLOUD => new GcloudTool,
-            self::AWS => new AwsTool,
-            self::HCLOUD => new HcloudTool,
-            self::GH => new GhTool,
-            self::TEA => new TeaTool,
+            self::KUBECTL => app(KubectlTool::class),
+            self::K9S => app(K9sTool::class),
+            self::TOFU => app(TofuTool::class),
+            self::GCLOUD => app(GcloudTool::class),
+            self::AWS => app(AwsTool::class),
+            self::HCLOUD => app(HcloudTool::class),
+            self::GH => app(GhTool::class),
+            self::TEA => app(TeaTool::class),
         };
     }
 
@@ -119,9 +119,9 @@ enum CliTool: string
     }
 
     /** @return array{slug: string, label: string, binary: string, default: bool, installed: bool, path: ?string, channel: ?string, managed: bool, installable: bool, version: ?string} */
-    public function status(): array
+    public function status(bool $fresh = false): array
     {
-        return $this->service()->status();
+        return $this->service()->status($fresh);
     }
 
     public function ensureAuth(bool $prompt = true): bool
