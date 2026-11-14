@@ -24,16 +24,31 @@ trait InteractsWithJsonFile
         return json_last_error() === JSON_ERROR_NONE && is_array($data) ? $data : null;
     }
 
-    /** Write to a temp file in the same directory then rename, so a crash mid-write can't leave the file truncated/corrupt. */
+    /**
+     * Write to a temp file in the same directory then rename, so a crash
+     * mid-write can't leave the file truncated/corrupt.
+     *
+     * A symlinked $path is written through to its target: renaming onto the
+     * link itself would replace it with a regular file and silently unshare
+     * it (the larakube-ubuntu distro links ~/.larakube/config.json to the
+     * Windows host's, see WslBridge::linkToHost()).
+     */
     protected static function atomicWriteJson(string $path, array $data, ?int $mode = null): void
     {
-        $tmp = $path.'.tmp'.getmypid();
+        $target = $path;
+
+        if (is_link($path)) {
+            $link = (string) readlink($path);
+            $target = str_starts_with($link, '/') ? $link : dirname($path).'/'.$link;
+        }
+
+        $tmp = $target.'.tmp'.getmypid();
         file_put_contents($tmp, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
         if ($mode !== null) {
             @chmod($tmp, $mode);
         }
 
-        rename($tmp, $path);
+        rename($tmp, $target);
     }
 }

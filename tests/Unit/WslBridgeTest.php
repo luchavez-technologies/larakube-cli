@@ -591,7 +591,7 @@ test('every command in a local-only namespace is routed into WSL', function (): 
     expect($missing)->toBeEmpty();
 });
 
-test('dispatchToWsl hands the distro the Windows .kube folder as a /mnt path', function (): void {
+test('dispatchToWsl hands the distro the Windows .kube folder and global config as /mnt paths', function (): void {
     $previous = getenv('USERPROFILE');
     putenv('USERPROFILE=C:\\Users\\demo');
 
@@ -607,13 +607,14 @@ test('dispatchToWsl hands the distro the Windows .kube folder as a /mnt path', f
         $bridge->dispatchToWsl(['larakube', 'cluster:setup'], null);
 
         expect($dispatchedCommand)->toContain('LARAKUBE_HOST_KUBE_DIR=/mnt/c/Users/demo/.kube')
+            ->and($dispatchedCommand)->toContain('LARAKUBE_HOST_CONFIG=/mnt/c/Users/demo/.larakube/config.json')
             ->and(array_slice($dispatchedCommand, -2))->toBe(['larakube', 'cluster:setup']);
     } finally {
         $previous === false ? putenv('USERPROFILE') : putenv("USERPROFILE={$previous}");
     }
 });
 
-test('linkHostKubeDirectory links ~/.kube to the host folder, idempotently, moving a real directory aside', function (): void {
+test('linkToHost links ~/.kube to the host folder, idempotently, moving a real directory aside', function (): void {
     $root = (new TemporaryDirectory)->create();
     $home = $root->path().'/home';
     $host = $root->path().'/host-kube';
@@ -621,23 +622,47 @@ test('linkHostKubeDirectory links ~/.kube to the host folder, idempotently, movi
     file_put_contents($home.'/.kube/config', 'distro-only');
     mkdir($host);
 
-    expect(WslBridge::linkHostKubeDirectory($host, $home))->toBeTrue()
+    expect(WslBridge::linkToHost($host, $home.'/.kube'))->toBeTrue()
         ->and(readlink($home.'/.kube'))->toBe($host)
         ->and(file_get_contents($home.'/.kube.distro/config'))->toBe('distro-only')
-        ->and(WslBridge::linkHostKubeDirectory($host, $home))->toBeTrue()
+        ->and(WslBridge::linkToHost($host, $home.'/.kube'))->toBeTrue()
         ->and(readlink($home.'/.kube'))->toBe($host)
         ->and(file_exists($home.'/.kube.distro.1'))->toBeFalse();
 
     $root->delete();
 });
 
-test('linkHostKubeDirectory leaves ~/.kube alone when the host folder does not exist', function (): void {
+test('linkToHost leaves ~/.kube alone when the host folder does not exist', function (): void {
     $root = (new TemporaryDirectory)->create();
     $home = $root->path().'/home';
     mkdir($home.'/.kube', 0755, true);
 
-    expect(WslBridge::linkHostKubeDirectory($root->path().'/missing', $home))->toBeFalse()
+    expect(WslBridge::linkToHost($root->path().'/missing', $home.'/.kube'))->toBeFalse()
         ->and(is_link($home.'/.kube'))->toBeFalse();
+
+    $root->delete();
+});
+
+test('linkSharedHostPaths links the distro\'s config.json to the host\'s, moving a distro-only copy aside', function (): void {
+    $root = (new TemporaryDirectory)->create();
+    $home = $root->path().'/home';
+    $hostConfig = $root->path().'/host/.larakube/config.json';
+    mkdir(dirname($hostConfig), 0755, true);
+    file_put_contents($hostConfig, '{"email":"host@example.com"}');
+    mkdir($home.'/.larakube', 0755, true);
+    file_put_contents($home.'/.larakube/config.json', '{"email":"distro@example.com"}');
+
+    putenv("LARAKUBE_HOST_CONFIG={$hostConfig}");
+
+    try {
+        WslBridge::linkSharedHostPaths($home);
+    } finally {
+        putenv('LARAKUBE_HOST_CONFIG');
+    }
+
+    expect(readlink($home.'/.larakube/config.json'))->toBe($hostConfig)
+        ->and(file_get_contents($home.'/.larakube/config.json'))->toBe('{"email":"host@example.com"}')
+        ->and(file_get_contents($home.'/.larakube/config.json.distro'))->toBe('{"email":"distro@example.com"}');
 
     $root->delete();
 });

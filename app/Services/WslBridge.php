@@ -501,16 +501,17 @@ class WslBridge
         // see InteractsWithHosts::syncWindowsHostsFile() and
         // applyPendingWindowsHostsSync() below for what that unlocks.
         //
-        // LARAKUBE_HOST_KUBE_DIR hands the dispatched process the Windows
-        // kubeconfig folder so it can keep ~/.kube linked to it — see
-        // linkHostKubeDirectory().
-        $hostKubeDir = $this->hostKubeDirectoryForWsl();
+        // LARAKUBE_HOST_KUBE_DIR / LARAKUBE_HOST_CONFIG hand the dispatched
+        // process the Windows kubeconfig folder and global config file, so it
+        // keeps its own ~/.kube and ~/.larakube/config.json linked to them —
+        // see linkSharedHostPaths().
+        $shared = $this->sharedHostPathsForWsl();
 
         $command = [
             'wsl.exe', '-d', $this->distroName(), '--user', self::DEFAULT_USER,
             ...($linuxCwd !== null ? ['--cd', $linuxCwd] : []),
             '--', 'env', 'LARAKUBE_NATIVE_DISPATCH=1',
-            ...($hostKubeDir !== null ? ['LARAKUBE_HOST_KUBE_DIR='.$hostKubeDir] : []),
+            ...array_map(fn (string $name, string $path): string => "{$name}={$path}", array_keys($shared), $shared),
             'larakube', ...$args,
         ];
 
@@ -617,44 +618,74 @@ class WslBridge
     }
 
     /**
-     * Inside the distro, keep `~/.kube` a symlink to the Windows host's
-     * `.kube` folder, so the host's kubectl.exe (Desktop, cloud commands) and
-     * the distro's kubectl (local commands) read and write ONE kubeconfig.
-     * The local k3s context (`https://127.0.0.1:6443`) works from both sides
-     * via WSL2 localhost forwarding; cloud contexts use public endpoints.
+     * Inside the distro, keep $distroPath a symlink to the Windows host's
+     * $hostPath (a `/mnt/<drive>/...` path), so both sides read and write ONE
+     * copy: `~/.kube` (kubectl.exe and the distro's kubectl share one
+     * kubeconfig; the local k3s context at `https://127.0.0.1:6443` works from
+     * both sides through WSL2 localhost forwarding) and
+     * `~/.larakube/config.json` (servers, accounts, tokens, passphrases).
      *
-     * kubectl creates a real `~/.kube` (its discovery cache) on any run, so a
-     * real directory found here is moved aside, never deleted. Idempotent:
-     * a correct link is left untouched.
+     * A real file or directory already at $distroPath (kubectl makes ~/.kube
+     * for its cache on any run) is moved aside to `<name>.distro`, never
+     * deleted. Idempotent: a correct link is left untouched. Does nothing when
+     * the host side is missing, so there is never a dangling link.
      */
-    public static function linkHostKubeDirectory(string $hostKubeDir, string $home): bool
+    public static function linkToHost(string $hostPath, string $distroPath): bool
     {
-        if ($home === '' || ! is_dir($hostKubeDir)) {
+        if (! file_exists($hostPath)) {
             return false;
         }
 
-        $link = rtrim($home, '/').'/.kube';
-
-        if (is_link($link)) {
-            if (readlink($link) === $hostKubeDir) {
+        if (is_link($distroPath)) {
+            if (readlink($distroPath) === $hostPath) {
                 return true;
             }
 
-            @unlink($link);
-        } elseif (file_exists($link)) {
-            $aside = $link.'.distro';
+            @unlink($distroPath);
+        } elseif (file_exists($distroPath)) {
+            $aside = $distroPath.'.distro';
             $suffix = 1;
 
             while (file_exists($aside)) {
-                $aside = $link.'.distro.'.$suffix++;
+                $aside = $distroPath.'.distro.'.$suffix++;
             }
 
-            if (! @rename($link, $aside)) {
+            if (! @rename($distroPath, $aside)) {
                 return false;
             }
         }
 
-        return @symlink($hostKubeDir, $link);
+        if (! is_dir(dirname($distroPath))) {
+            @mkdir(dirname($distroPath), 0700, true);
+        }
+
+        return @symlink($hostPath, $distroPath);
+    }
+
+    /**
+     * Link everything the dispatching Windows host shares with the distro,
+     * from the environment dispatchToWsl() set.
+     */
+    public static function linkSharedHostPaths(string $home): void
+    {
+        $home = rtrim($home, '/');
+
+        if ($home === '') {
+            return;
+        }
+
+        $shared = [
+            'LARAKUBE_HOST_KUBE_DIR' => $home.'/.kube',
+            'LARAKUBE_HOST_CONFIG' => $home.'/.larakube/config.json',
+        ];
+
+        foreach ($shared as $variable => $distroPath) {
+            $hostPath = getenv($variable);
+
+            if (is_string($hostPath) && $hostPath !== '') {
+                self::linkToHost($hostPath, $distroPath);
+            }
+        }
     }
 
     /**
@@ -785,25 +816,44 @@ class WslBridge
      * guessing — callers fall back to no --cd at all in that case.
      */
     /**
-     * The Windows `%USERPROFILE%\.kube` folder as a `/mnt/<drive>/...` path,
-     * created on the host first so the WSL side always has something to link
-     * to. Null when the profile is unknown or not on a drive letter.
+     * The Windows `%USERPROFILE%\.kube` folder and `.larakube\config.json`
+     * as `/mnt/<drive>/...` paths, created on the host first (an empty `{}`
+     * config) so the distro always has something real to link to. Empty when
+     * the profile is unknown or not on a drive letter.
+     *
+     * @return array<string, string>
      */
-    private function hostKubeDirectoryForWsl(): ?string
+    private function sharedHostPathsForWsl(): array
     {
         $profile = $this->userProfilePath();
 
         if ($profile === null) {
-            return null;
+            return [];
         }
 
-        $hostKubeDir = rtrim($profile, '\\/').'\\.kube';
+        $profile = rtrim($profile, '\\/');
+        $kubeDir = $profile.'\\.kube';
+        $configDir = $profile.'\\.larakube';
+        $configFile = $configDir.'\\config.json';
 
-        if (PHP_OS_FAMILY === 'Windows' && ! is_dir($hostKubeDir)) {
-            @mkdir($hostKubeDir, 0700, true);
+        if (PHP_OS_FAMILY === 'Windows') {
+            if (! is_dir($kubeDir)) {
+                @mkdir($kubeDir, 0700, true);
+            }
+
+            if (! is_dir($configDir)) {
+                @mkdir($configDir, 0700, true);
+            }
+
+            if (! is_file($configFile)) {
+                @file_put_contents($configFile, '{}');
+            }
         }
 
-        return $this->translateCwdToWsl($hostKubeDir);
+        return array_filter([
+            'LARAKUBE_HOST_KUBE_DIR' => $this->translateCwdToWsl($kubeDir),
+            'LARAKUBE_HOST_CONFIG' => $this->translateCwdToWsl($configFile),
+        ], fn (?string $path): bool => $path !== null);
     }
 
     private function translateCwdToWsl(?string $cwd): ?string
