@@ -3,9 +3,10 @@
 namespace App\Services\CliTools;
 
 use App\Contracts\CliTools\InstallsViaHomebrew;
+use App\Contracts\CliTools\RunsInWslOnWindows;
 use App\Traits\CliTools\ManagesHomebrewPackage;
 
-class GhTool extends AbstractCliTool implements InstallsViaHomebrew
+class GhTool extends AbstractCliTool implements InstallsViaHomebrew, RunsInWslOnWindows
 {
     use ManagesHomebrewPackage;
 

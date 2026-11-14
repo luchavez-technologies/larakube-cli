@@ -28,7 +28,7 @@ class GitLoginCommand extends Command
     {
         $this->renderHeader();
 
-        if (! CliTool::TEA->isInstalled()) {
+        if (! CliTool::TEA->isAvailable()) {
             $this->laraKubeError('Tea CLI (tea) is not installed.');
             $this->line('  Install it by running: <fg=yellow>larakube setup --tools=tea</>');
 

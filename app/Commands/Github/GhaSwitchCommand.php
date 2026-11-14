@@ -20,7 +20,7 @@ class GhaSwitchCommand extends Command
     {
         $this->renderHeader();
 
-        if (! CliTool::GH->isInstalled()) {
+        if (! CliTool::GH->isAvailable()) {
             $this->laraKubeError('GitHub CLI (gh) is not installed.');
             $this->line('  Install it by running: <fg=yellow>larakube setup --tools=gh</>');
 

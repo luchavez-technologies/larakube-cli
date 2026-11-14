@@ -4,9 +4,11 @@ namespace App\Services\CliTools;
 
 use App\Contracts\CliTools\InstallsOnWindows;
 use App\Contracts\CliTools\InstallsViaHomebrew;
+use App\Contracts\CliTools\RunsInWslOnWindows;
 use App\Enums\CliTool;
 use App\Enums\InstallChannel;
 use App\Facades\State;
+use App\Services\WslBridge;
 use App\Support\Os;
 use App\Traits\CliTools\DownloadsReleaseArtifacts;
 use App\Traits\CliTools\RepairsHomebrewPermissions;
@@ -134,6 +136,27 @@ abstract class AbstractCliTool
     public function isInstalled(): bool
     {
         return $this->resolveBinary() !== null;
+    }
+
+    /**
+     * Whether this tool can run here at all: installed on this host, or, for a
+     * RunsInWslOnWindows tool on Windows, bundled in the larakube-ubuntu distro.
+     */
+    public function isAvailable(): bool
+    {
+        return $this->isInstalled() || $this->wslCommand() !== null;
+    }
+
+    /**
+     * The command prefix callers append arguments to: the host binary when
+     * there is one, else (RunsInWslOnWindows on Windows) the distro's copy
+     * through `wsl.exe`, else the bare name for PATH to find.
+     *
+     * @param  list<string>  $forwardEnv  variables the caller sets on the process that must reach the distro's copy too
+     */
+    public function command(array $forwardEnv = []): string
+    {
+        return $this->resolveBinary() ?? $this->wslCommand($forwardEnv) ?? $this->slug();
     }
 
     /** Who owns the installed binary, or null when it is not installed. */
@@ -276,6 +299,30 @@ abstract class AbstractCliTool
     public static function hostArch(): string
     {
         return in_array(strtolower(Os::machine()), ['arm64', 'aarch64'], true) ? 'arm64' : 'amd64';
+    }
+
+    /**
+     * @param  list<string>  $forwardEnv
+     */
+    protected function wslCommand(array $forwardEnv = []): ?string
+    {
+        if (self::hostOs() !== 'windows' || ! $this instanceof RunsInWslOnWindows) {
+            return null;
+        }
+
+        $bridge = app(WslBridge::class);
+
+        if (! $bridge->distroExists()) {
+            return null;
+        }
+
+        if ($forwardEnv !== []) {
+            // wsl.exe only hands a variable to the distro when WSLENV names it.
+            $names = array_filter(explode(':', (string) (getenv('WSLENV') ?: '')));
+            putenv('WSLENV='.implode(':', array_values(array_unique([...$names, ...$forwardEnv]))));
+        }
+
+        return 'wsl.exe -d '.$bridge->distroName().' --user '.WslBridge::DEFAULT_USER.' --exec '.$this->slug();
     }
 
     /** Download the current release into binDir() on Darwin/Linux. */

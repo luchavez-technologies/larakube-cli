@@ -22,21 +22,21 @@ trait InteractsWithGlobalConfig
     }
 
     /**
-     * Resolves the GitHub CLI binary (`gh`), falling back to 'gh' on PATH.
+     * Resolves the GitHub CLI (`gh`): the host binary, the larakube-ubuntu copy through wsl.exe on Windows, or 'gh' on PATH.
      */
     protected function getGhCommand(?string $workDir = null, bool $interactive = false): string
     {
-        return CliTool::GH->resolveBinary() ?? 'gh';
+        return CliTool::GH->command();
     }
 
     /**
-     * Resolves the Tea CLI binary (`tea`), falling back to 'tea' on PATH.
+     * Resolves the Tea CLI (`tea`): the host binary, the larakube-ubuntu copy through wsl.exe on Windows (forwarding $envNames), or 'tea' on PATH.
      *
      * @param  list<string>  $envNames
      */
     protected function getTeaCommand(bool $interactive = false, array $envNames = []): string
     {
-        return CliTool::TEA->resolveBinary() ?? 'tea';
+        return CliTool::TEA->command($envNames);
     }
 
     protected function getEmail(): ?string

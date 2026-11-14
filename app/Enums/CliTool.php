@@ -61,6 +61,17 @@ enum CliTool: string
         return $this->service() instanceof InstallsOnWindows;
     }
 
+    public function isAvailable(): bool
+    {
+        return $this->service()->isAvailable();
+    }
+
+    /** @param  list<string>  $forwardEnv */
+    public function command(array $forwardEnv = []): string
+    {
+        return $this->service()->command($forwardEnv);
+    }
+
     public function isInstallableHere(): bool
     {
         return $this->service()->isInstallableHere();

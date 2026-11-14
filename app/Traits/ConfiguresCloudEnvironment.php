@@ -370,7 +370,7 @@ trait ConfiguresCloudEnvironment
                 return 1;
             }
 
-            if (! CliTool::TEA->isInstalled()) {
+            if (! CliTool::TEA->isAvailable()) {
                 $this->laraKubeError('Tea CLI (tea) is required to configure Forgejo repository secrets.');
                 $this->line('  Install it by running: <fg=yellow>larakube setup --tools=tea</>');
 
@@ -396,7 +396,7 @@ trait ConfiguresCloudEnvironment
                 $this->laraKubeWarn("Could not parse GitHub repository from remote URL: {$remote}");
             }
 
-            if (! CliTool::GH->isInstalled()) {
+            if (! CliTool::GH->isAvailable()) {
                 $this->laraKubeError('GitHub CLI (gh) is required to configure GitHub repository secrets.');
                 $this->line('  Install it by running: <fg=yellow>larakube setup --tools=gh</>');
 
