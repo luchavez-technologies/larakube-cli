@@ -27,16 +27,6 @@ class SetupCommand extends Command
 {
     use CollectsReminders, ConfiguresWslNetworking, DetectsWsl, InstallsK9s, InstallsPodman, InteractsWithOs, InteractsWithTrust, LaraKubeOutput, ResolvesContainerRuntime, StreamsProcessOutput;
 
-    /**
-     * Tools this command can install directly on a native Windows host,
-     * without the WSL round-trip — kept narrow and explicit rather than
-     * inferred from CliTool, so a tool only joins this list once its
-     * Windows installer has actually been built and verified.
-     *
-     * @var list<CliTool>
-     */
-    private const WINDOWS_NATIVE_TOOLS = [CliTool::KUBECTL, CliTool::K9S, CliTool::TOFU, CliTool::GCLOUD, CliTool::AWS];
-
     protected $signature = 'setup
         {--profile= : What this machine is for — "local" (development, needs a container runtime) or "remote" (Cluster Tools and cloud clusters only)}
         {--runtime= : Container runtime to install without prompting (podman or docker)}
@@ -536,7 +526,9 @@ class SetupCommand extends Command
     {
         foreach ($slugs as $slug) {
             $tool = CliTool::tryFrom(strtolower(trim($slug)));
-            if ($tool === null || ! in_array($tool, self::WINDOWS_NATIVE_TOOLS, true)) {
+            // Only tools whose class implements InstallsOnWindows have a
+            // verified native installer; the rest go through WSL.
+            if ($tool === null || ! $tool->installsOnWindows()) {
                 return false;
             }
         }
@@ -624,7 +616,7 @@ class SetupCommand extends Command
     /**
      * The real reason behind a generic "Failed to install/update X.", when
      * the installer captured one (currently: AWS's MSI exit code + log
-     * tail — see CliTool::installAwsWindows()) — confirmed live
+     * tail — see AwsTool::installOnWindows()) — confirmed live
      * (2026-10-30): without this, every failure here read identically
      * regardless of cause, leaving no way to tell an environment-level
      * block from a transient network error.

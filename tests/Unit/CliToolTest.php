@@ -1,6 +1,8 @@
 <?php
 
 use App\Enums\CliTool;
+use App\Services\CliTools\AbstractCliTool;
+use App\Services\CliTools\GcloudTool;
 use App\Support\Os;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
@@ -216,8 +218,8 @@ test('install() does not retry a brew failure unrelated to Homebrew permissions'
 })->skip(PHP_OS_FAMILY !== 'Darwin', '`brew install --cask` is macOS-only; installGcloud() only takes this branch on Darwin.');
 
 test('homebrewUnwritablePaths extracts every path across both message shapes, run cross-platform since the Darwin-only install() tests above cannot be', function (): void {
-    $method = new ReflectionMethod(CliTool::class, 'homebrewUnwritablePaths');
-    $method->setAccessible(true);
+    $method = new ReflectionMethod(GcloudTool::class, 'homebrewUnwritablePaths');
+    $tool = new GcloudTool;
 
     $mixed = <<<'OUTPUT'
         Error: /opt/homebrew is not writable. You should change the ownership and permissions of /opt/homebrew back to your
@@ -228,7 +230,7 @@ test('homebrewUnwritablePaths extracts every path across both message shapes, ru
         /opt/homebrew/share/doc
         OUTPUT;
 
-    expect($method->invoke(CliTool::GCLOUD, $mixed))->toBe(['/opt/homebrew', '/opt/homebrew/share/doc']);
+    expect($method->invoke($tool, $mixed))->toBe(['/opt/homebrew', '/opt/homebrew/share/doc']);
 
     $bareListOnly = <<<'OUTPUT'
         Error: The following directories are not writable by your user:
@@ -236,11 +238,11 @@ test('homebrewUnwritablePaths extracts every path across both message shapes, ru
         /opt/homebrew/share/zsh/site-functions
         OUTPUT;
 
-    expect($method->invoke(CliTool::GCLOUD, $bareListOnly))->toBe(['/opt/homebrew', '/opt/homebrew/share/zsh/site-functions']);
+    expect($method->invoke($tool, $bareListOnly))->toBe(['/opt/homebrew', '/opt/homebrew/share/zsh/site-functions']);
 
     $unrelatedFailure = "Error: Cask 'gcloud-cli' is unavailable";
 
-    expect($method->invoke(CliTool::GCLOUD, $unrelatedFailure))->toBe([]);
+    expect($method->invoke($tool, $unrelatedFailure))->toBe([]);
 });
 
 test('an unsupported python stops the gcloud install rather than crashing inside it', function (): void {
@@ -400,21 +402,20 @@ test('kubectl is a first-class installable tool', function (): void {
         ->toContain('/usr/bin/kubectl');
 });
 
-test('every case can actually reach an installer', function (): void {
-    // install() dispatches through a match arm per case; installK9s() and
-    // installTofu() lived only on traits the enum never used, so both arms
-    // were a fatal Call to undefined method.
-    $missing = [];
+test('every case is backed by its own tool class, under the same slug', function (): void {
+    // A case mapped to the wrong class would install, update and report
+    // somebody else's tool under this name.
+    $mismatched = [];
 
     foreach (CliTool::cases() as $tool) {
-        $method = 'install'.str_replace(' ', '', ucwords(str_replace('-', ' ', $tool->value)));
+        $service = $tool->service();
 
-        if (! method_exists($tool, $method)) {
-            $missing[] = "{$tool->value} => {$method}()";
+        if (! $service instanceof AbstractCliTool || $service->slug() !== $tool->value) {
+            $mismatched[] = $tool->value.' => '.$service::class;
         }
     }
 
-    expect($missing)->toBeEmpty(implode(', ', $missing));
+    expect($mismatched)->toBeEmpty(implode(', ', $mismatched));
 });
 
 /**
@@ -486,7 +487,7 @@ test('tea falls back to a known version only when Gitea cannot be asked', functi
 });
 
 test('neither install carries a version of its own, apart from tea\'s fallback', function (): void {
-    $source = (string) file_get_contents(base_path('app/Enums/CliTool.php'));
+    $source = implode("\n", array_map(file_get_contents(...), glob(base_path('app/Services/CliTools/*.php')) ?: []));
 
     expect($source)->not->toContain("'2.67.0'")
         ->and(substr_count($source, "'0.16.0'"))->toBe(1);
