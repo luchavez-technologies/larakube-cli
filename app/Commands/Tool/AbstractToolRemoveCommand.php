@@ -292,15 +292,25 @@ abstract class AbstractToolRemoveCommand extends Command
      * the old `$databases === []` early return skipped its bucket drop
      * unconditionally, no matter what).
      */
-    /** Does this Commons tenant actually exist? Distinguishes "dropped" from "was never there". */
-    protected function commonsDatabaseExists(string $kubectl, string $plexNs, string $database): bool
+    /**
+     * Does this Commons tenant actually exist? Distinguishes "dropped" from
+     * "was never there". Null when the probe itself failed (cluster or
+     * Postgres unreachable) — that is not evidence the database is absent.
+     */
+    protected function commonsDatabaseExists(string $kubectl, string $plexNs, string $database): ?bool
     {
         $client = DatabaseDriver::POSTGRESQL->commonsAdminClient();
 
-        return trim(Process::run(
+        $result = Process::run(
             "{$kubectl} exec deploy/postgres -n {$plexNs} -- {$client} -U postgres -tAc "
             .escapeshellarg('SELECT 1 FROM pg_database WHERE datname = '.$this->quoteSqlLiteral($database)),
-        )->output()) === '1';
+        );
+
+        if (! $result->successful()) {
+            return null;
+        }
+
+        return trim($result->output()) === '1';
     }
 
     /** Single-quoted SQL literal, doubling any embedded quote. */
@@ -336,7 +346,10 @@ abstract class AbstractToolRemoveCommand extends Command
             // reports success and drops nothing. Silence there reads as "data
             // destroyed" when it means the opposite. The drop still runs either
             // way — a probe that cannot reach Postgres must not stop a teardown.
-            if (! $this->commonsDatabaseExists($kubectl, $plexNs, $database)) {
+            $exists = $this->commonsDatabaseExists($kubectl, $plexNs, $database);
+            if ($exists === null) {
+                $this->laraKubeWarn("Could not check whether Commons database '{$database}' exists — Postgres or the cluster is unreachable.");
+            } elseif (! $exists) {
                 $this->laraKubeWarn("No Commons database named '{$database}' — nothing to drop.");
                 $this->line('  <fg=gray>If this tool has data, its tenant is under a different name and survives this purge.</>');
             }

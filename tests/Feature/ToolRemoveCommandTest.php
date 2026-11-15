@@ -94,6 +94,30 @@ test('n8n:remove --purge drops only the engine it ran, and its key and volume', 
         && str_contains($p->command, 'secret/n8n-secrets-flow-example-com'));
 });
 
+test('an unreachable Postgres is reported as unreachable, not as a missing database', function (): void {
+    Process::fake(flowRemoveFakes([
+        '*pg_database*' => Process::result(output: '', errorOutput: 'net/http: TLS handshake timeout', exitCode: 1),
+        '*exec *' => Process::result(output: 'dropped'),
+        '* delete *' => Process::result(output: 'deleted'),
+    ]));
+
+    $this->artisan('n8n:remove local --force --purge')
+        ->expectsOutputToContain("Could not check whether Commons database 'n8n_flow_example_com' exists")
+        ->doesntExpectOutputToContain('nothing to drop');
+});
+
+test('a database the probe confirms is absent is reported as nothing to drop', function (): void {
+    Process::fake(flowRemoveFakes([
+        '*pg_database*' => Process::result(output: ''),
+        '*exec *' => Process::result(output: 'dropped'),
+        '* delete *' => Process::result(output: 'deleted'),
+    ]));
+
+    $this->artisan('n8n:remove local --force --purge')
+        ->expectsOutputToContain("No Commons database named 'n8n_flow_example_com' — nothing to drop.")
+        ->doesntExpectOutputToContain('Could not check whether');
+});
+
 test('n8n:remove --purge leaves the Commons alone for a --no-plex install', function (): void {
     Process::fake(flowRemoveFakes(['* delete *' => Process::result(output: 'deleted')], bundled: true));
 
