@@ -8,6 +8,7 @@ use App\Enums\AppFramework;
 use App\Enums\LaravelFeature;
 use App\Enums\RegistryProvider;
 use App\Services\Kubectl;
+use App\Support\SshKeyPath;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
@@ -34,10 +35,14 @@ trait InteractsWithRemoteDeploy
         return 'larakube-'.$ip;
     }
 
-    /** SSH base command for a host (no remote command appended yet). Pure. */
+    /**
+     * SSH base command for a host (no remote command appended yet). Pure,
+     * except that a Windows key path seen from inside the larakube-ubuntu
+     * distro is made usable there (SshKeyPath::forThisSide()).
+     */
     public function sshBaseCommand(string $user, string $ip, int $port, string $key): string
     {
-        return 'ssh -o StrictHostKeyChecking=no -i '.escapeshellarg($key).' -p '.$port.' '.escapeshellarg($user.'@'.$ip);
+        return 'ssh -o StrictHostKeyChecking=no -i '.escapeshellarg(SshKeyPath::forThisSide($key)).' -p '.$port.' '.escapeshellarg($user.'@'.$ip);
     }
 
     /**

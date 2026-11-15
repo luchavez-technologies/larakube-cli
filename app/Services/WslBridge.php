@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Data\ConfigData;
 use App\Support\Os;
 use App\Traits\ConfiguresWslNetworking;
 use Illuminate\Support\Facades\Process;
@@ -47,17 +48,38 @@ class WslBridge
     ];
 
     /**
-     * Project commands that dispatch to WSL only when targeting the local
-     * environment (or when no non-local environment / kubeconfig context is
-     * specified). Deploying or inspecting a remote environment stays on host.
+     * Project commands that used to stay on the host for a non-local
+     * environment. A project lives in the distro, so they now always run
+     * there, for every environment: `up production` builds an image just like
+     * `up` does, and the builder, the project and gh are all in the distro.
+     * The distro sees the host's servers and clusters through the shared
+     * config.json and kubeconfig (see linkSharedHostPaths()).
      *
      * @var list<string>
      */
-    private const WSL_LOCAL_ENV_COMMANDS = [
+    private const WSL_PROJECT_COMMANDS = [
         'up', 'down', 'heal', 'start', 'stop', 'reload',
         'about', 'doctor', 'services:show',
         'dotenv', 'dotenv:audit', 'dotenv:push', 'dotenv:pull', 'env:remove',
+        'cloud:deploy', 'cloud:configure', 'pipeline:test',
     ];
+
+    /**
+     * Commands that always run on the Windows host, even from inside a
+     * project folder: they provision with OpenTofu (host-only), manage
+     * servers and the cluster rather than a project, or manage this host.
+     *
+     * @var list<string>
+     */
+    private const HOST_COMMANDS = [
+        'cloud:create', 'cloud:destroy', 'cloud:nuke', 'cloud:scale', 'cloud:repair', 'cloud:harden',
+        'cloud:init', 'cloud:init:doks', 'cloud:init:eks', 'cloud:init:gke', 'cloud:migrate',
+        'traefik:setup', 'devbox:connect', 'k9s',
+        'setup', 'setup:status', 'setup:reinstall', 'update', 'uninstall',
+    ];
+
+    /** @var list<string> command prefixes that always run on the host */
+    private const HOST_COMMAND_PREFIXES = ['cloud:provision', 'tls:', 'wsl:'];
 
     private static ?bool $forceNativeWindows = null;
 
@@ -339,29 +361,17 @@ class WslBridge
             return ($cwd !== null && $this->isWslUncPath($cwd)) || $this->distroExists();
         }
 
-        if ($command === 'version' || str_starts_with($command, 'wsl:')) {
+        if ($command === 'version' || $this->isHostCommand($command)) {
             return false;
         }
 
-        if ($this->hasNonLocalContextFlag($argv)) {
-            return false;
-        }
-
-        if (in_array($command, self::WSL_LOCAL_COMMANDS, true)) {
+        if (in_array($command, self::WSL_LOCAL_COMMANDS, true) || in_array($command, self::WSL_PROJECT_COMMANDS, true)) {
             return true;
         }
 
-        if (in_array($command, self::WSL_LOCAL_ENV_COMMANDS, true)) {
-            $environment = $this->extractTargetEnvironment($argv, $command);
-
-            if ($environment !== null && $environment !== 'local') {
-                return false;
-            }
-
-            return true;
-        }
-
-        return false;
+        // Projects never run outside the distro: anything invoked from inside
+        // a project folder runs there, whatever environment it targets.
+        return $this->isProjectDirectory($cwd);
     }
 
     /**
@@ -677,6 +687,11 @@ class WslBridge
         $shared = [
             'LARAKUBE_HOST_KUBE_DIR' => $home.'/.kube',
             'LARAKUBE_HOST_CONFIG' => $home.'/.larakube/config.json',
+            // One cloud login for both sides: `aws eks get-token` and
+            // gke-gcloud-auth-plugin (EKS/GKE kubeconfigs) and ECR/GAR
+            // registry logins run in the distro for project commands.
+            'LARAKUBE_HOST_AWS_DIR' => $home.'/.aws',
+            'LARAKUBE_HOST_GCLOUD_DIR' => $home.'/.config/gcloud',
         ];
 
         foreach ($shared as $variable => $distroPath) {
@@ -686,6 +701,27 @@ class WslBridge
                 self::linkToHost($hostPath, $distroPath);
             }
         }
+    }
+
+    private function isHostCommand(string $command): bool
+    {
+        if (in_array($command, self::HOST_COMMANDS, true)) {
+            return true;
+        }
+
+        foreach (self::HOST_COMMAND_PREFIXES as $prefix) {
+            if (str_starts_with($command, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** The same test InteractsWithProjectConfig::isLaraKubeProject() applies: `.larakube.json` right in the folder. */
+    private function isProjectDirectory(?string $cwd): bool
+    {
+        return $cwd !== null && $cwd !== '' && is_file(rtrim($cwd, '\\/').'/'.ConfigData::CONFIG_FILE);
     }
 
     /**
@@ -715,83 +751,6 @@ class WslBridge
     }
 
     /**
-     * Returns true when `--context` explicitly targets a non-local cluster.
-     *
-     * @param  list<string>  $argv
-     */
-    private function hasNonLocalContextFlag(array $argv): bool
-    {
-        $context = $this->extractOptionValue($argv, ['--context']);
-
-        return $context !== null && $context !== '' && ! in_array($context, ['local', 'k3d-larakube'], true);
-    }
-
-    /**
-     * Extracts the target environment from `--env`/`--environment` or the
-     * first positional argument after the command name.
-     *
-     * @param  list<string>  $argv
-     */
-    private function extractTargetEnvironment(array $argv, string $command): ?string
-    {
-        $optionEnv = $this->extractOptionValue($argv, ['--env', '--environment']);
-        if ($optionEnv !== null && $optionEnv !== '') {
-            return $optionEnv;
-        }
-
-        $seenCommand = false;
-        $count = count($argv);
-        for ($i = 1; $i < $count; $i++) {
-            $arg = $argv[$i];
-            if (! $seenCommand) {
-                if ($arg === $command) {
-                    $seenCommand = true;
-                }
-
-                continue;
-            }
-
-            if ($arg === '--env' || $arg === '--environment' || $arg === '--context') {
-                $i++;
-
-                continue;
-            }
-
-            if (! str_starts_with($arg, '-')) {
-                return $arg;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Extracts the value of any matching `--name=value` or `--name value` flag.
-     *
-     * @param  list<string>  $argv
-     * @param  list<string>  $names
-     */
-    private function extractOptionValue(array $argv, array $names): ?string
-    {
-        $count = count($argv);
-        for ($i = 1; $i < $count; $i++) {
-            $arg = $argv[$i];
-
-            foreach ($names as $name) {
-                if (str_starts_with($arg, $name.'=')) {
-                    return substr($arg, strlen($name) + 1);
-                }
-
-                if ($arg === $name && isset($argv[$i + 1]) && ! str_starts_with($argv[$i + 1], '-')) {
-                    return $argv[$i + 1];
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /**
      * Where applyPendingWindowsHostsSync() looks for a handoff file written
      * by InteractsWithHosts::queuePendingWindowsHostsSync() inside WSL —
      * always under the pinned --user larakube's home (see dispatchToWsl()),
@@ -816,8 +775,8 @@ class WslBridge
      * guessing — callers fall back to no --cd at all in that case.
      */
     /**
-     * The Windows `%USERPROFILE%\.kube` folder and `.larakube\config.json`
-     * as `/mnt/<drive>/...` paths, created on the host first (an empty `{}`
+     * The Windows `%USERPROFILE%\.kube` folder, `.larakube\config.json`,
+     * `.aws` and `%APPDATA%\gcloud` as `/mnt/<drive>/...` paths, created on the host first (an empty `{}`
      * config) so the distro always has something real to link to. Empty when
      * the profile is unknown or not on a drive letter.
      *
@@ -835,14 +794,15 @@ class WslBridge
         $kubeDir = $profile.'\\.kube';
         $configDir = $profile.'\\.larakube';
         $configFile = $configDir.'\\config.json';
+        $awsDir = $profile.'\\.aws';
+        $appData = rtrim((string) (getenv('APPDATA') ?: $profile.'\\AppData\\Roaming'), '\\/');
+        $gcloudDir = $appData.'\\gcloud';
 
         if (PHP_OS_FAMILY === 'Windows') {
-            if (! is_dir($kubeDir)) {
-                @mkdir($kubeDir, 0700, true);
-            }
-
-            if (! is_dir($configDir)) {
-                @mkdir($configDir, 0700, true);
+            foreach ([$kubeDir, $configDir, $awsDir, $gcloudDir] as $dir) {
+                if (! is_dir($dir)) {
+                    @mkdir($dir, 0700, true);
+                }
             }
 
             if (! is_file($configFile)) {
@@ -853,6 +813,8 @@ class WslBridge
         return array_filter([
             'LARAKUBE_HOST_KUBE_DIR' => $this->translateCwdToWsl($kubeDir),
             'LARAKUBE_HOST_CONFIG' => $this->translateCwdToWsl($configFile),
+            'LARAKUBE_HOST_AWS_DIR' => $this->translateCwdToWsl($awsDir),
+            'LARAKUBE_HOST_GCLOUD_DIR' => $this->translateCwdToWsl($gcloudDir),
         ], fn (?string $path): bool => $path !== null);
     }
 

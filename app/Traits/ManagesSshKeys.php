@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use App\Data\GlobalConfigData;
+use App\Support\SshKeyPath;
 use Illuminate\Support\Facades\Process;
 use Throwable;
 
@@ -136,7 +137,7 @@ trait ManagesSshKeys
     public function testSshConnection(string $user, string $ip, int $port, string $key, int $timeoutSeconds = 5): bool
     {
         $cmd = 'ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout='
-            .$timeoutSeconds.' -i '.escapeshellarg($key).' -p '.$port.' '.escapeshellarg($user.'@'.$ip).' true';
+            .$timeoutSeconds.' -i '.escapeshellarg(SshKeyPath::forThisSide($key)).' -p '.$port.' '.escapeshellarg($user.'@'.$ip).' true';
 
         return Process::run($cmd)->successful();
     }

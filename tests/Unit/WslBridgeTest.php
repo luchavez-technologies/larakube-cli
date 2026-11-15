@@ -173,11 +173,15 @@ test('shouldDispatchToWsl routes only local WSL commands into WSL on Windows', f
         ->and($bridge->shouldDispatchToWsl(['larakube', 'wp:new']))->toBeTrue()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'trust:reset']))->toBeTrue();
 
-    // Non-local project targets, cloud/server management, cluster tools, DNS, and lifecycle -> stay on Windows host
-    expect($bridge->shouldDispatchToWsl(['larakube', 'up', 'production']))->toBeFalse()
-        ->and($bridge->shouldDispatchToWsl(['larakube', 'up', '--env=production']))->toBeFalse()
-        ->and($bridge->shouldDispatchToWsl(['larakube', 'status', '--context=do-sgp1']))->toBeFalse()
-        ->and($bridge->shouldDispatchToWsl(['larakube', 'up', '--context=do-sgp1']))->toBeFalse()
+    // Project commands run in the distro for every environment: the builder, the project and gh live there
+    expect($bridge->shouldDispatchToWsl(['larakube', 'up', 'production']))->toBeTrue()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'up', '--env=production']))->toBeTrue()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'up', '--context=do-sgp1']))->toBeTrue()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:deploy', 'production']))->toBeTrue()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:configure', 'production', '--only=ci']))->toBeTrue();
+
+    // Cloud/server management, cluster tools, DNS, and lifecycle -> stay on Windows host
+    expect($bridge->shouldDispatchToWsl(['larakube', 'status', '--context=do-sgp1']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'dns:verify', '--provider=cloudflare', '--json']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:list']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'tool:catalog']))->toBeFalse()
@@ -552,7 +556,7 @@ function wslBridgeRoutedCommands(): array
 
     return [
         ...$reflection->getConstant('WSL_LOCAL_COMMANDS'),
-        ...$reflection->getConstant('WSL_LOCAL_ENV_COMMANDS'),
+        ...$reflection->getConstant('WSL_PROJECT_COMMANDS'),
     ];
 }
 
@@ -571,8 +575,9 @@ function wslBridgeRegisteredCommandNames(): array
     return array_values(array_unique($names));
 }
 
-test('every command WslBridge routes into WSL is a registered command', function (): void {
-    $phantoms = array_values(array_diff(wslBridgeRoutedCommands(), wslBridgeRegisteredCommandNames()));
+test('every command WslBridge routes into WSL or pins to the host is a registered command', function (): void {
+    $hostOnly = (new ReflectionClass(WslBridge::class))->getConstant('HOST_COMMANDS');
+    $phantoms = array_values(array_diff([...wslBridgeRoutedCommands(), ...$hostOnly], wslBridgeRegisteredCommandNames()));
 
     expect($phantoms)->toBeEmpty();
 });
@@ -608,6 +613,7 @@ test('dispatchToWsl hands the distro the Windows .kube folder and global config 
 
         expect($dispatchedCommand)->toContain('LARAKUBE_HOST_KUBE_DIR=/mnt/c/Users/demo/.kube')
             ->and($dispatchedCommand)->toContain('LARAKUBE_HOST_CONFIG=/mnt/c/Users/demo/.larakube/config.json')
+            ->and($dispatchedCommand)->toContain('LARAKUBE_HOST_AWS_DIR=/mnt/c/Users/demo/.aws')
             ->and(array_slice($dispatchedCommand, -2))->toBe(['larakube', 'cluster:setup']);
     } finally {
         $previous === false ? putenv('USERPROFILE') : putenv("USERPROFILE={$previous}");
@@ -665,4 +671,21 @@ test('linkSharedHostPaths links the distro\'s config.json to the host\'s, moving
         ->and(file_get_contents($home.'/.larakube/config.json.distro'))->toBe('{"email":"distro@example.com"}');
 
     $root->delete();
+});
+
+test('a command run from inside a project folder goes to the distro, whatever environment it targets', function (): void {
+    $bridge = new WslBridge(nativeWindows: true);
+    $project = (new TemporaryDirectory)->create();
+    file_put_contents($project->path().'/.larakube.json', '{}');
+    $elsewhere = (new TemporaryDirectory)->create();
+
+    expect($bridge->shouldDispatchToWsl(['larakube', 'replicas', 'production'], $project->path()))->toBeTrue()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'replicas', 'production'], $elsewhere->path()))->toBeFalse()
+        // OpenTofu is host-only, so provisioning stays on Windows even from a project.
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:create', 'production'], $project->path()))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'tls:init', 'production'], $project->path()))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:provision:doks'], $project->path()))->toBeFalse();
+
+    $project->delete();
+    $elsewhere->delete();
 });

@@ -99,6 +99,13 @@ if (\App\Services\WslBridge::isNativeWindows()) {
     /** @var \App\Services\WslBridge $wslBridge */
     $wslBridge = $app->make(\App\Services\WslBridge::class);
     if ($wslBridge->shouldDispatchToWsl($_SERVER['argv'] ?? [], $invokingCwd)) {
+        if (! $wslBridge->distroExists()) {
+            // A Windows host without the distro is for servers and Cluster
+            // Tools only; projects (and their commands) live in the distro.
+            fwrite(STDERR, "This command works on a project, and projects live in LaraKube Linux (the larakube-ubuntu WSL distro), which is not installed.\nInstall it from LaraKube Desktop's Setup page, or run: larakube setup\n");
+            exit(1);
+        }
+
         if ($wslBridge->mirroredRestartPending() && $wslBridge->otherRunningDistros() === []) {
             $wslBridge->shutdown();
         }
