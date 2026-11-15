@@ -79,7 +79,7 @@ spec:
               value: {{ $host }}
             - name: N8N_PROTOCOL
               value: https
-            - name: WEBHOOK_URL
+            - name: N8N_WEBHOOK_URL
               value: https://{{ $host }}/
             - name: N8N_EDITOR_BASE_URL
               value: https://{{ $host }}/

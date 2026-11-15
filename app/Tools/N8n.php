@@ -30,7 +30,7 @@ final class N8n implements ClusterToolVendor, HasCommonsDatabases, HasDeployment
 
     public function images(): array
     {
-        return ['n8n' => 'docker.n8n.io/n8nio/n8n:2.39.8'];
+        return ['n8n' => 'docker.n8n.io/n8nio/n8n:2.47.7'];
     }
 
     public function baseDeploymentName(): string
