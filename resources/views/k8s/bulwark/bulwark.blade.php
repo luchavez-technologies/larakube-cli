@@ -56,6 +56,12 @@ spec:
       containers:
         - name: bulwark
           image: ghcr.io/bulwarkmail/webmail:1.7.8
+          # Idle reading ~121Mi / 18m; requests only, so the capacity
+          # guard counts it. No limit: a spike must not OOM-kill it.
+          resources:
+            requests:
+              cpu: 40m
+              memory: 160Mi
           env:
             # Setting JMAP_SERVER_URL skips Bulwark's interactive setup wizard
             # (headless deploy). This MUST be the PUBLIC Stalwart host, not the

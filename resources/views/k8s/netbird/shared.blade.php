@@ -66,6 +66,12 @@ spec:
       containers:
         - name: management
           image: netbirdio/management:0.77.1
+          # Idle reading ~36Mi / 1m; requests only, so the capacity
+          # guard counts it. No limit: a spike must not OOM-kill it.
+          resources:
+            requests:
+              cpu: 10m
+              memory: 48Mi
           {{-- The single-account domain is a FLAG, not an env var.
 
                netbird-mgmt reads none of the NETBIRD_MGMT_* names the upstream
@@ -287,6 +293,12 @@ spec:
       containers:
         - name: signal
           image: netbirdio/signal:0.77.1
+          # Idle reading ~9Mi / 1m; requests only, so the capacity
+          # guard counts it. No limit: a spike must not OOM-kill it.
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
           ports:
             - containerPort: 80
               name: grpc
@@ -342,6 +354,12 @@ spec:
       containers:
         - name: relay
           image: netbirdio/relay:0.77.1
+          # Idle reading ~7Mi / 1m; requests only, so the capacity
+          # guard counts it. No limit: a spike must not OOM-kill it.
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
           env:
             - name: NB_LOG_LEVEL
               value: "info"

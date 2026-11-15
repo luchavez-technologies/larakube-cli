@@ -50,6 +50,12 @@ final class ManifestResourceParser
             return (int) $m[1];
         }
 
+        // The metrics API reports live usage in micro/nanocores. Rounded up,
+        // so a busy-but-tiny reading never counts as zero.
+        if (preg_match('/^(\d+)([un])$/', $quantity, $m) === 1) {
+            return (int) ceil((int) $m[1] / ($m[2] === 'u' ? 1_000 : 1_000_000));
+        }
+
         if (preg_match('/^\d+(?:\.\d+)?$/', $quantity) === 1) {
             return (int) round((float) $quantity * 1000);
         }

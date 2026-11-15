@@ -122,6 +122,12 @@ spec:
       containers:
         - name: headlamp
           image: ghcr.io/headlamp-k8s/headlamp:v0.29.0
+          # Idle reading ~11Mi / 1m; requests only, so the capacity
+          # guard counts it. No limit: a spike must not OOM-kill it.
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
           args:
             - "-plugins-dir=/headlamp/plugins"
             - "-in-cluster"

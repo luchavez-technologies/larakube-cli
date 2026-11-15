@@ -83,6 +83,60 @@ test('free headroom reserves the safety margin before subtracting what is reques
     expect($snapshot->freeCpuMillicores())->toBe(2850);
 });
 
+function nodeUsageJson(string $cpu, string $memory): string
+{
+    return json_encode(['items' => [
+        ['usage' => ['cpu' => $cpu, 'memory' => $memory]],
+        ['usage' => ['cpu' => $cpu, 'memory' => $memory]],
+    ]]);
+}
+
+test('live node usage above the requested total is what counts as used memory', function (): void {
+    // k3s and the OS run outside any pod, so requests alone (768Mi here)
+    // understate what's gone; the nodes really use 2 x 3Gi.
+    Process::fake([
+        '*get nodes -o json*' => Process::result(output: twoNodeAllocatableJson()),
+        '*get pods -A -o json*' => Process::result(output: podsRequestingJson()),
+        '*get --raw /apis/metrics.k8s.io/v1beta1/nodes*' => Process::result(output: nodeUsageJson('350000000n', '3Gi')),
+    ]);
+
+    $snapshot = clusterCapacitySubject()->snapshot('kubectl', margin: 0.10);
+
+    expect($snapshot->basis())->toBe('usage')
+        ->and($snapshot->usedMemoryBytes)->toBe(6 * 1024 ** 3)
+        ->and($snapshot->usedCpuMillicores)->toBe(700)
+        ->and($snapshot->effectiveUsedMemoryBytes())->toBe(6 * 1024 ** 3)
+        // 8Gi * 0.90 usable = 7.2Gi, minus 6Gi used.
+        ->and($snapshot->freeMemoryBytes())->toBe((int) floor(8 * 1024 ** 3 * 0.90) - 6 * 1024 ** 3)
+        // CPU stays request-based: 3600m usable minus 750m requested.
+        ->and($snapshot->freeCpuMillicores())->toBe(2850);
+});
+
+test('requests still win when they exceed live usage', function (): void {
+    Process::fake([
+        '*get nodes -o json*' => Process::result(output: twoNodeAllocatableJson()),
+        '*get pods -A -o json*' => Process::result(output: podsRequestingJson()),
+        '*get --raw /apis/metrics.k8s.io/v1beta1/nodes*' => Process::result(output: nodeUsageJson('10m', '100Mi')),
+    ]);
+
+    expect(clusterCapacitySubject()->snapshot('kubectl')->effectiveUsedMemoryBytes())->toBe((512 + 256) * 1024 ** 2);
+});
+
+test('without metrics-server the snapshot falls back to requests and says so', function (): void {
+    Process::fake([
+        '*get nodes -o json*' => Process::result(output: twoNodeAllocatableJson()),
+        '*get pods -A -o json*' => Process::result(output: podsRequestingJson()),
+        '*get --raw /apis/metrics.k8s.io/v1beta1/nodes*' => Process::result(output: 'Error from server (NotFound)', exitCode: 1),
+    ]);
+
+    $snapshot = clusterCapacitySubject()->snapshot('kubectl');
+
+    expect($snapshot)->not->toBeNull()
+        ->and($snapshot->basis())->toBe('requests')
+        ->and($snapshot->usedMemoryBytes)->toBeNull()
+        ->and($snapshot->effectiveUsedMemoryBytes())->toBe((512 + 256) * 1024 ** 2);
+});
+
 test('a failed node or pod read returns null instead of a wrong snapshot', function (): void {
     Process::fake([
         '*get nodes -o json*' => Process::result(output: '', exitCode: 1),

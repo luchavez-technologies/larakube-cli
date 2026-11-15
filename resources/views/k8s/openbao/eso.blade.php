@@ -506,6 +506,12 @@ spec:
             seccompProfile:
               type: RuntimeDefault
           image: {{ $esoImage }}
+          # Idle reading ~36Mi / 3m; requests only, so the capacity
+          # guard counts it. No limit: a spike must not OOM-kill it.
+          resources:
+            requests:
+              cpu: 10m
+              memory: 48Mi
           imagePullPolicy: IfNotPresent
           args:
           - certcontroller
@@ -642,6 +648,12 @@ spec:
             seccompProfile:
               type: RuntimeDefault
           image: {{ $esoImage }}
+          # Idle reading ~34Mi / 1m; requests only, so the capacity
+          # guard counts it. No limit: a spike must not OOM-kill it.
+          resources:
+            requests:
+              cpu: 10m
+              memory: 48Mi
           imagePullPolicy: IfNotPresent
           args:
           - webhook

@@ -71,6 +71,14 @@ test('cpu quantity parsing handles millicores and bare cores', function (): void
         ->and(ManifestResourceParser::cpuQuantityToMillicores('garbage'))->toBeNull();
 });
 
+test('cpu quantity parsing reads the metrics API nano/microcores, rounding up', function (): void {
+    expect(ManifestResourceParser::cpuQuantityToMillicores('123456789n'))->toBe(124)
+        ->and(ManifestResourceParser::cpuQuantityToMillicores('2000000n'))->toBe(2)
+        ->and(ManifestResourceParser::cpuQuantityToMillicores('1n'))->toBe(1)
+        ->and(ManifestResourceParser::cpuQuantityToMillicores('0n'))->toBe(0)
+        ->and(ManifestResourceParser::cpuQuantityToMillicores('250500u'))->toBe(251);
+});
+
 test('memory quantity parsing handles binary and decimal suffixes, distinct from cpu', function (): void {
     // The same "m" suffix means something totally different for memory than
     // for CPU — "128m" as memory is nonsensical and must not silently parse.

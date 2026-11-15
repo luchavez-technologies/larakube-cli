@@ -220,6 +220,12 @@ spec:
         - name: zitadel
           # Keep in lockstep with the zitadel-init image above.
           image: ghcr.io/zitadel/zitadel:v4.16.1
+          # Idle reading ~90Mi / 17m; requests only, so the capacity
+          # guard counts it. No limit: a spike must not OOM-kill it.
+          resources:
+            requests:
+              cpu: 40m
+              memory: 128Mi
           # Provisioning + schema are already done (Commons + the initContainer),
           # so start from SETUP (setup + start) — never start-from-init, which
           # would re-run the superuser-only provisioning step. The FIRSTINSTANCE
@@ -257,6 +263,12 @@ spec:
         # `kubectl exec -c pat-reader -- cat /machinekey/pat.txt`. Idle otherwise.
         - name: pat-reader
           image: busybox:1.36
+          # Idle reading ~0Mi / 0m; requests only, so the capacity
+          # guard counts it. No limit: a spike must not OOM-kill it.
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
           command: ["sh", "-c", "sleep infinity"]
           volumeMounts:
             - name: machinekey

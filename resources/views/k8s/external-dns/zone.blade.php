@@ -92,6 +92,14 @@ spec:
       containers:
         - name: external-dns
           image: registry.k8s.io/external-dns/external-dns:v0.21.0
+          # Sized from a live reading of ~32Mi at idle, so the capacity guard
+          # counts it instead of treating its memory as free.
+          resources:
+            requests:
+              cpu: 10m
+              memory: 48Mi
+            limits:
+              memory: 128Mi
           args:
             - --source=ingress
             - --provider={{ $provider->externalDnsProviderFlag() }}

@@ -62,6 +62,12 @@ spec:
       containers:
         - name: vaultwarden
           image: vaultwarden/server:1.37.1
+          # Idle reading ~30Mi / 1m; requests only, so the capacity
+          # guard counts it. No limit: a spike must not OOM-kill it.
+          resources:
+            requests:
+              cpu: 10m
+              memory: 48Mi
           ports:
             - containerPort: 80
               name: http

@@ -91,6 +91,12 @@ spec:
                replica the old pod is already gone by then — mail goes down, it
                does not merely fail to update. --}}
           image: stalwartlabs/stalwart:v0.16.14
+          # Idle reading ~83Mi / 1m; requests only, so the capacity
+          # guard counts it. No limit: a spike must not OOM-kill it.
+          resources:
+            requests:
+              cpu: 10m
+              memory: 112Mi
           env:
             # BREAK-GLASS credential — NOT the daily driver. The CLI authenticates
             # to Stalwart with a least-privilege API key it mints on first use

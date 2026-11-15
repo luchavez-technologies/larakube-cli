@@ -57,6 +57,12 @@ spec:
       containers:
         - name: client
           image: netbirdio/netbird:0.77.1
+          # Idle reading ~27Mi / 1m; requests only, so the capacity
+          # guard counts it. No limit: a spike must not OOM-kill it.
+          resources:
+            requests:
+              cpu: 10m
+              memory: 48Mi
           securityContext:
             capabilities:
               add: ["NET_ADMIN"]
@@ -81,6 +87,12 @@ spec:
               mountPath: /var/lib/netbird
         - name: ingress-proxy
           image: alpine/socat:1.8.1.3
+          # Idle reading ~1Mi / 0m; requests only, so the capacity
+          # guard counts it. No limit: a spike must not OOM-kill it.
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
           command: ["/bin/sh", "-c"]
           args:
             - |

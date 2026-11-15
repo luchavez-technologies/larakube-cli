@@ -51,4 +51,10 @@ spec:
       containers:
         - name: reloader
           image: ghcr.io/stakater/reloader:v1.0.69
+          # Idle reading ~11Mi / 1m; requests only, so the capacity
+          # guard counts it. No limit: a spike must not OOM-kill it.
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
           imagePullPolicy: IfNotPresent

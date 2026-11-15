@@ -59,6 +59,12 @@ spec:
       containers:
         - name: ocis
           image: {{ $ocisImage }}
+          # Idle reading ~90Mi / 7m; requests only, so the capacity
+          # guard counts it. No limit: a spike must not OOM-kill it.
+          resources:
+            requests:
+              cpu: 20m
+              memory: 128Mi
           # Headless boot: everything is configured via OCIS_* env vars, so we skip
           # the interactive `ocis init` wizard and start the full server directly.
           command: ["ocis"]

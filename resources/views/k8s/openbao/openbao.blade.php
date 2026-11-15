@@ -109,6 +109,12 @@ spec:
       containers:
       - name: openbao
         image: "{{ $image }}"
+        # Idle reading ~43Mi / 16m; requests only, so the capacity
+        # guard counts it. No limit: a spike must not OOM-kill it.
+        resources:
+          requests:
+            cpu: 40m
+            memory: 64Mi
         args:
         - server
         - -config=/openbao/config/bao.hcl

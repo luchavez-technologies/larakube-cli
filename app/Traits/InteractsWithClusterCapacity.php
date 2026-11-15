@@ -31,6 +31,10 @@ trait InteractsWithClusterCapacity
             return null;
         }
 
+        // Optional: without metrics-server the snapshot is request-based
+        // (basis 'requests') rather than missing.
+        $usage = $this->clusterNodeUsage($kubectl);
+
         return new ClusterCapacitySnapshot(
             nodeCount: count($nodes),
             allocatableCpuMillicores: array_sum(array_column($nodes, 'cpuMillicores')),
@@ -38,6 +42,8 @@ trait InteractsWithClusterCapacity
             requestedCpuMillicores: $requested['cpu'],
             requestedMemoryBytes: $requested['memory'],
             marginFraction: $marginFraction,
+            usedCpuMillicores: $usage['cpu'] ?? null,
+            usedMemoryBytes: $usage['memory'] ?? null,
         );
     }
 
@@ -66,6 +72,45 @@ trait InteractsWithClusterCapacity
 
             $cpu += $workload->requestsCpuMillicoresPerReplica($undeclaredFloorCpuMillicores) * $multiplier;
             $memory += $workload->requestsMemoryBytesPerReplica($undeclaredFloorMemoryBytes) * $multiplier;
+        }
+
+        return ['cpu' => $cpu, 'memory' => $memory];
+    }
+
+    /**
+     * Live CPU/memory in use across every node, from the metrics API
+     * (metrics-server, which k3s ships). Null when the API is absent or
+     * unreadable — the caller then falls back to requests alone.
+     *
+     * @return array{cpu: int, memory: int}|null
+     */
+    private function clusterNodeUsage(string $kubectl): ?array
+    {
+        $result = Kubectl::fromPrefix($kubectl)->raw(['get', '--raw', '/apis/metrics.k8s.io/v1beta1/nodes']);
+
+        if (! $result->ok) {
+            return null;
+        }
+
+        $items = $result->json()['items'] ?? null;
+
+        if (! is_array($items) || $items === []) {
+            return null;
+        }
+
+        $cpu = 0;
+        $memory = 0;
+
+        foreach ($items as $item) {
+            $nodeCpu = ManifestResourceParser::cpuQuantityToMillicores((string) ($item['usage']['cpu'] ?? ''));
+            $nodeMemory = ManifestResourceParser::memoryQuantityToBytes((string) ($item['usage']['memory'] ?? ''));
+
+            if ($nodeCpu === null || $nodeMemory === null) {
+                return null;
+            }
+
+            $cpu += $nodeCpu;
+            $memory += $nodeMemory;
         }
 
         return ['cpu' => $cpu, 'memory' => $memory];

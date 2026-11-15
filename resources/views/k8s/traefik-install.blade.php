@@ -111,6 +111,16 @@ spec:
       containers:
         - name: traefik
           image: {{ \App\Data\ConfigData::TRAEFIK_IMAGE }}
+          # Requests make Traefik visible to the capacity guard (it used to
+          # declare none, so its memory counted as free). Sized from a live
+          # reading of ~50Mi at idle; no CPU limit, so ingress is never
+          # throttled under a traffic spike.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
           args:
             - --api.insecure
             - --accesslog
