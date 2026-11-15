@@ -8,8 +8,8 @@ test('tool:init deploys 1-click WordPress with SQLite by default', function (): 
 
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: ''),
-        '*get deployment -l larakube.io/tool=windmill*' => Process::result(output: ''),
-        '*get deployment -l larakube.io/tool=meet*' => Process::result(output: ''),
+        '*get deployment -l luchtech.dev/tool=windmill*' => Process::result(output: ''),
+        '*get deployment -l luchtech.dev/tool=livekit*' => Process::result(output: ''),
         '*has deployment*' => Process::result(output: ''),
         '*get deployment*' => Process::result(output: ''),
         '*create namespace*' => Process::result(output: 'namespace/larakube-shared created'),
@@ -31,8 +31,8 @@ test('tool:init deploys 1-click WordPress with SQLite by default', function (): 
 test('tool:init deploys 1-click WordPress with Commons MySQL when --db=mysql', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: ''),
-        '*get deployment -l larakube.io/tool=windmill*' => Process::result(output: ''),
-        '*get deployment -l larakube.io/tool=meet*' => Process::result(output: ''),
+        '*get deployment -l luchtech.dev/tool=windmill*' => Process::result(output: ''),
+        '*get deployment -l luchtech.dev/tool=livekit*' => Process::result(output: ''),
         '*get deployment*' => Process::result(output: ''),
         '*create namespace*' => Process::result(output: 'namespace/larakube-shared created'),
         '*configmap plex-commons*' => Process::result(output: json_encode(['services' => ['mysql' => ['enabled' => true]]])),
@@ -51,8 +51,8 @@ test('tool:init --tool=wordpress --custom-env/--custom-env-secret seed the overl
 
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: ''),
-        '*get deployment -l larakube.io/tool=windmill*' => Process::result(output: ''),
-        '*get deployment -l larakube.io/tool=meet*' => Process::result(output: ''),
+        '*get deployment -l luchtech.dev/tool=windmill*' => Process::result(output: ''),
+        '*get deployment -l luchtech.dev/tool=livekit*' => Process::result(output: ''),
         '*get deployment*' => Process::result(output: ''),
         '*create namespace*' => Process::result(output: 'namespace/larakube-shared created'),
         '*apply*' => function ($process) use (&$applied) {

@@ -55,8 +55,8 @@ test('the manifest names every object from ToolInstance and points Zitadel at th
 
     expect($deployment['metadata']['name'])->toBe('zitadel-sso-example-com')
         ->and($deployment['spec']['selector']['matchLabels']['app'])->toBe('zitadel-sso-example-com')
-        ->and($deployment['spec']['template']['metadata']['labels']['larakube.io/tool'])->toBe('zitadel')
-        ->and($deployment['spec']['template']['metadata']['labels']['larakube.io/component'])->toBe('zitadel')
+        ->and($deployment['spec']['template']['metadata']['labels']['luchtech.dev/tool'])->toBe('zitadel')
+        ->and($deployment['spec']['template']['metadata']['labels']['luchtech.dev/component'])->toBe('zitadel')
         ->and($service['metadata']['name'])->toBe('zitadel-sso-example-com')
         ->and($service['spec']['selector']['app'])->toBe('zitadel-sso-example-com')
         ->and($ingress['metadata']['name'])->toBe('zitadel-sso-example-com')
@@ -68,7 +68,7 @@ test('the manifest names every object from ToolInstance and points Zitadel at th
         ->and($env['ZITADEL_DATABASE_POSTGRES_USER_PASSWORD']['valueFrom']['secretKeyRef']['name'])->toBe('zitadel-secrets-sso-example-com');
 
     foreach ([$deployment, $service, $ingress] as $object) {
-        expect($object['metadata']['labels']['larakube.io/instance'])->toBe('sso-example-com');
+        expect($object['metadata']['labels']['luchtech.dev/instance'])->toBe('sso-example-com');
     }
 });
 
@@ -100,7 +100,7 @@ test('the Ingress renders from the host alone, the way the local re-point does',
     $rendered = view('k8s.zitadel.ingress', ['host' => 'sso.example.com'])->render();
 
     expect($rendered)->toContain('name: zitadel-sso-example-com')
-        ->and($rendered)->toContain('larakube.io/instance: sso-example-com');
+        ->and($rendered)->toContain('luchtech.dev/instance: sso-example-com');
 });
 
 test('the shared proxy names its Deployment, Service, Ingress and Secret from the Zitadel instance', function (): void {

@@ -139,10 +139,10 @@ test('smtpEnv() actually suffixes CRM deployment names for a real instance', fun
             'from' => 'EMAIL_FROM_ADDRESS',
         ],
         'labels' => [
-            'larakube.io/managed-by' => 'larakube',
-            'larakube.io/tool' => 'twenty',
-            'larakube.io/component' => 'twenty',
-            'larakube.io/instance' => 'crm-luchtech-dev',
+            'luchtech.dev/managed-by' => 'larakube',
+            'luchtech.dev/tool' => 'twenty',
+            'luchtech.dev/component' => 'twenty',
+            'luchtech.dev/instance' => 'crm-luchtech-dev',
         ],
     ]);
 });

@@ -19,7 +19,7 @@ trait InteractsWithRecord
 
     protected function isRecordInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=record');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, \App\Support\Labels::toolSelector(ClusterTool::SENDREC));
     }
 
     protected function readRecordSecret(string $kubectl, string $ns, string $secret, string $key): ?string

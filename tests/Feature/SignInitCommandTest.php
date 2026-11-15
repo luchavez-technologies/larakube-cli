@@ -205,7 +205,7 @@ test('tool:init --tool=documenso wires Documenso to the Commons headless Chrome 
         ->toContain("value: \"http://{$names->deployment()}.larakube-shared.svc.cluster.local\"")
         ->toContain('secretName: '.$names->name('signing-cert'))
         ->toContain('value: "/app/certs/cert.p12"')
-        ->toContain('larakube-tool: sign');
+        ->toContain('luchtech.dev/tool: documenso');
 
     // S3 keys come from the credentials Secret, never literal env values.
     expect($appliedManifest)->not->toContain('s3-secret"')

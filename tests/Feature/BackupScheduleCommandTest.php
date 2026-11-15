@@ -196,7 +196,7 @@ test('changing only the timezone still rolls the CronJob', function (): void {
             'dbListCommand' => 'psql -l', 'dbDumpTemplate' => 'pg_dump __DB__',
         ])->render();
 
-        return backupCronJobDoc($manifest)['spec']['jobTemplate']['spec']['template']['metadata']['annotations']['larakube.io/config-checksum'];
+        return backupCronJobDoc($manifest)['spec']['jobTemplate']['spec']['template']['metadata']['annotations']['luchtech.dev/config-checksum'];
     };
 
     expect($checksum('Asia/Manila'))->not->toBe($checksum('UTC'));
@@ -469,7 +469,7 @@ test('changing only --prune-after-days still rolls the CronJob', function (): vo
             'pruneAfterDays' => $days,
         ])->render();
 
-        return backupCronJobDoc($manifest)['spec']['jobTemplate']['spec']['template']['metadata']['annotations']['larakube.io/config-checksum'];
+        return backupCronJobDoc($manifest)['spec']['jobTemplate']['spec']['template']['metadata']['annotations']['luchtech.dev/config-checksum'];
     };
 
     expect($checksum(7))->not->toBe($checksum(14));

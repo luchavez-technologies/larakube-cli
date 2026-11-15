@@ -19,9 +19,9 @@ test('analytics manifest carries canonical resource naming and identity labels',
 
     expect($manifest)
         ->toContain('name: umami-analytics-example-test')
-        ->toContain('larakube.io/tool: umami')
-        ->toContain('larakube.io/component: umami')
-        ->toContain('larakube.io/instance: analytics-example-test')
+        ->toContain('luchtech.dev/tool: umami')
+        ->toContain('luchtech.dev/component: umami')
+        ->toContain('luchtech.dev/instance: analytics-example-test')
         ->toContain('name: umami-secrets-analytics-example-test')
         ->toContain('umami_analytics_example_test');
 });

@@ -83,7 +83,7 @@ metadata:
     {{ $key }}: {{ $value }}
 @endforeach
 @if($noPlex)
-    larakube-storage: bundled
+    {{ \App\Support\Labels::STORAGE }}: bundled
 @endif
 spec:
   replicas: 1

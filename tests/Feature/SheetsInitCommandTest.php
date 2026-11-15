@@ -20,9 +20,9 @@ test('sheets manifest carries canonical resource naming and identity labels', fu
 
     expect($manifest)
         ->toContain('name: teable-sheet-example-test')
-        ->toContain('larakube.io/tool: teable')
-        ->toContain('larakube.io/component: teable')
-        ->toContain('larakube.io/instance: sheet-example-test')
+        ->toContain('luchtech.dev/tool: teable')
+        ->toContain('luchtech.dev/component: teable')
+        ->toContain('luchtech.dev/instance: sheet-example-test')
         ->toContain('name: teable-secrets-sheet-example-test')
         ->toContain('value: teable-public-sheet-example-test')
         ->toContain('value: teable-private-sheet-example-test');

@@ -29,7 +29,8 @@ trait InteractsWithAnalytics
             return $k->hasDeployment($ns, $toolInstance->deployment());
         }
 
-        return $k->hasDeploymentLabelled($ns, 'larakube.io/tool=analytics');
+        return $k->hasDeploymentLabelled($ns, \App\Support\Labels::toolSelector(ClusterTool::UMAMI))
+            || $k->hasDeploymentLabelled($ns, \App\Support\Labels::toolSelector(ClusterTool::PLAUSIBLE));
     }
 
     protected function readAnalyticsSecret(string $kubectl, string $ns, string $key, string|ToolInstance $instance = ''): ?string

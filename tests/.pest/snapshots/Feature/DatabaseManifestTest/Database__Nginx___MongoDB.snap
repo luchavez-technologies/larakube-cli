@@ -254,8 +254,8 @@ kind: Namespace
 metadata:
   name: mongodb-test-local
   labels:
-    larakube.io/project: mongodb-test
-    larakube.io/managed-by: larakube
+    luchtech.dev/project: mongodb-test
+    luchtech.dev/managed-by: larakube
 
 ---
 
@@ -264,7 +264,7 @@ kind: PersistentVolume
 metadata:
   name: mongodb-test-laravel-storage-pv
   labels:
-    larakube-project: mongodb-test
+    luchtech.dev/project: mongodb-test
 spec:
   capacity:
     storage: 1Gi
@@ -305,7 +305,7 @@ kind: PersistentVolume
 metadata:
   name: mongodb-test-mongodb-pv
   labels:
-    larakube-project: mongodb-test
+    luchtech.dev/project: mongodb-test
 spec:
   capacity:
     storage: 5Gi

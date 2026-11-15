@@ -262,8 +262,8 @@ kind: Namespace
 metadata:
   name: octane-auto-franken-local
   labels:
-    larakube.io/project: octane-auto-franken
-    larakube.io/managed-by: larakube
+    luchtech.dev/project: octane-auto-franken
+    luchtech.dev/managed-by: larakube
 
 ---
 
@@ -272,7 +272,7 @@ kind: PersistentVolume
 metadata:
   name: octane-auto-franken-laravel-storage-pv
   labels:
-    larakube-project: octane-auto-franken
+    luchtech.dev/project: octane-auto-franken
 spec:
   capacity:
     storage: 1Gi
@@ -426,7 +426,7 @@ kind: PersistentVolume
 metadata:
   name: octane-auto-franken-postgres-pv
   labels:
-    larakube-project: octane-auto-franken
+    luchtech.dev/project: octane-auto-franken
 spec:
   capacity:
     storage: 1Gi

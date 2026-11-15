@@ -85,7 +85,7 @@ test('the NFS provisioner manifest renders with the larakube-nfs StorageClass an
 
     expect($yaml)
         ->toContain('name: larakube-nfs')
-        ->toContain('provisioner: larakube.io/nfs')
+        ->toContain('provisioner: luchtech.dev/nfs')
         ->toContain('kind: StorageClass')
         ->toContain('kind: PersistentVolume')
         ->toContain('nfs-server.nfs.svc.cluster.local')

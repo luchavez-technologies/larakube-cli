@@ -82,9 +82,9 @@ metadata:
   namespace: {$accessNs}
   labels:
     app.kubernetes.io/managed-by: larakube
-    larakube.dev/access-user: {$sa}
+    {$this->labelKey('ACCESS_USER')}: {$sa}
   annotations:
-    larakube.dev/person: "{$person}"
+    {$this->labelKey('PERSON')}: "{$person}"
 ---
 apiVersion: v1
 kind: Secret
@@ -93,7 +93,7 @@ metadata:
   namespace: {$accessNs}
   labels:
     app.kubernetes.io/managed-by: larakube
-    larakube.dev/access-user: {$sa}
+    {$this->labelKey('ACCESS_USER')}: {$sa}
   annotations:
     kubernetes.io/service-account.name: {$sa}
 type: kubernetes.io/service-account-token
@@ -117,7 +117,7 @@ metadata:
   namespace: {$appNs}
   labels:
     app.kubernetes.io/managed-by: larakube
-    larakube.dev/access-user: {$sa}
+    {$this->labelKey('ACCESS_USER')}: {$sa}
 subjects:
   - kind: ServiceAccount
     name: {$sa}
@@ -157,8 +157,8 @@ metadata:
   name: {$binding}
   labels:
     app.kubernetes.io/managed-by: larakube
-    larakube.dev/access-user: {$sa}
-    larakube.dev/access-scope: cluster
+    {$this->labelKey('ACCESS_USER')}: {$sa}
+    {$this->labelKey('ACCESS_SCOPE')}: cluster
 subjects:
   - kind: ServiceAccount
     name: {$sa}
@@ -197,5 +197,11 @@ users:
     user:
       token: {$token}
 YAML;
+    }
+
+    /** A `Labels` key by constant name — heredoc YAML can call a method but not read a class constant. */
+    private function labelKey(string $name): string
+    {
+        return (string) constant(\App\Support\Labels::class.'::'.$name);
     }
 }

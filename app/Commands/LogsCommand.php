@@ -45,7 +45,7 @@ class LogsCommand extends Command
 
         if ($this->option('all')) {
             $this->laraKubeInfo("Tailing ALL logs in namespace '{$namespace}'...");
-            $this->runInteractive("{$kubectl} logs -f -n {$namespace} --all-containers --prefix --max-log-requests=20 --tail=50 --selector='larakube-project'");
+            $this->runInteractive("{$kubectl} logs -f -n {$namespace} --all-containers --prefix --max-log-requests=20 --tail=50 --selector=".\App\Services\Kubectl::arg(\App\Support\Labels::PROJECT));
 
             return 0;
         }

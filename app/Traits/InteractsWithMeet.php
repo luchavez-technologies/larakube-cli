@@ -59,13 +59,13 @@ trait InteractsWithMeet
      */
     protected function isMeetInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=meet');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, \App\Support\Labels::toolSelector(ClusterTool::LIVEKIT));
     }
 
     /** Is the Matrix bridge deployed? Same label reasoning as isMeetInstalled(). */
     protected function isMeetBridgeDeployed(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=meet,larakube.io/component=lk-jwt');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, \App\Support\Labels::toolSelector(ClusterTool::LIVEKIT, 'lk-jwt'));
     }
 
     /**

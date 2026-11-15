@@ -19,7 +19,7 @@ trait InteractsWithDesign
 
     protected function isDesignInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=design');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, \App\Support\Labels::toolSelector(ClusterTool::PENPOT));
     }
 
     protected function readDesignSecret(string $kubectl, string $ns, string $key, string $secret): ?string

@@ -26,7 +26,7 @@ test('mail:password is registered', function (): void {
 
 test('mail:password requires installed stalwart', function (): void {
     ssoRegistered();
-    Process::fake(['*larakube.io/tool=mail*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*luchtech.dev/tool=stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:password')
         ->assertExitCode(1)
@@ -36,7 +36,7 @@ test('mail:password requires installed stalwart', function (): void {
 test('mail:password resets password', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: ''),
@@ -57,7 +57,7 @@ test('mail:password resets password', function (): void {
 test('mail:password syncs the SSO password BY DEFAULT when Zitadel is installed and the identity exists', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
@@ -85,7 +85,7 @@ test('mail:password syncs the SSO password BY DEFAULT when Zitadel is installed 
 test('mail:password --no-sso leaves Zitadel untouched', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
@@ -108,7 +108,7 @@ test('mail:password --no-sso leaves Zitadel untouched', function (): void {
 test('mail:password hints (does not error) when no matching SSO identity exists', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
@@ -131,7 +131,7 @@ test('mail:password hints (does not error) when no matching SSO identity exists'
 test('mail:password without --force asks for confirmation and cancels on decline', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),

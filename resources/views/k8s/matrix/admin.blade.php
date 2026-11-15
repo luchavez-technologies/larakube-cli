@@ -53,7 +53,7 @@ spec:
       labels:
         app: {{ $adminName }}{!! $podLabels('admin') !!}
       annotations:
-        larakube.io/config-checksum: "{{ substr(hash('sha256', $host.$__tplHash), 0, 16) }}"
+        {{ \App\Support\Labels::CONFIG_CHECKSUM }}: "{{ substr(hash('sha256', $host.$__tplHash), 0, 16) }}"
     spec:
       containers:
         - name: admin

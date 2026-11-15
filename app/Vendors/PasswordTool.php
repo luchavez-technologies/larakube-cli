@@ -189,6 +189,6 @@ final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasD
     public function presenceProbe(?string $instance = null): ?string
     {
         // By label: the Deployment is named per instance, so a bare name matches nothing.
-        return 'deployment -l larakube.io/tool=passwords -n '.ClusterTool::VAULTWARDEN->namespace();
+        return 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::VAULTWARDEN).' -n '.ClusterTool::VAULTWARDEN->namespace();
     }
 }

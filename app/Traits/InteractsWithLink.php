@@ -29,7 +29,7 @@ trait InteractsWithLink
             return $k->hasDeployment($ns, $toolInstance->deployment());
         }
 
-        return $k->hasDeploymentLabelled($ns, 'larakube.io/tool=link');
+        return $k->hasDeploymentLabelled($ns, \App\Support\Labels::toolSelector(ClusterTool::KUTT));
     }
 
     protected function readLinkSecret(string $kubectl, string $ns, string $key, string|ToolInstance $instance = ''): ?string

@@ -19,7 +19,7 @@ test('stalwart:show is registered', function (): void {
 
 test('stalwart:show requires installed stalwart', function (): void {
     ssoRegistered();
-    Process::fake(['*larakube.io/tool=mail*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*luchtech.dev/tool=stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('stalwart:show')
         ->assertExitCode(1)
@@ -29,7 +29,7 @@ test('stalwart:show requires installed stalwart', function (): void {
 test('stalwart:show displays admin credentials', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('s3cret-p@ss')),
         '*port-forward*' => Process::result(output: ''),
     ]);
@@ -43,11 +43,11 @@ test('stalwart:show displays admin credentials', function (): void {
 test('stalwart:show <email> displays that account\'s client setup, never a password', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: ''),
-        '*-l larakube.io/tool=webmail --no-headers*' => Process::result(output: ''),
+        '*-l luchtech.dev/tool=bulwark --no-headers*' => Process::result(output: ''),
     ]);
 
     Saloon::fake([
@@ -66,7 +66,7 @@ test('stalwart:show <email> displays that account\'s client setup, never a passw
 test('stalwart:show <email> errors when the account does not exist', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
@@ -84,11 +84,11 @@ test('stalwart:show <email> errors when the account does not exist', function ()
 test('stalwart:show <email> shows the webmail URL when Bulwark is installed', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: ''),
-        '*-l larakube.io/tool=webmail --no-headers*' => Process::result(output: 'bulwark-webmail-example-com   1/1   1   1   10d'),
+        '*-l luchtech.dev/tool=bulwark --no-headers*' => Process::result(output: 'bulwark-webmail-example-com   1/1   1   1   10d'),
     ]);
 
     Saloon::fake([
@@ -104,7 +104,7 @@ test('stalwart:show <email> shows the webmail URL when Bulwark is installed', fu
 test('stalwart:show <email> shows SSO status when Zitadel is installed', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
@@ -125,7 +125,7 @@ test('stalwart:show <email> shows SSO status when Zitadel is installed', functio
 test('stalwart:show emits json when --json is passed', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('s3cret-p@ss')),
         '*port-forward*' => Process::result(output: ''),
     ]);
@@ -141,11 +141,11 @@ test('stalwart:show emits json when --json is passed', function (): void {
 test('stalwart:show with email emits json when --json is passed', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: ''),
-        '*-l larakube.io/tool=webmail --no-headers*' => Process::result(output: ''),
+        '*-l luchtech.dev/tool=bulwark --no-headers*' => Process::result(output: ''),
     ]);
 
     Saloon::fake([
@@ -167,7 +167,7 @@ test('stalwart:show resolves Bulwark webmail host from registry and emits webmai
         ['tool' => 'bulwark', 'instance' => 'mail-luchtech-dev', 'host' => 'mail.luchtech.dev'],
     ]);
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('s3cret-p@ss')),
         '*port-forward*' => Process::result(output: ''),
     ]);
@@ -182,7 +182,7 @@ test('stalwart:show resolves Bulwark webmail host from registry and emits webmai
 test('stalwart:show resolves active outbound relay and emits relay in json', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('s3cret-p@ss')),
         '*get secret stalwart-relay*' => Process::result(output: base64_encode('ses')),
         '*port-forward*' => Process::result(output: ''),
@@ -209,7 +209,7 @@ test('stalwart:show resolves active outbound relay and emits relay in json', fun
 test('stalwart:show with production environment and explicit context emits json successfully', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('s3cret-p@ss')),
         '*port-forward*' => Process::result(output: ''),
     ]);
@@ -225,11 +225,11 @@ test('stalwart:show with production environment and explicit context emits json 
         ->and($output)->toContain('"installed": true');
 });
 
-test('stalwart:show detects Stalwart when labeled with canonical larakube.io/tool=stalwart', function (): void {
+test('stalwart:show detects Stalwart when labeled with canonical luchtech.dev/tool=stalwart', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: ''),
-        '*larakube.io/tool=stalwart*' => Process::result(output: 'stalwart-send-luchtech-dev   1/1   1   1   20h'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: ''),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart-send-luchtech-dev   1/1   1   1   20h'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('s3cret-p@ss')),
         '*port-forward*' => Process::result(output: ''),
     ]);
@@ -242,7 +242,7 @@ test('stalwart:show detects Stalwart when labeled with canonical larakube.io/too
         ->toContain('"adminPassword": "s3cret-p@ss"');
 });
 
-test('stalwartPodName resolves pod when labeled with canonical larakube.io/tool=stalwart', function (): void {
+test('stalwartPodName resolves pod when labeled with canonical luchtech.dev/tool=stalwart', function (): void {
     $helper = new class
     {
         use App\Traits\InteractsWithMail, App\Traits\InteractsWithStalwartApi;
@@ -254,8 +254,8 @@ test('stalwartPodName resolves pod when labeled with canonical larakube.io/tool=
     };
 
     Process::fake([
-        '*get pod -l larakube.io/tool=mail*' => Process::result(output: ''),
-        '*get pod -l larakube.io/tool=stalwart*' => Process::result(output: "pod/stalwart-send-luchtech-dev-abc123\n"),
+        '*get pod -l luchtech.dev/tool=stalwart*' => Process::result(output: ''),
+        '*get pod -l luchtech.dev/tool=stalwart*' => Process::result(output: "pod/stalwart-send-luchtech-dev-abc123\n"),
     ]);
 
     expect($helper->pod('kubectl', 'larakube-shared'))->toBe('pod/stalwart-send-luchtech-dev-abc123');

@@ -65,7 +65,7 @@ test('the manifest names every object from ToolInstance and the claim matches th
 
     expect($deployment['metadata']['name'])->toBe('openbao-secrets-example-com')
         ->and($deployment['spec']['selector']['matchLabels']['app'])->toBe('openbao-secrets-example-com')
-        ->and($deployment['spec']['template']['metadata']['labels']['larakube.io/tool'])->toBe('openbao')
+        ->and($deployment['spec']['template']['metadata']['labels']['luchtech.dev/tool'])->toBe('openbao')
         ->and($deployment['spec']['template']['spec']['serviceAccountName'])->toBe('openbao-secrets-example-com')
         ->and($account['metadata']['name'])->toBe('openbao-secrets-example-com')
         ->and($binding['metadata']['name'])->toBe('openbao-auth-delegator-secrets-example-com')
@@ -80,7 +80,7 @@ test('the manifest names every object from ToolInstance and the claim matches th
         ->and($ingress['spec']['rules'][0]['http']['paths'][0]['backend']['service']['name'])->toBe('openbao-secrets-example-com');
 
     foreach ([$deployment, $pvc, $service, $ingress, $account] as $object) {
-        expect($object['metadata']['labels']['larakube.io/instance'])->toBe('secrets-example-com');
+        expect($object['metadata']['labels']['luchtech.dev/instance'])->toBe('secrets-example-com');
     }
 });
 
@@ -94,7 +94,7 @@ test('the Ingress renders from the host alone, the way the local re-point does',
     $rendered = view('k8s.openbao.ingress', ['host' => 'secrets.example.com'])->render();
 
     expect($rendered)->toContain('name: openbao-secrets-example-com')
-        ->and($rendered)->toContain('larakube.io/instance: secrets-example-com');
+        ->and($rendered)->toContain('luchtech.dev/instance: secrets-example-com');
 });
 
 test('the VPN-only Ingress points at the instance Middleware', function (): void {

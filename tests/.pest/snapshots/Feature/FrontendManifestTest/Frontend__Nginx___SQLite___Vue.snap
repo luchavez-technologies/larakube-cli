@@ -191,8 +191,8 @@ kind: Namespace
 metadata:
   name: vue-test-local
   labels:
-    larakube.io/project: vue-test
-    larakube.io/managed-by: larakube
+    luchtech.dev/project: vue-test
+    luchtech.dev/managed-by: larakube
 
 ---
 
@@ -201,7 +201,7 @@ kind: PersistentVolume
 metadata:
   name: vue-test-laravel-storage-pv
   labels:
-    larakube-project: vue-test
+    luchtech.dev/project: vue-test
 spec:
   capacity:
     storage: 1Gi
@@ -218,7 +218,7 @@ kind: PersistentVolume
 metadata:
   name: vue-test-laravel-data-pv
   labels:
-    larakube-project: vue-test
+    luchtech.dev/project: vue-test
 spec:
   capacity:
     storage: 1Gi

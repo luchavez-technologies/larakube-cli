@@ -101,9 +101,9 @@ test('tool:init --tool=n8n names every n8n resource after its host and pins the 
         ->toContain('value: n8n_flow_example_com')
         ->toContain('image: '.(new App\Tools\N8n)->image('n8n'))
         // The old labels said `larakube-tool: flow` — a leftover category name
-        // that never matched the real tool. The modern `larakube.io/*` labels
+        // that never matched the real tool. The modern `luchtech.dev/*` labels
         // (from $names->labels()) must say n8n, not the category it dispatches from.
-        ->toContain('larakube.io/tool: n8n')
+        ->toContain('luchtech.dev/tool: n8n')
         ->not->toContain('larakube-tool: flow')
         ->not->toContain('flow-secrets')
         ->not->toContain('  name: n8n'.PHP_EOL)

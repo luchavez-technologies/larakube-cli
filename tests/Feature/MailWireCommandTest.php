@@ -36,7 +36,7 @@ test('mail:wire --tool=zitadel configures Zitadel SMTP via API', function (): vo
         '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
         '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('pat-token')),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
     ]);
 
@@ -48,7 +48,7 @@ test('mail:wire local --tool=directus configures Directus SMTP via deployment se
     Process::fake([
         '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
         '*get deployment directus*' => Process::result(output: 'directus   1/1   1   1   10d'),
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/directus*' => Process::result(output: 'updated'),
@@ -67,7 +67,7 @@ test('mail:wire local --tool=pocketbase configures PocketBase SMTP, not Directus
     Process::fake([
         '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
         '*get deployment pocketbase*' => Process::result(output: 'pocketbase   1/1   1   1   10d'),
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/pocketbase*' => Process::result(output: 'updated'),
@@ -91,7 +91,7 @@ test('mail:wire local --tool=penpot configures Penpot SMTP via deployment secret
         ]))),
         '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@luchtech.dev')),
         '*get deployment penpot-backend-design-example-com*' => Process::result(output: 'penpot-backend-design-example-com   1/1   1   1   10d'),
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/penpot-backend-design-example-com*' => Process::result(output: 'updated'),
@@ -113,7 +113,7 @@ test('mail:wire local --tool=glitchtip composes GlitchTip EMAIL_URL and patches 
             ['tool' => 'glitchtip', 'instance' => 'errors-example-com', 'host' => 'errors.example.com'],
         ]))),
         '*get deployment glitchtip-errors-example-com*' => Process::result(output: 'glitchtip-errors-example-com   1/1   1   1   10d'),
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/glitchtip-errors-example-com*' => Process::result(output: 'updated'),
@@ -150,7 +150,7 @@ test('mail:wire local --tool=twenty resolves the real host-derived instance from
             ['tool' => 'twenty', 'instance' => 'crm-luchtech-dev', 'host' => 'crm.luchtech.dev'],
         ]))),
         '*get deployment twenty-crm-luchtech-dev*' => Process::result(output: 'twenty-crm-luchtech-dev   1/1   1   1   10d'),
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*apply -f -*' => Process::result(output: 'applied'),
         '*set env deployment/twenty-crm-luchtech-dev*' => Process::result(output: 'updated'),
@@ -180,7 +180,7 @@ test('mail:wire --domain targets that host\'s instance, even pasted as a URL', f
         '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@example.com')),
         '*get deployment n8n-flow-example-com*' => Process::result(output: 'n8n-flow-example-com   1/1   1   1   1d'),
         '*get deployment windmill-*' => Process::result(output: '', exitCode: 1),
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*' => Process::result(output: ''),
     ]);
@@ -197,7 +197,7 @@ function mailWireRegistryFakes(array $rows): array
     return [
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode($rows))),
         '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@example.com')),
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*exec deploy/stalwart*' => Process::result(output: "235 2.7.0 Authentication succeeded.\n"),
         '*get deployment flow-*' => Process::result(output: '', exitCode: 1),
         '*' => Process::result(output: ''),

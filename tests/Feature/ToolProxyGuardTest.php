@@ -33,8 +33,8 @@ function proxyGuardCluster(bool $dnsChallenge = true, string $sslMode = 'strict'
         '*get secret traefik-acme-cloudflare -n traefik -o jsonpath*' => Process::result(output: base64_encode('cf-token-123')),
         '*-l app.kubernetes.io/name=external-dns*' => Process::result(output: (string) json_encode(['items' => [[
             'metadata' => [
-                'annotations' => ['larakube.io/dns-domain' => 'example.com', 'larakube.io/dns-owner-id' => 'owner'],
-                'labels' => ['larakube.io/dns-zone' => 'example-com'],
+                'annotations' => ['luchtech.dev/dns-domain' => 'example.com', 'luchtech.dev/dns-owner-id' => 'owner'],
+                'labels' => ['luchtech.dev/dns-zone' => 'example-com'],
             ],
             'status' => ['readyReplicas' => 1],
         ]]])),
@@ -121,8 +121,8 @@ test('a token that cannot read the zone\'s SSL mode still passes the guard (warn
         '*get secret traefik-acme-cloudflare -n traefik -o jsonpath*' => Process::result(output: base64_encode('cf-token-123')),
         '*-l app.kubernetes.io/name=external-dns*' => Process::result(output: (string) json_encode(['items' => [[
             'metadata' => [
-                'annotations' => ['larakube.io/dns-domain' => 'example.com', 'larakube.io/dns-owner-id' => 'owner'],
-                'labels' => ['larakube.io/dns-zone' => 'example-com'],
+                'annotations' => ['luchtech.dev/dns-domain' => 'example.com', 'luchtech.dev/dns-owner-id' => 'owner'],
+                'labels' => ['luchtech.dev/dns-zone' => 'example-com'],
             ],
             'status' => ['readyReplicas' => 1],
         ]]])),

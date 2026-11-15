@@ -54,7 +54,7 @@ function meetChecksum(string $rendered): string
         ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment'
             && ($doc['metadata']['name'] ?? null) === meetNames()->deployment());
 
-    return $deployment['spec']['template']['metadata']['annotations']['larakube.io/config-checksum'];
+    return $deployment['spec']['template']['metadata']['annotations']['luchtech.dev/config-checksum'];
 }
 
 test('meet manifest renders as valid multi-document YAML with no consumers', function (): void {

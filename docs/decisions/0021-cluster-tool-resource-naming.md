@@ -1,7 +1,41 @@
 # 0021 — Every cluster-tool resource is named `{component}-{instance}`
 
 **Status:** Accepted (2026-08-29) · **Amended (2026-09-20): the category is gone** ·
-**Amended (2026-10-15): `tool:rebind` mitigates the host-change cost**
+**Amended (2026-10-15): `tool:rebind` mitigates the host-change cost** ·
+**Amended (2026-11-16): one key prefix, `luchtech.dev/`, owned by `Labels`**
+
+## Amendment — every label and annotation key uses one prefix, owned by `Labels`
+
+**Context.** Keys had drifted into three spellings: `larakube.io/*` (tool identity, DNS
+zones, checksums), `larakube.dev/*` (workspaces, access grants, scoped RBAC) and bare
+`larakube-*` (`tool`, `storage`, `project`, `workspace`, `preview`). Neither domain is
+owned by the project (`larakube.io`/`.com` belong to others), and the brand itself may
+change. Worse, ~40 detection selectors were hand-written with the retired category
+values (`tool=mail`, `tool=git`, `tool=passwords`) while `ToolInstance::labels()` writes
+vendor values (`stalwart`, `forgejo`, `vaultwarden`), so a fresh install failed its own
+presence checks.
+
+**Decision.**
+- Every key LaraKube writes or reads is a constant on `App\Support\Labels`, built from
+  one `PREFIX = 'luchtech.dev'` — a domain the maintainer controls, so no other vendor's
+  keys can collide, and independent of the product name. No other file spells a key out;
+  Blade manifests use `{{ \App\Support\Labels::X }}`. Desktop mirrors the handful it
+  reads in `App\Support\LaraKubeLabels`.
+- Bare `larakube-*` keys are retired; `larakube-tool` (a category value) is dropped
+  outright, since `Labels::TOOL` already carries identity.
+- Tool selectors are built, never typed: `Labels::toolSelector(ClusterTool, ?component)`,
+  so a selector's value always equals what `labels()` writes.
+- The NFS StorageClass provisioner (`luchtech.dev/nfs`, `Labels::NFS_PROVISIONER`) shares
+  the prefix. Unlike a label it is frozen once any NFS volume exists.
+- Values are unchanged (`managed-by: larakube`, namespace names): those move only in an
+  actual rebrand.
+
+**Consequences.** No resource is recreated: Deployment selectors match only `app:`.
+Re-applying a manifest swaps the keys (`kubectl apply` drops the keys it applied before).
+Until a workload is re-applied it is invisible to label-based discovery, so a cluster
+re-runs every tool's `:init` and redeploys every project once after upgrading; there is
+no fallback to the old keys (pre-release, one cluster). Renaming the prefix again is a
+one-line change plus that same re-apply — except the NFS provisioner.
 
 ## Amendment — `tool:rebind` mitigates the hard-cutover cost for a live host change
 

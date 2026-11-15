@@ -58,7 +58,7 @@ class WorkspaceOpenCommand extends Command
             return $this->failWith("No workspace named '{$name}' on that server.", reported: true);
         }
 
-        $framework = AppFramework::tryFrom((string) ($found['metadata']['annotations']['larakube.dev/workspace-framework'] ?? '')) ?? AppFramework::LARAVEL;
+        $framework = AppFramework::tryFrom((string) ($found['metadata']['annotations'][\App\Support\Labels::WORKSPACE_FRAMEWORK] ?? '')) ?? AppFramework::LARAVEL;
 
         $namespace = WorkspaceSpec::namespaceFor($name);
 

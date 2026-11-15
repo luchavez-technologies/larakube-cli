@@ -221,7 +221,7 @@ test('rotating the Commons S3 secret changes the synapse config-checksum', funct
             ->first(fn (array $doc) => ($doc['kind'] ?? null) === 'Deployment'
                 && ($doc['metadata']['name'] ?? null) === 'synapse-chat-example-com');
 
-        return $synapse['spec']['template']['metadata']['annotations']['larakube.io/config-checksum'];
+        return $synapse['spec']['template']['metadata']['annotations']['luchtech.dev/config-checksum'];
     };
 
     // Without this the Secret would be rewritten but the pod never restarted,

@@ -15,8 +15,8 @@ afterEach(function (): void {
 function mailCreateBaseFakes(): array
 {
     return [
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
-        '*-l larakube.io/tool=webmail --no-headers*' => Process::result(output: '', exitCode: 1),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*-l luchtech.dev/tool=bulwark --no-headers*' => Process::result(output: '', exitCode: 1),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: '', exitCode: 1),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
@@ -98,7 +98,7 @@ test('mail:create falls back to the first configured domain when non-interactive
 
 test('mail:create requires installed stalwart', function (): void {
     ssoRegistered();
-    Process::fake(['*larakube.io/tool=mail*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*luchtech.dev/tool=stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:create')
         ->assertExitCode(1)
@@ -108,7 +108,7 @@ test('mail:create requires installed stalwart', function (): void {
 test('mail:create shows error when no domains configured', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
@@ -126,11 +126,11 @@ test('mail:create shows error when no domains configured', function (): void {
 test('mail:create creates account with given args', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: ''),
-        '*-l larakube.io/tool=webmail --no-headers*' => Process::result(output: ''),
+        '*-l luchtech.dev/tool=bulwark --no-headers*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);
 
@@ -154,11 +154,11 @@ test('mail:create creates account with given args', function (): void {
 test('mail:create shows the webmail URL when Bulwark is installed', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: ''),
-        '*-l larakube.io/tool=webmail --no-headers*' => Process::result(output: 'bulwark-webmail-example-com   1/1   1   1   10d'),
+        '*-l luchtech.dev/tool=bulwark --no-headers*' => Process::result(output: 'bulwark-webmail-example-com   1/1   1   1   10d'),
         '*' => Process::result(),
     ]);
 
@@ -180,7 +180,7 @@ test('mail:create shows the webmail URL when Bulwark is installed', function ():
 test('mail:create --sso creates a matching Zitadel identity', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
@@ -209,7 +209,7 @@ test('mail:create --sso creates a matching Zitadel identity', function (): void 
 test('mail:create --sso errors when Zitadel is not installed', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: ''),
@@ -235,7 +235,7 @@ test('mail:create --sso errors when Zitadel is not installed', function (): void
 test('mail:create syncs to Zitadel BY DEFAULT when Zitadel is installed and no flag is given', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
@@ -271,7 +271,7 @@ test('mail:create syncs to Zitadel BY DEFAULT when Zitadel is installed and no f
 test('mail:create --no-sso skips the Zitadel identity even when Zitadel is installed', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),

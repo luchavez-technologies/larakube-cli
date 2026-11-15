@@ -127,7 +127,7 @@ test('a CSP change rolls the pod instead of applying silently', function (): voi
 
 test('drive:office:init strips office. prefix from domain and detects labeled deployment', function (): void {
     Process::fake([
-        '*get deployment -l larakube.io/tool=ocis*' => Process::result(output: 'deployment.apps/ocis-drive-example-com'),
+        '*get deployment -l luchtech.dev/tool=ocis*' => Process::result(output: 'deployment.apps/ocis-drive-example-com'),
         '*get deployment ocis-drive-example-com*' => Process::result(output: 'deployment.apps/ocis-drive-example-com'),
         '*get secret*' => Process::result(output: '', exitCode: 1),
         '*create secret*' => Process::result(output: 'secret created'),

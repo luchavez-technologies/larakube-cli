@@ -76,7 +76,7 @@ test('the manifest names every object from ToolInstance and the claim matches th
 
     expect($deployment['metadata']['name'])->toBe('stalwart-send-example-com')
         ->and($deployment['spec']['selector']['matchLabels']['app'])->toBe('stalwart-send-example-com')
-        ->and($deployment['spec']['template']['metadata']['labels']['larakube.io/tool'])->toBe('stalwart')
+        ->and($deployment['spec']['template']['metadata']['labels']['luchtech.dev/tool'])->toBe('stalwart')
         ->and($pvc['metadata']['name'])->toBe('stalwart-storage-send-example-com')
         ->and(collect($deployment['spec']['template']['spec']['volumes'])->firstWhere('name', 'stalwart-data')['persistentVolumeClaim']['claimName'])->toBe('stalwart-storage-send-example-com')
         ->and($env['STALWART_RECOVERY_ADMIN']['valueFrom']['secretKeyRef']['name'])->toBe('stalwart-secrets-send-example-com')
@@ -87,7 +87,7 @@ test('the manifest names every object from ToolInstance and the claim matches th
         ->and($ingress['spec']['rules'][0]['http']['paths'][0]['backend']['service']['name'])->toBe('stalwart-send-example-com');
 
     foreach ([$deployment, $pvc, $ingress, ...$services->all()] as $object) {
-        expect($object['metadata']['labels']['larakube.io/instance'])->toBe('send-example-com');
+        expect($object['metadata']['labels']['luchtech.dev/instance'])->toBe('send-example-com');
     }
 });
 
@@ -95,7 +95,7 @@ test('the Ingress renders from the host alone, the way the local re-point does',
     $rendered = view('k8s.stalwart.ingress', ['host' => 'send.example.com'])->render();
 
     expect($rendered)->toContain('name: stalwart-send-example-com')
-        ->and($rendered)->toContain('larakube.io/instance: send-example-com');
+        ->and($rendered)->toContain('luchtech.dev/instance: send-example-com');
 });
 
 test('teardown names every resource the manifest declares', function (): void {

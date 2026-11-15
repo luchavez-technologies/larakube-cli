@@ -2050,7 +2050,7 @@ class ConfigData extends Data
         $tmpFile = $temporaryDirectory->path().'/larakube-cfg.json';
         file_put_contents($tmpFile, $json);
         $appName = $this->getName();
-        $command = Kubectl::current()->prefix()." create secret generic larakube-blueprint -n {$namespace} --from-file=.larakube.json={$tmpFile} --dry-run=client -o yaml | kubectl label -f - --local larakube.io/project={$appName} larakube.io/config=blueprint -o yaml | kubectl apply -f -";
+        $command = Kubectl::current()->prefix()." create secret generic larakube-blueprint -n {$namespace} --from-file=.larakube.json={$tmpFile} --dry-run=client -o yaml | kubectl label -f - --local ".\App\Support\Labels::PROJECT."={$appName} ".\App\Support\Labels::CONFIG.'=blueprint -o yaml | kubectl apply -f -';
         $result = Process::run($command)->successful();
         $temporaryDirectory->delete();
 
@@ -2061,7 +2061,7 @@ class ConfigData extends Data
     {
         $command = $namespace
             ? Kubectl::current()->prefix()." get secret larakube-blueprint -n {$namespace} -o jsonpath=".escapeshellarg('{.data.\\.larakube\\.json}')
-            : Kubectl::current()->prefix()." get secrets -A -l larakube.io/project={$appName},larakube.io/config=blueprint -o jsonpath=".escapeshellarg('{.items[0].data.\\.larakube\\.json}');
+            : Kubectl::current()->prefix().' get secrets -A -l '.\App\Support\Labels::PROJECT."={$appName},".\App\Support\Labels::CONFIG.'=blueprint -o jsonpath='.escapeshellarg('{.items[0].data.\\.larakube\\.json}');
 
         $encoded = Process::run($command)->output();
         if ($encoded === '') {

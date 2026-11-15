@@ -5,7 +5,7 @@ use Illuminate\Support\Facades\Process;
 test('tool:init --tool=livekit deploys the shared LiveKit SFU', function (): void {
     Process::fake([
         '*get secret livekit-secrets-*' => Process::result(output: '', exitCode: 1),
-        '*larakube.io/component=lk-jwt*' => Process::result(output: ''),
+        '*luchtech.dev/component=lk-jwt*' => Process::result(output: ''),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create secret*' => Process::result(output: 'secret created'),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -23,7 +23,7 @@ test('tool:init --tool=livekit deploys the shared LiveKit SFU', function (): voi
 test('a fresh tool:init --tool=livekit points you at the wire command instead of pretending it is usable', function (): void {
     Process::fake([
         '*get secret livekit-secrets-*' => Process::result(output: '', exitCode: 1),
-        '*larakube.io/component=lk-jwt*' => Process::result(output: ''),
+        '*luchtech.dev/component=lk-jwt*' => Process::result(output: ''),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create secret*' => Process::result(output: 'secret created'),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -72,7 +72,7 @@ test('tool:init --tool=livekit fails when LiveKit never becomes Ready instead of
     // node can never schedule — the failure mode a rename walks straight into.
     Process::fake([
         '*get secret livekit-secrets-*' => Process::result(output: '', exitCode: 1),
-        '*larakube.io/component=lk-jwt*' => Process::result(output: ''),
+        '*luchtech.dev/component=lk-jwt*' => Process::result(output: ''),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create secret*' => Process::result(output: 'secret created'),
         '*apply -f *' => Process::result(output: 'applied'),

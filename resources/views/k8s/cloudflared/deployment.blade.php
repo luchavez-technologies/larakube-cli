@@ -5,7 +5,7 @@ metadata:
   namespace: {{ $namespace }}
   labels:
     app.kubernetes.io/managed-by: larakube
-    larakube.dev/role: share
+    {{ \App\Support\Labels::ROLE }}: share
 type: Opaque
 stringData:
   TUNNEL_TOKEN: {!! json_encode($token) !!}
@@ -17,7 +17,7 @@ metadata:
   namespace: {{ $namespace }}
   labels:
     app.kubernetes.io/managed-by: larakube
-    larakube.dev/role: share
+    {{ \App\Support\Labels::ROLE }}: share
 spec:
   replicas: 1
   selector:
@@ -27,7 +27,7 @@ spec:
     metadata:
       labels:
         app: {{ $name }}
-        larakube.dev/role: share
+        {{ \App\Support\Labels::ROLE }}: share
     spec:
       containers:
         - name: cloudflared

@@ -73,7 +73,7 @@ test('adding meet to a project does not fail when Meet is not installed', functi
     // `larakube add meet` must work offline / before tool:init --tool=livekit. Falling back to
     // the declared placeholders is correct; blowing up is not.
     Process::fake([
-        '*-l larakube.io/tool=meet --no-headers*' => Process::result(output: ''),
+        '*-l luchtech.dev/tool=livekit --no-headers*' => Process::result(output: ''),
     ]);
 
     $method = new ReflectionMethod(LaravelFeature::MEET, 'resolveMeetCredentials');
@@ -88,7 +88,7 @@ test('when Meet is installed the project gets its own consumer key', function ()
     ]]);
 
     Process::fake([
-        '*-l larakube.io/tool=meet --no-headers*' => Process::result(output: 'livekit-meet-example-com 1/1'),
+        '*-l luchtech.dev/tool=livekit --no-headers*' => Process::result(output: 'livekit-meet-example-com 1/1'),
         '*get secret livekit-secrets-meet-example-com*' => Process::result(output: base64_encode($registry)),
         '*create secret*' => Process::result(output: 'applied'),
         '*apply -f *' => Process::result(output: 'applied'),
@@ -107,7 +107,7 @@ test('when Meet is installed the project gets its own consumer key', function ()
 
 test('the deployed Meet host is found under its real, host-derived instance', function (): void {
     Process::fake([
-        '*-l larakube.io/tool=meet --no-headers*' => Process::result(output: 'livekit-meet-example-com 1/1'),
+        '*-l luchtech.dev/tool=livekit --no-headers*' => Process::result(output: 'livekit-meet-example-com 1/1'),
         '*get secret livekit-secrets-meet-example-com*' => Process::result(output: base64_encode(json_encode([]))),
         '*create secret*' => Process::result(output: 'applied'),
         '*apply -f *' => Process::result(output: 'applied'),

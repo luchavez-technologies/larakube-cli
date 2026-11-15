@@ -100,15 +100,15 @@ test('every vpn resource carries the identity labels discovery selects on', func
     // Dropping the category makes component names collide with upstream's own
     // Deployments, so identity has to live in the labels rather than the name.
     // Note: SharedClusterService::VPN's own presenceProbe() literal still
-    // selects on the pre-canonical `larakube.io/tool=vpn` — a pre-existing
+    // selects on the pre-canonical `luchtech.dev/tool=netbird` — a pre-existing
     // divergence shared by every already-migrated tool (mail, sso, secrets,
     // git), not something this case removal introduces or fixes.
     foreach (vpnRenderedResources() as $resource) {
         expect($resource['labels'])
-            ->toHaveKey('larakube.io/tool', 'netbird')
-            ->toHaveKey('larakube.io/instance', 'vpn-example-com')
-            ->toHaveKey('larakube.io/managed-by', 'larakube')
-            ->toHaveKey('larakube.io/component');
+            ->toHaveKey('luchtech.dev/tool', 'netbird')
+            ->toHaveKey('luchtech.dev/instance', 'vpn-example-com')
+            ->toHaveKey('luchtech.dev/managed-by', 'larakube')
+            ->toHaveKey('luchtech.dev/component');
     }
 });
 

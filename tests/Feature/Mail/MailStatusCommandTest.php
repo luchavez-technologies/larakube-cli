@@ -46,7 +46,7 @@ test('mail:status --json reports zero tools wired when Stalwart is installed but
     ]);
 
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get deployment*' => Process::result(output: '', exitCode: 1),
         '*get secret*' => Process::result(output: '', exitCode: 1),
         '*' => Process::result(),
@@ -69,7 +69,7 @@ test('mail:status --json correctly reports one tool wired with exact row attribu
     ]);
 
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get deployment*vaultwarden*' => Process::result(output: 'vaultwarden-vault-example-com   1/1   1   1   10d'),
         '*vaultwarden-smtp*' => Process::result(output: base64_encode('mail.example.com')),
         '*get deployment*' => Process::result(output: '', exitCode: 1),
@@ -99,7 +99,7 @@ test('mail:status renders table in non-json mode when tools are wired', function
     ]);
 
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get deployment*vaultwarden*' => Process::result(output: 'vaultwarden-vault-example-com   1/1   1   1   10d'),
         '*vaultwarden-smtp*' => Process::result(output: base64_encode('mail.example.com')),
         '*get deployment*' => Process::result(output: '', exitCode: 1),
@@ -119,7 +119,7 @@ test('mail:status correctly handles Zitadel special-cased API wiring path', func
     ]);
 
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
         '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('zitadel-pat')),
         '*get deployment*' => Process::result(output: '', exitCode: 1),
@@ -159,7 +159,7 @@ test('mail:status omits capable-and-installed tool when its wiring secret is abs
     ]);
 
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         // Both vaultwarden, grafana, and zitadel are installed
         '*get deployment*vaultwarden*' => Process::result(output: 'vaultwarden-vault-example-com   1/1   1   1   10d'),
         '*get deployment*grafana*' => Process::result(output: 'grafana-grafana-example-com   1/1   1   1   10d'),

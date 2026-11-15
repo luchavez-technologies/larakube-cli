@@ -1012,7 +1012,7 @@ test('sso:wire refuses webmail — Bulwark SSO is disabled (see docs/decisions/0
     ssoRegistered();
     Process::fake([
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),
-        '*-l larakube.io/tool=webmail --no-headers*' => Process::result(output: 'bulwark-webmail-example-com   1/1   1   1   10d'),
+        '*-l luchtech.dev/tool=bulwark --no-headers*' => Process::result(output: 'bulwark-webmail-example-com   1/1   1   1   10d'),
     ]);
 
     $this->artisan('sso:wire', ['--tool' => 'bulwark', '--no-interaction' => true])

@@ -5,7 +5,7 @@ metadata:
   name: larakube-dashboard
   namespace: {{ $namespace }}
   labels:
-    larakube.io/managed-by: larakube
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -27,7 +27,7 @@ kind: ClusterRoleBinding
 metadata:
   name: larakube-dashboard-binding-{{ $namespace }}
   labels:
-    larakube.io/managed-by: larakube
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
 subjects:
   - kind: ServiceAccount
     name: larakube-dashboard

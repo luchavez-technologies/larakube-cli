@@ -568,7 +568,7 @@ class UpCommand extends Command
         // lacking the label, so every other workload scales as it did before.
         // The same goes for a share's tunnel connector, which this overlay does not contain either.
         $this->withSpin('Preparing cluster for architectural update...', function () use ($namespace): void {
-            Process::run(Kubectl::current()->prefix()." scale deployment --replicas=0 -l 'larakube-preview!=true,larakube.dev/role!=share' -n $namespace");
+            Process::run(Kubectl::current()->prefix().' scale deployment --replicas=0 -l '.Kubectl::arg(\App\Support\Labels::PREVIEW.'!=true,'.\App\Support\Labels::ROLE.'!=share')." -n $namespace");
         });
 
         $this->runStreaming($this->kustomizeApplyCommand($path));
@@ -582,12 +582,12 @@ class UpCommand extends Command
 
         // 5. Restart deployments to pick up new ConfigMap/Secret changes
         $this->laraKubeInfo('Restarting deployments to apply potential configuration changes...');
-        $this->runStreaming(Kubectl::current()->prefix()." rollout restart deployment -l 'larakube-preview!=true,larakube.dev/role!=share' -n $namespace");
+        $this->runStreaming(Kubectl::current()->prefix().' rollout restart deployment -l '.Kubectl::arg(\App\Support\Labels::PREVIEW.'!=true,'.\App\Support\Labels::ROLE.'!=share')." -n $namespace");
 
         // The links and the route check below describe a running app, so wait for it. A project that is shared
         // also answers 502 through its tunnel until its pods are ready.
         $this->withSpin('Waiting for the app to be ready...', function () use ($namespace): bool {
-            return Process::timeout(150)->run(Kubectl::current()->prefix()." rollout status deployment -l 'larakube-preview!=true,larakube.dev/role!=share' -n $namespace --timeout=120s")->successful();
+            return Process::timeout(150)->run(Kubectl::current()->prefix().' rollout status deployment -l '.Kubectl::arg(\App\Support\Labels::PREVIEW.'!=true,'.\App\Support\Labels::ROLE.'!=share')." -n $namespace --timeout=120s")->successful();
         });
 
         // 6. Proactive HTTPS Trust Check

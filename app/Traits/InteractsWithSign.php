@@ -22,7 +22,7 @@ trait InteractsWithSign
 
     protected function isSignInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube-tool=sign');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, \App\Support\Labels::toolSelector(ClusterTool::DOCUMENSO));
     }
 
     protected function readSignSecret(string $kubectl, ToolInstance $names, string $key, ?string $secret = null): ?string

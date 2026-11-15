@@ -129,7 +129,7 @@ test('the preview overlay runs the production workload on its own host', functio
     // The label a plain `larakube up` uses to spare this pod from its
     // scale-to-zero. Without it, `up` parks preview at zero replicas and
     // nothing in the local overlay ever restores it.
-    expect($deployment['metadata']['labels']['larakube-preview'] ?? null)->toBe('true');
+    expect($deployment['metadata']['labels']['luchtech.dev/preview'] ?? null)->toBe('true');
 
     // A .test host can never pass an ACME HTTP-01 challenge — asking for one
     // leaves Traefik serving its built-in dev cert instead of the LaraKube
@@ -164,7 +164,7 @@ test('the cloud overlay is unaffected by the preview parameters', function (): v
     // already target, and must NOT carry the local-only preview label.
     expect($production)->toContain('image: spa:latest')
         ->and($production)->not->toContain('web-preview')
-        ->and($production)->not->toContain('larakube-preview')
+        ->and($production)->not->toContain('luchtech.dev/preview')
         // …and it still asks for a real certificate.
         ->and($production)->toContain('certresolver: letsencrypt');
 });

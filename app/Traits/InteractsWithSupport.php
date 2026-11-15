@@ -19,7 +19,7 @@ trait InteractsWithSupport
 
     protected function isSupportInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=support,larakube.io/component=chatwoot');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, \App\Support\Labels::toolSelector(ClusterTool::CHATWOOT, 'chatwoot'));
     }
 
     protected function readSupportSecret(string $kubectl, string $ns, string $secret, string $key): ?string

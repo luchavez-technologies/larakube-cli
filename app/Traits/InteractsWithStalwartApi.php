@@ -58,13 +58,11 @@ trait InteractsWithStalwartApi
     protected function stalwartPodName(string $kubectl, string $ns): string
     {
         // By identity label, which avoids needing to resolve the instance just
-        // to find the pod. Checks both legacy 'mail' and canonical 'stalwart'.
+        // to find the pod.
         $k = Kubectl::fromPrefix($kubectl);
-        foreach (['larakube.io/tool=mail', 'larakube.io/tool=stalwart'] as $selector) {
-            $lines = array_values(array_filter(array_map('trim', explode("\n", $k->raw(['get', 'pod', '-l', $selector, '-n', $ns, '-o', 'name', '--no-headers'])->output))));
-            if ($lines !== []) {
-                return $lines[0];
-            }
+        $lines = array_values(array_filter(array_map('trim', explode("\n", $k->raw(['get', 'pod', '-l', \App\Support\Labels::toolSelector(ClusterTool::STALWART), '-n', $ns, '-o', 'name', '--no-headers'])->output))));
+        if ($lines !== []) {
+            return $lines[0];
         }
 
         return 'deploy/'.ClusterTool::STALWART->deploymentName($this->resolveMailInstance($kubectl));

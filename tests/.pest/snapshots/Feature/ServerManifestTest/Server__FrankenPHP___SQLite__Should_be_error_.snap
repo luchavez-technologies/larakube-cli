@@ -191,8 +191,8 @@ kind: Namespace
 metadata:
   name: franken-sqlite-local
   labels:
-    larakube.io/project: franken-sqlite
-    larakube.io/managed-by: larakube
+    luchtech.dev/project: franken-sqlite
+    luchtech.dev/managed-by: larakube
 
 ---
 
@@ -201,7 +201,7 @@ kind: PersistentVolume
 metadata:
   name: franken-sqlite-laravel-storage-pv
   labels:
-    larakube-project: franken-sqlite
+    luchtech.dev/project: franken-sqlite
 spec:
   capacity:
     storage: 1Gi
@@ -218,7 +218,7 @@ kind: PersistentVolume
 metadata:
   name: franken-sqlite-laravel-data-pv
   labels:
-    larakube-project: franken-sqlite
+    luchtech.dev/project: franken-sqlite
 spec:
   capacity:
     storage: 1Gi

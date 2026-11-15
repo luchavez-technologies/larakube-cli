@@ -42,7 +42,7 @@ test('tool:init --tool=directus labels its Secret as directus, not the DATA cate
     // Regression guard: DataInitCommand used to pass ClusterTool::DATA (the
     // multi-engine dispatch placeholder, not a real tool) straight into
     // ToolInstance::forInstance(), so every PocketBase/Directus/WordPress
-    // deploy wrote `larakube.io/tool: data` instead of the engine actually
+    // deploy wrote `luchtech.dev/tool: data` instead of the engine actually
     // running — confirmed still live via a direct label check on
     // larakube-159.89.205.239, same bug class already fixed for Flow.
     Process::fake([
@@ -65,8 +65,8 @@ test('tool:init --tool=directus labels its Secret as directus, not the DATA cate
         '--no-interaction' => true,
     ])->assertExitCode(0);
 
-    Process::assertRan(fn ($process) => (appliedSecret($process)['labels']['larakube.io/tool'] ?? null) === 'directus');
-    Process::assertNotRan(fn ($process) => (appliedSecret($process)['labels']['larakube.io/tool'] ?? null) === 'data');
+    Process::assertRan(fn ($process) => (appliedSecret($process)['labels']['luchtech.dev/tool'] ?? null) === 'directus');
+    Process::assertNotRan(fn ($process) => (appliedSecret($process)['labels']['luchtech.dev/tool'] ?? null) === 'data');
 });
 
 test('data manifest wires the Commons Redis via the generic REDIS var, not CACHE_REDIS', function (): void {

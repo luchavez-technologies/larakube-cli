@@ -25,13 +25,13 @@ trait InteractsWithVault
         // By label: the Deployment is named per instance.
         $k = Kubectl::fromPrefix($kubectl);
         $found = $k->raw(
-            ['get', 'deployment', '-l', 'larakube.io/tool=passwords', '-n', $ns, '--no-headers', '--ignore-not-found'],
+            ['get', 'deployment', '-l', \App\Support\Labels::toolSelector(ClusterTool::VAULTWARDEN), '-n', $ns, '--no-headers', '--ignore-not-found'],
         );
         if (trim($found->output) !== '') {
             return true;
         }
 
-        return $k->hasDeploymentLabelled($ns, 'larakube.io/tool=vaultwarden');
+        return $k->hasDeploymentLabelled($ns, \App\Support\Labels::toolSelector(ClusterTool::VAULTWARDEN));
     }
 
     /**

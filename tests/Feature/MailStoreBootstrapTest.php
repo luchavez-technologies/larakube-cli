@@ -44,7 +44,7 @@ test('tool:init --tool=stalwart local wires BlobStore, InMemoryStore, and Search
         '*create secret generic stalwart-secrets*' => Process::result(output: 'secret created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   1s'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1s'),
         '*exec *' => Process::result(output: 'success'),
         '*' => Process::result(),
     ]);
@@ -108,7 +108,7 @@ test('tool:init --tool=stalwart local falls back to SearchStore "Default" (reuse
         '*create secret generic stalwart-secrets*' => Process::result(output: 'secret created'),
         '*apply -f *' => Process::result(output: 'applied'),
         '*rollout *' => Process::result(output: 'rollout success'),
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   1s'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1s'),
         '*exec *' => Process::result(output: 'success'),
         '*' => Process::result(),
     ]);
@@ -148,7 +148,7 @@ test('tool:init --tool=stalwart explains why it skipped Commons store auto-confi
 
 test('stalwart:show detects a local wizard-skip install and shows "already configured" instead of wizard instructions', function (): void {
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   1d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get configmap stalwart-config*' => Process::result(output: 'stalwart-config   1   1d'),
@@ -186,7 +186,7 @@ test('stalwart:show detects a local wizard-skip install and shows "already confi
 
 test('stalwart:show falls back to the original wizard hint when stalwart-config does not exist', function (): void {
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   1d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   1d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get configmap stalwart-config*' => Process::result(output: '', exitCode: 1),

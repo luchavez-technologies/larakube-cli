@@ -41,7 +41,7 @@ class WorkspaceListCommand extends Command
         }
 
         $kubectl = $this->workspaceKubectl($server['context']);
-        $result = $kubectl->raw(['get', 'namespace', '-l', 'larakube-workspace', '-o', 'json', '--request-timeout=15s']);
+        $result = $kubectl->raw(['get', 'namespace', '-l', \App\Support\Labels::WORKSPACE, '-o', 'json', '--request-timeout=15s']);
 
         if (! $result->ok) {
             return $this->finish(false, [], "Could not reach the server's Kubernetes ({$server['context']}).");
@@ -50,24 +50,24 @@ class WorkspaceListCommand extends Command
         $workspaces = [];
 
         foreach ($result->json()['items'] ?? [] as $namespace) {
-            $name = (string) ($namespace['metadata']['labels']['larakube-workspace'] ?? '');
+            $name = (string) ($namespace['metadata']['labels'][\App\Support\Labels::WORKSPACE] ?? '');
             $notes = $namespace['metadata']['annotations'] ?? [];
             $ns = WorkspaceSpec::namespaceFor($name);
             $deployment = $kubectl->raw(['get', 'deployment', 'workspace', '-n', $ns, '-o', 'json', '--ignore-not-found'])->json();
             $wanted = (int) ($deployment['spec']['replicas'] ?? 0);
             $ready = (int) ($deployment['status']['readyReplicas'] ?? 0);
 
-            $framework = AppFramework::tryFrom((string) ($notes['larakube.dev/workspace-framework'] ?? '')) ?? AppFramework::LARAVEL;
+            $framework = AppFramework::tryFrom((string) ($notes[\App\Support\Labels::WORKSPACE_FRAMEWORK] ?? '')) ?? AppFramework::LARAVEL;
 
             $workspaces[] = [
                 'name' => $name,
                 'namespace' => $ns,
-                'repo' => (string) ($notes['larakube.dev/workspace-repo'] ?? ''),
-                'branch' => (string) ($notes['larakube.dev/workspace-branch'] ?? ''),
-                'size' => (string) ($notes['larakube.dev/workspace-size'] ?? ''),
+                'repo' => (string) ($notes[\App\Support\Labels::WORKSPACE_REPO] ?? ''),
+                'branch' => (string) ($notes[\App\Support\Labels::WORKSPACE_BRANCH] ?? ''),
+                'size' => (string) ($notes[\App\Support\Labels::WORKSPACE_SIZE] ?? ''),
                 'framework' => $framework->value,
-                'runtime' => (string) ($notes['larakube.dev/workspace-runtime'] ?? $framework->workspaceRuntime()->value),
-                'runtimeVersion' => (string) ($notes['larakube.dev/workspace-runtime-version'] ?? ''),
+                'runtime' => (string) ($notes[\App\Support\Labels::WORKSPACE_RUNTIME] ?? $framework->workspaceRuntime()->value),
+                'runtimeVersion' => (string) ($notes[\App\Support\Labels::WORKSPACE_RUNTIME_VERSION] ?? ''),
                 'devCommand' => $framework->devCommand(),
                 'devPorts' => $framework->devPorts(),
                 'status' => match (true) {

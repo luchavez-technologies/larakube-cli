@@ -29,8 +29,7 @@ metadata:
   name: {{ $deploymentName }}
   namespace: larakube-shared
   labels:
-    app: {{ $deploymentName }}
-    larakube-tool: crm{!! $labels('server') !!}
+    app: {{ $deploymentName }}{!! $labels('server') !!}
 spec:
   replicas: 1
   strategy:

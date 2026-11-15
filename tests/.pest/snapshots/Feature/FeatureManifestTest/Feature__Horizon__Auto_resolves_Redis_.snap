@@ -321,8 +321,8 @@ kind: Namespace
 metadata:
   name: horizon-auto-redis-local
   labels:
-    larakube.io/project: horizon-auto-redis
-    larakube.io/managed-by: larakube
+    luchtech.dev/project: horizon-auto-redis
+    luchtech.dev/managed-by: larakube
 
 ---
 
@@ -331,7 +331,7 @@ kind: PersistentVolume
 metadata:
   name: horizon-auto-redis-laravel-storage-pv
   labels:
-    larakube-project: horizon-auto-redis
+    luchtech.dev/project: horizon-auto-redis
 spec:
   capacity:
     storage: 1Gi
@@ -348,7 +348,7 @@ kind: PersistentVolume
 metadata:
   name: horizon-auto-redis-laravel-data-pv
   labels:
-    larakube-project: horizon-auto-redis
+    luchtech.dev/project: horizon-auto-redis
 spec:
   capacity:
     storage: 1Gi

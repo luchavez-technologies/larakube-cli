@@ -93,7 +93,7 @@ test('tool:init --tool=external-dns stamps the deployed manifest with the provid
     $this->artisan('tool:init --tool=external-dns prod --context=ctx --cloudflare-token=t --no-interaction --force')
         ->assertExitCode(0);
 
-    expect($appliedManifest)->toContain('larakube.io/dns-provider: cloudflare');
+    expect($appliedManifest)->toContain('luchtech.dev/dns-provider: cloudflare');
 });
 
 test('tool:init --tool=external-dns auto-names a multi-zone instance after the environment when no human is present to ask', function (): void {
@@ -225,8 +225,8 @@ test('tool:init --tool=external-dns refuses when a zone in scope is already mana
         '*get deployments*' => Process::result(output: (string) json_encode(['items' => [[
             'metadata' => [
                 'name' => 'external-dns-example-com',
-                'labels' => ['larakube.io/dns-zone' => 'example-com'],
-                'annotations' => ['larakube.io/dns-domain' => 'example.com'],
+                'labels' => ['luchtech.dev/dns-zone' => 'example-com'],
+                'annotations' => ['luchtech.dev/dns-domain' => 'example.com'],
             ],
             'status' => ['readyReplicas' => 1],
         ]]])),
@@ -323,10 +323,10 @@ test('external-dns:remove warns that existing DNS records survive removal', func
         '*get deployments*' => Process::result(output: (string) json_encode(['items' => [[
             'metadata' => [
                 'name' => 'external-dns-example-com',
-                'labels' => ['larakube.io/dns-zone' => 'example-com'],
+                'labels' => ['luchtech.dev/dns-zone' => 'example-com'],
                 'annotations' => [
-                    'larakube.io/dns-domain' => 'example.com',
-                    'larakube.io/dns-owner-id' => 'larakube-abc12345-example-com',
+                    'luchtech.dev/dns-domain' => 'example.com',
+                    'luchtech.dev/dns-owner-id' => 'larakube-abc12345-example-com',
                 ],
             ],
             'status' => ['readyReplicas' => 1],
@@ -347,8 +347,8 @@ test('external-dns:remove rejects a zone this cluster does not manage', function
         '*get deployments*' => Process::result(output: (string) json_encode(['items' => [[
             'metadata' => [
                 'name' => 'external-dns-example-com',
-                'labels' => ['larakube.io/dns-zone' => 'example-com'],
-                'annotations' => ['larakube.io/dns-domain' => 'example.com'],
+                'labels' => ['luchtech.dev/dns-zone' => 'example-com'],
+                'annotations' => ['luchtech.dev/dns-domain' => 'example.com'],
             ],
             'status' => ['readyReplicas' => 1],
         ]]])),
@@ -365,8 +365,8 @@ test('external-dns:remove refuses a bare --zone= that is part of a multi-zone gr
         '*get deployments*' => Process::result(output: (string) json_encode(['items' => [[
             'metadata' => [
                 'name' => 'external-dns-shared',
-                'labels' => ['larakube.io/dns-zone' => 'shared'],
-                'annotations' => ['larakube.io/dns-domain' => 'ourfridays.com,larakube.app'],
+                'labels' => ['luchtech.dev/dns-zone' => 'shared'],
+                'annotations' => ['luchtech.dev/dns-domain' => 'ourfridays.com,larakube.app'],
             ],
             'status' => ['readyReplicas' => 1],
         ]]])),
@@ -393,8 +393,8 @@ test('external-dns:remove --group= removes every zone in a multi-zone instance',
         '*get deployments*' => Process::result(output: (string) json_encode(['items' => [[
             'metadata' => [
                 'name' => 'external-dns-shared',
-                'labels' => ['larakube.io/dns-zone' => 'shared'],
-                'annotations' => ['larakube.io/dns-domain' => 'ourfridays.com,larakube.app'],
+                'labels' => ['luchtech.dev/dns-zone' => 'shared'],
+                'annotations' => ['luchtech.dev/dns-domain' => 'ourfridays.com,larakube.app'],
             ],
             'status' => ['readyReplicas' => 1],
         ]]])),
@@ -420,10 +420,10 @@ test('external-dns:list surfaces the owner id, which is how zone conflicts are d
         '*get deployments*' => Process::result(output: (string) json_encode(['items' => [[
             'metadata' => [
                 'name' => 'external-dns-example-com',
-                'labels' => ['larakube.io/dns-zone' => 'example-com'],
+                'labels' => ['luchtech.dev/dns-zone' => 'example-com'],
                 'annotations' => [
-                    'larakube.io/dns-domain' => 'example.com',
-                    'larakube.io/dns-owner-id' => 'larakube-abc12345-example-com',
+                    'luchtech.dev/dns-domain' => 'example.com',
+                    'luchtech.dev/dns-owner-id' => 'larakube-abc12345-example-com',
                 ],
             ],
             'status' => ['readyReplicas' => 1],
@@ -440,7 +440,7 @@ test('external-dns:list surfaces the owner id, which is how zone conflicts are d
         ->and($payload[0]['zone'])->toBe('example.com')
         ->and($payload[0]['owner'])->toBe('larakube-abc12345-example-com')
         ->and($payload[0]['ready'])->toBeTrue()
-        // No `larakube.io/dns-provider` annotation: this Deployment predates
+        // No `luchtech.dev/dns-provider` annotation: this Deployment predates
         // Route53 support, when Cloudflare was the only provider that existed.
         ->and($payload[0]['provider'])->toBe('cloudflare');
 });
@@ -450,11 +450,11 @@ test('external-dns:list reports the provider a zone is actually managed through'
         '*get deployments*' => Process::result(output: (string) json_encode(['items' => [[
             'metadata' => [
                 'name' => 'external-dns-example-com',
-                'labels' => ['larakube.io/dns-zone' => 'example-com'],
+                'labels' => ['luchtech.dev/dns-zone' => 'example-com'],
                 'annotations' => [
-                    'larakube.io/dns-domain' => 'example.com',
-                    'larakube.io/dns-owner-id' => 'larakube-abc12345-example-com',
-                    'larakube.io/dns-provider' => 'route53',
+                    'luchtech.dev/dns-domain' => 'example.com',
+                    'luchtech.dev/dns-owner-id' => 'larakube-abc12345-example-com',
+                    'luchtech.dev/dns-provider' => 'route53',
                 ],
             ],
             'status' => ['readyReplicas' => 1],
@@ -474,10 +474,10 @@ test('external-dns:list shows one row per zone for a multi-zone group, sharing t
         '*get deployments*' => Process::result(output: (string) json_encode(['items' => [[
             'metadata' => [
                 'name' => 'external-dns-shared',
-                'labels' => ['larakube.io/dns-zone' => 'shared'],
+                'labels' => ['luchtech.dev/dns-zone' => 'shared'],
                 'annotations' => [
-                    'larakube.io/dns-domain' => 'ourfridays.com,larakube.app',
-                    'larakube.io/dns-owner-id' => 'larakube-abc12345-shared',
+                    'luchtech.dev/dns-domain' => 'ourfridays.com,larakube.app',
+                    'luchtech.dev/dns-owner-id' => 'larakube-abc12345-shared',
                 ],
             ],
             'status' => ['readyReplicas' => 1],
@@ -541,7 +541,7 @@ test('tool:init --tool=external-dns manages a Route53 zone when --provider=route
         ->and(base64_decode($secret['data']['access_key_id']))->toBe('AKIAFAKE')
         ->and(base64_decode($secret['data']['secret_access_key']))->toBe('shh')
         ->and(base64_decode($secret['data']['region']))->toBe('us-west-2')
-        ->and($appliedManifest)->toContain('larakube.io/dns-provider: route53');
+        ->and($appliedManifest)->toContain('luchtech.dev/dns-provider: route53');
     Process::assertNotRan(fn ($process) => str_contains((string) $process->command, 'shh'));
 });
 
@@ -617,7 +617,7 @@ test('tool:init --tool=external-dns manages a Google Cloud DNS zone when --provi
     expect($secret['metadata']['name'])->toBe('google-dns-credential-example-com')
         ->and(base64_decode($secret['data']['project_id']))->toBe('my-gcp-project')
         ->and(json_decode(base64_decode($secret['data']['credentials.json']), true)['project_id'])->toBe('my-gcp-project')
-        ->and($appliedManifest)->toContain('larakube.io/dns-provider: google');
+        ->and($appliedManifest)->toContain('luchtech.dev/dns-provider: google');
 });
 
 test('tool:init --tool=external-dns --provider=google refuses non-interactively without gcloud', function (): void {

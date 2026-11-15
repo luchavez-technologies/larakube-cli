@@ -186,7 +186,7 @@ class OfficeInitCommand extends Command
             return true;
         }
 
-        if (trim(Process::run("{$kubectl} get deployment -l larakube.io/tool=ocis -n {$ns} -o name --ignore-not-found")->output()) !== '') {
+        if (trim(Process::run("{$kubectl} get deployment -l ".\App\Support\Labels::toolSelector(ClusterTool::OCIS)." -n {$ns} -o name --ignore-not-found")->output()) !== '') {
             return true;
         }
 

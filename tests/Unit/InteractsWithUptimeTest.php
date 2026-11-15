@@ -47,21 +47,21 @@ test('cloud Uptime host is null when none is configured for the env', function (
 });
 
 test('isUptimeInstalled reflects whether a Kuma Deployment exists', function (): void {
-    Process::fake(['kubectl get deployment -n larakube-shared -l larakube.io/tool=uptime --no-headers --ignore-not-found' => 'kuma-status-example-com   1/1   1   1   5d']);
+    Process::fake(['kubectl get deployment -n larakube-shared -l luchtech.dev/tool=kuma --no-headers --ignore-not-found' => 'kuma-status-example-com   1/1   1   1   5d']);
     expect(uptimeReader()->installed('kubectl', 'larakube-shared'))->toBeTrue();
 
-    Process::fake(['kubectl get deployment -n larakube-shared -l larakube.io/tool=uptime --no-headers --ignore-not-found' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['kubectl get deployment -n larakube-shared -l luchtech.dev/tool=kuma --no-headers --ignore-not-found' => Process::result(output: '', exitCode: 1)]);
     expect(uptimeReader()->installed('kubectl', 'larakube-shared'))->toBeFalse();
 });
 
 test('uptimeAccess is null when uptime is not installed, populated when it is', function (): void {
     $kubectl = 'KUBECONFIG='.escapeshellarg(home_path('.kube/config')).' kubectl';
 
-    Process::fake(["{$kubectl} get deployment -n larakube-shared -l larakube.io/tool=uptime --no-headers --ignore-not-found" => Process::result(output: '', exitCode: 1)]);
+    Process::fake(["{$kubectl} get deployment -n larakube-shared -l luchtech.dev/tool=kuma --no-headers --ignore-not-found" => Process::result(output: '', exitCode: 1)]);
     expect(uptimeReader()->access('local', null))->toBeNull();
 
     Process::fake([
-        "{$kubectl} get deployment -n larakube-shared -l larakube.io/tool=uptime --no-headers --ignore-not-found" => 'kuma-status-example-com   1/1   1   1   5d',
+        "{$kubectl} get deployment -n larakube-shared -l luchtech.dev/tool=kuma --no-headers --ignore-not-found" => 'kuma-status-example-com   1/1   1   1   5d',
     ]);
     $access = uptimeReader()->access('local', null);
 

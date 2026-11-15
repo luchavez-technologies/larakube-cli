@@ -50,8 +50,7 @@ trait InteractsWithMail
     {
         $k = Kubectl::fromPrefix($kubectl);
 
-        return $k->hasDeploymentLabelled($ns, 'larakube.io/tool=mail')
-            || $k->hasDeploymentLabelled($ns, 'larakube.io/tool=stalwart');
+        return $k->hasDeploymentLabelled($ns, \App\Support\Labels::toolSelector(ClusterTool::STALWART));
     }
 
     /**

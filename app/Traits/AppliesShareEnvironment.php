@@ -112,7 +112,7 @@ trait AppliesShareEnvironment
     protected function removeConnector(string $namespace): void
     {
         $this->withSpin('Stopping the tunnel connector...', function () use ($namespace): bool {
-            Process::run(Kubectl::current()->prefix()." delete deployment,secret -l larakube.dev/role=share -n {$namespace} --ignore-not-found");
+            Process::run(Kubectl::current()->prefix().' delete deployment,secret -l '.\App\Support\Labels::ROLE."=share -n {$namespace} --ignore-not-found");
 
             return true;
         });

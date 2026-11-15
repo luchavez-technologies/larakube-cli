@@ -89,12 +89,12 @@ test('every name comes from ToolInstance and carries the identity labels', funct
     $service = $byKind('Service')->first();
     $env = collect($server['spec']['template']['spec']['containers'][0]['env'])->keyBy('name');
 
-    expect($server['metadata']['labels']['larakube.io/tool'])->toBe('twenty')
-        ->and($server['metadata']['labels']['larakube.io/component'])->toBe('twenty')
-        ->and($server['metadata']['labels']['larakube.io/instance'])->toBe('crm-example-com')
-        ->and($server['metadata']['labels']['larakube-tool'])->toBe('crm')
-        ->and($server['spec']['template']['metadata']['labels']['larakube.io/instance'])->toBe('crm-example-com')
-        ->and($worker['metadata']['labels']['larakube.io/component'])->toBe('twenty-worker')
+    expect($server['metadata']['labels']['luchtech.dev/tool'])->toBe('twenty')
+        ->and($server['metadata']['labels']['luchtech.dev/component'])->toBe('twenty')
+        ->and($server['metadata']['labels']['luchtech.dev/instance'])->toBe('crm-example-com')
+        ->and($server['metadata']['labels'])->not->toHaveKey('larakube-tool')
+        ->and($server['spec']['template']['metadata']['labels']['luchtech.dev/instance'])->toBe('crm-example-com')
+        ->and($worker['metadata']['labels']['luchtech.dev/component'])->toBe('twenty-worker')
         ->and($service['metadata']['name'])->toBe('twenty-crm-example-com')
         ->and($service['spec']['selector']['app'])->toBe('twenty-crm-example-com')
         ->and($env['DB_PASSWORD']['valueFrom']['secretKeyRef']['name'])->toBe('twenty-secrets-crm-example-com')
@@ -108,7 +108,7 @@ test('the Ingress routes to the Service by the same name and attaches the --vpn-
     $ingress = collect($documents)->firstWhere('kind', 'Ingress');
 
     expect($ingress['metadata']['name'])->toBe('twenty-crm-example-com')
-        ->and($ingress['metadata']['labels']['larakube.io/instance'])->toBe('crm-example-com')
+        ->and($ingress['metadata']['labels']['luchtech.dev/instance'])->toBe('crm-example-com')
         ->and($ingress['spec']['rules'][0]['http']['paths'][0]['backend']['service']['name'])->toBe('twenty-crm-example-com')
         ->and($ingress['metadata']['annotations']['traefik.ingress.kubernetes.io/router.middlewares'])
         ->toBe('larakube-shared-twenty-vpn-only-crm-example-com@kubernetescrd');
@@ -118,5 +118,5 @@ test('the Ingress renders from the host alone, the way the shared-service reconc
     $rendered = view('k8s.twenty.ingress', ['host' => 'crm.example.com'])->render();
 
     expect($rendered)->toContain('name: twenty-crm-example-com')
-        ->and($rendered)->toContain('larakube.io/instance: crm-example-com');
+        ->and($rendered)->toContain('luchtech.dev/instance: crm-example-com');
 });

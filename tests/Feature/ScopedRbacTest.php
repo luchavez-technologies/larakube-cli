@@ -24,8 +24,8 @@ test('rbac manifest contains SA + namespaced Role + RoleBinding, all scoped to t
         ->toContain('kind: Role')
         ->toContain('kind: RoleBinding')
         ->toContain('namespace: myapp-production')
-        ->toContain('larakube.dev/app: myapp')
-        ->toContain('larakube.dev/env: production')
+        ->toContain('luchtech.dev/app: myapp')
+        ->toContain('luchtech.dev/env: production')
         ->toContain('app.kubernetes.io/managed-by: larakube');
 });
 

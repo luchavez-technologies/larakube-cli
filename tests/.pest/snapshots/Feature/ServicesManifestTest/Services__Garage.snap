@@ -323,7 +323,7 @@ kind: PersistentVolume
 metadata:
   name: garage-test-garage-pv
   labels:
-    larakube-project: garage-test
+    luchtech.dev/project: garage-test
 spec:
   capacity:
     storage: 5Gi
@@ -355,8 +355,8 @@ kind: Namespace
 metadata:
   name: garage-test-local
   labels:
-    larakube.io/project: garage-test
-    larakube.io/managed-by: larakube
+    luchtech.dev/project: garage-test
+    luchtech.dev/managed-by: larakube
 
 ---
 
@@ -365,7 +365,7 @@ kind: PersistentVolume
 metadata:
   name: garage-test-laravel-storage-pv
   labels:
-    larakube-project: garage-test
+    luchtech.dev/project: garage-test
 spec:
   capacity:
     storage: 1Gi
@@ -382,7 +382,7 @@ kind: PersistentVolume
 metadata:
   name: garage-test-laravel-data-pv
   labels:
-    larakube-project: garage-test
+    luchtech.dev/project: garage-test
 spec:
   capacity:
     storage: 1Gi

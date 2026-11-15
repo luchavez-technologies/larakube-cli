@@ -48,7 +48,7 @@ spec:
         # csp.yaml is mounted by subPath, which NEVER sees a ConfigMap update —
         # and even a plain mount would need a restart. Without this checksum the
         # CSP change applies silently and the running pod keeps the old policy.
-        larakube.io/csp-checksum: "{{ substr(md5($cspYaml), 0, 10) }}"
+        {{ \App\Support\Labels::CSP_CHECKSUM }}: "{{ substr(md5($cspYaml), 0, 10) }}"
     spec:
       securityContext:
         # The image runs as the unprivileged 'ocis' user (UID/GID 1000); the

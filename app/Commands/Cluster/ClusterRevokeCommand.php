@@ -134,7 +134,7 @@ class ClusterRevokeCommand extends Command
             return 0;
         }
 
-        $list = Process::run("{$kubectl} get rolebinding -A -l larakube.dev/access-user=".escapeshellarg($sa).' -o jsonpath='.escapeshellarg('{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}'))->output();
+        $list = Process::run("{$kubectl} get rolebinding -A -l ".\App\Support\Labels::ACCESS_USER.'='.escapeshellarg($sa).' -o jsonpath='.escapeshellarg('{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}'))->output();
         foreach (array_filter(array_map('trim', explode("\n", $list))) as $line) {
             [$bns, $bname] = array_pad(explode(' ', $line, 2), 2, '');
             if ($bns !== '' && $bname !== '') {

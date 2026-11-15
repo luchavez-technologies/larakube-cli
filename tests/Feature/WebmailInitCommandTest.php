@@ -15,7 +15,7 @@ test('tool:init deploys bulwark', function (): void {
 
 test('tool:init --tool=bulwark refuses when Stalwart is not installed', function (): void {
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: '', exitCode: 1),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: '', exitCode: 1),
     ]);
 
     $this->artisan('tool:init --tool=bulwark local')
@@ -25,7 +25,7 @@ test('tool:init --tool=bulwark refuses when Stalwart is not installed', function
 
 test('tool:init --tool=bulwark deploys Bulwark and enables CORS when Stalwart is present', function (): void {
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret bulwark-secrets-*' => Process::result(output: '', exitCode: 1),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('admin-pass')),
         '*port-forward*' => Process::result(output: ''),
@@ -68,7 +68,7 @@ test('webmail bulwark manifest references standard secret keys', function (): vo
 
 test('tool:init --tool=bulwark still succeeds but warns when the CORS flip fails', function (): void {
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret bulwark-secrets-*' => Process::result(output: '', exitCode: 1),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('admin-pass')),
         '*port-forward*' => Process::result(output: ''),
@@ -91,7 +91,7 @@ test('tool:init --tool=bulwark still succeeds but warns when the CORS flip fails
 
 test('tool:init --tool=bulwark --vpn-only creates the Traefik Middleware before applying the manifests', function (): void {
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret bulwark-secrets-*' => Process::result(output: '', exitCode: 1),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('admin-pass')),
         '*port-forward*' => Process::result(output: ''),
@@ -139,7 +139,7 @@ test('bulwark:remove aborts when a delete step fails', function (): void {
         ->expectsOutputToContain('failed to remove');
 });
 
-test('bulwarkAccess detects Bulwark when labeled with canonical larakube.io/tool=bulwark', function (): void {
+test('bulwarkAccess detects Bulwark when labeled with canonical luchtech.dev/tool=bulwark', function (): void {
     $reader = new class
     {
         use App\Traits\InteractsWithBulwark;
@@ -151,9 +151,8 @@ test('bulwarkAccess detects Bulwark when labeled with canonical larakube.io/tool
     };
 
     Process::fake([
-        '*-l larakube.io/tool=webmail*' => Process::result(output: ''),
-        '*get deployment -n larakube-shared -l larakube.io/tool=bulwark*' => Process::result(output: 'bulwark-mail-example-com   1/1   1   1   5d'),
-        '*get ingress -n larakube-shared -l larakube.io/tool=bulwark*' => Process::result(output: 'mail.example.com'),
+        '*get deployment -n larakube-shared -l luchtech.dev/tool=bulwark*' => Process::result(output: 'bulwark-mail-example-com   1/1   1   1   5d'),
+        '*get ingress -n larakube-shared -l luchtech.dev/tool=bulwark*' => Process::result(output: 'mail.example.com'),
         '*' => Process::result(output: ''),
     ]);
 

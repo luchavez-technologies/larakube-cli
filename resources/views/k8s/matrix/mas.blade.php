@@ -134,7 +134,7 @@ spec:
              Zitadel client secret, Synapse trust secret); a config-only
              checksum still forces a restart on rotation without needing
              MAS's own Deployment to know those values individually. --}}
-        larakube.io/config-checksum: "{{ substr(hash('sha256', $masConfigHash.$__tplHash), 0, 16) }}"
+        {{ \App\Support\Labels::CONFIG_CHECKSUM }}: "{{ substr(hash('sha256', $masConfigHash.$__tplHash), 0, 16) }}"
     spec:
       containers:
         - name: mas

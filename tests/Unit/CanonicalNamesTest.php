@@ -32,7 +32,7 @@ test('a migrated tool names its resources after the component, then the instance
 
 test('a migrated tool labels what it deploys with its identity', function (ClusterTool $tool): void {
     expect(ToolInstance::forInstance($tool, 'x-example-com')->labels())
-        ->toHaveKeys(['larakube.io/managed-by', 'larakube.io/tool', 'larakube.io/component', 'larakube.io/instance']);
+        ->toHaveKeys(['luchtech.dev/managed-by', 'luchtech.dev/tool', 'luchtech.dev/component', 'luchtech.dev/instance']);
 })->with('tools on the canonical naming');
 
 test('every Cluster Tool is on the canonical naming, so a new one has to choose it', function (): void {

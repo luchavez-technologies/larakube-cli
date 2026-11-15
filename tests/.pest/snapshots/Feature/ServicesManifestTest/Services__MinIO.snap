@@ -263,8 +263,8 @@ kind: Namespace
 metadata:
   name: minio-test-local
   labels:
-    larakube.io/project: minio-test
-    larakube.io/managed-by: larakube
+    luchtech.dev/project: minio-test
+    luchtech.dev/managed-by: larakube
 
 ---
 
@@ -273,7 +273,7 @@ kind: PersistentVolume
 metadata:
   name: minio-test-laravel-storage-pv
   labels:
-    larakube-project: minio-test
+    luchtech.dev/project: minio-test
 spec:
   capacity:
     storage: 1Gi
@@ -290,7 +290,7 @@ kind: PersistentVolume
 metadata:
   name: minio-test-laravel-data-pv
   labels:
-    larakube-project: minio-test
+    luchtech.dev/project: minio-test
 spec:
   capacity:
     storage: 1Gi
@@ -368,7 +368,7 @@ kind: PersistentVolume
 metadata:
   name: minio-test-minio-pv
   labels:
-    larakube-project: minio-test
+    luchtech.dev/project: minio-test
 spec:
   capacity:
     storage: 5Gi

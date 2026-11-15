@@ -35,8 +35,8 @@ trait InteractsWithScopedRbac
     {
         return [
             'app.kubernetes.io/managed-by' => 'larakube',
-            'larakube.dev/app' => $app,
-            'larakube.dev/env' => $env,
+            \App\Support\Labels::APP => $app,
+            \App\Support\Labels::ENV => $env,
         ];
     }
 
@@ -49,8 +49,8 @@ trait InteractsWithScopedRbac
     {
         $sa ??= $this->deployerName();
         $labels = "    app.kubernetes.io/managed-by: larakube\n"
-            ."    larakube.dev/app: {$app}\n"
-            ."    larakube.dev/env: {$env}";
+            .'    '.\App\Support\Labels::APP.": {$app}\n"
+            .'    '.\App\Support\Labels::ENV.": {$env}";
 
         return <<<YAML
 apiVersion: v1

@@ -183,7 +183,7 @@ test('tool:init --tool=zitadel wires Zitadel outbound email to Stalwart when the
         // machine-pat already present → captureMachinePat short-circuits true,
         // and maybeWireStalwartSmtp reads the PAT from the same secret.
         '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('pat-value')),
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-sender*' => Process::result(output: base64_encode('noreply@example.com')),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*apply -f *' => Process::result(output: 'applied'),

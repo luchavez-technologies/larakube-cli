@@ -26,7 +26,7 @@ trait InteractsWithChat
     /** Chat Deployment present (Synapse)? Found by label: it is named per instance. */
     protected function isChatInstalled(string $kubectl, string $ns): bool
     {
-        return trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'deployment', '-l', 'larakube.io/tool=chat,larakube.io/component=synapse', '-n', $ns, '--no-headers', '--ignore-not-found'])->output) !== '';
+        return trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'deployment', '-l', \App\Support\Labels::toolSelector(ClusterTool::MATRIX, 'synapse'), '-n', $ns, '--no-headers', '--ignore-not-found'])->output) !== '';
     }
 
     /**

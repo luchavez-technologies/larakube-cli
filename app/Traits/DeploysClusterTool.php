@@ -448,7 +448,7 @@ trait DeploysClusterTool
      * to hold — see that same doc for the chat-ingress exception this
      * uncovered.
      *
-     * $recordCurrentHost additionally stamps a `larakube.io/current-host`
+     * $recordCurrentHost additionally stamps a `Labels::CURRENT_HOST`
      * ANNOTATION (never a label — a hostname has dots and can exceed the
      * 63-char DNS-1123 format labels require) with the live binding, purely
      * for operator visibility (`kubectl describe`/`tool:show`) — it is never
@@ -499,7 +499,7 @@ trait DeploysClusterTool
         $temporaryDirectory->delete();
 
         if ($result->successful() && $recordCurrentHost) {
-            Process::run("{$kubectl} annotate ingress {$ingressName} -n {$tool->namespace()} larakube.io/current-host={$primaryHost} --overwrite");
+            Process::run("{$kubectl} annotate ingress {$ingressName} -n {$tool->namespace()} ".\App\Support\Labels::CURRENT_HOST."={$primaryHost} --overwrite");
         }
 
         return $result->successful();

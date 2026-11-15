@@ -118,6 +118,6 @@ final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasOid
     public function presenceProbe(?string $instance = null): ?string
     {
         // By label: the Deployment is named per instance, so a bare name matches nothing.
-        return 'deployment -l larakube.io/tool=secrets -n larakube-secrets';
+        return 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::OPENBAO).' -n larakube-secrets';
     }
 }

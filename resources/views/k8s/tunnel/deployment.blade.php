@@ -5,8 +5,8 @@ metadata:
   namespace: {{ $namespace }}
   labels:
     app.kubernetes.io/managed-by: larakube
-    larakube.dev/role: tunnel
-    larakube.dev/provider: {{ $provider->value }}
+    {{ \App\Support\Labels::ROLE }}: tunnel
+    {{ \App\Support\Labels::PROVIDER }}: {{ $provider->value }}
 spec:
   replicas: 1
   selector:
@@ -16,7 +16,7 @@ spec:
     metadata:
       labels:
         app: larakube-tunnel
-        larakube.dev/role: tunnel
+        {{ \App\Support\Labels::ROLE }}: tunnel
     spec:
       containers:
         - name: tunnel

@@ -3,14 +3,14 @@ kind: Namespace
 metadata:
   name: {{ $namespace }}
   labels:
-    larakube-workspace: {{ $name }}
+    {{ \App\Support\Labels::WORKSPACE }}: {{ $name }}
   annotations:
-    larakube.dev/workspace-repo: {!! json_encode($repo, JSON_UNESCAPED_SLASHES) !!}
-    larakube.dev/workspace-branch: {!! json_encode($branch, JSON_UNESCAPED_SLASHES) !!}
-    larakube.dev/workspace-size: {!! json_encode($size, JSON_UNESCAPED_SLASHES) !!}
-    larakube.dev/workspace-framework: {!! json_encode($framework) !!}
-    larakube.dev/workspace-runtime: {!! json_encode($runtime) !!}
-    larakube.dev/workspace-runtime-version: {!! json_encode($runtimeVersion) !!}
+    {{ \App\Support\Labels::WORKSPACE_REPO }}: {!! json_encode($repo, JSON_UNESCAPED_SLASHES) !!}
+    {{ \App\Support\Labels::WORKSPACE_BRANCH }}: {!! json_encode($branch, JSON_UNESCAPED_SLASHES) !!}
+    {{ \App\Support\Labels::WORKSPACE_SIZE }}: {!! json_encode($size, JSON_UNESCAPED_SLASHES) !!}
+    {{ \App\Support\Labels::WORKSPACE_FRAMEWORK }}: {!! json_encode($framework) !!}
+    {{ \App\Support\Labels::WORKSPACE_RUNTIME }}: {!! json_encode($runtime) !!}
+    {{ \App\Support\Labels::WORKSPACE_RUNTIME_VERSION }}: {!! json_encode($runtimeVersion) !!}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -92,7 +92,7 @@ metadata:
   namespace: {{ $namespace }}
   labels:
     app: workspace
-    larakube-workspace: {{ $name }}
+    {{ \App\Support\Labels::WORKSPACE }}: {{ $name }}
 spec:
   replicas: {{ $replicas }}
   strategy:
@@ -104,7 +104,7 @@ spec:
     metadata:
       labels:
         app: workspace
-        larakube-workspace: {{ $name }}
+        {{ \App\Support\Labels::WORKSPACE }}: {{ $name }}
     spec:
       serviceAccountName: workspace
       automountServiceAccountToken: false

@@ -21,7 +21,7 @@ test('mail:delete is registered', function (): void {
 
 test('mail:delete requires installed stalwart', function (): void {
     ssoRegistered();
-    Process::fake(['*larakube.io/tool=mail*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*luchtech.dev/tool=stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:delete')
         ->assertExitCode(1)
@@ -31,7 +31,7 @@ test('mail:delete requires installed stalwart', function (): void {
 test('mail:delete deletes account by email', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: ''),
@@ -52,7 +52,7 @@ test('mail:delete deletes account by email', function (): void {
 test('mail:delete --sso removes the matching Zitadel identity', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com   1/1   1   1   10d'),

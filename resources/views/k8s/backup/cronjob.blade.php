@@ -79,7 +79,7 @@ spec:
       template:
         metadata:
           annotations:
-            larakube.io/config-checksum: "{{ substr(hash('sha256', $schedule.$timezone.$__tplHash.json_encode($volumes).$pruneAfterDays), 0, 16) }}"
+            {{ \App\Support\Labels::CONFIG_CHECKSUM }}: "{{ substr(hash('sha256', $schedule.$timezone.$__tplHash.json_encode($volumes).$pruneAfterDays), 0, 16) }}"
         spec:
           restartPolicy: OnFailure
           serviceAccountName: larakube-backup

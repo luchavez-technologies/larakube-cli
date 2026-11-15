@@ -37,7 +37,7 @@ function toolProxyCluster(?array &$annotations, bool $vpnOnly = false, bool $dns
             str_contains($cmd, 'get secret traefik-acme-cloudflare -n traefik -o name') => Process::result(output: $dnsChallenge ? 'secret/traefik-acme-cloudflare' : ''),
             str_contains($cmd, 'get secret traefik-acme-cloudflare -n traefik -o jsonpath') => Process::result(output: base64_encode('cf-token')),
             str_contains($cmd, 'app.kubernetes.io/name=external-dns') => Process::result(output: (string) json_encode(['items' => [[
-                'metadata' => ['annotations' => ['larakube.io/dns-domain' => 'example.com', 'larakube.io/dns-owner-id' => 'o'], 'labels' => ['larakube.io/dns-zone' => 'example-com']],
+                'metadata' => ['annotations' => ['luchtech.dev/dns-domain' => 'example.com', 'luchtech.dev/dns-owner-id' => 'o'], 'labels' => ['luchtech.dev/dns-zone' => 'example-com']],
                 'status' => ['readyReplicas' => 1],
             ]]])),
             default => Process::result(output: ''),

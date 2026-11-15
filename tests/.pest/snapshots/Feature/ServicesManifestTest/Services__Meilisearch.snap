@@ -258,8 +258,8 @@ kind: Namespace
 metadata:
   name: meilisearch-test-local
   labels:
-    larakube.io/project: meilisearch-test
-    larakube.io/managed-by: larakube
+    luchtech.dev/project: meilisearch-test
+    luchtech.dev/managed-by: larakube
 
 ---
 
@@ -268,7 +268,7 @@ kind: PersistentVolume
 metadata:
   name: meilisearch-test-laravel-storage-pv
   labels:
-    larakube-project: meilisearch-test
+    luchtech.dev/project: meilisearch-test
 spec:
   capacity:
     storage: 1Gi
@@ -285,7 +285,7 @@ kind: PersistentVolume
 metadata:
   name: meilisearch-test-laravel-data-pv
   labels:
-    larakube-project: meilisearch-test
+    luchtech.dev/project: meilisearch-test
 spec:
   capacity:
     storage: 1Gi
@@ -352,7 +352,7 @@ kind: PersistentVolume
 metadata:
   name: meilisearch-test-meilisearch-pv
   labels:
-    larakube-project: meilisearch-test
+    luchtech.dev/project: meilisearch-test
 spec:
   capacity:
     storage: 1Gi

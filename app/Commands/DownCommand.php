@@ -121,7 +121,7 @@ class DownCommand extends Command
         $this->runStreaming("{$kubectl} delete namespace $namespace");
 
         $this->laraKubeInfo('Cleaning up cluster-scoped PersistentVolumes...');
-        $this->runStreaming("{$kubectl} delete pv -l larakube-project=$appName");
+        $this->runStreaming("{$kubectl} delete pv -l ".\App\Support\Labels::PROJECT."=$appName");
 
         $evicted = $commonsTenant !== null && $this->evictOwnCommonsTenant($commonsTenant);
 

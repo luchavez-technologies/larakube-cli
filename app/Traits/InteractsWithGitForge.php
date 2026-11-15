@@ -28,7 +28,7 @@ trait InteractsWithGitForge
     {
         $target = $instance !== null
             ? 'deployment '.ClusterTool::FORGEJO->deploymentName($instance)
-            : 'deployment -l larakube.io/tool=git';
+            : 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::FORGEJO);
 
         return trim(Process::run("{$kubectl} get {$target} -n {$ns} --no-headers")->output()) !== '';
     }

@@ -33,7 +33,7 @@ class N8nRemoveCommand extends AbstractToolRemoveCommand
 
         $deployment = $this->cluster()->get(new ResourceRef('Deployment', $names->deployment(), $names->namespace()));
 
-        return ($deployment['metadata']['labels']['larakube-storage'] ?? null) === 'bundled';
+        return ($deployment['metadata']['labels'][\App\Support\Labels::STORAGE] ?? null) === 'bundled';
     }
 
     /**

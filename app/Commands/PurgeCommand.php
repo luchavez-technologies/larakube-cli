@@ -115,7 +115,7 @@ class PurgeCommand extends Command
             }
 
             // Delete cluster-scoped volumes
-            Process::run(Kubectl::current()->prefix()." delete pv -l larakube-project={$appName}");
+            Process::run(Kubectl::current()->prefix().' delete pv -l '.\App\Support\Labels::PROJECT."={$appName}");
 
             return true;
         });

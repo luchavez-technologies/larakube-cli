@@ -191,8 +191,8 @@ kind: Namespace
 metadata:
   name: svelte-test-local
   labels:
-    larakube.io/project: svelte-test
-    larakube.io/managed-by: larakube
+    luchtech.dev/project: svelte-test
+    luchtech.dev/managed-by: larakube
 
 ---
 
@@ -201,7 +201,7 @@ kind: PersistentVolume
 metadata:
   name: svelte-test-laravel-storage-pv
   labels:
-    larakube-project: svelte-test
+    luchtech.dev/project: svelte-test
 spec:
   capacity:
     storage: 1Gi
@@ -218,7 +218,7 @@ kind: PersistentVolume
 metadata:
   name: svelte-test-laravel-data-pv
   labels:
-    larakube-project: svelte-test
+    luchtech.dev/project: svelte-test
 spec:
   capacity:
     storage: 1Gi

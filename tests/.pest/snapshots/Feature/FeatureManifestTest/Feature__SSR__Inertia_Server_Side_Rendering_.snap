@@ -191,8 +191,8 @@ kind: Namespace
 metadata:
   name: ssr-test-local
   labels:
-    larakube.io/project: ssr-test
-    larakube.io/managed-by: larakube
+    luchtech.dev/project: ssr-test
+    luchtech.dev/managed-by: larakube
 
 ---
 
@@ -201,7 +201,7 @@ kind: PersistentVolume
 metadata:
   name: ssr-test-laravel-storage-pv
   labels:
-    larakube-project: ssr-test
+    luchtech.dev/project: ssr-test
 spec:
   capacity:
     storage: 1Gi
@@ -218,7 +218,7 @@ kind: PersistentVolume
 metadata:
   name: ssr-test-laravel-data-pv
   labels:
-    larakube-project: ssr-test
+    luchtech.dev/project: ssr-test
 spec:
   capacity:
     storage: 1Gi

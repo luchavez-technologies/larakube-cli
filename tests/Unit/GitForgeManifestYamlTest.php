@@ -91,7 +91,7 @@ test('the forgejo data PVC carries the instance and the Deployment mounts that s
     $pvc = collect($documents)->firstWhere('metadata.name', 'forgejo-storage-git-example-com');
 
     expect($pvc['kind'])->toBe('PersistentVolumeClaim')
-        ->and($pvc['metadata']['labels']['larakube.io/instance'])->toBe('git-example-com')
+        ->and($pvc['metadata']['labels']['luchtech.dev/instance'])->toBe('git-example-com')
         ->and(collect($forgejo['spec']['template']['spec']['volumes'])->firstWhere('name', 'forgejo-data')['persistentVolumeClaim']['claimName'])
         ->toBe('forgejo-storage-git-example-com')
         ->and(collect($documents)->firstWhere('metadata.name', 'forgejo-data'))->toBeNull();
@@ -142,7 +142,7 @@ test('runner config mounts the Podman socket into jobs and maps every label to t
         ->toContain(['name' => 'runner-cache', 'mountPath' => '/data/.cache'])
         ->and($runnerConfig['container']['docker_host'])->toBe('unix:///run/podman/podman.sock')
         ->and($runnerConfig['container']['network'])->toBe('host')
-        ->and($forgejo['metadata']['labels']['larakube.io/tool'])->toBe('forgejo')
+        ->and($forgejo['metadata']['labels']['luchtech.dev/tool'])->toBe('forgejo')
         ->and($images->all())->toContain('quay.io/podman/stable:v5.8.4', 'code.forgejo.org/forgejo/runner:13.1.0');
 });
 
@@ -170,7 +170,7 @@ test('changing the runner config changes the runner pod checksum, so the pod res
             ->map(fn (string $doc) => Yaml::parse($doc))
             ->firstWhere('metadata.name', 'forgejo-runner-git-example-com');
 
-        return $runner['spec']['template']['metadata']['annotations']['larakube.io/config-checksum'];
+        return $runner['spec']['template']['metadata']['annotations']['luchtech.dev/config-checksum'];
     };
 
     expect($checksum('node:24-trixie'))->toBe($checksum('node:24-trixie'))

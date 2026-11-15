@@ -13,7 +13,7 @@ afterEach(function (): void {
 test('mail:sync-sso imports existing stalwart accounts into zitadel sso', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart 1/1 1 1 1d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart 1/1 1 1 1d'),
         '*get deployment zitadel-sso-example-com*' => Process::result(output: 'zitadel-sso-example-com 1/1 1 1 1d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('adminpass')),
         '*get secret zitadel-secrets-sso-example-com*' => Process::result(output: base64_encode('pat123')),
@@ -57,7 +57,7 @@ test('mail:sync-sso imports existing stalwart accounts into zitadel sso', functi
 test('mail:sync-sso refuses when stalwart is not installed', function (): void {
     ssoRegistered();
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: '', exitCode: 1),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: '', exitCode: 1),
     ]);
 
     $this->artisan('mail:sync-sso local')

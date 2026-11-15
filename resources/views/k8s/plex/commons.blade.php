@@ -8,8 +8,8 @@ kind: ConfigMap
 metadata:
   name: plex-commons
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 data:
   commons.json: |
 {!! $specJsonIndented !!}
@@ -20,8 +20,8 @@ kind: PersistentVolumeClaim
 metadata:
   name: postgres-data
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   accessModes:
     - ReadWriteOnce
@@ -34,8 +34,8 @@ kind: Deployment
 metadata:
   name: postgres
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   replicas: 1
   strategy:
@@ -136,8 +136,8 @@ kind: Service
 metadata:
   name: postgres
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   selector:
     app: {{ $pgPoolerEnabled ? 'pgbouncer' : 'postgres' }}
@@ -157,8 +157,8 @@ kind: Service
 metadata:
   name: {{ \App\Enums\DatabaseDriver::POSTGRESQL->poolerPrimaryServiceName() }}
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   selector:
     app: postgres
@@ -183,8 +183,8 @@ kind: Deployment
 metadata:
   name: pgbouncer
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   replicas: 1
   strategy:
@@ -278,8 +278,8 @@ kind: PersistentVolumeClaim
 metadata:
   name: {{ $engine }}-data
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   accessModes:
     - ReadWriteOnce
@@ -292,8 +292,8 @@ kind: Deployment
 metadata:
   name: {{ $engine }}
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   replicas: 1
   strategy:
@@ -377,8 +377,8 @@ kind: Service
 metadata:
   name: {{ $engine }}
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   selector:
     app: {{ $engine }}
@@ -396,8 +396,8 @@ kind: Deployment
 metadata:
   name: redis
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   replicas: 1
   selector:
@@ -471,8 +471,8 @@ kind: Service
 metadata:
   name: redis
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   selector:
     app: redis
@@ -489,8 +489,8 @@ kind: PersistentVolumeClaim
 metadata:
   name: meilisearch-data
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   accessModes:
     - ReadWriteOnce
@@ -503,8 +503,8 @@ kind: Deployment
 metadata:
   name: meilisearch
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   replicas: 1
   strategy:
@@ -552,8 +552,8 @@ kind: Service
 metadata:
   name: meilisearch
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   selector:
     app: meilisearch
@@ -570,8 +570,8 @@ kind: PersistentVolumeClaim
 metadata:
   name: seaweedfs-data
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   accessModes:
     - ReadWriteOnce
@@ -584,8 +584,8 @@ kind: Deployment
 metadata:
   name: seaweedfs
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   replicas: 1
   strategy:
@@ -677,8 +677,8 @@ kind: Service
 metadata:
   name: seaweedfs
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   selector:
     app: seaweedfs
@@ -700,8 +700,8 @@ kind: Ingress
 metadata:
   name: seaweedfs-s3
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -739,8 +739,8 @@ kind: Ingress
 metadata:
   name: seaweedfs-admin
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -768,8 +768,8 @@ kind: PersistentVolumeClaim
 metadata:
   name: minio-data
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   accessModes:
     - ReadWriteOnce
@@ -782,8 +782,8 @@ kind: Deployment
 metadata:
   name: minio
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   replicas: 1
   strategy:
@@ -843,8 +843,8 @@ kind: Service
 metadata:
   name: minio
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   selector:
     app: minio
@@ -866,8 +866,8 @@ kind: Ingress
 metadata:
   name: minio-s3
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -899,8 +899,8 @@ kind: Ingress
 metadata:
   name: minio-console
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -928,8 +928,8 @@ kind: PersistentVolumeClaim
 metadata:
   name: garage-data
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   accessModes:
     - ReadWriteOnce
@@ -948,8 +948,8 @@ kind: ConfigMap
 metadata:
   name: garage-config
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 data:
   garage.toml: |
     metadata_dir = "/data/meta"
@@ -970,8 +970,8 @@ kind: Deployment
 metadata:
   name: garage
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   replicas: 1
   strategy:
@@ -1019,8 +1019,8 @@ kind: Service
 metadata:
   name: garage
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   selector:
     app: garage
@@ -1042,8 +1042,8 @@ kind: Ingress
 metadata:
   name: garage-s3
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -1071,8 +1071,8 @@ kind: Deployment
 metadata:
   name: headless-shell
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   replicas: 1
   selector:
@@ -1126,8 +1126,8 @@ kind: Service
 metadata:
   name: headless-shell
   labels:
-    larakube.io/managed-by: larakube
-    larakube.io/component: plex
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
+    {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
   type: ClusterIP
   selector:

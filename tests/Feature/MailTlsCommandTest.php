@@ -12,7 +12,7 @@ afterEach(function (): void {
 function mailTlsBaseFakes(): void
 {
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
@@ -26,7 +26,7 @@ test('mail:tls is registered', function (): void {
 });
 
 test('mail:tls requires installed stalwart', function (): void {
-    Process::fake(['*larakube.io/tool=mail*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*luchtech.dev/tool=stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:tls')
         ->assertExitCode(1)

@@ -5,6 +5,7 @@ namespace App\Data;
 use App\Enums\ClusterTool;
 use App\Enums\SecretKind;
 use App\Services\ToolRegistry;
+use App\Support\Labels;
 use Illuminate\Support\Facades\Process;
 use LogicException;
 
@@ -146,7 +147,7 @@ final readonly class ToolInstance
      * Deployments.
      *
      * The component label is the name's own component stem, not the registry
-     * key, so `larakube.io/component` always reads the same as the resource
+     * key, so `Labels::COMPONENT` always reads the same as the resource
      * name it sits on.
      *
      * @return array<string, string>
@@ -158,10 +159,10 @@ final readonly class ToolInstance
         $named = $component !== null && $this->tool->componentByKey($component, $this->instance, $this->engine) === null;
 
         return [
-            'larakube.io/managed-by' => 'larakube',
-            'larakube.io/tool' => $this->tool->value,
-            'larakube.io/component' => $named ? $component : $this->base($component),
-            'larakube.io/instance' => $this->instance,
+            Labels::MANAGED_BY => 'larakube',
+            Labels::TOOL => $this->tool->value,
+            Labels::COMPONENT => $named ? $component : $this->base($component),
+            Labels::INSTANCE => $this->instance,
         ];
     }
 
@@ -170,10 +171,10 @@ final readonly class ToolInstance
     {
         $labels = array_intersect_key(
             $this->labels($component),
-            array_flip(['larakube.io/tool', 'larakube.io/instance'] + ($component !== null ? [2 => 'larakube.io/component'] : [])),
+            array_flip([Labels::TOOL, Labels::INSTANCE] + ($component !== null ? [2 => Labels::COMPONENT] : [])),
         );
 
-        return implode(',', array_map(fn (string $k, string $v) => "{$k}={$v}", array_keys($labels), $labels));
+        return Labels::selector($labels);
     }
 
     public function configMap(string $key, ?string $component = null): string

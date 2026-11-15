@@ -84,8 +84,8 @@ test('the manifest names every object from ToolInstance and the claim matches th
         ->and($ingress['spec']['rules'][0]['http']['paths'][0]['backend']['service']['name'])->toBe('vaultwarden-vault-example-com');
 
     foreach ([$secret, $pvc, $deployment, $service, $ingress] as $object) {
-        expect($object['metadata']['labels']['larakube.io/tool'])->toBe('vaultwarden')
-            ->and($object['metadata']['labels']['larakube.io/instance'])->toBe('vault-example-com');
+        expect($object['metadata']['labels']['luchtech.dev/tool'])->toBe('vaultwarden')
+            ->and($object['metadata']['labels']['luchtech.dev/instance'])->toBe('vault-example-com');
     }
 });
 
@@ -100,7 +100,7 @@ test('the Ingress renders from the host alone, the way the shared-service reconc
     $rendered = view('k8s.vaultwarden.ingress', ['host' => 'vault.example.com'])->render();
 
     expect($rendered)->toContain('name: vaultwarden-vault-example-com')
-        ->and($rendered)->toContain('larakube.io/instance: vault-example-com');
+        ->and($rendered)->toContain('luchtech.dev/instance: vault-example-com');
 });
 
 test('teardown names every resource the manifest declares', function (): void {

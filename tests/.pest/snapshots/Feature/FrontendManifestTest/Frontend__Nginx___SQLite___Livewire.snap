@@ -191,8 +191,8 @@ kind: Namespace
 metadata:
   name: livewire-test-local
   labels:
-    larakube.io/project: livewire-test
-    larakube.io/managed-by: larakube
+    luchtech.dev/project: livewire-test
+    luchtech.dev/managed-by: larakube
 
 ---
 
@@ -201,7 +201,7 @@ kind: PersistentVolume
 metadata:
   name: livewire-test-laravel-storage-pv
   labels:
-    larakube-project: livewire-test
+    luchtech.dev/project: livewire-test
 spec:
   capacity:
     storage: 1Gi
@@ -218,7 +218,7 @@ kind: PersistentVolume
 metadata:
   name: livewire-test-laravel-data-pv
   labels:
-    larakube-project: livewire-test
+    luchtech.dev/project: livewire-test
 spec:
   capacity:
     storage: 1Gi

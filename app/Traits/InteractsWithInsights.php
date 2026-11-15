@@ -21,7 +21,7 @@ trait InteractsWithInsights
     /** Insights (metabase) Deployment present? */
     protected function isInsightsInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=insights');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, \App\Support\Labels::toolSelector(\App\Enums\ClusterTool::METABASE));
     }
 
     /** Read database password. */

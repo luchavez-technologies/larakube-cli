@@ -32,7 +32,7 @@ metadata:
   namespace: {{ $namespace }}
   labels:
     app.kubernetes.io/name: external-dns
-    larakube.io/dns-zone: {{ $slug }}
+    {{ \App\Support\Labels::DNS_ZONE }}: {{ $slug }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -54,7 +54,7 @@ kind: ClusterRoleBinding
 metadata:
   name: external-dns-{{ $slug }}
   labels:
-    larakube.io/dns-zone: {{ $slug }}
+    {{ \App\Support\Labels::DNS_ZONE }}: {{ $slug }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -71,11 +71,11 @@ metadata:
   namespace: {{ $namespace }}
   labels:
     app.kubernetes.io/name: external-dns
-    larakube.io/dns-zone: {{ $slug }}
+    {{ \App\Support\Labels::DNS_ZONE }}: {{ $slug }}
   annotations:
-    larakube.io/dns-domain: {{ implode(',', $zones) }}
-    larakube.io/dns-owner-id: {{ $ownerId }}
-    larakube.io/dns-provider: {{ $provider->value }}
+    {{ \App\Support\Labels::DNS_DOMAIN }}: {{ implode(',', $zones) }}
+    {{ \App\Support\Labels::DNS_OWNER_ID }}: {{ $ownerId }}
+    {{ \App\Support\Labels::DNS_PROVIDER }}: {{ $provider->value }}
 spec:
   strategy:
     type: Recreate
@@ -86,7 +86,7 @@ spec:
     metadata:
       labels:
         app: external-dns-{{ $slug }}
-        larakube.io/dns-zone: {{ $slug }}
+        {{ \App\Support\Labels::DNS_ZONE }}: {{ $slug }}
     spec:
       serviceAccountName: external-dns-{{ $slug }}
       containers:

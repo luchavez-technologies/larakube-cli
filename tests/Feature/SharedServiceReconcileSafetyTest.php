@@ -55,14 +55,14 @@ test('every probe-gated shared service reconciles an Ingress and nothing else', 
 });
 
 test('Forgejo is detected by its tool label, not the instance-suffixed Deployment name', function (): void {
-    expect(SharedClusterService::FORGEJO->presenceProbe())->toBe('deployment -l larakube.io/tool=git -n larakube-shared');
+    expect(SharedClusterService::FORGEJO->presenceProbe())->toBe('deployment -l luchtech.dev/tool=forgejo -n larakube-shared');
 });
 
 test('up reconciles an installed Forgejo by applying only its instance Ingress', function (): void {
     $applied = [];
 
     Process::fake([
-        '*get deployment -l larakube.io/tool=git*' => Process::result(output: 'forgejo-git-example-test   1/1   1   1   5d'),
+        '*get deployment -l luchtech.dev/tool=forgejo*' => Process::result(output: 'forgejo-git-example-test   1/1   1   1   5d'),
         '*create namespace*' => Process::result(output: 'namespace/larakube-shared configured'),
         'kubectl apply -f *' => function (PendingProcess $process) use (&$applied) {
             $applied[] = (string) $process->input;
@@ -85,7 +85,7 @@ test('up reconciles an installed Forgejo by applying only its instance Ingress',
 
 test('up skips Forgejo entirely when no labelled Deployment exists', function (): void {
     Process::fake([
-        '*get deployment -l larakube.io/tool=git*' => Process::result(output: ''),
+        '*get deployment -l luchtech.dev/tool=forgejo*' => Process::result(output: ''),
         '*' => Process::result(),
     ]);
 

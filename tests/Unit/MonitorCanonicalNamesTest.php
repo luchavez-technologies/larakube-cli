@@ -95,7 +95,7 @@ test('every component of the stack carries the identity labels', function (): vo
 
     foreach (['ServiceAccount', 'ClusterRole', 'Deployment', 'Service', 'DaemonSet'] as $kind) {
         foreach ($documents->where('kind', $kind) as $doc) {
-            expect($doc['metadata']['labels']['larakube.io/instance'] ?? null)->toBe('monitor-example-com', "{$kind}/{$doc['metadata']['name']}");
+            expect($doc['metadata']['labels']['luchtech.dev/instance'] ?? null)->toBe('monitor-example-com', "{$kind}/{$doc['metadata']['name']}");
         }
     }
 });

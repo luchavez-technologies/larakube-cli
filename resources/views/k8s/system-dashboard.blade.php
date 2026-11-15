@@ -3,7 +3,7 @@ kind: Namespace
 metadata:
   name: larakube-system
   labels:
-    larakube.io/managed-by: larakube
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube
 ---
 apiVersion: v1
 kind: ServiceAccount

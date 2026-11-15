@@ -77,7 +77,7 @@ enum SharedClusterService: string
             self::MEET => [
                 // Label-based: the bridge's Deployment is named per instance,
                 // but the identity label every manifest carries holds.
-                'jwtWired' => trim(Process::timeout(10)->run(Kubectl::current()->prefix().' get deployment -l larakube.io/tool=meet,larakube.io/component=lk-jwt -n larakube-shared --ignore-not-found')->output()) !== '',
+                'jwtWired' => trim(Process::timeout(10)->run(Kubectl::current()->prefix().' get deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::LIVEKIT, 'lk-jwt').' -n larakube-shared --ignore-not-found')->output()) !== '',
             ],
             self::TASKS => [
                 'engine' => 'planka',
@@ -216,54 +216,54 @@ enum SharedClusterService: string
             // By label, not name: monitoring's Deployments are per-instance
             // (prometheus-{instance}), and `prometheus` alone would also match
             // an unrelated Prometheus someone installed.
-            self::GRAFANA => 'deployment -l larakube.io/tool=monitor -n larakube-shared',
-            self::UPTIME_KUMA => 'deployment -l larakube.io/tool=uptime -n larakube-shared',
+            self::GRAFANA => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::GRAFANA).' -n larakube-shared',
+            self::UPTIME_KUMA => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::KUMA).' -n larakube-shared',
             // Vaultwarden's Deployment is named per instance, so a probe on a
             // bare name never matches; select on the identity label instead.
-            self::VAULT => 'deployment -l larakube.io/tool=passwords -n larakube-vault',
+            self::VAULT => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::VAULTWARDEN).' -n larakube-vault',
             // By label: NetBird's management Deployment is per-instance
             // (netbird-{instance}), and a bare name matches nothing.
-            self::VPN => 'deployment -l larakube.io/tool=vpn -n larakube-vpn',
-            self::ERRORS => 'deployment -l larakube.io/tool=errors,larakube.io/component=glitchtip -n larakube-shared',
+            self::VPN => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::NETBIRD).' -n larakube-vpn',
+            self::ERRORS => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::GLITCHTIP, 'glitchtip').' -n larakube-shared',
             // By label: OpenBao's Deployment is named per instance.
-            self::SECRETS => 'deployment -l larakube.io/tool=secrets -n larakube-secrets',
-            self::FORGEJO => 'deployment -l larakube.io/tool=git -n larakube-shared',
-            // Windmill and n8n each carry their own canonical larakube.io/tool
+            self::SECRETS => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::OPENBAO).' -n larakube-secrets',
+            self::FORGEJO => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::FORGEJO).' -n larakube-shared',
+            // Windmill and n8n each carry their own canonical tool label
             // value (not a shared "flow" category label + engine sub-label).
-            self::N8N => 'deployment -l larakube.io/tool=n8n -n larakube-shared',
-            self::WINDMILL => 'deployment -l larakube.io/tool=windmill -n larakube-shared',
-            self::SHEET => 'deployment -l larakube-tool=sheets -n larakube-shared',
-            self::DRIVE => 'deployment -l larakube.io/tool=ocis -n larakube-shared',
-            self::INSIGHTS => 'deployment -l larakube.io/tool=insights -n larakube-shared',
+            self::N8N => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::N8N).' -n larakube-shared',
+            self::WINDMILL => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::WINDMILL).' -n larakube-shared',
+            self::SHEET => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::TEABLE).' -n larakube-shared',
+            self::DRIVE => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::OCIS).' -n larakube-shared',
+            self::INSIGHTS => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::METABASE).' -n larakube-shared',
             // By label: Stalwart's Deployment is named per instance.
-            self::MAIL => 'deployment -l larakube.io/tool=mail -n larakube-shared',
+            self::MAIL => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::STALWART).' -n larakube-shared',
             // Synapse is named per instance, so a probe on a bare name never
             // matches; select on the identity label instead.
-            self::CHAT => 'deployment -l larakube.io/tool=chat,larakube.io/component=synapse -n larakube-shared',
+            self::CHAT => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::MATRIX, 'synapse').' -n larakube-shared',
             // By label: Zitadel's Deployment is named per instance.
-            self::SSO => 'deployment -l larakube.io/tool=sso,larakube.io/component=zitadel -n larakube-sso',
+            self::SSO => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::ZITADEL, 'zitadel').' -n larakube-sso',
             // Bulwark's Deployment is named per instance, so a probe on a bare
             // name never matches — select on the identity label instead.
-            self::WEBMAIL => 'deployment -l larakube.io/tool=webmail -n larakube-shared',
+            self::WEBMAIL => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::BULWARK).' -n larakube-shared',
             self::NOTES => 'deployment notes-outline -n larakube-shared',
-            self::ANALYTICS => 'deployment -l larakube-tool=analytics -n larakube-shared',
-            self::TASKS => 'deployment -l larakube-tool=tasks -n larakube-shared',
+            self::ANALYTICS => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::UMAMI).' -n larakube-shared',
+            self::TASKS => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::PLANKA).' -n larakube-shared',
 
-            self::SIGN => 'deployment -l larakube-tool=sign -n larakube-shared',
-            self::SUPPORT => 'deployment -l larakube.io/tool=support,larakube.io/component=chatwoot -n larakube-shared',
-            self::LINK => 'deployment -l larakube-tool=link -n larakube-shared',
+            self::SIGN => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::DOCUMENSO).' -n larakube-shared',
+            self::SUPPORT => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::CHATWOOT, 'chatwoot').' -n larakube-shared',
+            self::LINK => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::KUTT).' -n larakube-shared',
             // CRM's Deployments are named per instance, so a probe on a bare
             // name never matches; select on the identity label instead.
-            self::CRM => 'deployment -l larakube.io/tool=crm -n larakube-shared',
+            self::CRM => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::TWENTY).' -n larakube-shared',
             self::DATA => 'deployment data-directus -n larakube-shared',
-            self::RECORD => 'deployment -l larakube.io/tool=record -n larakube-shared',
+            self::RECORD => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::SENDREC).' -n larakube-shared',
             self::DASHBOARD => 'deployment dashboard-headlamp -n larakube-shared',
             // LiveKit's Deployment is named per instance, so a probe on a bare
             // name never matches — select on the identity label instead.
-            self::MEET => 'deployment -l larakube.io/tool=meet -n larakube-shared',
-            self::DESIGN => 'deployment -l larakube.io/tool=design -n larakube-shared',
-            self::RESUME => 'deployment -l larakube.io/tool=resume -n larakube-shared',
-            self::PASTE => 'deployment -l larakube.io/tool=paste -n larakube-shared',
+            self::MEET => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::LIVEKIT).' -n larakube-shared',
+            self::DESIGN => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::PENPOT).' -n larakube-shared',
+            self::RESUME => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::RESUME).' -n larakube-shared',
+            self::PASTE => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::YOPASS).' -n larakube-shared',
         };
     }
 

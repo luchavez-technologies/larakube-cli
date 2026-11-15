@@ -405,7 +405,7 @@ spec:
       {{-- The runner reads config.yml only at startup, and a ConfigMap change
            alone never restarts a pod — this checksum is what rolls it. --}}
       annotations:
-        larakube.io/config-checksum: "{{ substr(hash('sha256', $runnerConfig), 0, 16) }}"
+        {{ \App\Support\Labels::CONFIG_CHECKSUM }}: "{{ substr(hash('sha256', $runnerConfig), 0, 16) }}"
     spec:
       initContainers:
         {{-- Offline registration: turn the shared secret into /data/.runner

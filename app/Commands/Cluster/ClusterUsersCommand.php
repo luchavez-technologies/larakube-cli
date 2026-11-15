@@ -88,15 +88,15 @@ class ClusterUsersCommand extends Command
 
         // One lookup of teammate SAs → friendly person names for the rows.
         $people = [];
-        foreach ($this->kubectlItems($kubectl.' get sa -A -l larakube.dev/access-user -o json') as $sa) {
+        foreach ($this->kubectlItems($kubectl.' get sa -A -l '.\App\Support\Labels::ACCESS_USER.' -o json') as $sa) {
             $n = $sa['metadata']['name'] ?? '';
-            $people[$n] = $sa['metadata']['annotations']['larakube.dev/person'] ?? $n;
+            $people[$n] = $sa['metadata']['annotations'][\App\Support\Labels::PERSON] ?? $n;
         }
 
         $rows = [];
         foreach ($bindings as $rb) {
             $role = $rb['roleRef']['name'] ?? '?';
-            $teammate = isset($rb['metadata']['labels']['larakube.dev/access-user']);
+            $teammate = isset($rb['metadata']['labels'][\App\Support\Labels::ACCESS_USER]);
             foreach ($rb['subjects'] ?? [] as $s) {
                 if (($s['kind'] ?? '') !== 'ServiceAccount') {
                     continue;
@@ -124,7 +124,7 @@ class ClusterUsersCommand extends Command
         $deployers = [];
         $teammates = [];
         foreach ($items as $sa) {
-            if (isset($sa['metadata']['labels']['larakube.dev/access-user'])) {
+            if (isset($sa['metadata']['labels'][\App\Support\Labels::ACCESS_USER])) {
                 $teammates[] = $sa;
             } else {
                 $deployers[] = $sa;
@@ -144,7 +144,7 @@ class ClusterUsersCommand extends Command
                 $ns = $sa['metadata']['namespace'] ?? '';
                 $name = $sa['metadata']['name'] ?? '';
                 $labels = $sa['metadata']['labels'] ?? [];
-                $rows[] = [$ns, $name, $labels['larakube.dev/app'] ?? '—', $labels['larakube.dev/env'] ?? '—', $this->tokenStatus($kubectl, $ns, $name)];
+                $rows[] = [$ns, $name, $labels[\App\Support\Labels::APP] ?? '—', $labels[\App\Support\Labels::ENV] ?? '—', $this->tokenStatus($kubectl, $ns, $name)];
             }
             $this->line('  <fg=green>Deploy credentials</>');
             table(['Namespace', 'ServiceAccount', 'App', 'Env', 'CI token'], $rows);
@@ -155,7 +155,7 @@ class ClusterUsersCommand extends Command
             $rows = [];
             foreach ($teammates as $sa) {
                 $name = $sa['metadata']['name'] ?? '';
-                $person = $sa['metadata']['annotations']['larakube.dev/person'] ?? $name;
+                $person = $sa['metadata']['annotations'][\App\Support\Labels::PERSON] ?? $name;
                 $rows[] = [$person, $name, $this->teammateAccess($kubectl, $name)];
             }
             $this->laraKubeNewLine();
@@ -172,7 +172,7 @@ class ClusterUsersCommand extends Command
         $parts = [];
 
         $clusterOut = trim(Process::run(
-            "{$kubectl} get clusterrolebinding -l larakube.dev/access-user=".escapeshellarg($sa)
+            "{$kubectl} get clusterrolebinding -l ".\App\Support\Labels::ACCESS_USER.'='.escapeshellarg($sa)
             .' -o jsonpath='.escapeshellarg('{range .items[*]}{.roleRef.name}{"  "}{end}'),
         )->output());
         foreach (array_filter(explode(' ', $clusterOut)) as $role) {
@@ -180,7 +180,7 @@ class ClusterUsersCommand extends Command
         }
 
         $nsOut = trim(Process::run(
-            "{$kubectl} get rolebinding -A -l larakube.dev/access-user=".escapeshellarg($sa)
+            "{$kubectl} get rolebinding -A -l ".\App\Support\Labels::ACCESS_USER.'='.escapeshellarg($sa)
             .' -o jsonpath='.escapeshellarg('{range .items[*]}{.metadata.namespace}{":"}{.roleRef.name}{"  "}{end}'),
         )->output());
         if ($nsOut !== '') {

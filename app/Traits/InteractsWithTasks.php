@@ -29,7 +29,7 @@ trait InteractsWithTasks
             return $k->hasDeployment($ns, $toolInstance->deployment());
         }
 
-        return $k->hasDeploymentLabelled($ns, 'larakube.io/tool=tasks');
+        return $k->hasDeploymentLabelled($ns, \App\Support\Labels::toolSelector(ClusterTool::PLANKA));
     }
 
     protected function readTasksSecret(string $kubectl, string $ns, string $key, string|ToolInstance $instance = ''): ?string

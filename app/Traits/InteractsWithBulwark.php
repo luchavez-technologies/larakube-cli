@@ -35,8 +35,7 @@ trait InteractsWithBulwark
     {
         $k = Kubectl::fromPrefix($kubectl);
 
-        return $k->hasDeploymentLabelled($ns, 'larakube.io/tool=webmail')
-            || $k->hasDeploymentLabelled($ns, 'larakube.io/tool=bulwark')
+        return $k->hasDeploymentLabelled($ns, \App\Support\Labels::toolSelector(ClusterTool::BULWARK))
             || $this->isToolRegistered($kubectl, ClusterTool::BULWARK);
     }
 
@@ -62,15 +61,13 @@ trait InteractsWithBulwark
                 return $registered;
             }
 
-            foreach (['webmail', 'bulwark'] as $label) {
-                $ingressHost = trim(Kubectl::fromPrefix($kubectl)->raw([
-                    'get', 'ingress', '-n', $this->bulwarkNamespace(), '-l', "larakube.io/tool={$label}",
-                    '-o', 'jsonpath={.items[0].spec.rules[0].host}',
-                ])->output);
+            $ingressHost = trim(Kubectl::fromPrefix($kubectl)->raw([
+                'get', 'ingress', '-n', $this->bulwarkNamespace(), '-l', \App\Support\Labels::toolSelector(ClusterTool::BULWARK),
+                '-o', 'jsonpath={.items[0].spec.rules[0].host}',
+            ])->output);
 
-                if ($ingressHost !== '') {
-                    return $ingressHost;
-                }
+            if ($ingressHost !== '') {
+                return $ingressHost;
             }
         }
 

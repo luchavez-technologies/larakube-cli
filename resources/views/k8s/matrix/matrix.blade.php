@@ -322,7 +322,7 @@ spec:
       labels:
         app: {{ $coturnName }}{!! $podLabels('coturn') !!}
       annotations:
-        larakube.io/config-checksum: "{{ substr(hash('sha256', $turnSecret.$host.$__tplHash), 0, 16) }}"
+        {{ \App\Support\Labels::CONFIG_CHECKSUM }}: "{{ substr(hash('sha256', $turnSecret.$host.$__tplHash), 0, 16) }}"
     spec:
       containers:
         - name: coturn
@@ -405,7 +405,7 @@ spec:
         {{-- $s3SecretKey is in the hash because homeserver.yaml bakes the Commons
              S3 credentials in: without it a `plex:rotate` would write a new Secret
              that this pod never picks up, and media offload would fail silently. --}}
-        larakube.io/config-checksum: "{{ substr(hash('sha256', $dbPassword.$registrationSecret.($smtp['password'] ?? '').($oidc['client_secret'] ?? '').($s3SecretKey ?? '').$__tplHash), 0, 16) }}"
+        {{ \App\Support\Labels::CONFIG_CHECKSUM }}: "{{ substr(hash('sha256', $dbPassword.$registrationSecret.($smtp['password'] ?? '').($oidc['client_secret'] ?? '').($s3SecretKey ?? '').$__tplHash), 0, 16) }}"
     spec:
 @if($s3Bucket ?? null)
       initContainers:
@@ -517,7 +517,7 @@ spec:
       labels:
         app: {{ $webName }}{!! $podLabels('web') !!}
       annotations:
-        larakube.io/config-checksum: "{{ substr(hash('sha256', $host.($appName ?? '').($logoUrl ?? '').$__tplHash), 0, 16) }}"
+        {{ \App\Support\Labels::CONFIG_CHECKSUM }}: "{{ substr(hash('sha256', $host.($appName ?? '').($logoUrl ?? '').$__tplHash), 0, 16) }}"
     spec:
       containers:
         - name: web

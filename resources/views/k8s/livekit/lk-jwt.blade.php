@@ -52,7 +52,7 @@ spec:
         {{ $key }}: {{ $value }}
 @endforeach
       annotations:
-        larakube.io/config-checksum: "{{ substr(hash('sha256', $meetHost.$chatHost.$livekitApiKey.$livekitApiSecret.$__tplHash), 0, 16) }}"
+        {{ \App\Support\Labels::CONFIG_CHECKSUM }}: "{{ substr(hash('sha256', $meetHost.$chatHost.$livekitApiKey.$livekitApiSecret.$__tplHash), 0, 16) }}"
     spec:
       containers:
         - name: lk-jwt

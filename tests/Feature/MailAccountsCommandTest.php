@@ -18,7 +18,7 @@ test('mail:accounts is registered', function (): void {
 });
 
 test('mail:accounts shows error when stalwart not installed', function (): void {
-    Process::fake(['*larakube.io/tool=mail*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*luchtech.dev/tool=stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:accounts')
         ->assertExitCode(1)
@@ -27,7 +27,7 @@ test('mail:accounts shows error when stalwart not installed', function (): void 
 
 test('mail:accounts shows empty when no accounts exist', function (): void {
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
@@ -44,7 +44,7 @@ test('mail:accounts shows empty when no accounts exist', function (): void {
 
 test('mail:accounts lists accounts', function (): void {
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
@@ -76,7 +76,7 @@ test('mail:accounts lists accounts', function (): void {
 
 test('mail:accounts emits json when --json is passed', function (): void {
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),

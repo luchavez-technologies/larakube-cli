@@ -15,7 +15,6 @@ metadata:
   namespace: {{ $names->namespace() }}
   labels:
     app: {{ $deployment }}
-    larakube-tool: link
 @foreach($labels as $key => $value)
     {{ $key }}: {{ $value }}
 @endforeach
@@ -30,7 +29,6 @@ spec:
     metadata:
       labels:
         app: {{ $deployment }}
-        larakube-tool: link
 @foreach($labels as $key => $value)
         {{ $key }}: {{ $value }}
 @endforeach
@@ -167,7 +165,6 @@ metadata:
   namespace: {{ $names->namespace() }}
   labels:
     app: {{ $deployment }}
-    larakube-tool: link
 @foreach($labels as $key => $value)
     {{ $key }}: {{ $value }}
 @endforeach

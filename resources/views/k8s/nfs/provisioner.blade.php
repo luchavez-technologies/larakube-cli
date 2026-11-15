@@ -130,7 +130,7 @@ spec:
           image: registry.k8s.io/sig-storage/nfs-subdir-external-provisioner:v4.0.2
           env:
             - name: PROVISIONER_NAME
-              value: larakube.io/nfs
+              value: {{ \App\Support\Labels::NFS_PROVISIONER }}
             - name: NFS_SERVER
               value: nfs-server.nfs.svc.cluster.local
             - name: NFS_PATH
@@ -151,7 +151,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: {{ \App\Data\ConfigData::NFS_STORAGE_CLASS }}
-provisioner: larakube.io/nfs
+provisioner: {{ \App\Support\Labels::NFS_PROVISIONER }}
 parameters:
   archiveOnDelete: "{{ $archiveOnDelete }}"
 reclaimPolicy: {{ $reclaimPolicy }}

@@ -22,7 +22,7 @@ metadata:
      `larakube up` would park it at zero replicas and never bring it back. --}}
 @if($isPreview ?? false)
   labels:
-    larakube-preview: "true"
+    {{ \App\Support\Labels::PREVIEW }}: "true"
 @endif
 spec:
   replicas: {{ $config->getReplicas($environment, 'web') }}

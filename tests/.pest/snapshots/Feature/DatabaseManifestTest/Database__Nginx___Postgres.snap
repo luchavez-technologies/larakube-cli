@@ -262,8 +262,8 @@ kind: Namespace
 metadata:
   name: postgres-test-local
   labels:
-    larakube.io/project: postgres-test
-    larakube.io/managed-by: larakube
+    luchtech.dev/project: postgres-test
+    luchtech.dev/managed-by: larakube
 
 ---
 
@@ -272,7 +272,7 @@ kind: PersistentVolume
 metadata:
   name: postgres-test-laravel-storage-pv
   labels:
-    larakube-project: postgres-test
+    luchtech.dev/project: postgres-test
 spec:
   capacity:
     storage: 1Gi
@@ -426,7 +426,7 @@ kind: PersistentVolume
 metadata:
   name: postgres-test-postgres-pv
   labels:
-    larakube-project: postgres-test
+    luchtech.dev/project: postgres-test
 spec:
   capacity:
     storage: 1Gi

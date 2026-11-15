@@ -262,8 +262,8 @@ kind: Namespace
 metadata:
   name: franken-postgres-local
   labels:
-    larakube.io/project: franken-postgres
-    larakube.io/managed-by: larakube
+    luchtech.dev/project: franken-postgres
+    luchtech.dev/managed-by: larakube
 
 ---
 
@@ -272,7 +272,7 @@ kind: PersistentVolume
 metadata:
   name: franken-postgres-laravel-storage-pv
   labels:
-    larakube-project: franken-postgres
+    luchtech.dev/project: franken-postgres
 spec:
   capacity:
     storage: 1Gi
@@ -426,7 +426,7 @@ kind: PersistentVolume
 metadata:
   name: franken-postgres-postgres-pv
   labels:
-    larakube-project: franken-postgres
+    luchtech.dev/project: franken-postgres
 spec:
   capacity:
     storage: 1Gi

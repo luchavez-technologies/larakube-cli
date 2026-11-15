@@ -54,7 +54,7 @@ test('the identity manifest is a central SA + bound-token Secret, labeled per us
         ->toContain('kind: ServiceAccount')
         ->toContain('namespace: larakube-access')
         ->toContain('type: kubernetes.io/service-account-token')
-        ->toContain('larakube.dev/access-user: lloyd');
+        ->toContain('luchtech.dev/access-user: lloyd');
 });
 
 test('the binding lives in the APP namespace and references a built-in ClusterRole', function (): void {
@@ -67,7 +67,7 @@ test('the binding lives in the APP namespace and references a built-in ClusterRo
         ->toContain('namespace: larakube-access')          // subject SA is central
         ->toContain('kind: ClusterRole')
         ->toContain('name: edit')
-        ->toContain('larakube.dev/access-user: lloyd');
+        ->toContain('luchtech.dev/access-user: lloyd');
 });
 
 test('the teammate kubeconfig names the context for the CLUSTER and defaults to the app namespace', function (): void {

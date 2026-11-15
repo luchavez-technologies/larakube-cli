@@ -87,7 +87,7 @@ spec:
         {{-- The registry is in the hash because livekit.yaml bakes every key in:
              without it, wiring a consumer rewrites the Secret and the pod keeps
              serving the old key set, silently rejecting the new credentials. --}}
-        larakube.io/config-checksum: "{{ substr(hash('sha256', $registryJson.$host.$__tplHash), 0, 16) }}"
+        {{ \App\Support\Labels::CONFIG_CHECKSUM }}: "{{ substr(hash('sha256', $registryJson.$host.$__tplHash), 0, 16) }}"
     spec:
       containers:
         - name: livekit

@@ -74,7 +74,7 @@ test('isGitInstalled probes the exact instance Deployment, or the git tool label
     Process::fake(['kubectl get deployment forgejo-git-example-com -n larakube-shared --no-headers' => 'forgejo-git-example-com   1/1   1   1   5d']);
     expect(gitReader()->installed('kubectl', 'larakube-shared', 'git-example-com'))->toBeTrue();
 
-    Process::fake(['kubectl get deployment -l larakube.io/tool=git -n larakube-shared --no-headers' => Process::result(output: '', exitCode: 0)]);
+    Process::fake(['kubectl get deployment -l luchtech.dev/tool=forgejo -n larakube-shared --no-headers' => Process::result(output: '', exitCode: 0)]);
     expect(gitReader()->installed('kubectl', 'larakube-shared'))->toBeFalse();
 });
 

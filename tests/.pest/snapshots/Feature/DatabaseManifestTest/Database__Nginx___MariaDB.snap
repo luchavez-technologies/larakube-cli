@@ -267,8 +267,8 @@ kind: Namespace
 metadata:
   name: mariadb-test-local
   labels:
-    larakube.io/project: mariadb-test
-    larakube.io/managed-by: larakube
+    luchtech.dev/project: mariadb-test
+    luchtech.dev/managed-by: larakube
 
 ---
 
@@ -277,7 +277,7 @@ kind: PersistentVolume
 metadata:
   name: mariadb-test-laravel-storage-pv
   labels:
-    larakube-project: mariadb-test
+    luchtech.dev/project: mariadb-test
 spec:
   capacity:
     storage: 1Gi
@@ -333,7 +333,7 @@ kind: PersistentVolume
 metadata:
   name: mariadb-test-mariadb-pv
   labels:
-    larakube-project: mariadb-test
+    luchtech.dev/project: mariadb-test
 spec:
   capacity:
     storage: 1Gi

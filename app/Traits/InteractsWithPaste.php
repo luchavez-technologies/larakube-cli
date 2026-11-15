@@ -21,7 +21,7 @@ trait InteractsWithPaste
      */
     protected function isPasteInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=paste');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, \App\Support\Labels::toolSelector(ClusterTool::YOPASS));
     }
 
     protected function resolvePasteHostReadOnly(string $env, ?ConfigData $config): ?string

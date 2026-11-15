@@ -19,7 +19,7 @@ trait InteractsWithResume
 
     protected function isResumeInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=resume');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, \App\Support\Labels::toolSelector(ClusterTool::RESUME));
     }
 
     protected function readResumeSecret(string $kubectl, string $ns, string $secret, string $key): ?string

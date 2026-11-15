@@ -242,7 +242,7 @@ test('share:remove deletes the records and the tunnel and forgets the share', fu
 
         expect($exit)->toBe(0)
             ->and(domainShareJson())->toBe(['success' => true, 'removed' => true])
-            ->and(implode("\n", $commands))->toContain('delete deployment,secret -l larakube.dev/role=share')
+            ->and(implode("\n", $commands))->toContain('delete deployment,secret -l luchtech.dev/role=share')
             ->and(ConfigData::loadFromFile(getcwd())->getAppUrl('local'))->toBe('https://shop.test')
             ->and($GLOBALS['share_up_calls'])->toBe(['local', 'local']);
 
@@ -324,7 +324,7 @@ test('share:show does not call a connector running when its deployment exists at
 test('up keeps a share connector running through its scale-down and restart, and brings a stopped one back', function (): void {
     $source = (string) file_get_contents(base_path('app/Commands/UpCommand.php'));
 
-    expect(substr_count($source, "-l 'larakube-preview!=true,larakube.dev/role!=share'"))->toBe(3)
+    expect(substr_count($source, "Labels::PREVIEW.'!=true,'."))->toBe(3)
         ->and($source)->toContain('scale deployment/larakube-share --replicas=1');
 });
 

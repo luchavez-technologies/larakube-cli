@@ -153,6 +153,6 @@ final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClust
     public function presenceProbe(?string $instance = null): ?string
     {
         // By label: the Deployment is named per instance, so a bare name matches nothing.
-        return 'deployment -l larakube.io/tool=mail -n larakube-shared';
+        return 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::STALWART).' -n larakube-shared';
     }
 }

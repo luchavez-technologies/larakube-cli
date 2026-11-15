@@ -42,7 +42,7 @@ spec:
         # Rotating a Secret does NOT roll a Deployment — the pod template is
         # unchanged, so a healthy pod keeps the old credentials forever. Folding
         # a checksum into the template makes any credential change roll the pod.
-        larakube.io/secret-checksum: "{{ $secretChecksum }}"
+        {{ \App\Support\Labels::SECRET_CHECKSUM }}: "{{ $secretChecksum }}"
     spec:
       containers:
         - name: oauth2-proxy

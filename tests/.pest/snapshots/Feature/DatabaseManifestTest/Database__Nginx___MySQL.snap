@@ -267,8 +267,8 @@ kind: Namespace
 metadata:
   name: mysql-test-local
   labels:
-    larakube.io/project: mysql-test
-    larakube.io/managed-by: larakube
+    luchtech.dev/project: mysql-test
+    luchtech.dev/managed-by: larakube
 
 ---
 
@@ -277,7 +277,7 @@ kind: PersistentVolume
 metadata:
   name: mysql-test-laravel-storage-pv
   labels:
-    larakube-project: mysql-test
+    luchtech.dev/project: mysql-test
 spec:
   capacity:
     storage: 1Gi
@@ -333,7 +333,7 @@ kind: PersistentVolume
 metadata:
   name: mysql-test-mysql-pv
   labels:
-    larakube-project: mysql-test
+    luchtech.dev/project: mysql-test
 spec:
   capacity:
     storage: 1Gi

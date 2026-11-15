@@ -242,8 +242,8 @@ kind: Namespace
 metadata:
   name: redis-test-local
   labels:
-    larakube.io/project: redis-test
-    larakube.io/managed-by: larakube
+    luchtech.dev/project: redis-test
+    luchtech.dev/managed-by: larakube
 
 ---
 
@@ -252,7 +252,7 @@ kind: PersistentVolume
 metadata:
   name: redis-test-laravel-storage-pv
   labels:
-    larakube-project: redis-test
+    luchtech.dev/project: redis-test
 spec:
   capacity:
     storage: 1Gi
@@ -269,7 +269,7 @@ kind: PersistentVolume
 metadata:
   name: redis-test-laravel-data-pv
   labels:
-    larakube-project: redis-test
+    luchtech.dev/project: redis-test
 spec:
   capacity:
     storage: 1Gi

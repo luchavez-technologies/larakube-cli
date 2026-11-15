@@ -15,7 +15,7 @@ test('tool:list detects tools live on the cluster even if missing from registry 
         // Empty registry secret
         '*get secret larakube-tools-registry*' => Process::result(output: ''),
         // Stalwart (Mail) is present on cluster
-        '*deployment -l larakube.io/tool=mail -n larakube-shared*' => Process::result(output: 'deployment.apps/stalwart created'),
+        '*deployment -l luchtech.dev/tool=stalwart -n larakube-shared*' => Process::result(output: 'deployment.apps/stalwart created'),
         // Ingress holds send.luchtech.dev
         '*get ingress -n larakube-shared -o jsonpath*' => Process::result(output: 'send.luchtech.dev'),
         // Catch-all process

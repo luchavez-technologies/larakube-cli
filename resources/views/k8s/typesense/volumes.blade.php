@@ -4,7 +4,7 @@ kind: PersistentVolume
 metadata:
   name: {{ $config->getName() }}-typesense-pv
   labels:
-    larakube-project: {{ $config->getName() }}
+    {{ \App\Support\Labels::PROJECT }}: {{ $config->getName() }}
 spec:
   capacity:
     storage: 1Gi

@@ -23,7 +23,7 @@ trait InteractsWithErrors
     /** GlitchTip web Deployment present? A cheap "is GlitchTip installed" probe, by identity label. */
     protected function isErrorsInstalled(string $kubectl, string $ns): bool
     {
-        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, 'larakube.io/tool=errors,larakube.io/component=glitchtip');
+        return Kubectl::fromPrefix($kubectl)->hasDeploymentLabelled($ns, \App\Support\Labels::toolSelector(ClusterTool::GLITCHTIP, 'glitchtip'));
     }
 
     /** Decrypt and read the GlitchTip admin password from the larakube Secret. */

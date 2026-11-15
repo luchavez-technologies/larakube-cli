@@ -78,7 +78,7 @@ trait TargetsWorkspaceServer
      */
     protected function findWorkspace(Kubectl $kubectl, string $name): ?array
     {
-        $namespaces = $kubectl->raw(['get', 'namespace', '-l', 'larakube-workspace='.$name, '-o', 'json'])->json()['items'] ?? [];
+        $namespaces = $kubectl->raw(['get', 'namespace', '-l', \App\Support\Labels::WORKSPACE.'='.$name, '-o', 'json'])->json()['items'] ?? [];
 
         if ($namespaces === []) {
             $this->laraKubeError("No workspace named '{$name}' on that server.");

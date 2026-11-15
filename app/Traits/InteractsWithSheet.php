@@ -31,7 +31,7 @@ trait InteractsWithSheet
             return $k->hasDeployment($ns, $toolInstance->deployment());
         }
 
-        return $k->hasDeploymentLabelled($ns, 'larakube.io/tool=sheets');
+        return $k->hasDeploymentLabelled($ns, \App\Support\Labels::toolSelector(ClusterTool::TEABLE));
     }
 
     /** Read database password. */

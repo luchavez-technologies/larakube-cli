@@ -52,18 +52,18 @@ test('cloud Vault host is null when none is configured for the env', function ()
 });
 
 test('isVaultInstalled finds the Deployment by its identity label, whatever its instance name', function (): void {
-    Process::fake(['*get deployment -l larakube.io/tool=passwords -n larakube-vault*' => 'vaultwarden-vault-example-com   1/1   1   1   5d']);
+    Process::fake(['*get deployment -l luchtech.dev/tool=vaultwarden -n larakube-vault*' => 'vaultwarden-vault-example-com   1/1   1   1   5d']);
     expect(vaultReader()->installed('kubectl', 'larakube-vault'))->toBeTrue();
 
     Process::fake([
-        '*get deployment -l larakube.io/tool=passwords -n larakube-vault*' => Process::result(output: ''),
-        '*-l larakube.io/tool=vaultwarden*' => 'vaultwarden-vault-example-com   1/1   1   1   5d',
+        '*get deployment -l luchtech.dev/tool=vaultwarden -n larakube-vault*' => Process::result(output: ''),
+        '*-l luchtech.dev/tool=vaultwarden*' => 'vaultwarden-vault-example-com   1/1   1   1   5d',
     ]);
     expect(vaultReader()->installed('kubectl', 'larakube-vault'))->toBeTrue();
 
     Process::fake([
-        '*get deployment -l larakube.io/tool=passwords -n larakube-vault*' => Process::result(output: '', exitCode: 1),
-        '*-l larakube.io/tool=vaultwarden*' => Process::result(output: '', exitCode: 1),
+        '*get deployment -l luchtech.dev/tool=vaultwarden -n larakube-vault*' => Process::result(output: '', exitCode: 1),
+        '*-l luchtech.dev/tool=vaultwarden*' => Process::result(output: '', exitCode: 1),
     ]);
     expect(vaultReader()->installed('kubectl', 'larakube-vault'))->toBeFalse();
 });
@@ -89,11 +89,11 @@ test('vaultAccess is null when vault is not installed, populated when it is', fu
         ['tool' => 'vaultwarden', 'instance' => 'vault-example-com', 'host' => 'vault.example.com'],
     ]));
 
-    Process::fake(['*get deployment -l larakube.io/tool=passwords*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*get deployment -l luchtech.dev/tool=vaultwarden*' => Process::result(output: '', exitCode: 1)]);
     expect(vaultReader()->access('local', null))->toBeNull();
 
     Process::fake([
-        '*get deployment -l larakube.io/tool=passwords*' => 'vaultwarden-vault-example-com   1/1   1   1   5d',
+        '*get deployment -l luchtech.dev/tool=vaultwarden*' => 'vaultwarden-vault-example-com   1/1   1   1   5d',
         '*get secret larakube-tools-registry*' => $registry,
         "*get secret vaultwarden-secrets-vault-example-com -n larakube-vault -o jsonpath='{.data.plain-token}'*" => base64_encode('s3cr3t-adm1n'),
     ]);

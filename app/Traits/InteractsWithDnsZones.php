@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Process;
  * Discover which Cloudflare zones a cluster manages.
  *
  * The cluster IS the registry — the running Deployments and their
- * `larakube.io/dns-domain` annotation are the record, so there is no separate
+ * `Labels::DNS_DOMAIN` annotation are the record, so there is no separate
  * state file to drift from reality. Nothing is written to `.larakube.json`:
  * DNS zones are cluster infrastructure and belong to no Laravel project.
  */
@@ -18,7 +18,7 @@ trait InteractsWithDnsZones
     /**
      * Every zone this cluster manages, one row per zone — newest listing
      * order irrelevant. A single tool:init --tool=external-dns instance can now cover 2+ zones
-     * that share one Cloudflare token (`larakube.io/dns-domain` is a
+     * that share one Cloudflare token (`Labels::DNS_DOMAIN` is a
      * comma-joined list in that case); this splits it back out so each zone
      * still gets its own row, with multiple rows naturally sharing the same
      * `slug`/`owner`/`ready` when they're served by the same instance —
@@ -50,19 +50,19 @@ trait InteractsWithDnsZones
             $annotations = $meta['annotations'] ?? [];
             $labels = $meta['labels'] ?? [];
 
-            $domainAnnotation = $annotations['larakube.io/dns-domain'] ?? null;
-            $slug = $labels['larakube.io/dns-zone'] ?? null;
+            $domainAnnotation = $annotations[\App\Support\Labels::DNS_DOMAIN] ?? null;
+            $slug = $labels[\App\Support\Labels::DNS_ZONE] ?? null;
 
             if ($domainAnnotation === null || $slug === null) {
                 continue;
             }
 
             $status = $item['status'] ?? [];
-            $owner = (string) ($annotations['larakube.io/dns-owner-id'] ?? '');
+            $owner = (string) ($annotations[\App\Support\Labels::DNS_OWNER_ID] ?? '');
             $ready = (int) ($status['readyReplicas'] ?? 0) > 0;
             // Instances deployed before this annotation existed had no other
             // provider to be — Cloudflare was the only one `tool:init --tool=external-dns` offered.
-            $provider = (string) ($annotations['larakube.io/dns-provider'] ?? DnsProvider::CLOUDFLARE->value);
+            $provider = (string) ($annotations[\App\Support\Labels::DNS_PROVIDER] ?? DnsProvider::CLOUDFLARE->value);
 
             foreach (explode(',', (string) $domainAnnotation) as $zone) {
                 $zone = trim($zone);

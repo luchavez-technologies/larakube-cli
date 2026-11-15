@@ -16,7 +16,7 @@ test('mail:domains is registered', function (): void {
 });
 
 test('mail:domains requires installed stalwart', function (): void {
-    Process::fake(['*larakube.io/tool=mail*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*luchtech.dev/tool=stalwart*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('mail:domains')
         ->assertExitCode(1)
@@ -25,7 +25,7 @@ test('mail:domains requires installed stalwart', function (): void {
 
 test('mail:domains shows empty when no domains exist', function (): void {
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),
@@ -42,7 +42,7 @@ test('mail:domains shows empty when no domains exist', function (): void {
 
 test('mail:domains emits machine-readable json when --json is passed', function (): void {
     Process::fake([
-        '*larakube.io/tool=mail*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
+        '*luchtech.dev/tool=stalwart*' => Process::result(output: 'stalwart   1/1   1   1   10d'),
         '*get secret stalwart-secrets*' => Process::result(output: base64_encode('test-admin-pass')),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(),

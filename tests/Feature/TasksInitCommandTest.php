@@ -15,9 +15,9 @@ test('tasks manifest carries canonical resource naming and identity labels', fun
 
     expect($manifest)
         ->toContain('name: planka-tasks-example-test')
-        ->toContain('larakube.io/tool: planka')
-        ->toContain('larakube.io/component: planka')
-        ->toContain('larakube.io/instance: tasks-example-test')
+        ->toContain('luchtech.dev/tool: planka')
+        ->toContain('luchtech.dev/component: planka')
+        ->toContain('luchtech.dev/instance: tasks-example-test')
         ->toContain('name: planka-secrets-tasks-example-test')
         ->toContain('postgres://planka_tasks_example_test:$(DB_PASSWORD)@postgres.larakube-plex.svc.cluster.local:5432/planka_tasks_example_test');
 });

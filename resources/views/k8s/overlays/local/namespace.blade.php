@@ -3,5 +3,5 @@ kind: Namespace
 metadata:
   name: {{ $namespace }}
   labels:
-    larakube.io/project: {{ $config->getName() }}
-    larakube.io/managed-by: larakube
+    {{ \App\Support\Labels::PROJECT }}: {{ $config->getName() }}
+    {{ \App\Support\Labels::MANAGED_BY }}: larakube

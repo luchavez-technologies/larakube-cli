@@ -262,8 +262,8 @@ kind: Namespace
 metadata:
   name: seaweed-test-local
   labels:
-    larakube.io/project: seaweed-test
-    larakube.io/managed-by: larakube
+    luchtech.dev/project: seaweed-test
+    luchtech.dev/managed-by: larakube
 
 ---
 
@@ -272,7 +272,7 @@ kind: PersistentVolume
 metadata:
   name: seaweed-test-laravel-storage-pv
   labels:
-    larakube-project: seaweed-test
+    luchtech.dev/project: seaweed-test
 spec:
   capacity:
     storage: 1Gi
@@ -289,7 +289,7 @@ kind: PersistentVolume
 metadata:
   name: seaweed-test-laravel-data-pv
   labels:
-    larakube-project: seaweed-test
+    luchtech.dev/project: seaweed-test
 spec:
   capacity:
     storage: 1Gi
@@ -470,7 +470,7 @@ kind: PersistentVolume
 metadata:
   name: seaweed-test-seaweedfs-pv
   labels:
-    larakube-project: seaweed-test
+    luchtech.dev/project: seaweed-test
 spec:
   capacity:
     storage: 5Gi

@@ -455,8 +455,8 @@ kind: Namespace
 metadata:
   name: kitchen-sink-local
   labels:
-    larakube.io/project: kitchen-sink
-    larakube.io/managed-by: larakube
+    luchtech.dev/project: kitchen-sink
+    luchtech.dev/managed-by: larakube
 
 ---
 
@@ -465,7 +465,7 @@ kind: PersistentVolume
 metadata:
   name: kitchen-sink-laravel-storage-pv
   labels:
-    larakube-project: kitchen-sink
+    luchtech.dev/project: kitchen-sink
 spec:
   capacity:
     storage: 1Gi
@@ -482,7 +482,7 @@ kind: PersistentVolume
 metadata:
   name: kitchen-sink-laravel-data-pv
   labels:
-    larakube-project: kitchen-sink
+    luchtech.dev/project: kitchen-sink
 spec:
   capacity:
     storage: 1Gi

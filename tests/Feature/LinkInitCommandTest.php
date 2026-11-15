@@ -56,9 +56,9 @@ test('link manifest carries canonical resource naming and identity labels', func
 
     expect($manifest)
         ->toContain('name: kutt-link-example-test')
-        ->toContain('larakube.io/tool: kutt')
-        ->toContain('larakube.io/component: kutt')
-        ->toContain('larakube.io/instance: link-example-test')
+        ->toContain('luchtech.dev/tool: kutt')
+        ->toContain('luchtech.dev/component: kutt')
+        ->toContain('luchtech.dev/instance: link-example-test')
         ->toContain('name: kutt-secrets-link-example-test')
         ->toContain('name: kutt-smtp-link-example-test')
         ->toContain('name: kutt-oidc-link-example-test')

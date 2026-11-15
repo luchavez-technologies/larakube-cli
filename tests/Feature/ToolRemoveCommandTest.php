@@ -45,7 +45,7 @@ function flowRemoveFakes(array $extra = [], bool $bundled = false): array
     return [...registeredToolRemoveFakes('n8n:remove', 'flow-example-com', 'flow.example.com'),
         "*get deployment/{$deployment} *-o json*" => Process::result(output: json_encode([
             'kind' => 'Deployment',
-            'metadata' => ['name' => $deployment, 'labels' => $bundled ? ['larakube-storage' => 'bundled'] : []],
+            'metadata' => ['name' => $deployment, 'labels' => $bundled ? ['luchtech.dev/storage' => 'bundled'] : []],
         ])),
         "*get deployment/{$deployment} *-o name*" => Process::result(output: "deployment/{$deployment}"),
         '*get deployment/*' => Process::result(output: ''),
@@ -259,8 +259,8 @@ test('stalwart:remove closes the firewall ports it opened', function (): void {
     // exposure, so teardown must reach the firewall too.
     $this->artisan('stalwart:remove local --force')->assertExitCode(0);
 
-    Process::assertRan(fn ($job) => str_contains($job->command, 'wait --for=delete pod -l larakube.io/tool=mail'));
-    Process::assertRan(fn ($job) => str_contains($job->command, 'wait --for=delete pod -l larakube.io/tool=stalwart'));
+    Process::assertRan(fn ($job) => str_contains($job->command, 'wait --for=delete pod -l luchtech.dev/tool=stalwart'));
+    Process::assertRan(fn ($job) => str_contains($job->command, 'wait --for=delete pod -l luchtech.dev/tool=stalwart'));
 });
 
 test('--domain on a single-instance tool errors instead of silently no-opping', function (): void {

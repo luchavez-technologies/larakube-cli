@@ -292,8 +292,8 @@ kind: Namespace
 metadata:
   name: typesense-test-local
   labels:
-    larakube.io/project: typesense-test
-    larakube.io/managed-by: larakube
+    luchtech.dev/project: typesense-test
+    luchtech.dev/managed-by: larakube
 
 ---
 
@@ -302,7 +302,7 @@ kind: PersistentVolume
 metadata:
   name: typesense-test-laravel-storage-pv
   labels:
-    larakube-project: typesense-test
+    luchtech.dev/project: typesense-test
 spec:
   capacity:
     storage: 1Gi
@@ -319,7 +319,7 @@ kind: PersistentVolume
 metadata:
   name: typesense-test-laravel-data-pv
   labels:
-    larakube-project: typesense-test
+    luchtech.dev/project: typesense-test
 spec:
   capacity:
     storage: 1Gi
@@ -515,7 +515,7 @@ kind: PersistentVolume
 metadata:
   name: typesense-test-typesense-pv
   labels:
-    larakube-project: typesense-test
+    luchtech.dev/project: typesense-test
 spec:
   capacity:
     storage: 1Gi

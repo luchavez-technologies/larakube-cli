@@ -11,7 +11,7 @@ use Saloon\Laravel\Facades\Saloon;
 function chatUserBaseProcessFakes(): array
 {
     return [
-        '*get deployment -l larakube.io/tool=chat*' => Process::result(output: 'synapse-chat-test   1/1   1   1   10d'),
+        '*get deployment -l luchtech.dev/tool=matrix*' => Process::result(output: 'synapse-chat-test   1/1   1   1   10d'),
         '*get secret synapse-secrets-*admin-access-token*' => Process::result(output: '', exitCode: 1),
         '*get secret synapse-secrets-*registration-secret*' => Process::result(output: base64_encode('shared-registration-secret')),
         '*get secret synapse-secrets-*automation-password*' => Process::result(output: '', exitCode: 1),
@@ -30,7 +30,7 @@ test('chat:user is registered', function (): void {
 });
 
 test('chat:user requires installed chat', function (): void {
-    Process::fake(['*get deployment -l larakube.io/tool=chat*' => Process::result(output: '', exitCode: 1)]);
+    Process::fake(['*get deployment -l luchtech.dev/tool=matrix*' => Process::result(output: '', exitCode: 1)]);
 
     $this->artisan('chat:user', ['--username' => 'alice', '--no-interaction' => true])
         ->assertExitCode(1)
@@ -58,7 +58,7 @@ test('chat:user bootstraps the automation admin (shared-secret register) then cr
 
 test('chat:user reuses a cached admin token without re-bootstrapping', function (): void {
     Process::fake([
-        '*get deployment -l larakube.io/tool=chat*' => Process::result(output: 'synapse-chat-test   1/1   1   1   10d'),
+        '*get deployment -l luchtech.dev/tool=matrix*' => Process::result(output: 'synapse-chat-test   1/1   1   1   10d'),
         '*get secret synapse-secrets-*admin-access-token*' => Process::result(output: base64_encode('cached-admin-token')),
     ]);
 

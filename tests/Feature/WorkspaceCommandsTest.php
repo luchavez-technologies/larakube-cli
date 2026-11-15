@@ -41,14 +41,14 @@ function fakeWorkspaceCluster(?array &$seen, array $existing = [], array $secret
         }
 
         if (str_contains($cmd, 'get namespace')) {
-            $wanted = preg_match('/larakube-workspace=([a-z0-9-]+)/', $cmd, $match) === 1 ? [$match[1]] : null;
+            $wanted = preg_match('#luchtech\.dev/workspace=([a-z0-9-]+)#', $cmd, $match) === 1 ? [$match[1]] : null;
             $names = $wanted === null ? $existing : array_values(array_intersect($existing, $wanted));
 
             return Process::result(output: json_encode(['items' => array_map(fn (string $name): array => [
-                'metadata' => ['labels' => ['larakube-workspace' => $name], 'annotations' => [
-                    'larakube.dev/workspace-repo' => '"https://github.com/acme/app"',
-                    'larakube.dev/workspace-branch' => '"main"',
-                    'larakube.dev/workspace-size' => '"standard"',
+                'metadata' => ['labels' => ['luchtech.dev/workspace' => $name], 'annotations' => [
+                    'luchtech.dev/workspace-repo' => '"https://github.com/acme/app"',
+                    'luchtech.dev/workspace-branch' => '"main"',
+                    'luchtech.dev/workspace-size' => '"standard"',
                 ]],
             ], $names)]));
         }
