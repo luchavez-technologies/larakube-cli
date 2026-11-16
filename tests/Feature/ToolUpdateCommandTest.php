@@ -129,3 +129,43 @@ test('--all with nothing behind says so and runs nothing', function (): void {
         ->assertExitCode(0)
         ->expectsOutputToContain('Every installed tool is up to date.');
 });
+
+test('--all carries on past an instance whose re-run throws, and reports it as failed', function (): void {
+    Process::fake(toolUpdateFakes(
+        [
+            ['tool' => 'outline', 'instance' => 'notes-example-com', 'host' => 'notes.example.com'],
+            ['tool' => 'vaultwarden', 'instance' => 'vault-example-com', 'host' => 'vault.example.com'],
+        ],
+        [toolUpdateWorkload('outline', 'notes-example-com'), toolUpdateWorkload('vaultwarden', 'vault-example-com')],
+    ));
+
+    // A stand-in tool:init: Outline throws the way a missing --admin-email did live.
+    $stub = new class extends Illuminate\Console\Command
+    {
+        protected $signature = 'tool:init {--tool=} {--domain=} {--context=} {--force}';
+
+        /** @var list<string> */
+        public array $ran = [];
+
+        public function handle(): int
+        {
+            $this->ran[] = (string) $this->option('tool');
+
+            if ($this->option('tool') === 'outline') {
+                throw new App\Exceptions\MissingFlagException('admin-email', 'Primary administrator email for Outline');
+            }
+
+            return self::SUCCESS;
+        }
+    };
+    app(Illuminate\Contracts\Console\Kernel::class)->registerCommand($stub);
+
+    expect(Artisan::call('tool:update --context=test --all --json'))->toBe(1);
+
+    $results = collect(json_decode(Artisan::output(), true))->keyBy('tool');
+
+    expect($stub->ran)->toBe(['outline', 'vaultwarden'])
+        ->and($results['outline']['outcome'])->toBe('failed')
+        ->and($results['outline']['error'])->toContain('admin-email')
+        ->and($results['vaultwarden']['outcome'])->toBe('updated');
+});

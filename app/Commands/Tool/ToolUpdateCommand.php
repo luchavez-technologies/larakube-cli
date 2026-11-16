@@ -13,6 +13,7 @@ use App\Traits\ResolvesStandaloneEnvironment;
 use function Laravel\Prompts\table;
 
 use LaravelZero\Framework\Commands\Command;
+use Throwable;
 
 /**
  * Brings installed Cluster Tools up to this CLI build: re-runs each one's
@@ -87,8 +88,15 @@ class ToolUpdateCommand extends Command
                 $this->laraKubeInfo("Updating {$row['label']} ({$row['host']})...");
             }
 
-            $exit = $this->call('tool:init', $parameters);
-            $results[] = $this->result($row, $exit === self::SUCCESS ? 'updated' : 'failed', $this->describe($parameters));
+            // One instance's failure (a missing flag, an unreachable service) must not
+            // abort the rest of an --all run.
+            try {
+                $exit = $this->call('tool:init', $parameters);
+                $results[] = $this->result($row, $exit === self::SUCCESS ? 'updated' : 'failed', $this->describe($parameters));
+            } catch (Throwable $e) {
+                $this->laraKubeError("{$row['label']} ({$row['host']}): {$e->getMessage()}");
+                $results[] = $this->result($row, 'failed', $this->describe($parameters), $e->getMessage());
+            }
         }
 
         return $this->report($results);
@@ -245,7 +253,7 @@ class ToolUpdateCommand extends Command
      * @param  array<string, mixed>  $row
      * @return array<string, mixed>
      */
-    private function result(array $row, string $outcome, string $command): array
+    private function result(array $row, string $outcome, string $command, ?string $error = null): array
     {
         return [
             'tool' => $row['tool'],
@@ -254,6 +262,7 @@ class ToolUpdateCommand extends Command
             'was' => $row['status'],
             'outcome' => $outcome,
             'command' => $command,
+            ...($error !== null ? ['error' => $error] : []),
         ];
     }
 

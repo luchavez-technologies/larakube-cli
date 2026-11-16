@@ -127,7 +127,12 @@ abstract class OutlineInitCommand extends AbstractToolInitCommand
         $s3Endpoint = $this->resolveCommonsS3Endpoints($driver, 'Outline')['public'];
 
         // Stable secrets across re-runs — rotating these invalidates sessions.
-        $adminEmail = $this->readNotesSecretKey($kubectl, $ns, $secretName, 'admin-email') ?? $this->resolveAdminEmail($host);
+        // The admin email is never written to the Secret; the registry and this
+        // instance's install-options stamp are where a re-run finds it.
+        $adminEmail = $this->readNotesSecretKey($kubectl, $ns, $secretName, 'admin-email')
+            ?? $this->knownAdminEmail($kubectl, $instance)
+            ?? $this->resolveAdminEmail($host);
+        $this->rememberOption('admin-email', $adminEmail);
         $dbPassword = $this->readNotesSecretKey($kubectl, $ns, $secretName, 'db-password') ?? Str::random(24);
         $secretKey = $this->readNotesSecretKey($kubectl, $ns, $secretName, 'secret-key') ?? bin2hex(random_bytes(32));
         $utilsSecret = $this->readNotesSecretKey($kubectl, $ns, $secretName, 'utils-secret') ?? bin2hex(random_bytes(32));
@@ -374,6 +379,21 @@ abstract class OutlineInitCommand extends AbstractToolInitCommand
     }
 
     /** Resolve the admin email for Outline */
+    private function knownAdminEmail(string $kubectl, ?string $instance): ?string
+    {
+        $option = $this->option('admin-email');
+
+        if (is_string($option) && $option !== '') {
+            return $option;
+        }
+
+        $known = $this->findToolInstanceEntry($kubectl, ClusterTool::OUTLINE, $instance)['adminEmail']
+            ?? $this->recordedInstallOptions($kubectl, ClusterTool::OUTLINE, $instance)['admin-email']
+            ?? null;
+
+        return is_string($known) && $known !== '' ? $known : null;
+    }
+
     protected function resolveAdminEmail(string $host): string
     {
         $parts = explode('.', $host);

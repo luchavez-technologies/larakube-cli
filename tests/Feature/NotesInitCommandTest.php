@@ -149,6 +149,46 @@ test('tool:init --tool=outline registers itself in the cluster tool registry, in
         ->and($notesEntry)->not->toHaveKey('extra');
 });
 
+test('an unattended Outline re-run without --admin-email reuses the one it was installed with', function (): void {
+    // The email is never written to Outline's Secret, so an update (which runs
+    // unattended) used to stop at a MissingFlagException on every re-run.
+    $captured = null;
+    $spec = notesCommonsSpec('files.example.com');
+    $registry = [['tool' => 'outline', 'instance' => 'notes-example-com', 'host' => 'notes.example.com', 'adminEmail' => 'owner@example.com']];
+
+    Process::fake(function ($process) use ($spec, $registry, &$captured) {
+        $cmd = $process->command;
+
+        if (str_contains($cmd, 'create secret generic larakube-tools-registry')) {
+            if (preg_match('/--from-file=registry\.json=(\S+)/', $cmd, $m)) {
+                $captured = json_decode(file_get_contents($m[1]), true);
+            }
+
+            return Process::result();
+        }
+
+        return match (true) {
+            str_contains($cmd, 'apply -f') => Process::result(output: 'applied'),
+            str_contains($cmd, 'get configmap plex-commons') => Process::result(output: json_encode($spec)),
+            str_contains($cmd, 'get configmap plex-registry') => Process::result(output: '', exitCode: 1),
+            str_contains($cmd, 'get secret larakube-tools-registry') => Process::result(output: base64_encode(json_encode($registry))),
+            str_contains($cmd, 'S3_ACCESS_KEY') => Process::result(output: base64_encode('larakube')),
+            str_contains($cmd, 'S3_SECRET_KEY') => Process::result(output: base64_encode('s3-secret')),
+            str_contains($cmd, 'outline-oidc') => Process::result(output: base64_encode('existing-client-id')),
+            str_contains($cmd, 'rollout status') => Process::result(output: 'deployment "outline" successfully rolled out'),
+            default => Process::result(output: ''),
+        };
+    });
+
+    $this->artisan('tool:init', ['--tool' => 'outline',
+        'environment' => 'local',
+        '--domain' => 'notes.example.com',
+        '--no-interaction' => true,
+    ])->assertExitCode(0);
+
+    expect(collect($captured)->firstWhere('tool', 'outline')['adminEmail'])->toBe('owner@example.com');
+});
+
 test('tool:init --tool=outline falls back to the internal S3 endpoint when the Commons has no public host', function (): void {
     $appliedManifest = null;
     fakeNotesInitProcess(null, $appliedManifest);
