@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\ClusterTool;
+
 test('support manifest reads SMTP_ENABLE_STARTTLS_AUTO from the SMTP Secret in both containers', function (): void {
     // Wired keys come from the wirer's Secret: mail:wire/sso:wire store their
     // static keys there and import it with --from=secret (ADR 0018), so the

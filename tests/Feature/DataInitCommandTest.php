@@ -1,8 +1,8 @@
 <?php
 
-use App\Enums\ClusterTool;
 use App\Commands\Directus\DirectusRemoveCommand;
 use App\Commands\Directus\DirectusShowCommand;
+use App\Enums\ClusterTool;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Process;
 
