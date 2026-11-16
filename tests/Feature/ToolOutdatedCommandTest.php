@@ -107,9 +107,46 @@ test('tool:outdated lists every container with its running image, main one first
         'running' => 'docker.n8n.io/n8nio/n8n:2.39.8',
         'available' => ClusterTool::N8N->vendor()->image('n8n'),
         'primary' => true,
+        'digests' => [],
     ])
         ->and($containers[1]['running'])->toBe('busybox:1.36')
         ->and($containers[1]['primary'])->toBeFalse()
         // Nothing in n8n's pins mentions busybox: unknown, not "unchanged".
         ->and($containers[1]['available'])->toBeNull();
+});
+
+test('each container carries the digest its pods actually pulled, matched through the workload\'s selector', function (): void {
+    $deployment = App\Data\ToolInstance::forInstance(ClusterTool::N8N, 'flow-example-com')->deployment();
+    $digest = fn (string $c): string => 'sha256:'.str_repeat($c, 64);
+    $pod = fn (string $app, string $imageId): array => [
+        'metadata' => ['namespace' => 'larakube-shared', 'labels' => ['app' => $app, 'pod-template-hash' => 'x']],
+        'status' => ['containerStatuses' => [['name' => 'n8n', 'imageID' => "docker.n8n.io/n8nio/n8n@{$imageId}"]]],
+    ];
+
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode(json_encode([['tool' => 'n8n', 'instance' => 'flow-example-com', 'host' => 'flow.example.com']]))),
+        '*get deployment,statefulset,daemonset -A*' => Process::result(output: json_encode(['items' => [[
+            'metadata' => [
+                'name' => $deployment,
+                'namespace' => 'larakube-shared',
+                'labels' => [Labels::MANAGED_BY => 'larakube', Labels::TOOL => 'n8n', Labels::INSTANCE => 'flow-example-com', Labels::COMPONENT => 'n8n'],
+                'annotations' => [],
+            ],
+            'spec' => [
+                'selector' => ['matchLabels' => ['app' => $deployment]],
+                'template' => ['spec' => ['containers' => [['name' => 'n8n', 'image' => 'docker.n8n.io/n8nio/n8n:2.47.7']]]],
+            ],
+        ]]])),
+        '*get pods -A*' => Process::result(output: json_encode(['items' => [
+            // Mid-rollout: two pods of this Deployment on different digests.
+            $pod($deployment, $digest('a')),
+            $pod($deployment, $digest('b')),
+            // Another workload's pod in the same namespace is never counted.
+            $pod('something-else', $digest('c')),
+        ]])),
+        '*' => Process::result(output: ''),
+    ]);
+
+    expect(Artisan::call('tool:outdated --context=test --json'))->toBe(0)
+        ->and(json_decode(Artisan::output(), true)[0]['containers'][0]['digests'])->toBe([$digest('a'), $digest('b')]);
 });

@@ -21,11 +21,12 @@ trait InteractsWithToolRevisions
     /**
      * One row per registered instance, worst status first.
      *
-     * @return list<array{tool: string, label: string, instance: ?string, host: ?string, status: string, installedRevision: ?string, availableRevision: string, installOptions: ?array<string, mixed>, images: list<string>, containers: list<array{component: string, container: string, running: string, available: ?string, primary: bool}>, registered: array<string, mixed>}>
+     * @return list<array{tool: string, label: string, instance: ?string, host: ?string, status: string, installedRevision: ?string, availableRevision: string, installOptions: ?array<string, mixed>, images: list<string>, containers: list<array{component: string, container: string, running: string, available: ?string, primary: bool, digests: list<string>}>, registered: array<string, mixed>}>
      */
     public function outdatedRows(string $kubectl): array
     {
         $workloads = $this->stampedWorkloads($kubectl);
+        $digests = $this->pulledDigests($kubectl, $workloads);
         $rows = [];
 
         foreach ($this->getRegisteredTools($kubectl) as $entry) {
@@ -57,7 +58,7 @@ trait InteractsWithToolRevisions
                 'availableRevision' => $available,
                 'installOptions' => $options,
                 'images' => array_values(array_unique(array_merge(...array_column($mine, 'images') ?: [[]]))),
-                'containers' => $this->containerRows($tool, $instance, $mine),
+                'containers' => $this->containerRows($tool, $instance, $mine, $digests),
                 // What a re-run of an unstamped install falls back on.
                 'registered' => array_filter([
                     'noPlex' => $entry['noPlex'] ?? null,
@@ -76,7 +77,7 @@ trait InteractsWithToolRevisions
     /**
      * Every LaraKube-managed workload with its identity, stamp and images.
      *
-     * @return list<array{tool: string, instance: ?string, revision: ?string, options: ?array<string, mixed>, images: list<string>, name: string, component: ?string, containers: list<array{name: string, image: string}>}>
+     * @return list<array{tool: string, instance: ?string, revision: ?string, options: ?array<string, mixed>, images: list<string>, name: string, namespace: string, selector: array<string, string>, component: ?string, containers: list<array{name: string, image: string}>}>
      */
     private function stampedWorkloads(string $kubectl): array
     {
@@ -106,6 +107,8 @@ trait InteractsWithToolRevisions
                     $item['spec']['template']['spec']['containers'] ?? [],
                 )),
                 'name' => (string) ($item['metadata']['name'] ?? ''),
+                'namespace' => (string) ($item['metadata']['namespace'] ?? ''),
+                'selector' => array_map('strval', $item['spec']['selector']['matchLabels'] ?? []),
                 'component' => isset($labels[Labels::COMPONENT]) ? (string) $labels[Labels::COMPONENT] : null,
                 'containers' => array_values(array_map(
                     fn (array $c): array => ['name' => (string) ($c['name'] ?? ''), 'image' => (string) ($c['image'] ?? '')],
@@ -122,10 +125,11 @@ trait InteractsWithToolRevisions
      * build's pin is known, the image an update would install. The instance's
      * main Deployment comes first, flagged `primary`.
      *
-     * @param  list<array{name: string, component: ?string, containers: list<array{name: string, image: string}>}>  $workloads
-     * @return list<array{component: string, container: string, running: string, available: ?string, primary: bool}>
+     * @param  list<array{name: string, namespace: string, component: ?string, containers: list<array{name: string, image: string}>}>  $workloads
+     * @param  array<string, list<string>>  $digests  see pulledDigests()
+     * @return list<array{component: string, container: string, running: string, available: ?string, primary: bool, digests: list<string>}>
      */
-    private function containerRows(ClusterTool $tool, ?string $instance, array $workloads): array
+    private function containerRows(ClusterTool $tool, ?string $instance, array $workloads, array $digests = []): array
     {
         $pins = ToolImagePins::for($tool);
         $main = $instance !== null ? ToolInstance::forInstance($tool, $instance)->deployment() : null;
@@ -139,6 +143,7 @@ trait InteractsWithToolRevisions
                     'running' => $container['image'],
                     'available' => $pins[ToolImagePins::repository($container['image'])] ?? null,
                     'primary' => $workload['name'] === $main && $index === 0,
+                    'digests' => $digests["{$workload['namespace']}/{$workload['name']}/{$container['name']}"] ?? [],
                 ];
             }
         }
@@ -146,6 +151,52 @@ trait InteractsWithToolRevisions
         usort($rows, fn (array $a, array $b): int => [! $a['primary'], $a['component'], $a['container']] <=> [! $b['primary'], $b['component'], $b['container']]);
 
         return $rows;
+    }
+
+    /**
+     * The image digest each workload's pods actually pulled, per container, keyed
+     * `namespace/workload/container`. The tag in a workload's spec is only what it
+     * asks for (and `:latest` says nothing); the pod's imageID is what runs. More
+     * than one digest means pods differ, e.g. mid-rollout.
+     *
+     * @param  list<array{name: string, namespace: string, selector: array<string, string>}>  $workloads
+     * @return array<string, list<string>>
+     */
+    private function pulledDigests(string $kubectl, array $workloads): array
+    {
+        if ($workloads === []) {
+            return [];
+        }
+
+        $result = Kubectl::fromPrefix($kubectl)->raw(['get', 'pods', '-A', '-o', 'json']);
+        $pods = $result->ok ? ($result->json()['items'] ?? []) : [];
+        $digests = [];
+
+        foreach ($workloads as $workload) {
+            if ($workload['selector'] === []) {
+                continue;
+            }
+
+            foreach ($pods as $pod) {
+                $labels = $pod['metadata']['labels'] ?? [];
+
+                if (($pod['metadata']['namespace'] ?? '') !== $workload['namespace']
+                    || array_intersect_assoc($workload['selector'], $labels) !== $workload['selector']) {
+                    continue;
+                }
+
+                foreach ($pod['status']['containerStatuses'] ?? [] as $status) {
+                    if (preg_match('/sha256:[a-f0-9]{64}/', (string) ($status['imageID'] ?? ''), $match) !== 1) {
+                        continue;
+                    }
+
+                    $key = "{$workload['namespace']}/{$workload['name']}/".($status['name'] ?? '');
+                    $digests[$key] = array_values(array_unique([...($digests[$key] ?? []), $match[0]]));
+                }
+            }
+        }
+
+        return $digests;
     }
 
     /**
