@@ -90,7 +90,11 @@ spec:
             # stay a literal here too, or a future kubectl apply conflicts
             # with mail:wire's live value (see ClusterTool::KUTT's smtpEnv()).
             - name: MAIL_SECURE
-              value: "true"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $smtpSecret }}
+                  key: MAIL_SECURE
+                  optional: true
             - name: MAIL_USER
               valueFrom:
                 secretKeyRef:

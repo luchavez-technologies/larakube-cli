@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ClusterTool;
 /**
  * Regression coverage for the browser-facing S3 endpoint bug: Documenso has
  * no internal/public split (unlike Teable/Sendrec) — NEXT_PRIVATE_UPLOAD_ENDPOINT
@@ -91,14 +92,12 @@ test('tool:init --tool=documenso falls back to the internal S3 endpoint when the
         ->and($appliedManifest)->toContain('http://seaweedfs.larakube-plex.svc.cluster.local:8333');
 });
 
-test('tool:init --tool=documenso declares the mail:wire/sso:wire static keys as literal values, not valueFrom', function (): void {
-    // Regression guard for a real incident (2026-08-05): mail:wire/sso:wire
-    // set these 4 names via `kubectl set env NAME=value` (a plain literal),
-    // never through the sign-smtp/-oidc Secrets. Declaring them
-    // here as valueFrom made every re-run of tool:init --tool=documenso fail — kubectl
-    // apply's merge re-added valueFrom on top of the live literal value,
-    // and the two are mutually exclusive ("valueFrom: Invalid value: '':
-    // may not be specified when `value` is not empty").
+test('tool:init --tool=documenso reads the mail:wire/sso:wire static keys from their Secrets, not literal values', function (): void {
+    // Wired keys come from the wirer's Secret: mail:wire/sso:wire store their
+    // static keys there and import it with --from=secret (ADR 0018), so the
+    // live Deployment reads them via valueFrom. A literal here can't be merged
+    // with that on re-apply ("valueFrom ... may not be specified when `value`
+    // is not empty", Outline on luchtech-vps).
     $appliedManifest = null;
     fakeSignInitProcess('files.example.com', $appliedManifest);
 
@@ -107,15 +106,16 @@ test('tool:init --tool=documenso declares the mail:wire/sso:wire static keys as 
         '--no-interaction' => true,
     ])->assertExitCode(0);
 
+    $static = (ClusterTool::DOCUMENSO->smtpEnv()['static'] ?? []) + (ClusterTool::DOCUMENSO->oidcEnv()['static'] ?? []);
+
     foreach ([
         'NEXT_PRIVATE_SMTP_TRANSPORT' => 'smtp-auth',
         'NEXT_PRIVATE_SMTP_SECURE' => 'true',
         'NEXT_PUBLIC_DISABLE_OIDC_SIGNIN' => 'false',
         'NEXT_PUBLIC_DISABLE_OIDC_SIGNUP' => 'false',
     ] as $name => $value) {
-        preg_match('/- name: '.$name.'\s*\n\s*(value|valueFrom):\s*"?([^"\n]*)"?/', $appliedManifest, $m);
-        expect($m[1] ?? null)->toBe('value')
-            ->and(trim($m[2] ?? '', '"'))->toBe($value);
+        expect($appliedManifest)->toMatch("/- name: {$name}\\s*\\n\\s*valueFrom:\\s*\\n\\s*secretKeyRef:\\s*\\n\\s*name: \\S+\\s*\\n\\s*key: {$name}\\b/")
+            ->and($static[$name] ?? null)->toBe($value);
     }
 });
 

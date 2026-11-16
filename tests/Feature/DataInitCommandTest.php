@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ClusterTool;
 use App\Commands\Directus\DirectusRemoveCommand;
 use App\Commands\Directus\DirectusShowCommand;
 use Illuminate\Support\Facades\Artisan;
@@ -128,13 +129,12 @@ test('tool:init --tool=directus returns a failing exit code and does not claim s
         ->doesntExpectOutputToContain('Directus Headless CMS stack is live');
 });
 
-test('data manifest declares the mail:wire/sso:wire static keys as literals, not valueFrom', function (): void {
-    // Regression guard: mail:wire/sso:wire set these 6 keys via plain
-    // literals (kubectl set env NAME=value), never through the data-smtp/
-    // data-oidc Secrets. Declaring them here as valueFrom made a later
-    // tool:init --tool=directus re-run fail — kubectl apply's merge re-adds valueFrom on top
-    // of the live literal value already set, and the two are mutually
-    // exclusive (the exact bug confirmed live on Documenso, 2026-08-05).
+test('data manifest reads the mail:wire/sso:wire static keys from their Secrets once wired', function (): void {
+    // Wired keys come from the wirer's Secret: mail:wire/sso:wire store their
+    // static keys there and import it with --from=secret (ADR 0018), so the
+    // live Deployment reads them via valueFrom. A literal here can't be merged
+    // with that on re-apply ("valueFrom ... may not be specified when `value`
+    // is not empty", Outline on luchtech-vps).
     $manifest = view('k8s.directus.directus', [
         'deployName' => 'directus-data-example-test',
         'secretName' => 'directus-secrets-data-example-test',
@@ -151,6 +151,8 @@ test('data manifest declares the mail:wire/sso:wire static keys as literals, not
         'authProviders' => 'local,zitadel',
     ])->render();
 
+    $static = (ClusterTool::DIRECTUS->smtpEnv()['static'] ?? []) + (ClusterTool::DIRECTUS->oidcEnv()['static'] ?? []);
+
     foreach ([
         'EMAIL_TRANSPORT' => 'smtp',
         'AUTH_PROVIDERS' => 'local,zitadel',
@@ -159,9 +161,8 @@ test('data manifest declares the mail:wire/sso:wire static keys as literals, not
         'AUTH_ZITADEL_IDENTIFIER_KEY' => 'email',
         'AUTH_ZITADEL_ALLOW_PUBLIC_REGISTRATION' => 'true',
     ] as $name => $value) {
-        preg_match('/- name: '.$name.'\s*\n\s*(value|valueFrom):\s*"?([^"\n]*)"?/', $manifest, $m);
-        expect($m[1] ?? null)->toBe('value')
-            ->and(trim($m[2] ?? '', '"'))->toBe($value);
+        expect($manifest)->toMatch("/- name: {$name}\\s*\\n\\s*valueFrom:\\s*\\n\\s*secretKeyRef:\\s*\\n\\s*name: \\S+\\s*\\n\\s*key: {$name}\\b/")
+            ->and($static[$name] ?? null)->toBe($value);
     }
 });
 
@@ -225,8 +226,8 @@ test('tool:init --tool=directus includes zitadel in AUTH_PROVIDERS once sso:wire
         '--no-interaction' => true,
     ])->assertExitCode(0);
 
-    preg_match('/- name: AUTH_PROVIDERS\s*\n\s*value: "([^"]*)"/', $appliedManifest, $m);
-    expect($m[1] ?? null)->toBe('local,zitadel');
+    // Once wired, sso:wire's Secret supplies it ('local,zitadel').
+    expect($appliedManifest)->toMatch('/- name: AUTH_PROVIDERS\s*\n\s*valueFrom:\s*\n\s*secretKeyRef:\s*\n\s*name: \S+\s*\n\s*key: AUTH_PROVIDERS\b/');
 });
 
 test('directus:show displays status table for Directus', function (): void {

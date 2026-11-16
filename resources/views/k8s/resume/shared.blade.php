@@ -74,11 +74,23 @@ spec:
             - name: S3_FORCE_PATH_STYLE
               value: "true"
             - name: OAUTH_PROVIDER_NAME
-              value: "Zitadel"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $oidcSecret }}
+                  key: OAUTH_PROVIDER_NAME
+                  optional: true
             - name: OAUTH_SCOPES
-              value: "openid profile email"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $oidcSecret }}
+                  key: OAUTH_SCOPES
+                  optional: true
             - name: OAUTH_ALLOW_SIGNUPS
-              value: "true"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $oidcSecret }}
+                  key: OAUTH_ALLOW_SIGNUPS
+                  optional: true
             - name: OAUTH_CLIENT_ID
               valueFrom:
                 secretKeyRef:

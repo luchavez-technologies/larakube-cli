@@ -127,7 +127,11 @@ spec:
             # conflicts with mail:wire's live value (see ClusterTool::CHATWOOT's
             # smtpEnv()).
             - name: SMTP_ENABLE_STARTTLS_AUTO
-              value: "true"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $smtpSecret }}
+                  key: SMTP_ENABLE_STARTTLS_AUTO
+                  optional: true
             # OIDC
             - name: OIDC_ISSUER
               valueFrom:
@@ -271,7 +275,11 @@ spec:
             # conflicts with mail:wire's live value (see ClusterTool::CHATWOOT's
             # smtpEnv()).
             - name: SMTP_ENABLE_STARTTLS_AUTO
-              value: "true"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $smtpSecret }}
+                  key: SMTP_ENABLE_STARTTLS_AUTO
+                  optional: true
             # OIDC
             - name: OIDC_ISSUER
               valueFrom:

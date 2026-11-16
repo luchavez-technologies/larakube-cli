@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ClusterTool;
 /**
  * Regression coverage for the browser-facing S3 endpoint bug. Unlike Outline/
  * Documenso, Sendrec supports a genuine internal/public split (S3_ENDPOINT vs
@@ -99,9 +100,9 @@ test('tool:init --tool=sendrec sets SMTP_TLS to "tls", not the stale "implicit" 
         '--no-interaction' => true,
     ])->assertExitCode(0);
 
-    preg_match('/name: SMTP_TLS\s*\n\s*value: "([^"]*)"/', $appliedManifest, $m);
-
-    expect($m[1] ?? null)->toBe('tls');
+    // mail:wire's Secret supplies it; the value it writes there is what matters.
+    expect($appliedManifest)->toMatch('/- name: SMTP_TLS\s*\n\s*valueFrom:\s*\n\s*secretKeyRef:\s*\n\s*name: \S+\s*\n\s*key: SMTP_TLS\b/')
+        ->and(ClusterTool::SENDREC->smtpEnv()['static']['SMTP_TLS'] ?? null)->toBe('tls');
 });
 
 test('tool:init --tool=sendrec returns a failing exit code and does not claim success when kubectl apply is rejected', function (): void {

@@ -96,7 +96,11 @@ spec:
             - name: STORAGE_S3_FORCE_PATH_STYLE
               value: "true"
             - name: EMAIL_TRANSPORT
-              value: "smtp"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $smtpSecretName }}
+                  key: EMAIL_TRANSPORT
+                  optional: true
             - name: EMAIL_SMTP_HOST
               valueFrom:
                 secretKeyRef:
@@ -128,9 +132,20 @@ spec:
                   key: EMAIL_FROM
                   optional: true
             - name: AUTH_PROVIDERS
-              value: "{{ $authProviders }}"
+@if ($authProviders === 'local')
+              value: "local"
+@else
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $oidcSecretName }}
+                  key: AUTH_PROVIDERS
+@endif
             - name: AUTH_ZITADEL_DRIVER
-              value: "openid"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $oidcSecretName }}
+                  key: AUTH_ZITADEL_DRIVER
+                  optional: true
             - name: AUTH_ZITADEL_CLIENT_ID
               valueFrom:
                 secretKeyRef:
@@ -150,11 +165,23 @@ spec:
                   key: AUTH_ZITADEL_ISSUER_URL
                   optional: true
             - name: AUTH_ZITADEL_SCOPE
-              value: "openid email profile"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $oidcSecretName }}
+                  key: AUTH_ZITADEL_SCOPE
+                  optional: true
             - name: AUTH_ZITADEL_IDENTIFIER_KEY
-              value: "email"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $oidcSecretName }}
+                  key: AUTH_ZITADEL_IDENTIFIER_KEY
+                  optional: true
             - name: AUTH_ZITADEL_ALLOW_PUBLIC_REGISTRATION
-              value: "true"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $oidcSecretName }}
+                  key: AUTH_ZITADEL_ALLOW_PUBLIC_REGISTRATION
+                  optional: true
           startupProbe:
             httpGet:
               path: /server/ping

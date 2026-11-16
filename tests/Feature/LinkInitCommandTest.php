@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ClusterTool;
 use App\Traits\InteractsWithIngressProxy;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Process;
@@ -65,13 +66,12 @@ test('link manifest carries canonical resource naming and identity labels', func
         ->toContain('value: "kutt_link_example_test"');
 });
 
-test('link manifest declares MAIL_SECURE as a literal, not valueFrom, so a future kubectl apply never conflicts with mail:wire', function (): void {
-    // Regression guard: mail:wire sets MAIL_SECURE via a plain literal
-    // `kubectl set env NAME=value`, never through the kutt-smtp Secret.
-    // Declaring it here as valueFrom made a later tool:init --tool=kutt re-run fail —
-    // kubectl apply's merge re-adds valueFrom on top of the live literal
-    // value mail:wire already set, and the two are mutually exclusive
-    // (the exact bug confirmed live on Documenso, 2026-08-05).
+test('link manifest reads MAIL_SECURE from the SMTP Secret, so a re-apply never conflicts with mail:wire', function (): void {
+    // Wired keys come from the wirer's Secret: mail:wire/sso:wire store their
+    // static keys there and import it with --from=secret (ADR 0018), so the
+    // live Deployment reads them via valueFrom. A literal here can't be merged
+    // with that on re-apply ("valueFrom ... may not be specified when `value`
+    // is not empty", Outline on luchtech-vps).
     $manifest = view('k8s.kutt.shared', [
         'host' => 'link.example.test',
         'plexNamespace' => 'larakube-plex',
@@ -80,10 +80,8 @@ test('link manifest declares MAIL_SECURE as a literal, not valueFrom, so a futur
         'isLocal' => true,
     ])->render();
 
-    preg_match('/- name: MAIL_SECURE\s*\n\s*(value|valueFrom):\s*"?([^"\n]*)"?/', $manifest, $m);
-
-    expect($m[1] ?? null)->toBe('value')
-        ->and(trim($m[2] ?? '', '"'))->toBe('true');
+    expect($manifest)->toMatch('/- name: MAIL_SECURE\s*\n\s*valueFrom:\s*\n\s*secretKeyRef:\s*\n\s*name: \S+\s*\n\s*key: MAIL_SECURE\b/')
+        ->and(ClusterTool::KUTT->smtpEnv()['static']['MAIL_SECURE'] ?? null)->toBe('true');
 });
 
 test('link ingress proxies through Cloudflare on cloud deploys when proxied, so Kutt receives the cf-ipcountry header', function (): void {

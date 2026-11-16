@@ -75,7 +75,11 @@ spec:
             # unrecognised value back to starttls (see ClusterTool::SENDREC's
             # smtpEnv(), which documents this exact deadlock).
             - name: SMTP_TLS
-              value: "tls"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $smtpSecret }}
+                  key: SMTP_TLS
+                  optional: true
             - name: SMTP_HOST
               valueFrom:
                 secretKeyRef:

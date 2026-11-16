@@ -63,7 +63,11 @@ spec:
             - name: PORT
               value: "3000"
             - name: FORCE_HTTPS
-              value: "true"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $oidcSecretName ?? 'notes-outline-oidc' }}
+                  key: FORCE_HTTPS
+                  optional: true
             - name: ENABLE_UPDATES
               value: "false"
             - name: DEFAULT_LANGUAGE

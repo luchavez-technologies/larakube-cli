@@ -113,14 +113,21 @@ spec:
                 secretKeyRef:
                   name: {{ $certSecret }}
                   key: passphrase
-            # mail:wire sets these two as plain literals (kubectl set env
-            # NAME=value), never through the SMTP Secret — must
-            # stay literals here too, or a future kubectl apply conflicts with
-            # mail:wire's live value (see ClusterTool::DOCUMENSO's smtpEnv()).
+            # mail:wire keeps these two in the SMTP Secret and imports it with
+            # --from=secret (ADR 0018), so they are read from there too: a
+            # literal here would clash with the live valueFrom on re-apply.
             - name: NEXT_PRIVATE_SMTP_TRANSPORT
-              value: "smtp-auth"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $smtpSecret }}
+                  key: NEXT_PRIVATE_SMTP_TRANSPORT
+                  optional: true
             - name: NEXT_PRIVATE_SMTP_SECURE
-              value: "true"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $smtpSecret }}
+                  key: NEXT_PRIVATE_SMTP_SECURE
+                  optional: true
             - name: NEXT_PRIVATE_SMTP_HOST
               valueFrom:
                 secretKeyRef:
@@ -151,12 +158,19 @@ spec:
                   name: {{ $smtpSecret }}
                   key: NEXT_PRIVATE_SMTP_FROM_ADDRESS
                   optional: true
-            # sso:wire sets these two as plain literals too — same reasoning
-            # as the SMTP pair above (see ClusterTool::DOCUMENSO's oidcEnv()).
+            # Same for sso:wire's two static keys in the OIDC Secret.
             - name: NEXT_PUBLIC_DISABLE_OIDC_SIGNIN
-              value: "false"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $oidcSecret }}
+                  key: NEXT_PUBLIC_DISABLE_OIDC_SIGNIN
+                  optional: true
             - name: NEXT_PUBLIC_DISABLE_OIDC_SIGNUP
-              value: "false"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $oidcSecret }}
+                  key: NEXT_PUBLIC_DISABLE_OIDC_SIGNUP
+                  optional: true
             - name: NEXT_PRIVATE_OIDC_CLIENT_ID
               valueFrom:
                 secretKeyRef:
