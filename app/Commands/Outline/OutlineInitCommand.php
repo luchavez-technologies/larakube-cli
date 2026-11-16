@@ -378,22 +378,6 @@ abstract class OutlineInitCommand extends AbstractToolInitCommand
         return $this->resolveToolEnvironment(ClusterTool::OUTLINE);
     }
 
-    /** Resolve the admin email for Outline */
-    private function knownAdminEmail(string $kubectl, ?string $instance): ?string
-    {
-        $option = $this->option('admin-email');
-
-        if (is_string($option) && $option !== '') {
-            return $option;
-        }
-
-        $known = $this->findToolInstanceEntry($kubectl, ClusterTool::OUTLINE, $instance)['adminEmail']
-            ?? $this->recordedInstallOptions($kubectl, ClusterTool::OUTLINE, $instance)['admin-email']
-            ?? null;
-
-        return is_string($known) && $known !== '' ? $known : null;
-    }
-
     protected function resolveAdminEmail(string $host): string
     {
         $parts = explode('.', $host);
@@ -409,5 +393,21 @@ abstract class OutlineInitCommand extends AbstractToolInitCommand
             purpose: 'Primary administrator email for Outline',
             example: "--admin-email={$default}",
         );
+    }
+
+    /** Resolve the admin email for Outline */
+    private function knownAdminEmail(string $kubectl, ?string $instance): ?string
+    {
+        $option = $this->option('admin-email');
+
+        if (is_string($option) && $option !== '') {
+            return $option;
+        }
+
+        $known = $this->findToolInstanceEntry($kubectl, ClusterTool::OUTLINE, $instance)['adminEmail']
+            ?? $this->recordedInstallOptions($kubectl, ClusterTool::OUTLINE, $instance)['admin-email']
+            ?? null;
+
+        return is_string($known) && $known !== '' ? $known : null;
     }
 }

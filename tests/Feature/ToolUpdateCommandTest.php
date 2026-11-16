@@ -142,10 +142,10 @@ test('--all carries on past an instance whose re-run throws, and reports it as f
     // A stand-in tool:init: Outline throws the way a missing --admin-email did live.
     $stub = new class extends Illuminate\Console\Command
     {
-        protected $signature = 'tool:init {--tool=} {--domain=} {--context=} {--force}';
-
         /** @var list<string> */
         public array $ran = [];
+
+        protected $signature = 'tool:init {--tool=} {--domain=} {--context=} {--force}';
 
         public function handle(): int
         {
