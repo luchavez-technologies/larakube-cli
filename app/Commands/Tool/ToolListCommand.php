@@ -10,6 +10,7 @@ use App\Contracts\UsesForwardAuth;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
+use App\Support\K8sAnnotations;
 use App\Traits\InteractsWithToolRegistry;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesStandaloneEnvironment;
@@ -198,8 +199,8 @@ class ToolListCommand extends Command
             ? $this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())
             : false;
 
-        // Paused Deployments carry a `larakube.app/paused-replicas` annotation
-        // (set by `tool:pause`). One `get deployment -o json` per DISTINCT
+        // Paused Deployments are scaled to zero and carry the pause marker
+        // (set by `tool:pause`; see K8sAnnotations::isPausedDeployment()). One `get deployment -o json` per DISTINCT
         // namespace among installed tools — not one per tool or per component —
         // covers every row's components in that namespace at once.
         $pausedDeployments = [];
@@ -208,7 +209,7 @@ class ToolListCommand extends Command
             $decoded = json_decode($rawJson, true);
             foreach (($decoded['items'] ?? []) as $item) {
                 $name = (string) ($item['metadata']['name'] ?? '');
-                if ($name !== '' && isset($item['metadata']['annotations']['larakube.app/paused-replicas'])) {
+                if ($name !== '' && K8sAnnotations::isPausedDeployment($item)) {
                     $pausedDeployments[$name] = true;
                 }
             }

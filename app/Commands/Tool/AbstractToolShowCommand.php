@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Services\Kubectl;
+use App\Support\K8sAnnotations;
 use App\Traits\DeploysClusterTool;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RefusesUnshippedTools;
@@ -281,7 +282,7 @@ abstract class AbstractToolShowCommand extends Command
                             'deployed' => true,
                             'ready' => $readyReplicas > 0,
                             'replicas' => "{$readyReplicas}/{$desiredReplicas}",
-                            'paused' => isset($item['metadata']['annotations']['larakube.app/paused-replicas']),
+                            'paused' => K8sAnnotations::isPausedDeployment($item),
                         ];
                     }
                 }

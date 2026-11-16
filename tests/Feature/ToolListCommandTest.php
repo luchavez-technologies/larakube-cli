@@ -636,7 +636,7 @@ test('tool:list surfaces LiveKit Meet wiring status for Matrix chat', function (
         ->and($pocketRow['meet'])->toBe('N/A');
 });
 
-test('tool:list reports a row paused when its Deployment carries the pause-replicas annotation', function (): void {
+test('tool:list reports a row paused when its Deployment is scaled to zero with the pause-replicas annotation', function (): void {
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
             ['tool' => 'n8n', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'engine' => 'n8n', 'installedAt' => '2026-09-01T00:00:00+00:00'],
@@ -644,8 +644,8 @@ test('tool:list reports a row paused when its Deployment carries the pause-repli
         ]))),
         '*get deployment -n larakube-shared -o json*' => Process::result(output: (string) json_encode([
             'items' => [
-                ['metadata' => ['name' => 'n8n-flow-example-com', 'annotations' => ['larakube.app/paused-replicas' => '1']]],
-                ['metadata' => ['name' => 'pocketbase-data-example-com']],
+                ['metadata' => ['name' => 'n8n-flow-example-com', 'annotations' => ['larakube.app/paused-replicas' => '1']], 'spec' => ['replicas' => 0]],
+                ['metadata' => ['name' => 'pocketbase-data-example-com'], 'spec' => ['replicas' => 1]],
             ],
         ])),
         '*' => Process::result(output: ''),
@@ -660,6 +660,25 @@ test('tool:list reports a row paused when its Deployment carries the pause-repli
 
     expect($n8nRow['paused'])->toBeTrue()
         ->and($pocketRow['paused'])->toBeFalse();
+});
+
+test('tool:list does not report a running Deployment paused just because a stale pause marker remains', function (): void {
+    // Re-applying a paused tool's manifest scales it back up but leaves the marker behind.
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ['tool' => 'n8n', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'engine' => 'n8n', 'installedAt' => '2026-09-01T00:00:00+00:00'],
+        ]))),
+        '*get deployment -n larakube-shared -o json*' => Process::result(output: (string) json_encode([
+            'items' => [
+                ['metadata' => ['name' => 'n8n-flow-example-com', 'annotations' => ['larakube.app/paused-replicas' => '1']], 'spec' => ['replicas' => 1]],
+            ],
+        ])),
+        '*' => Process::result(output: ''),
+    ]);
+
+    Artisan::call('tool:list local --json');
+
+    expect(collect(json_decode(Artisan::output(), true))->firstWhere('tool', 'n8n')['paused'])->toBeFalse();
 });
 
 test('tool:list --registry-only never reports paused (unverified)', function (): void {

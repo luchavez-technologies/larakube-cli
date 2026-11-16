@@ -138,7 +138,12 @@ trait TogglesToolPause
         return true;
     }
 
-    /** Scales one Deployment back to its remembered replica count. True if it changed anything, false if already running, null on error. */
+    /**
+     * Scales one Deployment back to its remembered replica count. True if it
+     * changed anything, false if already running, null on error. A running
+     * Deployment that still carries the pause marker (its manifest was
+     * re-applied while paused) only has the stale marker cleared.
+     */
     private function resumeDeployment(Kubectl $cluster, string $namespace, string $deployment): ?bool
     {
         $replicas = $this->liveReplicas($cluster, $namespace, $deployment);
@@ -148,11 +153,22 @@ trait TogglesToolPause
             return null;
         }
 
+        $remembered = $this->pausedReplicas($cluster, $namespace, $deployment);
+
         if ($replicas > 0) {
-            return false;
+            if ($remembered === null) {
+                return false;
+            }
+
+            $this->kubectlStep(
+                "Clearing a stale pause marker on {$deployment} (it is already running)...",
+                fn () => $cluster->raw(['annotate', 'deployment', $deployment, '-n', $namespace, K8sAnnotations::PAUSED_REPLICAS_ANNOTATION.'-']),
+            );
+
+            return true;
         }
 
-        $restore = $this->pausedReplicas($cluster, $namespace, $deployment) ?? 1;
+        $restore = $remembered ?? 1;
 
         if (! $this->kubectlStep("Resuming {$deployment}...", fn () => $cluster->scale($namespace, $deployment, $restore))) {
             return null;
