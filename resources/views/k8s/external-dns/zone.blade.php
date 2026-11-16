@@ -91,7 +91,7 @@ spec:
       serviceAccountName: external-dns-{{ $slug }}
       containers:
         - name: external-dns
-          image: registry.k8s.io/external-dns/external-dns:v0.21.0
+          image: registry.k8s.io/external-dns/external-dns:v0.24.0
           # Sized from a live reading of ~32Mi at idle, so the capacity guard
           # counts it instead of treating its memory as free.
           resources:
