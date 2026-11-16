@@ -90,12 +90,23 @@ class ToolUpdateCommand extends Command
 
             // One instance's failure (a missing flag, an unreachable service) must not
             // abort the rest of an --all run.
+            $error = null;
+
             try {
                 $exit = $this->call('tool:init', $parameters);
-                $results[] = $this->result($row, $exit === self::SUCCESS ? 'updated' : 'failed', $this->describe($parameters));
             } catch (Throwable $e) {
-                $this->laraKubeError("{$row['label']} ({$row['host']}): {$e->getMessage()}");
-                $results[] = $this->result($row, 'failed', $this->describe($parameters), $e->getMessage());
+                $exit = self::FAILURE;
+                $error = $e->getMessage();
+            }
+
+            $results[] = $this->result($row, $exit === self::SUCCESS ? 'updated' : 'failed', $this->describe($parameters), $error);
+
+            // One closing line per instance, paired with "Updating X (host)..." above:
+            // Desktop reads the pair from the run log to show each app's progress.
+            if (! $this->option('json')) {
+                $exit === self::SUCCESS
+                    ? $this->laraKubeInfo("Updated {$row['label']} ({$row['host']}).")
+                    : $this->laraKubeError("Update failed: {$row['label']} ({$row['host']})".($error !== null ? ": {$error}" : '.'));
             }
         }
 

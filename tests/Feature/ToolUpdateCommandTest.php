@@ -169,3 +169,33 @@ test('--all carries on past an instance whose re-run throws, and reports it as f
         ->and($results['outline']['error'])->toContain('admin-email')
         ->and($results['vaultwarden']['outcome'])->toBe('updated');
 });
+
+test('each instance gets a start line and a closing line, which Desktop reads for per-app progress', function (): void {
+    Process::fake(toolUpdateFakes(
+        [
+            ['tool' => 'outline', 'instance' => 'notes-example-com', 'host' => 'notes.example.com'],
+            ['tool' => 'vaultwarden', 'instance' => 'vault-example-com', 'host' => 'vault.example.com'],
+        ],
+        [toolUpdateWorkload('outline', 'notes-example-com'), toolUpdateWorkload('vaultwarden', 'vault-example-com')],
+    ));
+
+    app(Illuminate\Contracts\Console\Kernel::class)->registerCommand(new class extends Illuminate\Console\Command
+    {
+        protected $signature = 'tool:init {--tool=} {--domain=} {--context=} {--force}';
+
+        public function handle(): int
+        {
+            if ($this->option('tool') === 'outline') {
+                throw new App\Exceptions\MissingFlagException('admin-email', 'Primary administrator email for Outline');
+            }
+
+            return self::SUCCESS;
+        }
+    });
+
+    $this->artisan('tool:update --context=test --all')
+        ->expectsOutputToContain('Updating Outline (notes.example.com)...')
+        ->expectsOutputToContain('Update failed: Outline (notes.example.com): Missing required --admin-email')
+        ->expectsOutputToContain('Updating Vaultwarden (vault.example.com)...')
+        ->expectsOutputToContain('Updated Vaultwarden (vault.example.com).');
+});
