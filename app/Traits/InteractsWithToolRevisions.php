@@ -2,12 +2,12 @@
 
 namespace App\Traits;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Services\Kubectl;
 use App\Support\Labels;
 use App\Support\ToolImagePins;
 use App\Support\ToolRevision;
-use App\Data\ToolInstance;
 
 /**
  * Compares the revision stamped on each installed tool instance with what this
