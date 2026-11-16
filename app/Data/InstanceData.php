@@ -31,8 +31,6 @@ class InstanceData extends Data
         public ?string $instance = null,
         /** @var list<string> */
         public array $aliases = [],
-        public ?string $brandName = null,
-        public ?string $logoUrl = null,
         /** The first-run admin account's email, when the tool has one (data, sso, desk, git). Never the password — that stays in the tool's own Secret. */
         public ?string $adminEmail = null,
         /**

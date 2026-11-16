@@ -332,16 +332,39 @@ trait DeploysClusterTool
      */
     protected function stampToolWorkloads(ClusterTool $tool, string $kubectl, ?string $instance): void
     {
-        $selector = [Labels::TOOL => $tool->value] + ($instance !== null && $instance !== '' ? [Labels::INSTANCE => $instance] : []);
-
         Kubectl::fromPrefix($kubectl)->raw([
             'annotate', 'deployment,statefulset,daemonset',
             '-n', $tool->namespace(),
-            '-l', Labels::selector($selector),
+            '-l', $this->toolWorkloadSelector($tool, $instance),
             Labels::REVISION.'='.ToolRevision::for($tool),
             Labels::INSTALL_OPTIONS.'='.json_encode($this->recordableInstallOptions($tool), JSON_UNESCAPED_SLASHES),
             '--overwrite',
         ]);
+    }
+
+    /**
+     * The options the instance's previous install was stamped with; [] before its first stamp.
+     *
+     * @return array<string, mixed>
+     */
+    protected function recordedInstallOptions(string $kubectl, ClusterTool $tool, ?string $instance): array
+    {
+        $result = Kubectl::fromPrefix($kubectl)->raw([
+            'get', 'deployment,statefulset,daemonset',
+            '-n', $tool->namespace(),
+            '-l', $this->toolWorkloadSelector($tool, $instance),
+            '-o', 'json',
+        ]);
+
+        foreach ($result->ok ? ($result->json()['items'] ?? []) : [] as $item) {
+            $options = json_decode((string) ($item['metadata']['annotations'][Labels::INSTALL_OPTIONS] ?? ''), true);
+
+            if (is_array($options)) {
+                return $options;
+            }
+        }
+
+        return [];
     }
 
     /**
@@ -570,6 +593,11 @@ trait DeploysClusterTool
         }
 
         return $result->successful();
+    }
+
+    private function toolWorkloadSelector(ClusterTool $tool, ?string $instance): string
+    {
+        return Labels::selector([Labels::TOOL => $tool->value] + ($instance !== null && $instance !== '' ? [Labels::INSTANCE => $instance] : []));
     }
 
     /**

@@ -5,7 +5,7 @@ use App\Enums\ClusterTool;
 
 test('InstanceData round-trips a raw registry entry onto its properties', function (): void {
     // The registry's own raw arrays use these exact camelCase keys (see
-    // InteractsWithToolRegistry/ResolvesToolBranding) — matching
+    // InteractsWithToolRegistry) — matching
     // ConfigData/GlobalConfigData's convention of no name translation
     // between the Data class and its persisted JSON.
     $data = InstanceData::from([
@@ -13,8 +13,6 @@ test('InstanceData round-trips a raw registry entry onto its properties', functi
         'host' => 'data.example.com',
         'instance' => 'main',
         'aliases' => ['alt.example.com'],
-        'brandName' => 'Acme CMS',
-        'logoUrl' => 'https://example.com/logo.png',
         'adminEmail' => 'admin@example.com',
         'engine' => 'directus',
         'installedAt' => '2026-08-01T09:00:00+00:00',
@@ -26,8 +24,6 @@ test('InstanceData round-trips a raw registry entry onto its properties', functi
         ->and($data->host)->toBe('data.example.com')
         ->and($data->instance)->toBe('main')
         ->and($data->aliases)->toBe(['alt.example.com'])
-        ->and($data->brandName)->toBe('Acme CMS')
-        ->and($data->logoUrl)->toBe('https://example.com/logo.png')
         ->and($data->adminEmail)->toBe('admin@example.com')
         ->and($data->engine)->toBe('directus')
         ->and($data->installedAt)->toBe('2026-08-01T09:00:00+00:00')

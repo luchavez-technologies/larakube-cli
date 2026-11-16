@@ -105,3 +105,25 @@ test('credentials passed at install are never recorded in the install-options an
         ->and($recorded)->not->toHaveKey('context')
         ->and($recorded)->not->toHaveKey('force');
 });
+
+test('the stamp records what an install settled on, not only what was typed', function (): void {
+    // No component flags: Grafana settles on metrics only. Both choices are
+    // recorded explicitly, so a later update never falls back to a default.
+    Process::fake(toolRevisionStampFakes());
+
+    $this->artisan('tool:init --tool=grafana local --no-plex --no-interaction')->assertExitCode(0);
+
+    expect(toolRevisionStampCommand())->toContain('"no-logs":true')
+        ->and(toolRevisionStampCommand())->toContain('"no-traces":true')
+        ->and(toolRevisionStampCommand())->not->toContain('with-logs');
+});
+
+test('a Grafana install that runs logs records it, so an update keeps Loki', function (): void {
+    Process::fake(toolRevisionStampFakes());
+
+    $this->artisan('tool:init --tool=grafana local --no-plex --with-logs --no-interaction')->assertExitCode(0);
+
+    expect(toolRevisionStampCommand())->toContain('"with-logs":true')
+        ->and(toolRevisionStampCommand())->toContain('"no-traces":true')
+        ->and(toolRevisionStampCommand())->not->toContain('"no-logs"');
+});

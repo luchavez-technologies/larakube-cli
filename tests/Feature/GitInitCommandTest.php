@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
+use App\Support\Labels;
 use Illuminate\Support\Facades\Process;
 use Saloon\Http\Faking\MockClient;
 use Saloon\Laravel\Facades\Saloon;
@@ -176,16 +177,17 @@ test('tool:init --tool=forgejo registers itself in the cluster tool registry, in
         ->and($gitEntry['adminEmail'])->toBe('admin@example.com');
 });
 
-test('tool:init --tool=forgejo reads and keeps the brand name on its own instance row when the registry holds other git rows', function (): void {
-    // With more than one git row, an instance-less lookup matched nothing:
-    // every run prompted for the brand again and appended another row.
+test('tool:init --tool=forgejo keeps the brand name its previous install was stamped with, and one registry row per instance', function (): void {
+    // With more than one git row, an instance-less lookup matched nothing and
+    // every run appended another row.
     $registry = [
-        ['tool' => 'forgejo', 'instance' => 'git-example-com', 'host' => 'git.example.com', 'brandName' => 'Acme Git'],
+        ['tool' => 'forgejo', 'instance' => 'git-example-com', 'host' => 'git.example.com'],
         ['tool' => 'forgejo', 'instance' => '', 'host' => 'git.example.com'],
-        ['tool' => 'forgejo', 'instance' => null, 'brandName' => 'Acme Git'],
+        ['tool' => 'forgejo', 'instance' => null],
     ];
     $captured = null;
     $manifests = [];
+    $stamp = null;
 
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
@@ -198,6 +200,14 @@ test('tool:init --tool=forgejo reads and keeps the brand name on its own instanc
         ]),
         '*get secret plex-admin*' => base64_encode('test-cred'),
         '*get secret larakube-tools-registry*' => base64_encode(json_encode($registry)),
+        '*get deployment,statefulset,daemonset*' => json_encode(['items' => [[
+            'metadata' => ['annotations' => [Labels::INSTALL_OPTIONS => '{"app-name":"Acme Git"}']],
+        ]]]),
+        '*annotate *' => function ($process) use (&$stamp) {
+            $stamp = is_array($process->command) ? implode(' ', $process->command) : $process->command;
+
+            return Process::result();
+        },
         '*create secret generic larakube-tools-registry*' => function ($process) use (&$captured) {
             if (preg_match('/--from-file=registry\.json=(\S+)/', $process->command, $m)) {
                 $captured = json_decode(file_get_contents($m[1]), true);
@@ -221,11 +231,10 @@ test('tool:init --tool=forgejo reads and keeps the brand name on its own instanc
     $this->artisan('tool:init --tool=forgejo local --domain=git.example.com --no-interaction --admin-email=admin@example.com')
         ->assertExitCode(0);
 
-    expect($manifests)->toHaveCount(2)->each->toContain('value: "Acme Git"');
-
-    $gitRows = collect($captured)->where('tool', 'forgejo');
-    expect($gitRows)->toHaveCount(3)
-        ->and($gitRows->firstWhere('instance', 'git-example-com')['brandName'])->toBe('Acme Git');
+    expect($manifests)->toHaveCount(2)->each->toContain('value: "Acme Git"')
+        // Carried into this install's own stamp, so the next update keeps it too.
+        ->and($stamp)->toContain('"app-name":"Acme Git"')
+        ->and(collect($captured)->where('tool', 'forgejo'))->toHaveCount(3);
 });
 
 // forgejo:remove's own coverage lives in GitRemoveCommandTest.php (the

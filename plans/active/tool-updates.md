@@ -36,3 +36,9 @@ The first real use is the luchtech-vps label rollout (`label-prefix-rollout-luch
 - Grafana's install-time logs/traces choice isn't recoverable on an unstamped instance; per the user, Grafana's data
   is disposable, so it re-runs with defaults.
 - The capacity guard still runs inside each `:init` (A4 later separates it from `--force`).
+- The stamp records settled values, not just typed flags (`rememberOption()`): prompted answers, Grafana's
+  component choice, and branding read back from the previous stamp. Branding moved off the registry onto the
+  stamp (ADR 0012 amendment).
+- luchtech-vps: Forgejo ("LuchTech Git"), Grafana ("LuchTech Monitor", logs on, traces off) and Matrix
+  ("LuchTech Chat") must be re-run by hand with explicit `--app-name` / `--with-logs --no-traces` before
+  "Update all"; a default re-run would reset their names and remove Loki.

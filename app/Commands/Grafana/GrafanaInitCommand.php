@@ -70,6 +70,13 @@ abstract class GrafanaInitCommand extends AbstractToolInitCommand
             'datasourcesChanged' => $datasourcesChanged,
         ] = $this->reconcileMonitoringComponents($kubectl, $ns, $withLogs, $withTraces, $instance);
 
+        // Record the set that will actually run, explicitly both ways: an unflagged re-run
+        // defaults to metrics only, so an update must never be left to that default.
+        $this->rememberOption('with-logs', $withLogs);
+        $this->rememberOption('no-logs', ! $withLogs);
+        $this->rememberOption('with-traces', $withTraces);
+        $this->rememberOption('no-traces', ! $withTraces);
+
         $this->withSpin("Ensuring namespace {$ns}...", fn () => Process::run(
             "{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -",
         ));

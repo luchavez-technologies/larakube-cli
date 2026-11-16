@@ -23,6 +23,18 @@ use App\Exceptions\MissingFlagException;
 trait RequiresFlagsWhenNonInteractive
 {
     /**
+     * Write a value this run settled on (prompted for, chosen in a multiselect, read back from a
+     * previous install) into its option. The install-options stamp records options, so this is
+     * how it captures what an install actually used rather than only what was typed.
+     */
+    protected function rememberOption(string $name, mixed $value): void
+    {
+        if ($this->hasOption($name)) {
+            $this->input->setOption($name, $value);
+        }
+    }
+
+    /**
      * True when we must not prompt: an explicit --no-interaction, or stdin is
      * not a terminal (piped input, CI runner, MCP tool call). Both matter —
      * Laravel Prompts will happily hang forever on a non-TTY stdin otherwise.
@@ -58,7 +70,10 @@ trait RequiresFlagsWhenNonInteractive
             throw new MissingFlagException($flag, $purpose, $example);
         }
 
-        return (string) $prompt();
+        $answer = (string) $prompt();
+        $this->rememberOption($flag, $answer);
+
+        return $answer;
     }
 
     /**

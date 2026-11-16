@@ -1,6 +1,24 @@
 # 0012 — Cluster tool registry: flat list, host-as-identity, no `--instance=`
 
-**Status:** Accepted (2026-08-09)
+**Status:** Accepted (2026-08-09) ·
+**Amended (2026-11-16): branding lives in the install-options stamp, not the registry**
+
+## Amendment — branding lives in the install-options stamp, not the registry
+
+An instance's custom `--app-name` / `--logo-url` are no longer registry fields
+(`brandName` / `logoUrl` are gone from `InstanceData`). They are kept in the
+`luchtech.dev/install-options` annotation that every install stamps on its
+workloads (ADR 0021), and `ResolvesToolBranding` reads them back from there.
+
+The stamp records what an install *settled on*, not only what was typed:
+a prompted answer, a multiselect choice (Grafana's logs/traces) or a value
+read back from the previous stamp is written into its option first
+(`rememberOption()`). Without that, an interactive install recorded nothing
+and the next `tool:update` silently reverted it to defaults.
+
+The registry keeps what other commands look up across instances (host,
+aliases, `adminEmail`, `proxied`, `noPlex`, `engine`); per-install settings
+that only a re-run needs belong on the workloads.
 
 ## Context
 
@@ -122,7 +140,7 @@ all 17 uniformly, with no regression risk and no new creation flows built.
 [
   {"tool": "data", "host": "data.example.com", "instance": "main", "aliases": [], "installedAt": "...", "updatedAt": "..."},
   {"tool": "data", "host": "blog.example.com", "instance": "blog-example-com", "aliases": [], "installedAt": "...", "updatedAt": "..."},
-  {"tool": "sso", "host": "sso.example.com", "instance": "main", "brandName": null, "logoUrl": null, "adminEmail": "admin@example.com", "installedAt": "...", "updatedAt": "..."}
+  {"tool": "sso", "host": "sso.example.com", "instance": "main", "adminEmail": "admin@example.com", "installedAt": "...", "updatedAt": "..."}
 ]
 ```
 

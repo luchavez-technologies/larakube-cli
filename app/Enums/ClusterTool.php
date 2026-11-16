@@ -197,9 +197,8 @@ enum ClusterTool: string implements HasWorkloadComponents
     /**
      * The operator-facing branded name shown in CLI output and Cinny/UI titles.
      * This is the static default — init commands may accept an --app-name flag
-     * to override it and persist the custom value to the cluster registry under
-     * the 'brandName' key, making it visible to `tool:list` and `tool:show`
-     * without any project file involvement.
+     * to override it; the override is kept in the instance's install-options
+     * stamp (see ResolvesToolBranding).
      */
     public function brandName(): string
     {
