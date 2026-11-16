@@ -78,3 +78,38 @@ test('a workload missing its stamp makes the whole instance count as unstamped',
     expect(Artisan::call('tool:outdated --context=test --json'))->toBe(0)
         ->and(json_decode(Artisan::output(), true)[0]['status'])->toBe('unstamped');
 });
+
+test('tool:outdated lists every container with its running image, main one first, and this build\'s pin where known', function (): void {
+    $workload = fn (string $name, ?string $component, array $containers): array => [
+        'metadata' => [
+            'name' => $name,
+            'labels' => array_filter([Labels::MANAGED_BY => 'larakube', Labels::TOOL => 'n8n', Labels::INSTANCE => 'flow-example-com', Labels::COMPONENT => $component]),
+            'annotations' => [],
+        ],
+        'spec' => ['template' => ['spec' => ['containers' => $containers]]],
+    ];
+
+    Process::fake(toolOutdatedFakes(
+        [['tool' => 'n8n', 'instance' => 'flow-example-com', 'host' => 'flow.example.com']],
+        [
+            $workload('zz-sidecar-flow-example-com', 'sidecar', [['name' => 'helper', 'image' => 'busybox:1.36']]),
+            $workload(App\Data\ToolInstance::forInstance(ClusterTool::N8N, 'flow-example-com')->deployment(), 'n8n', [['name' => 'n8n', 'image' => 'docker.n8n.io/n8nio/n8n:2.39.8']]),
+        ],
+    ));
+
+    expect(Artisan::call('tool:outdated --context=test --json'))->toBe(0);
+
+    $containers = json_decode(Artisan::output(), true)[0]['containers'];
+
+    expect($containers[0])->toBe([
+        'component' => 'n8n',
+        'container' => 'n8n',
+        'running' => 'docker.n8n.io/n8nio/n8n:2.39.8',
+        'available' => ClusterTool::N8N->vendor()->image('n8n'),
+        'primary' => true,
+    ])
+        ->and($containers[1]['running'])->toBe('busybox:1.36')
+        ->and($containers[1]['primary'])->toBeFalse()
+        // Nothing in n8n's pins mentions busybox: unknown, not "unchanged".
+        ->and($containers[1]['available'])->toBeNull();
+});

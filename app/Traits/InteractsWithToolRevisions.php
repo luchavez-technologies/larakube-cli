@@ -5,7 +5,9 @@ namespace App\Traits;
 use App\Enums\ClusterTool;
 use App\Services\Kubectl;
 use App\Support\Labels;
+use App\Support\ToolImagePins;
 use App\Support\ToolRevision;
+use App\Data\ToolInstance;
 
 /**
  * Compares the revision stamped on each installed tool instance with what this
@@ -19,7 +21,7 @@ trait InteractsWithToolRevisions
     /**
      * One row per registered instance, worst status first.
      *
-     * @return list<array{tool: string, label: string, instance: ?string, host: ?string, status: string, installedRevision: ?string, availableRevision: string, installOptions: ?array<string, mixed>, images: list<string>, registered: array<string, mixed>}>
+     * @return list<array{tool: string, label: string, instance: ?string, host: ?string, status: string, installedRevision: ?string, availableRevision: string, installOptions: ?array<string, mixed>, images: list<string>, containers: list<array{component: string, container: string, running: string, available: ?string, primary: bool}>, registered: array<string, mixed>}>
      */
     public function outdatedRows(string $kubectl): array
     {
@@ -55,6 +57,7 @@ trait InteractsWithToolRevisions
                 'availableRevision' => $available,
                 'installOptions' => $options,
                 'images' => array_values(array_unique(array_merge(...array_column($mine, 'images') ?: [[]]))),
+                'containers' => $this->containerRows($tool, $instance, $mine),
                 // What a re-run of an unstamped install falls back on.
                 'registered' => array_filter([
                     'noPlex' => $entry['noPlex'] ?? null,
@@ -73,7 +76,7 @@ trait InteractsWithToolRevisions
     /**
      * Every LaraKube-managed workload with its identity, stamp and images.
      *
-     * @return list<array{tool: string, instance: ?string, revision: ?string, options: ?array<string, mixed>, images: list<string>}>
+     * @return list<array{tool: string, instance: ?string, revision: ?string, options: ?array<string, mixed>, images: list<string>, name: string, component: ?string, containers: list<array{name: string, image: string}>}>
      */
     private function stampedWorkloads(string $kubectl): array
     {
@@ -102,10 +105,47 @@ trait InteractsWithToolRevisions
                     fn (array $c): string => (string) ($c['image'] ?? ''),
                     $item['spec']['template']['spec']['containers'] ?? [],
                 )),
+                'name' => (string) ($item['metadata']['name'] ?? ''),
+                'component' => isset($labels[Labels::COMPONENT]) ? (string) $labels[Labels::COMPONENT] : null,
+                'containers' => array_values(array_map(
+                    fn (array $c): array => ['name' => (string) ($c['name'] ?? ''), 'image' => (string) ($c['image'] ?? '')],
+                    $item['spec']['template']['spec']['containers'] ?? [],
+                )),
             ];
         }
 
         return $workloads;
+    }
+
+    /**
+     * Every container the instance runs, with the image it runs and, where this
+     * build's pin is known, the image an update would install. The instance's
+     * main Deployment comes first, flagged `primary`.
+     *
+     * @param  list<array{name: string, component: ?string, containers: list<array{name: string, image: string}>}>  $workloads
+     * @return list<array{component: string, container: string, running: string, available: ?string, primary: bool}>
+     */
+    private function containerRows(ClusterTool $tool, ?string $instance, array $workloads): array
+    {
+        $pins = ToolImagePins::for($tool);
+        $main = $instance !== null ? ToolInstance::forInstance($tool, $instance)->deployment() : null;
+        $rows = [];
+
+        foreach ($workloads as $workload) {
+            foreach ($workload['containers'] as $index => $container) {
+                $rows[] = [
+                    'component' => $workload['component'] ?? $workload['name'],
+                    'container' => $container['name'],
+                    'running' => $container['image'],
+                    'available' => $pins[ToolImagePins::repository($container['image'])] ?? null,
+                    'primary' => $workload['name'] === $main && $index === 0,
+                ];
+            }
+        }
+
+        usort($rows, fn (array $a, array $b): int => [! $a['primary'], $a['component'], $a['container']] <=> [! $b['primary'], $b['component'], $b['container']]);
+
+        return $rows;
     }
 
     /**
