@@ -498,6 +498,31 @@ trait SyncsClusterSecrets
     }
 
     /**
+     * Every OpenBao static role's name in one request, for a caller that asks
+     * staticRoleExists() about many roles at once (each of those opens its own
+     * port-forward). [] when there are none (OpenBao answers an empty list
+     * with a 404); null when it can't be known (sealed, unreachable, no token),
+     * the same three-way answer staticRoleExists() gives.
+     *
+     * @return list<string>|null
+     */
+    protected function staticRoleNames(string $kubectl): ?array
+    {
+        $token = $this->readOpenBaoBootstrapSecret($kubectl, $this->secretsNamespace(), 'root-token');
+        if ($token === null) {
+            return null;
+        }
+
+        $list = $this->openBaoApi($kubectl, 'GET', '/v1/database/static-roles?list=true', null, $token);
+
+        if ($list === null) {
+            return str_contains((string) $this->lastSecretsBackendError, 'HTTP 404') ? [] : null;
+        }
+
+        return array_values(array_map('strval', $list['data']['keys'] ?? []));
+    }
+
+    /**
      * Read a static role's rotation SCHEDULE — how often it rotates, how long
      * until the next one, when the last one happened — without ever touching
      * the credential itself. plex:show uses this to answer "when does this

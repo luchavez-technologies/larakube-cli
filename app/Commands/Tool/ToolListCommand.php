@@ -50,6 +50,12 @@ class ToolListCommand extends Command
 
     protected $aliases = ['app:list'];
 
+    /** @var list<string>|false|null OpenBao's static roles, listed once; false until listed, null when unknown */
+    private array|false|null $staticRoles = false;
+
+    /** @var array<string, array<string, true>> resource names by "kind|namespace", see resourceExists() */
+    private array $resourceNames = [];
+
     public function handle(): int
     {
         if (! $this->option('json')) {
@@ -232,7 +238,7 @@ class ToolListCommand extends Command
                 $r['mail'] = '—';
             } else {
                 $smtpSecret = $vendor->smtpEnv($instance)['secret'] ?? "{$r['tool']}-smtp";
-                $wired = trim(Process::run("{$kubectl} get secret {$smtpSecret} -n {$ns} --no-headers --ignore-not-found")->output()) !== '';
+                $wired = $this->resourceExists($kubectl, 'secret', $ns, $smtpSecret);
                 $r['mail'] = $wired ? 'wired' : 'unwired';
             }
 
@@ -246,9 +252,9 @@ class ToolListCommand extends Command
             } else {
                 if ($isOidc) {
                     $oidcSecret = $vendor->oidcEnv($instance)['secret'] ?? "{$r['tool']}-oidc";
-                    $wired = trim(Process::run("{$kubectl} get secret {$oidcSecret} -n {$ns} --no-headers --ignore-not-found")->output()) !== '';
+                    $wired = $this->resourceExists($kubectl, 'secret', $ns, $oidcSecret);
                 } else {
-                    $wired = trim(Process::run("{$kubectl} get middleware sso-proxy-auth -n larakube-shared --no-headers --ignore-not-found")->output()) !== '';
+                    $wired = $this->resourceExists($kubectl, 'middleware', 'larakube-shared', 'sso-proxy-auth');
                 }
                 $r['sso'] = $wired ? 'wired' : 'unwired';
             }
@@ -268,7 +274,7 @@ class ToolListCommand extends Command
             } elseif (! $installed) {
                 $r['rotation'] = '—';
             } else {
-                $wired = ($dbRole !== null && $openBaoReady) ? $this->staticRoleExists($kubectl, $dbRole) : null;
+                $wired = ($dbRole !== null && $openBaoReady) ? $this->listedStaticRole($kubectl, $dbRole) : null;
                 $r['rotation'] = $this->rotationCell($openBaoReady, $wired);
             }
 
@@ -289,8 +295,8 @@ class ToolListCommand extends Command
             } elseif (! $installed) {
                 $r['sync'] = '—';
             } else {
-                $staticWired = trim(Process::run("{$kubectl} get externalsecret {$syncConfig['secret']} -n {$syncConfig['namespace']} --no-headers --ignore-not-found")->output()) !== '';
-                $wired = $staticWired || trim(Process::run("{$kubectl} get externalsecret {$syncConfig['secret']}-db -n {$syncConfig['namespace']} --no-headers --ignore-not-found")->output()) !== '';
+                $wired = $this->resourceExists($kubectl, 'externalsecret', $syncConfig['namespace'], $syncConfig['secret'])
+                    || $this->resourceExists($kubectl, 'externalsecret', $syncConfig['namespace'], "{$syncConfig['secret']}-db");
                 $r['sync'] = $wired ? 'synced' : 'unsynced';
             }
 
@@ -303,7 +309,7 @@ class ToolListCommand extends Command
             } else {
                 $mwName = $vpnTarget['name'];
                 $mwNs = $vpnTarget['namespace'];
-                $wired = trim(Process::run("{$kubectl} get middleware {$mwName} -n {$mwNs} --no-headers --ignore-not-found")->output()) !== '';
+                $wired = $this->resourceExists($kubectl, 'middleware', $mwNs, $mwName);
                 $r['vpn'] = $wired ? 'mesh' : 'public';
             }
 
@@ -315,7 +321,7 @@ class ToolListCommand extends Command
             } else {
                 $names = $instance !== '' ? ToolInstance::forInstance($toolEnum, $instance) : ToolInstance::first($kubectl, $toolEnum);
                 $meetSecret = $names !== null ? $names->name('meet', 'synapse') : 'synapse-meet';
-                $wired = trim(Process::run("{$kubectl} get secret {$meetSecret} -n {$ns} --no-headers --ignore-not-found")->output()) !== '';
+                $wired = $this->resourceExists($kubectl, 'secret', $ns, $meetSecret);
                 $r['meet'] = $wired ? 'wired' : 'unwired';
             }
 
@@ -669,6 +675,46 @@ class ToolListCommand extends Command
         $hosts = preg_split('/\s+/', $out) ?: [];
 
         return array_values(array_unique(array_filter(array_map('trim', $hosts))));
+    }
+
+    /** Whether OpenBao has this static role, from one listing for every row (null when unknown). */
+    private function listedStaticRole(string $kubectl, string $role): ?bool
+    {
+        if ($this->staticRoles === false) {
+            $this->staticRoles = $this->staticRoleNames($kubectl);
+        }
+
+        return $this->staticRoles === null ? null : in_array($role, $this->staticRoles, true);
+    }
+
+    /**
+     * Whether a resource of this kind and name exists in the namespace. One
+     * `get {kind} -n {namespace} -o name` per kind and namespace answers every
+     * row's wiring question; asking per row and per feature made tool:list
+     * ~30 seconds of sequential kubectl calls on a real cluster. `-o name`
+     * lists names only, so no Secret data is read. A kind whose CRD isn't
+     * installed lists nothing, the same as "not found".
+     */
+    private function resourceExists(string $kubectl, string $kind, string $namespace, string $name): bool
+    {
+        $key = "{$kind}|{$namespace}";
+
+        if (! isset($this->resourceNames[$key])) {
+            $names = [];
+
+            foreach (preg_split('/\R/', trim(Process::run("{$kubectl} get {$kind} -n {$namespace} -o name --ignore-not-found")->output())) ?: [] as $line) {
+                $line = trim($line);
+
+                if ($line !== '') {
+                    // "secret/foo", "middleware.traefik.io/foo" → "foo"
+                    $names[substr($line, (int) strrpos($line, '/') + (str_contains($line, '/') ? 1 : 0))] = true;
+                }
+            }
+
+            $this->resourceNames[$key] = $names;
+        }
+
+        return isset($this->resourceNames[$key][$name]);
     }
 
     /**

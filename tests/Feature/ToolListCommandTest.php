@@ -4,6 +4,7 @@ use App\Http\Integrations\OpenBao\Requests\DynamicNoBodyRequest;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Process;
 use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
 use Saloon\Laravel\Facades\Saloon;
 
 afterEach(function (): void {
@@ -53,7 +54,8 @@ test('tool:list surfaces OpenBao rotation status for an installed DB-backed tool
 
     Saloon::fake([
         DynamicNoBodyRequest::class => openBaoFake([
-            '*/database/static-roles/stalwart' => ['data' => ['db_name' => 'plex-postgres']],
+            // One listing answers every row; no per-role lookup.
+            '*/database/static-roles?list=true' => ['data' => ['keys' => ['stalwart']]],
         ]),
     ]);
 
@@ -73,6 +75,34 @@ test('tool:list surfaces OpenBao rotation status for an installed DB-backed tool
     expect($dnsRow['db_role'])->toBeNull()
         ->and($dnsRow['rotation'])->toBe('N/A');
 });
+
+test('tool:list tells no static roles at all apart from OpenBao being unreachable', function (int $status, string $rotation): void {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(
+            output: base64_encode((string) json_encode([
+                openBaoRegistryRow(),
+                ['tool' => 'stalwart', 'instance' => '', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'send.luchtech.dev'],
+            ])),
+        ),
+        '*deployment stalwart -n larakube-shared*' => Process::result(output: 'deployment.apps/stalwart created'),
+        '*get secret openbao-secrets-secrets-example-com*' => base64_encode('s.test-token'),
+        '*port-forward*' => Process::result(output: ''),
+        '*' => Process::result(output: ''),
+    ]);
+
+    Saloon::fake([
+        DynamicNoBodyRequest::class => openBaoFake([
+            '*/database/static-roles?list=true' => MockResponse::make(['errors' => []], $status),
+        ]),
+    ]);
+
+    Artisan::call('tool:list local --json');
+
+    expect(collect(json_decode(Artisan::output(), true))->firstWhere('tool', 'stalwart')['rotation'])->toBe($rotation);
+})->with([
+    'no roles yet (404)' => [404, 'manual (.env)'],
+    'sealed or erroring (503)' => [503, 'unreachable'],
+]);
 
 test('tool:list lists multiple registered instances of a tool as separate rows', function (): void {
     Process::fake([
@@ -106,10 +136,9 @@ test('tool:list surfaces OpenBao KV secret sync status for wired and unwired too
                 ['tool' => 'outline', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'notes.luchtech.dev'],
             ])),
         ),
-        // Stalwart (Mail) has its OpenBao KV sync ExternalSecret on the cluster
-        '*get externalsecret stalwart*' => Process::result(output: 'stalwart  1m  True  SecretSynced'),
-        // Outline (Notes) never got its KV sync wired
-        '*get externalsecret outline-secrets*' => Process::result(output: '', exitCode: 1),
+        // Stalwart (Mail) has its OpenBao KV sync ExternalSecret on the cluster;
+        // Outline (Notes) never got its KV sync wired, so it isn't listed.
+        '*get externalsecret -n * -o name*' => Process::result(output: "externalsecret.external-secrets.io/stalwart-store-main\n"),
         '*get secret openbao-secrets-secrets-example-com*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(output: ''),
@@ -150,8 +179,8 @@ test('tool:list also treats the dynamic "{secret}-db" ExternalSecret as synced, 
                 ['tool' => 'penpot', 'instance' => 'design-luchtech-dev', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'design.luchtech.dev'],
             ])),
         ),
-        '*get externalsecret penpot-backend-secrets-design-luchtech-dev-db*' => Process::result(output: 'penpot-backend-secrets-design-luchtech-dev-db  1m  True  SecretSynced'),
-        '*get externalsecret penpot-backend-secrets-design-luchtech-dev *' => Process::result(output: '', exitCode: 1),
+        // Only the dynamic '-db' ExternalSecret exists.
+        '*get externalsecret -n * -o name*' => Process::result(output: "externalsecret.external-secrets.io/penpot-backend-secrets-design-luchtech-dev-db\n"),
         '*get secret openbao-secrets-secrets-example-com*' => base64_encode('s.test-token'),
         '*port-forward*' => Process::result(output: ''),
         '*' => Process::result(output: ''),
@@ -249,7 +278,7 @@ test('tool:list reports SSO as wired for a CLI-OIDC tool once sso:wire records i
                 ['tool' => 'forgejo', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'git.luchtech.dev'],
             ])),
         ),
-        '*get secret forgejo-oidc*' => Process::result(output: 'forgejo-oidc  Opaque  2  1h'),
+        '*get secret -n * -o name*' => Process::result(output: "secret/forgejo-oidc\n"),
         '*' => Process::result(output: ''),
     ]);
 
@@ -621,7 +650,7 @@ test('tool:list surfaces LiveKit Meet wiring status for Matrix chat', function (
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
             ['tool' => 'matrix', 'instance' => 'chat-luchtech-dev', 'host' => 'chat.luchtech.dev', 'installedAt' => '2026-09-01T00:00:00+00:00'],
         ]))),
-        '*get secret synapse-meet-chat-luchtech-dev -n larakube-shared*' => Process::result(output: 'synapse-meet-chat-luchtech-dev'),
+        '*get secret -n larakube-shared -o name*' => Process::result(output: "secret/synapse-meet-chat-luchtech-dev\n"),
         '*' => Process::result(output: ''),
     ]);
 
@@ -694,4 +723,20 @@ test('tool:list --registry-only never reports paused (unverified)', function ():
 
     expect($exit)->toBe(0)
         ->and(collect($output)->firstWhere('tool', 'n8n')['paused'])->toBeFalse();
+});
+
+test('tool:list lists each kind of wiring resource once per namespace, not once per app and feature', function (): void {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ['tool' => 'forgejo', 'instance' => 'git-example-com', 'host' => 'git.example.com', 'installedAt' => '2026-09-01T00:00:00+00:00'],
+            ['tool' => 'outline', 'instance' => 'notes-example-com', 'host' => 'notes.example.com', 'installedAt' => '2026-09-01T00:00:00+00:00'],
+            ['tool' => 'documenso', 'instance' => 'sign-example-com', 'host' => 'sign.example.com', 'installedAt' => '2026-09-01T00:00:00+00:00'],
+        ]))),
+        '*' => Process::result(output: ''),
+    ]);
+
+    Artisan::call('tool:list local --json');
+
+    Process::assertRanTimes(fn ($process): bool => str_contains((string) $process->command, 'get secret -n larakube-shared -o name'), 1);
+    Process::assertNotRan(fn ($process): bool => preg_match('/get secret [a-z][a-z0-9-]*-(smtp|oidc)\b/', (string) $process->command) === 1);
 });
