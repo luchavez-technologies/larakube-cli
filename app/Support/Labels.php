@@ -84,6 +84,12 @@ final class Labels
 
     public const string CURRENT_HOST = self::PREFIX.'/current-host';
 
+    /** The `ToolRevision` that rendered a tool's workload; `tool:outdated` compares it with the running CLI's. */
+    public const string REVISION = self::PREFIX.'/revision';
+
+    /** The non-secret `:init` options a tool was installed with (JSON), so `tool:update` re-runs it the same way. */
+    public const string INSTALL_OPTIONS = self::PREFIX.'/install-options';
+
     /**
      * The in-cluster NFS StorageClass's provisioner name. Not a label, but it
      * shares the prefix. Kubernetes never lets it change once NFS volumes

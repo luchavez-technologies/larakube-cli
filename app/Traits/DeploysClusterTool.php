@@ -5,6 +5,9 @@ namespace App\Traits;
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Services\Kubectl;
+use App\Services\Tools\ToolInitSpec;
+use App\Support\Labels;
+use App\Support\ToolRevision;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
@@ -299,6 +302,10 @@ trait DeploysClusterTool
 
         $registered = $this->registerTool($kubectl, $tool, array_merge($metadata, $extra), $instance);
 
+        if ($registered) {
+            $this->stampToolWorkloads($tool, $kubectl, $instance);
+        }
+
         // Issue the local cert HERE, from the tool-install path, because this
         // is the one seam every *:init already passes through with its own
         // host in hand. Cluster tools are cluster-scoped: requiring a project
@@ -315,6 +322,66 @@ trait DeploysClusterTool
         }
 
         return $registered;
+    }
+
+    /**
+     * Annotate this instance's workloads with the revision that rendered them
+     * and the options they were installed with, so `tool:outdated` can tell
+     * a stale install apart and `tool:update` can re-run it the same way.
+     * Best-effort: a failed annotate never fails the install.
+     */
+    protected function stampToolWorkloads(ClusterTool $tool, string $kubectl, ?string $instance): void
+    {
+        $selector = [Labels::TOOL => $tool->value] + ($instance !== null && $instance !== '' ? [Labels::INSTANCE => $instance] : []);
+
+        Kubectl::fromPrefix($kubectl)->raw([
+            'annotate', 'deployment,statefulset,daemonset',
+            '-n', $tool->namespace(),
+            '-l', Labels::selector($selector),
+            Labels::REVISION.'='.ToolRevision::for($tool),
+            Labels::INSTALL_OPTIONS.'='.json_encode($this->recordableInstallOptions($tool), JSON_UNESCAPED_SLASHES),
+            '--overwrite',
+        ]);
+    }
+
+    /**
+     * The `:init` options worth replaying on an update: those this run set,
+     * minus the mechanics (`--context`, `--force`) and anything that can carry
+     * a credential. Custom env values live in the tool's own ConfigMap/Secret,
+     * which a re-run keeps, so they're left out too.
+     *
+     * @return array<string, string|bool|list<string>>
+     */
+    protected function recordableInstallOptions(ClusterTool $tool): array
+    {
+        if (! method_exists($this, 'hasOption')) {
+            return [];
+        }
+
+        $recorded = [];
+
+        foreach (ToolInitSpec::for($tool) as $option) {
+            $name = $option->name;
+
+            if ($option->isMechanics()
+                || in_array($name, ['custom-env', 'custom-env-secret', 'gcp-credentials'], true)
+                || preg_match('/secret|token|password|credential|key-id/', $name) === 1
+                || ! $this->hasOption($name)) {
+                continue;
+            }
+
+            $value = $this->option($name);
+
+            if ($value === null || $value === false || $value === '' || $value === []) {
+                continue;
+            }
+
+            $recorded[$name] = $value;
+        }
+
+        ksort($recorded);
+
+        return $recorded;
     }
 
     /**

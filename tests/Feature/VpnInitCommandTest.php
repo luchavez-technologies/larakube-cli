@@ -126,6 +126,7 @@ test('tool:init --tool=netbird targets the CHOSEN environment\'s own saved conte
             '*rollout status deploy/netbird-signal*' => Process::result(output: 'rollout success'),
             '*rollout status deploy/netbird-relay*' => Process::result(output: 'rollout success'),
             '*rollout status deploy/netbird-dashboard*' => Process::result(output: 'rollout success'),
+            '*annotate deployment,statefulset,daemonset*' => Process::result(output: 'annotated'),
             // Not SSO-wired by default: the dashboard is skipped, mirroring a cluster that has not run sso:wire yet.
             '*get secret netbird-oidc*' => Process::result(output: '', exitCode: 1),
             '*rollout status deployment/netbird-client*' => Process::result(output: 'rollout success'),

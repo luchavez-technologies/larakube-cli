@@ -1,0 +1,138 @@
+<?php
+
+namespace App\Traits;
+
+use App\Enums\ClusterTool;
+use App\Services\Kubectl;
+use App\Support\Labels;
+use App\Support\ToolRevision;
+
+/**
+ * Compares the revision stamped on each installed tool instance with what this
+ * CLI build would render (`ToolRevision`). Shared by `tool:outdated`, which
+ * reports it, and `tool:update`, which acts on it.
+ */
+trait InteractsWithToolRevisions
+{
+    use InteractsWithToolRegistry;
+
+    /**
+     * One row per registered instance, worst status first.
+     *
+     * @return list<array{tool: string, label: string, instance: ?string, host: ?string, status: string, installedRevision: ?string, availableRevision: string, installOptions: ?array<string, mixed>, images: list<string>, registered: array<string, mixed>}>
+     */
+    public function outdatedRows(string $kubectl): array
+    {
+        $workloads = $this->stampedWorkloads($kubectl);
+        $rows = [];
+
+        foreach ($this->getRegisteredTools($kubectl) as $entry) {
+            $tool = ClusterTool::tryFrom((string) ($entry['tool'] ?? ''));
+
+            if ($tool === null) {
+                continue;
+            }
+
+            $instance = isset($entry['instance']) && $entry['instance'] !== '' ? (string) $entry['instance'] : null;
+            $mine = array_values(array_filter($workloads, fn (array $w): bool => $w['tool'] === $tool->value
+                && ($instance === null || $w['instance'] === $instance)));
+
+            $installed = $mine === [] ? null : $this->agreedValue(array_column($mine, 'revision'));
+            $available = ToolRevision::for($tool);
+            $options = $mine === [] ? null : $this->agreedOptions(array_column($mine, 'options'));
+
+            $rows[] = [
+                'tool' => $tool->value,
+                'label' => $tool->brandName(),
+                'instance' => $instance,
+                'host' => isset($entry['host']) ? (string) $entry['host'] : null,
+                'status' => match (true) {
+                    $installed === null => 'unstamped',
+                    $installed === $available => 'current',
+                    default => 'outdated',
+                },
+                'installedRevision' => $installed,
+                'availableRevision' => $available,
+                'installOptions' => $options,
+                'images' => array_values(array_unique(array_merge(...array_column($mine, 'images') ?: [[]]))),
+                // What a re-run of an unstamped install falls back on.
+                'registered' => array_filter([
+                    'noPlex' => $entry['noPlex'] ?? null,
+                    'proxied' => $entry['proxied'] ?? null,
+                    'adminEmail' => $entry['adminEmail'] ?? null,
+                ], fn (mixed $value): bool => $value !== null),
+            ];
+        }
+
+        $order = ['unstamped' => 0, 'outdated' => 1, 'current' => 2];
+        usort($rows, fn (array $a, array $b): int => [$order[$a['status']], $a['tool']] <=> [$order[$b['status']], $b['tool']]);
+
+        return $rows;
+    }
+
+    /**
+     * Every LaraKube-managed workload with its identity, stamp and images.
+     *
+     * @return list<array{tool: string, instance: ?string, revision: ?string, options: ?array<string, mixed>, images: list<string>}>
+     */
+    private function stampedWorkloads(string $kubectl): array
+    {
+        $result = Kubectl::fromPrefix($kubectl)->raw([
+            'get', 'deployment,statefulset,daemonset', '-A', '-l', Labels::MANAGED_BY, '-o', 'json',
+        ]);
+
+        $workloads = [];
+
+        foreach ($result->ok ? ($result->json()['items'] ?? []) : [] as $item) {
+            $labels = $item['metadata']['labels'] ?? [];
+            $annotations = $item['metadata']['annotations'] ?? [];
+
+            if (! isset($labels[Labels::TOOL])) {
+                continue;
+            }
+
+            $options = isset($annotations[Labels::INSTALL_OPTIONS]) ? json_decode((string) $annotations[Labels::INSTALL_OPTIONS], true) : null;
+
+            $workloads[] = [
+                'tool' => (string) $labels[Labels::TOOL],
+                'instance' => isset($labels[Labels::INSTANCE]) ? (string) $labels[Labels::INSTANCE] : null,
+                'revision' => isset($annotations[Labels::REVISION]) ? (string) $annotations[Labels::REVISION] : null,
+                'options' => is_array($options) ? $options : null,
+                'images' => array_values(array_map(
+                    fn (array $c): string => (string) ($c['image'] ?? ''),
+                    $item['spec']['template']['spec']['containers'] ?? [],
+                )),
+            ];
+        }
+
+        return $workloads;
+    }
+
+    /**
+     * The instance's revision when every workload agrees on one; null (treated as unstamped) when any workload
+     * lacks a stamp or they disagree, which is what a half-finished update looks like.
+     *
+     * @param  list<?string>  $values
+     */
+    private function agreedValue(array $values): ?string
+    {
+        $unique = array_unique($values);
+
+        return count($unique) === 1 && $unique[0] !== null ? $unique[0] : null;
+    }
+
+    /**
+     * @param  list<?array<string, mixed>>  $values
+     * @return ?array<string, mixed>
+     */
+    private function agreedOptions(array $values): ?array
+    {
+        foreach ($values as $value) {
+            if ($value !== null) {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+}
