@@ -141,3 +141,33 @@ test('headlamp:remove deletes Headlamp resources', function (): void {
         ->expectsOutputToContain('Removing CNCF Headlamp Control Plane resources...')
         ->expectsOutputToContain('removed from larakube-shared');
 });
+
+test('a re-run of a wired Headlamp renders its OIDC credentials again instead of erasing them', function (): void {
+    // The read-back once looked for a legacy-named Secret, found nothing, and
+    // rendered the real one empty; the Deployment's sso:wire valueFrom entries
+    // then pointed at missing keys and the pod never started (luchtech-vps).
+    $applied = '';
+
+    Process::fake(function ($process) use (&$applied) {
+        $command = is_array($process->command) ? implode(' ', $process->command) : (string) $process->command;
+
+        if (str_contains($command, 'get secret headlamp-oidc-')) {
+            foreach (['ISSUER_URL' => 'https://sso.example.com', 'CLIENT_ID' => 'client-123', 'CLIENT_SECRET' => 'secret-456'] as $suffix => $value) {
+                if (str_contains($command, 'HEADLAMP_CONFIG_OIDC_'.($suffix === 'ISSUER_URL' ? 'IDP_ISSUER_URL' : $suffix))) {
+                    return Process::result(output: base64_encode($value));
+                }
+            }
+        }
+
+        if (preg_match('/apply -f (\S+)/', $command, $m) && is_file(trim($m[1], "'\""))) {
+            $applied .= (string) file_get_contents(trim($m[1], "'\""));
+        }
+
+        return str_contains($command, 'get secret') ? Process::result(output: '', exitCode: 1) : Process::result(output: 'ok');
+    });
+
+    $this->artisan('tool:init --tool=headlamp local --no-interaction')->assertExitCode(0);
+
+    expect($applied)->toContain('HEADLAMP_CONFIG_OIDC_CLIENT_ID: '.base64_encode('client-123'))
+        ->and($applied)->toContain('HEADLAMP_CONFIG_OIDC_CLIENT_SECRET: '.base64_encode('secret-456'));
+});

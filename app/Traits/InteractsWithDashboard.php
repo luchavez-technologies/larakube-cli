@@ -4,8 +4,10 @@ namespace App\Traits;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Data\ToolInstance;
+use App\Enums\ClusterTool;
+use App\Enums\SecretKind;
 use App\Enums\SharedClusterService;
-use Illuminate\Support\Facades\Process;
 
 trait InteractsWithDashboard
 {
@@ -16,25 +18,17 @@ trait InteractsWithDashboard
         return 'larakube-shared';
     }
 
-    protected function isDashboardInstalled(string $kubectl, string $ns, ?string $instance = null): bool
+    /**
+     * The OIDC credentials sso:wire put on this instance, read back so a re-run
+     * renders them again; null when it was never wired. The Secret's name comes
+     * from ToolInstance (ADR 0021): a hand-built legacy name here once read
+     * nothing, and the re-run then rendered the Secret empty and erased them.
+     *
+     * @return array{issuer: string, client_id: string, client_secret: string}|null
+     */
+    protected function readDashboardWiredOidc(string $kubectl, string $ns, string $instance): ?array
     {
-        $suffix = ($instance !== null && $instance !== '') ? "-{$instance}" : '';
-        $out = Process::run("{$kubectl} get deployment dashboard-headlamp{$suffix} -n {$ns} --no-headers --ignore-not-found")->output();
-
-        return trim($out) !== '';
-    }
-
-    protected function readDashboardSecret(string $kubectl, string $ns, string $key, ?string $instance = null): ?string
-    {
-        $suffix = ($instance !== null && $instance !== '') ? "-{$instance}" : '';
-
-        return $this->readClusterSecretKey($kubectl, $ns, "dashboard-headlamp-oidc{$suffix}", $key);
-    }
-
-    protected function readDashboardWiredOidc(string $kubectl, string $ns, ?string $instance = null): ?array
-    {
-        $suffix = ($instance !== null && $instance !== '') ? "-{$instance}" : '';
-        $secret = "dashboard-headlamp-oidc{$suffix}";
+        $secret = ToolInstance::forInstance(ClusterTool::HEADLAMP, $instance)->secret(SecretKind::OIDC);
         $issuer = $this->readClusterSecretKey($kubectl, $ns, $secret, 'HEADLAMP_CONFIG_OIDC_IDP_ISSUER_URL');
         $clientId = $this->readClusterSecretKey($kubectl, $ns, $secret, 'HEADLAMP_CONFIG_OIDC_CLIENT_ID');
         $clientSecret = $this->readClusterSecretKey($kubectl, $ns, $secret, 'HEADLAMP_CONFIG_OIDC_CLIENT_SECRET');
