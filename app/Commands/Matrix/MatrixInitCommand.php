@@ -232,6 +232,12 @@ abstract class MatrixInitCommand extends AbstractToolInitCommand
             $adminDeployed = $this->deployAdmin($kubectl, $ns, $host, $names, $env);
         }
 
+        // MAS and Element Admin come up after registerDeployedTool() stamped the
+        // instance's workloads, so stamp again or the instance reads as unstamped.
+        if ($masDeployed || $adminDeployed) {
+            $this->stampToolWorkloads(ClusterTool::MATRIX, $kubectl, $instance);
+        }
+
         // On a cloud VPS, punch Coturn's raw UDP/TCP ports through both
         // firewall layers (DO cloud edge + host UFW) — klipper binds them via
         // hostPort, but both default-deny, so TURN silently never connects.

@@ -52,6 +52,7 @@ test('tool:init --tool=matrix deploys MAS via resolveManagedDbPassword() (Common
     // actually reached until this test — the exact gap that let the bug
     // through phpstan (method.notFound is globally ignored for
     // trait-composed classes, see phpstan.neon) and every prior test run.
+    $order = [];
     Process::fake([
         '*get configmap plex-commons*' => json_encode([
             'version' => 1,
@@ -67,7 +68,16 @@ test('tool:init --tool=matrix deploys MAS via resolveManagedDbPassword() (Common
         '*get secret mas-sso-*' => Process::result(output: '', exitCode: 1),
         '*get secret mas-secrets-*' => Process::result(output: '', exitCode: 1),
         '*get secret mas-config-*' => Process::result(output: '', exitCode: 1),
-        '*run mas-config-gen*' => Process::result(output: 'pod/mas-config-gen created'),
+        '*run mas-config-gen*' => function () use (&$order) {
+            $order[] = 'mas';
+
+            return Process::result(output: 'pod/mas-config-gen created');
+        },
+        '*annotate *' => function () use (&$order) {
+            $order[] = 'stamp';
+
+            return Process::result();
+        },
         // kubectl run without -i/--rm only creates the Pod object — the
         // actual generated config comes back through a SEPARATE `kubectl
         // logs` call, deliberately never mixed with kubectl's own status
@@ -97,6 +107,11 @@ test('tool:init --tool=matrix deploys MAS via resolveManagedDbPassword() (Common
     Process::assertRan(function ($job) {
         return str_contains($job->command, 'mas-config-gen');
     });
+
+    // MAS comes up after registration stamped the instance; without a second
+    // stamp it never carries one and the whole instance reads as unstamped.
+    expect($order)->toContain('mas')
+        ->and(end($order))->toBe('stamp');
 });
 
 test('tool:init --tool=matrix restarts Synapse when MAS is already the active auth mode and its served config actually changed', function (): void {
