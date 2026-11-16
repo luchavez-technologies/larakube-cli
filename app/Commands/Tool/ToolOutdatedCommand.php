@@ -5,9 +5,10 @@ namespace App\Commands\Tool;
 use App\Traits\InteractsWithToolRevisions;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesStandaloneEnvironment;
-use LaravelZero\Framework\Commands\Command;
 
 use function Laravel\Prompts\table;
+
+use LaravelZero\Framework\Commands\Command;
 
 /**
  * Which installed Cluster Tools this CLI build would render differently: the

@@ -29,7 +29,7 @@ The first real use is the luchtech-vps label rollout (`label-prefix-rollout-luch
 1. [x] Labels `REVISION` and `INSTALL_OPTIONS`; `ToolRevision`; stamping in `registerDeployedTool()`.
 2. [x] `tool:outdated`.
 3. [x] `tool:update` (single + `--all`).
-4. [ ] Desktop Update button + "Update all".
+4. [x] Desktop Update button + "Update all".
 5. [ ] Use it for the luchtech-vps rollout.
 
 ## Notes

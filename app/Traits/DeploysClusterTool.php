@@ -566,7 +566,7 @@ trait DeploysClusterTool
         $temporaryDirectory->delete();
 
         if ($result->successful() && $recordCurrentHost) {
-            Process::run("{$kubectl} annotate ingress {$ingressName} -n {$tool->namespace()} ".\App\Support\Labels::CURRENT_HOST."={$primaryHost} --overwrite");
+            Process::run("{$kubectl} annotate ingress {$ingressName} -n {$tool->namespace()} ".Labels::CURRENT_HOST."={$primaryHost} --overwrite");
         }
 
         return $result->successful();

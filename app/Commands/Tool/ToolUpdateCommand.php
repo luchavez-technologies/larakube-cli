@@ -9,9 +9,10 @@ use App\Services\Tools\ToolInitSpec;
 use App\Traits\InteractsWithToolRevisions;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesStandaloneEnvironment;
-use LaravelZero\Framework\Commands\Command;
 
 use function Laravel\Prompts\table;
+
+use LaravelZero\Framework\Commands\Command;
 
 /**
  * Brings installed Cluster Tools up to this CLI build: re-runs each one's

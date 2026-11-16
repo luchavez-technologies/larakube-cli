@@ -75,7 +75,6 @@ test('a workload missing its stamp makes the whole instance count as unstamped',
         ],
     ));
 
-    expect(Artisan::call('tool:outdated --context=test --json'))->toBe(0);
-
-    expect(json_decode(Artisan::output(), true)[0]['status'])->toBe('unstamped');
+    expect(Artisan::call('tool:outdated --context=test --json'))->toBe(0)
+        ->and(json_decode(Artisan::output(), true)[0]['status'])->toBe('unstamped');
 });
