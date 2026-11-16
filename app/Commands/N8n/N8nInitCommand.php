@@ -110,7 +110,7 @@ abstract class N8nInitCommand extends AbstractToolInitCommand
             'customEnvSecret' => $customEnv['secret'],
         ])->render();
 
-        if (! $this->guardClusterCapacity($kubectl, $manifest)) {
+        if (! $this->guardPreInstall($kubectl, $manifest)) {
             return 1;
         }
 

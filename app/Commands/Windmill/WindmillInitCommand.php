@@ -109,7 +109,7 @@ abstract class WindmillInitCommand extends AbstractToolInitCommand
             'proxied' => $this->resolveProxied($env === 'local'),
         ])->render();
 
-        if (! $this->guardClusterCapacity($kubectl, $manifest)) {
+        if (! $this->guardPreInstall($kubectl, $manifest)) {
             return 1;
         }
 

@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Services\Kubectl;
+use App\Support\K8sAnnotations;
 use App\Support\Labels;
 use App\Support\ToolImagePins;
 use App\Support\ToolRevision;
@@ -21,7 +22,7 @@ trait InteractsWithToolRevisions
     /**
      * One row per registered instance, worst status first.
      *
-     * @return list<array{tool: string, label: string, instance: ?string, host: ?string, status: string, installedRevision: ?string, availableRevision: string, installOptions: ?array<string, mixed>, images: list<string>, containers: list<array{component: string, container: string, running: string, available: ?string, primary: bool, digests: list<string>}>, registered: array<string, mixed>}>
+     * @return list<array{tool: string, label: string, instance: ?string, host: ?string, status: string, installedRevision: ?string, availableRevision: string, installOptions: ?array<string, mixed>, paused: bool, images: list<string>, containers: list<array{component: string, container: string, running: string, available: ?string, primary: bool, digests: list<string>}>, registered: array<string, mixed>}>
      */
     public function outdatedRows(string $kubectl): array
     {
@@ -57,6 +58,8 @@ trait InteractsWithToolRevisions
                 'installedRevision' => $installed,
                 'availableRevision' => $available,
                 'installOptions' => $options,
+                // Paused (scaled to zero by tool:pause): an update skips it rather than start it.
+                'paused' => in_array(true, array_column($mine, 'paused'), true),
                 'images' => array_values(array_unique(array_merge(...array_column($mine, 'images') ?: [[]]))),
                 'containers' => $this->containerRows($tool, $instance, $mine, $digests),
                 // What a re-run of an unstamped install falls back on.
@@ -77,7 +80,7 @@ trait InteractsWithToolRevisions
     /**
      * Every LaraKube-managed workload with its identity, stamp and images.
      *
-     * @return list<array{tool: string, instance: ?string, revision: ?string, options: ?array<string, mixed>, images: list<string>, name: string, namespace: string, selector: array<string, string>, component: ?string, containers: list<array{name: string, image: string}>}>
+     * @return list<array{tool: string, instance: ?string, revision: ?string, options: ?array<string, mixed>, images: list<string>, name: string, namespace: string, selector: array<string, string>, component: ?string, paused: bool, containers: list<array{name: string, image: string}>}>
      */
     private function stampedWorkloads(string $kubectl): array
     {
@@ -110,6 +113,7 @@ trait InteractsWithToolRevisions
                 'namespace' => (string) ($item['metadata']['namespace'] ?? ''),
                 'selector' => array_map('strval', $item['spec']['selector']['matchLabels'] ?? []),
                 'component' => isset($labels[Labels::COMPONENT]) ? (string) $labels[Labels::COMPONENT] : null,
+                'paused' => ($item['kind'] ?? null) === 'Deployment' && K8sAnnotations::isPausedDeployment($item),
                 'containers' => array_values(array_map(
                     fn (array $c): array => ['name' => (string) ($c['name'] ?? ''), 'image' => (string) ($c['image'] ?? '')],
                     $item['spec']['template']['spec']['containers'] ?? [],

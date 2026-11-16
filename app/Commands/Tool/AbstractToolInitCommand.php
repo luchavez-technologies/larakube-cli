@@ -4,7 +4,10 @@ namespace App\Commands\Tool;
 
 use App\Data\ClusterCapacitySnapshot;
 use App\Enums\ClusterTool;
+use App\Services\K8s\ManifestResourceParser;
+use App\Services\Kubectl;
 use App\Services\Tools\ToolInitSpec;
+use App\Support\K8sAnnotations;
 use App\Traits\InteractsWithClusterCapacity;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RequiresFlagsWhenNonInteractive;
@@ -52,6 +55,17 @@ abstract class AbstractToolInitCommand extends Command
     }
 
     /**
+     * Every check that must pass before a tool's manifest is applied: a
+     * paused app stays paused, then the capacity guard. `--force` bypasses
+     * only the capacity guard (`tool:update` always passes it).
+     */
+    protected function guardPreInstall(string $kubectl, string $renderedManifest): bool
+    {
+        return $this->guardPausedWorkloads($kubectl, $renderedManifest)
+            && $this->guardClusterCapacity($kubectl, $renderedManifest);
+    }
+
+    /**
      * Whether this manifest is safe to apply right now, given what the
      * cluster already has committed. Returns true (silently) when the
      * manifest fits, when either live read fails (nothing to guard against —
@@ -96,6 +110,40 @@ abstract class AbstractToolInitCommand extends Command
         }
 
         return confirm('Not enough free capacity by this estimate — continue anyway?', default: false);
+    }
+
+    /**
+     * Refuses to apply a manifest whose Deployments are paused on the cluster.
+     * Applying it would scale them back up, and an app is often paused because
+     * it needs more than the cluster can spare. A read that fails steps aside,
+     * the same as the capacity guard: the apply surfaces a real problem.
+     */
+    private function guardPausedWorkloads(string $kubectl, string $renderedManifest): bool
+    {
+        $byNamespace = [];
+
+        foreach ((new ManifestResourceParser)->parse($renderedManifest) as $workload) {
+            if ($workload->kind === 'Deployment' && $workload->name !== '' && $workload->namespace !== '') {
+                $byNamespace[$workload->namespace][$workload->name] = true;
+            }
+        }
+
+        foreach ($byNamespace as $namespace => $names) {
+            $live = Kubectl::fromPrefix($kubectl)->raw(['get', 'deployment', ...array_keys($names), '-n', $namespace, '-o', 'json', '--ignore-not-found'])->json();
+            // One name comes back as the object itself, several as a List.
+            $items = $live === null ? [] : (isset($live['items']) && is_array($live['items']) ? $live['items'] : [$live]);
+
+            foreach ($items as $item) {
+                if (is_array($item) && K8sAnnotations::isPausedDeployment($item)) {
+                    $app = $this->initTool?->brandName() ?? 'This app';
+                    $this->laraKubeError("{$app} is paused ({$item['metadata']['name']}), so it was left untouched: applying it now would start it again. Resume it first, then re-run this.");
+
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     /** @param  array{cpu: int, memory: int}  $demand */

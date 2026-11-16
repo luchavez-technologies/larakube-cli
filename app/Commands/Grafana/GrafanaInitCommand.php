@@ -157,7 +157,7 @@ abstract class GrafanaInitCommand extends AbstractToolInitCommand
             'withTraces' => $withTraces,
         ])->render();
 
-        if (! $this->guardClusterCapacity($kubectl, $manifest)) {
+        if (! $this->guardPreInstall($kubectl, $manifest)) {
             return 1;
         }
 

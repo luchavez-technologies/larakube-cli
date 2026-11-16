@@ -199,3 +199,50 @@ test('each instance gets a start line and a closing line, which Desktop reads fo
         ->expectsOutputToContain('Updating Vaultwarden (vault.example.com)...')
         ->expectsOutputToContain('Updated Vaultwarden (vault.example.com).');
 });
+
+function toolUpdatePausedWorkload(string $tool, string $instance): array
+{
+    return array_replace_recursive(toolUpdateWorkload($tool, $instance, [
+        Labels::REVISION => 'aaaaaaaaaaaa',
+        'larakube.app/paused-replicas' => '1',
+    ]), ['kind' => 'Deployment', 'spec' => ['replicas' => 0]]);
+}
+
+test('--all skips a paused instance instead of starting it again, and still updates the rest', function (): void {
+    Process::fake(toolUpdateFakes(
+        [
+            ['tool' => 'documenso', 'instance' => 'sign-example-com', 'host' => 'sign.example.com'],
+            ['tool' => 'headlamp', 'instance' => 'dash-example-com', 'host' => 'dash.example.com'],
+        ],
+        [
+            toolUpdatePausedWorkload('documenso', 'sign-example-com'),
+            toolUpdateWorkload('headlamp', 'dash-example-com', [Labels::REVISION => 'aaaaaaaaaaaa']),
+        ],
+    ));
+
+    $results = collect(toolUpdateDryRun($this, '--all'))->keyBy('tool');
+
+    expect($results['documenso']['outcome'])->toBe('skipped')
+        ->and($results['documenso']['error'])->toBe('paused')
+        ->and($results['headlamp']['outcome'])->toBe('planned');
+});
+
+test('--tool refuses to update a paused instance', function (): void {
+    Process::fake(toolUpdateFakes(
+        [['tool' => 'documenso', 'instance' => 'sign-example-com', 'host' => 'sign.example.com']],
+        [toolUpdatePausedWorkload('documenso', 'sign-example-com')],
+    ));
+
+    $this->artisan('tool:update --context=test --tool=documenso')
+        ->expectsOutputToContain('is paused. Resume it first, then update it.')
+        ->assertExitCode(1);
+});
+
+test('a Deployment re-scaled after a pause, with its marker left behind, still updates', function (): void {
+    Process::fake(toolUpdateFakes(
+        [['tool' => 'documenso', 'instance' => 'sign-example-com', 'host' => 'sign.example.com']],
+        [array_replace_recursive(toolUpdatePausedWorkload('documenso', 'sign-example-com'), ['spec' => ['replicas' => 1]])],
+    ));
+
+    expect(toolUpdateDryRun($this, '--all')[0]['outcome'])->toBe('planned');
+});

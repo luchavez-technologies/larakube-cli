@@ -35,7 +35,7 @@ class ToolUpdateCommand extends Command
         {--context= : Target a specific kube-context}
         {--tool=    : The tool to update (e.g. n8n)}
         {--domain=  : With --tool, the instance\'s host, when the tool has several}
-        {--all      : Update every tool that tool:outdated lists}
+        {--all      : Update every tool that tool:outdated lists, except paused ones}
         {--dry-run  : Print each tool:init this would run, and run nothing}
         {--json     : Emit one machine-readable JSON summary on stdout}';
 
@@ -76,6 +76,25 @@ class ToolUpdateCommand extends Command
         foreach ($targets as $row) {
             $tool = ClusterTool::from($row['tool']);
             $parameters = $this->initParameters($tool, $row, $kubectl);
+
+            // A paused app stays paused: an update would start it again, and it
+            // is often paused because it needs more than the cluster can spare.
+            if (($row['paused'] ?? false) === true) {
+                if (! $all) {
+                    $this->laraKubeError("{$row['label']} ({$row['host']}) is paused. Resume it first, then update it.");
+
+                    return self::FAILURE;
+                }
+
+                $results[] = $this->result($row, 'skipped', $this->describe($parameters), 'paused');
+
+                if (! $this->option('json')) {
+                    $this->newLine();
+                    $this->laraKubeInfo("Skipped {$row['label']} ({$row['host']}): it is paused. Resume it to update it.");
+                }
+
+                continue;
+            }
 
             if ($this->option('dry-run')) {
                 $results[] = $this->result($row, 'planned', $this->describe($parameters));
@@ -303,7 +322,11 @@ class ToolUpdateCommand extends Command
 
         table(
             headers: ['Tool', 'Host', 'Result'],
-            rows: array_map(fn (array $r): array => [$r['label'], $r['host'] ?? '—', $r['outcome'] === 'updated' ? 'Updated' : 'Failed'], $results),
+            rows: array_map(fn (array $r): array => [$r['label'], $r['host'] ?? '—', match ($r['outcome']) {
+                'updated' => 'Updated',
+                'skipped' => 'Skipped (paused)',
+                default => 'Failed',
+            }], $results),
         );
 
         if ($failed > 0) {

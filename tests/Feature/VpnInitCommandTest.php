@@ -139,6 +139,8 @@ test('tool:init --tool=netbird targets the CHOSEN environment\'s own saved conte
             // full node/pod fixture just for this unrelated test.
             '*get nodes -o json*' => Process::result(output: '', exitCode: 1),
             '*get pods -A -o json*' => Process::result(output: '', exitCode: 1),
+            // Pre-install paused-app guard: nothing deployed yet.
+            '*get deployment * -o json --ignore-not-found*' => Process::result(output: ''),
         ]);
         Process::preventStrayProcesses();
 

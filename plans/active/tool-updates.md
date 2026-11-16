@@ -42,3 +42,11 @@ The first real use is the luchtech-vps label rollout (`label-prefix-rollout-luch
 - luchtech-vps: Forgejo ("LuchTech Git"), Grafana ("LuchTech Monitor", logs on, traces off) and Matrix
   ("LuchTech Chat") must be re-run by hand with explicit `--app-name` / `--with-logs --no-traces` before
   "Update all"; a default re-run would reset their names and remove Loki.
+- **Paused apps stay paused.** An app is often paused because it needs more
+  than the cluster can spare, so an update must never start it again.
+  - `tool:update --all` skips a paused instance and reports it as `skipped`.
+  - `--tool` on a paused instance refuses.
+  - Every `:init` refuses to apply a manifest whose Deployments are live and
+    paused (`guardPreInstall()`). `--force` does not get past this.
+  - "Paused" means scaled to zero with the `paused-replicas` marker set. A
+    marker left on a running Deployment is stale; `tool:resume` clears it.

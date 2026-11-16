@@ -170,7 +170,7 @@ abstract class MatrixInitCommand extends AbstractToolInitCommand
             'mas' => $mas,
         ])->render();
 
-        if (! $this->guardClusterCapacity($kubectl, $manifest)) {
+        if (! $this->guardPreInstall($kubectl, $manifest)) {
             return 1;
         }
 
