@@ -117,6 +117,7 @@ abstract class AbstractToolInitCommand extends Command
      * Applying it would scale them back up, and an app is often paused because
      * it needs more than the cluster can spare. A read that fails steps aside,
      * the same as the capacity guard: the apply surfaces a real problem.
+     * See docs/decisions/0030-paused-apps-stay-paused.md.
      */
     private function guardPausedWorkloads(string $kubectl, string $renderedManifest): bool
     {

@@ -48,5 +48,5 @@ The first real use is the luchtech-vps label rollout (`label-prefix-rollout-luch
   - `--tool` on a paused instance refuses.
   - Every `:init` refuses to apply a manifest whose Deployments are live and
     paused (`guardPreInstall()`). `--force` does not get past this.
-  - "Paused" means scaled to zero with the `paused-replicas` marker set. A
-    marker left on a running Deployment is stale; `tool:resume` clears it.
+  - "Paused" means scaled to zero with the `paused-replicas` marker set; a
+    marker on a running Deployment doesn't count. Recorded as ADR 0030.

@@ -45,3 +45,4 @@ Consequences**. Statuses: `Accepted`, `Superseded by NNNN`, `Proposed`.
 | [0027](0027-least-privilege-cloud-iam-policies.md) | Prioritize least privilege and minimal IAM access across all cloud integrations | Accepted |
 | [0028](0028-video-production-and-voiceover-standards.md) | Video production, AI voiceover, and OpenScreen remastering standards | Accepted |
 | [0029](0029-cloud-provider-connect-is-multi-account-by-design.md) | Connecting a cloud provider account is multi-account by design, keyed by the provider's own identity | Accepted |
+| [0030](0030-paused-apps-stay-paused.md) | A paused app stays paused: no install or update applies over it, even with `--force` | Accepted |
