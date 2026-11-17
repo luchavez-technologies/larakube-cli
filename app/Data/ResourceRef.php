@@ -31,6 +31,18 @@ final readonly class ResourceRef
         return "{$this->namespace}-{$this->name}@kubernetescrd";
     }
 
+    /**
+     * Whether an Ingress's `router.middlewares` annotation references a VPN-only
+     * Middleware, in either naming: the legacy `…-vpn-only@kubernetescrd` or the
+     * per-instance `…-vpn-only-<instance>@kubernetescrd` that ToolInstance names
+     * produce. Matching only the legacy form read every per-instance VPN-only
+     * host as public.
+     */
+    public static function referencesVpnOnlyMiddleware(string $annotation): bool
+    {
+        return preg_match('/-vpn-only(?:-[a-z0-9-]+)?@kubernetescrd\b/', $annotation) === 1;
+    }
+
     /** Unique across namespaces, for comparing sets of resources. */
     public function key(): string
     {

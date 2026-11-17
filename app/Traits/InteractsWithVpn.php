@@ -597,7 +597,7 @@ trait InteractsWithVpn
         foreach ($payload['items'] ?? [] as $ingress) {
             $middlewares = $ingress['metadata']['annotations']['traefik.ingress.kubernetes.io/router.middlewares'] ?? '';
 
-            if (! str_contains((string) $middlewares, '-vpn-only@kubernetescrd')) {
+            if (! ResourceRef::referencesVpnOnlyMiddleware((string) $middlewares)) {
                 continue;
             }
 

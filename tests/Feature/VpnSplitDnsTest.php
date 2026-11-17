@@ -89,6 +89,28 @@ test('only VPN-gated hosts are collected, never the rest of the zone', function 
     expect(splitDnsSubject()->hosts('kubectl'))->toBe(['admin.chat.example.com']);
 });
 
+test('a per-instance VPN-only middleware counts too, so its host keeps its split-DNS record', function (): void {
+    // Matching only the legacy '-vpn-only@' form read a per-instance one as
+    // public: the reconcile then found no VPN-only hosts and deleted the
+    // nameserver group (seen live on admin.chat).
+    Process::fake(['*get ingress -A -o json*' => Process::result(output: (string) json_encode(['items' => [[
+        'metadata' => ['annotations' => [
+            'traefik.ingress.kubernetes.io/router.middlewares' => 'larakube-shared-synapse-vpn-only-chat-example-com@kubernetescrd',
+        ]],
+        'spec' => ['rules' => [['host' => 'admin.chat.example.com']]],
+    ]]]))] + splitDnsFakes());
+
+    expect(splitDnsSubject()->hosts('kubectl'))->toBe(['admin.chat.example.com']);
+});
+
+test('a middleware that only mentions vpn-only in passing is not VPN-only', function (string $annotation): void {
+    expect(App\Data\ResourceRef::referencesVpnOnlyMiddleware($annotation))->toBeFalse();
+})->with([
+    'no middleware' => [''],
+    'unrelated' => ['larakube-shared-sso-proxy-auth@kubernetescrd'],
+    'vpn-only not at the end of a name' => ['larakube-shared-vpn-onlyish@kubernetescrd'],
+]);
+
 test('the resolver answers VPN-only hosts with the gateway address and still forwards everything else', function (): void {
     $manifest = view('k8s.netbird.resolver-config', [
         'hosts' => ['admin.chat.example.com'],
