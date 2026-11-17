@@ -9,8 +9,8 @@ class K8sAnnotations
 
     /**
      * Whether a Deployment (its `kubectl get -o json` item) is paused: scaled to
-     * zero with the pause marker set. The marker alone isn't enough, since
-     * re-applying a paused tool's manifest scales it back up and leaves the marker behind.
+     * zero with the pause marker set. The marker alone isn't enough: anything
+     * that scales the Deployment up without tool:resume leaves it in place.
      *
      * @param  array<string, mixed>  $deployment
      */

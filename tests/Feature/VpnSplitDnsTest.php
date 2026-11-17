@@ -90,9 +90,8 @@ test('only VPN-gated hosts are collected, never the rest of the zone', function 
 });
 
 test('a per-instance VPN-only middleware counts too, so its host keeps its split-DNS record', function (): void {
-    // Matching only the legacy '-vpn-only@' form read a per-instance one as
-    // public: the reconcile then found no VPN-only hosts and deleted the
-    // nameserver group (seen live on admin.chat).
+    // With no VPN-only hosts found, the reconcile removes the nameserver group,
+    // so a per-instance Middleware name must count.
     Process::fake(['*get ingress -A -o json*' => Process::result(output: (string) json_encode(['items' => [[
         'metadata' => ['annotations' => [
             'traefik.ingress.kubernetes.io/router.middlewares' => 'larakube-shared-synapse-vpn-only-chat-example-com@kubernetescrd',
@@ -270,9 +269,7 @@ test('orphaned gateway peers are retired, and the live one never is', function (
 
 test('a gateway that kept its identity across a pod restart is found by hostname, and never retired', function (): void {
     // NetBird keeps a peer's name from its first enrolment; only hostname tracks
-    // the pod. Live: name 'netbird-client-...-9bv5j' (a pod long gone), hostname
-    // the running pod. Matching name never found it, and the prune would have
-    // deleted the live gateway as an orphan.
+    // the pod, so the live gateway is found by hostname and the prune keeps it.
     Process::fake(splitDnsFakes());
 
     Saloon::fake([

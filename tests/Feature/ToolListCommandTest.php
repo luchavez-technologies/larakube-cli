@@ -692,7 +692,7 @@ test('tool:list reports a row paused when its Deployment is scaled to zero with 
 });
 
 test('tool:list does not report a running Deployment paused just because a stale pause marker remains', function (): void {
-    // Re-applying a paused tool's manifest scales it back up but leaves the marker behind.
+    // Paused means scaled to zero; a marker on a running Deployment doesn't make it paused.
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
             ['tool' => 'n8n', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'engine' => 'n8n', 'installedAt' => '2026-09-01T00:00:00+00:00'],
@@ -742,8 +742,8 @@ test('tool:list lists each kind of wiring resource once per namespace, not once 
 });
 
 test('tool:list reads wiring from the instance\'s canonical Secret names, the ones the wire commands write', function (): void {
-    // Grafana's vendor still declares the legacy 'grafana-smtp'/'grafana-oidc';
-    // sso:wire and mail:wire write the instance's canonical names instead.
+    // Grafana's vendor schema names 'grafana-smtp'/'grafana-oidc'; sso:wire and
+    // mail:wire write the instance's canonical names, so those are what count.
     Process::fake([
         '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
             ['tool' => 'grafana', 'instance' => 'monitor-example-com', 'host' => 'monitor.example.com', 'installedAt' => '2026-09-01T00:00:00+00:00'],

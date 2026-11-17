@@ -13,5 +13,5 @@ test('no manifest template hard-codes a VPN-only Middleware name', function (): 
         }
     }
 
-    expect($offenders)->toBe([]);
+    expect($offenders)->toBeEmpty();
 });

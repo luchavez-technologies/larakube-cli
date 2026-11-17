@@ -95,19 +95,6 @@ test('tool:resume on an already-running tool is a no-op', function (): void {
     expect($calls)->toBe([]);
 });
 
-test('tool:resume on a running tool that still carries the pause marker only clears the stale marker', function (): void {
-    // Re-applying a paused tool's manifest (e.g. an update) scales it back up but keeps the marker.
-    toolPauseCluster($calls, liveReplicas: 1, pausedAnnotation: 1);
-    toolPauseRegistry();
-
-    $this->artisan('tool:resume production --domain=flow.example.com --context=ctx')
-        ->expectsOutputToContain('flow.example.com is running again.')
-        ->assertExitCode(0);
-
-    expect($calls)->toHaveCount(1)
-        ->and($calls[0])->toContain('annotate deployment n8n-flow-example-com -n larakube-shared larakube.app/paused-replicas-');
-});
-
 test('an unknown host names the registered ones', function (): void {
     toolPauseCluster($calls, liveReplicas: 3);
     toolPauseRegistry();

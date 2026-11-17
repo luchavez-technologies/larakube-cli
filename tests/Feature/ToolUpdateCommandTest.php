@@ -238,7 +238,7 @@ test('--tool refuses to update a paused instance', function (): void {
         ->assertExitCode(1);
 });
 
-test('a Deployment re-scaled after a pause, with its marker left behind, still updates', function (): void {
+test('a running Deployment that still carries a pause marker is not paused, so it updates', function (): void {
     Process::fake(toolUpdateFakes(
         [['tool' => 'documenso', 'instance' => 'sign-example-com', 'host' => 'sign.example.com']],
         [array_replace_recursive(toolUpdatePausedWorkload('documenso', 'sign-example-com'), ['spec' => ['replicas' => 1]])],

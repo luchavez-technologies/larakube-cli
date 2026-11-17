@@ -20,10 +20,14 @@ function vpnUnwireIngressJson(string ...$hosts): string
 {
     $items = [];
     foreach ($hosts as $host) {
+        $names = App\Data\ToolInstance::forHost(ClusterTool::OUTLINE, $host);
         $items[] = [
-            'metadata' => ['annotations' => [
-                'traefik.ingress.kubernetes.io/router.middlewares' => 'larakube-shared-notes-vpn-only@kubernetescrd',
-            ]],
+            'metadata' => [
+                'labels' => $names->labels(),
+                'annotations' => [
+                    'traefik.ingress.kubernetes.io/router.middlewares' => $names->vpnMiddleware()->traefikMiddleware(),
+                ],
+            ],
             'spec' => ['rules' => [['host' => $host]]],
         ];
     }
@@ -134,8 +138,8 @@ test('secrets:wire capability is DB rotation, not the similarly-named OpenBao sy
 });
 
 test('a VPN-only ingress behind a per-instance Middleware is found through its tool label', function (): void {
-    // Matching only the legacy, instance-less Middleware name said "No tools are
-    // currently restricted" for every install made under the naming convention.
+    // Middleware names are per instance, so the ingress's tool label is what
+    // identifies the tool.
     $subject = vpnUnwireSubject((string) json_encode(['items' => [
         [
             'metadata' => [

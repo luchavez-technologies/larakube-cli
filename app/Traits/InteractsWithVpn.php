@@ -748,9 +748,8 @@ trait InteractsWithVpn
      * The pod a gateway peer is running as. NetBird keeps a peer's `name` from
      * when it first enrolled, while `hostname` follows the pod: a client that
      * restarts with its persisted identity (the PVC) stays the same peer, so
-     * its name keeps the FIRST pod's name. Matching on name alone never found
-     * the live gateway (split-DNS stopped reconciling), and would have retired
-     * it as an orphan.
+     * its name keeps the FIRST pod's name and only the hostname identifies the
+     * pod running now.
      *
      * @param  array<string, mixed>  $peer
      */

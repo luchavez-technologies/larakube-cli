@@ -234,8 +234,7 @@ class ToolListCommand extends Command
             // 1. Mail (SMTP)
             // Through ClusterTool, not the vendor: it maps the schema onto the
             // instance's canonical Secret names, which is what the wire commands
-            // write. A vendor's own 'secret' can be a legacy hand-built name
-            // that no longer exists, which read every such app as unwired.
+            // write; a vendor's own 'secret' is not the instance's name.
             $smtpSchema = $toolEnum->smtpEnv(null, $instance);
             if (! ($vendor instanceof HasSmtpWiring) || $smtpSchema === null) {
                 $r['mail'] = 'N/A';
@@ -696,9 +695,8 @@ class ToolListCommand extends Command
     /**
      * Whether a resource of this kind and name exists in the namespace. One
      * `get {kind} -n {namespace} -o name` per kind and namespace answers every
-     * row's wiring question; asking per row and per feature made tool:list
-     * ~30 seconds of sequential kubectl calls on a real cluster. `-o name`
-     * lists names only, so no Secret data is read. A kind whose CRD isn't
+     * row's wiring question, instead of one sequential call per row and per
+     * feature. `-o name` lists names only, so no Secret data is read. A kind whose CRD isn't
      * installed lists nothing, the same as "not found".
      */
     private function resourceExists(string $kubectl, string $kind, string $namespace, string $name): bool
