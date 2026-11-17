@@ -22,9 +22,6 @@ metadata:
 @if(!$isLocal)
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
 @endif
-@if($vpnOnly)
-    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-vpn-only@kubernetescrd
-@endif
 spec:
   rules:
     - host: {{ $host }}

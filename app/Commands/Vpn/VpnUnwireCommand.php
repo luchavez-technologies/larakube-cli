@@ -2,8 +2,10 @@
 
 namespace App\Commands\Vpn;
 
+use App\Data\ResourceRef;
 use App\Enums\ClusterTool;
 use App\Services\Kubectl;
+use App\Support\Labels;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithVpn;
@@ -190,21 +192,11 @@ class VpnUnwireCommand extends Command
         foreach ($payload['items'] ?? [] as $ingress) {
             $middlewares = (string) ($ingress['metadata']['annotations']['traefik.ingress.kubernetes.io/router.middlewares'] ?? '');
 
-            if (! str_contains($middlewares, '-vpn-only@kubernetescrd')) {
+            if (! ResourceRef::referencesVpnOnlyMiddleware($middlewares)) {
                 continue;
             }
 
-            foreach (ClusterTool::shippedCases() as $candidate) {
-                if (! $candidate->hasVpnWire()) {
-                    continue;
-                }
-
-                $target = $candidate->vpnMiddlewareTarget();
-
-                if ($target === null || ! str_contains($middlewares, "-{$target['name']}@kubernetescrd")) {
-                    continue;
-                }
-
+            foreach ($this->vpnWiredToolsOf($ingress, $middlewares) as $candidate) {
                 foreach ($ingress['spec']['rules'] ?? [] as $rule) {
                     $host = (string) ($rule['host'] ?? '');
 
@@ -234,5 +226,31 @@ class VpnUnwireCommand extends Command
         }
 
         return array_values(array_unique($hosts));
+    }
+
+    /**
+     * The tool(s) a VPN-only ingress belongs to. Its own tool label says so
+     * directly, whatever the Middleware is called; an ingress from before tools
+     * were labelled is matched by the legacy, instance-less Middleware name.
+     *
+     * @param  array<string, mixed>  $ingress
+     * @return list<ClusterTool>
+     */
+    private function vpnWiredToolsOf(array $ingress, string $middlewares): array
+    {
+        $labelled = ClusterTool::tryFrom((string) ($ingress['metadata']['labels'][Labels::TOOL] ?? ''));
+
+        if ($labelled !== null) {
+            return $labelled->hasVpnWire() ? [$labelled] : [];
+        }
+
+        return array_values(array_filter(
+            ClusterTool::shippedCases(),
+            function (ClusterTool $candidate) use ($middlewares): bool {
+                $target = $candidate->hasVpnWire() ? $candidate->vpnMiddlewareTarget() : null;
+
+                return $target !== null && str_contains($middlewares, "-{$target['name']}@kubernetescrd");
+            },
+        ));
     }
 }

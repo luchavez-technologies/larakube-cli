@@ -20,9 +20,6 @@ metadata:
     external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
 @endif
 @endunless
-@if($vpnOnly ?? false)
-    traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-link-vpn-only@kubernetescrd
-@endif
 spec:
   rules:
     - host: {{ $host }}

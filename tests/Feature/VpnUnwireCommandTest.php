@@ -52,6 +52,12 @@ function vpnUnwireSubject(string $ingressJson): object
         {
             return $this->unwire($tool, $target, $kubectl, $env, $domain);
         }
+
+        /** @return list<array{tool: ClusterTool, host: string}> */
+        public function testVpnOnlyIngresses(string $kubectl): array
+        {
+            return $this->vpnOnlyIngresses($kubectl);
+        }
     };
 }
 
@@ -125,4 +131,29 @@ test('secrets:wire capability is DB rotation, not the similarly-named OpenBao sy
     // not sync-capable, e.g. sign.
     expect(ClusterTool::DOCUMENSO->hasSecretsWire())->toBeTrue()
         ->and(ClusterTool::DOCUMENSO->vendor() instanceof App\Contracts\HasOpenbaoSync)->toBeFalse();
+});
+
+test('a VPN-only ingress behind a per-instance Middleware is found through its tool label', function (): void {
+    // Matching only the legacy, instance-less Middleware name said "No tools are
+    // currently restricted" for every install made under the naming convention.
+    $subject = vpnUnwireSubject((string) json_encode(['items' => [
+        [
+            'metadata' => [
+                'labels' => [App\Support\Labels::TOOL => 'outline', App\Support\Labels::INSTANCE => 'notes-example-com'],
+                'annotations' => ['traefik.ingress.kubernetes.io/router.middlewares' => 'larakube-shared-outline-vpn-only-notes-example-com@kubernetescrd'],
+            ],
+            'spec' => ['rules' => [['host' => 'notes.example.com']]],
+        ],
+        [
+            // Public: labelled, but no VPN-only Middleware.
+            'metadata' => ['labels' => [App\Support\Labels::TOOL => 'n8n'], 'annotations' => []],
+            'spec' => ['rules' => [['host' => 'flow.example.com']]],
+        ],
+    ]]));
+
+    $found = $subject->testVpnOnlyIngresses('kubectl');
+
+    expect($found)->toHaveCount(1)
+        ->and($found[0]['tool'])->toBe(ClusterTool::OUTLINE)
+        ->and($found[0]['host'])->toBe('notes.example.com');
 });
