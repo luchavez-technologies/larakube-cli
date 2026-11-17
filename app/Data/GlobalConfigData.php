@@ -4,6 +4,7 @@ namespace App\Data;
 
 use App\Enums\AiProvider;
 use App\Services\Cloud\OAuthTokenResult;
+use App\Support\HostPath;
 use App\Traits\InteractsWithJsonFile;
 use Illuminate\Support\Carbon;
 use Spatie\LaravelData\Data;
@@ -19,6 +20,15 @@ class GlobalConfigData extends Data
 
     /** Valid TLDs the user may choose. */
     const array ALLOWED_TLDS = ['test', 'kube', 'localhost', 'local', 'internal'];
+
+    /**
+     * What this copy held when it was loaded, so save() can tell its own
+     * changes from changes another process made since. Null for a copy that
+     * was never loaded (built in memory), which save() writes whole.
+     *
+     * @var array<string, mixed>|null
+     */
+    private ?array $loaded = null;
 
     public function __construct(
         public ?string $email = null,
@@ -414,9 +424,10 @@ class GlobalConfigData extends Data
         $this->gcpProjectId = $projectId ? trim($projectId) : null;
     }
 
+    /** A key file path comes back in this side's form: Windows and LaraKube Linux share this file (HostPath). */
     public function getGcpCredentials(): ?string
     {
-        return $this->gcpCredentials;
+        return $this->gcpCredentials === null ? null : HostPath::forThisSide($this->gcpCredentials);
     }
 
     public function setGcpCredentials(?string $credentials): void
@@ -513,8 +524,10 @@ class GlobalConfigData extends Data
         $path = home_path('.larakube/'.self::CONFIG_FILE);
 
         $data = self::readJsonFile($path);
+        $config = $data === null ? new self : self::from($data);
+        $config->loaded = $config->toArray();
 
-        return $data === null ? new self : self::from($data);
+        return $config;
     }
 
     public function save(): void
@@ -526,9 +539,17 @@ class GlobalConfigData extends Data
             @mkdir($dir, 0700, true);
         }
 
-        // The file is shared with LaraKube Desktop, which keeps its own settings in it (the switch for
-        // experimental features, for one). Keys this class does not own are carried over untouched.
-        $data = array_merge(array_diff_key(self::readJsonFile($path) ?? [], $this->toArray()), $this->toArray());
+        // Several writers share this file: LaraKube Desktop (which keeps its own settings in it), the CLI on
+        // Windows, and the CLI in LaraKube Linux through a symlink. A command can hold its copy for minutes
+        // (cloud:create waits on OpenTofu), and file locks do not hold across the Windows/WSL boundary. So the
+        // file is re-read here and only what this copy changed since load() is applied to it: another
+        // process's change to a different key, or to a different entry of the same map, survives.
+        $mine = $this->toArray();
+        $onDisk = self::readJsonFile($path) ?? [];
+        $data = $this->loaded === null
+            ? array_merge(array_diff_key($onDisk, $mine), $mine)
+            : self::applyChanges($onDisk, $this->loaded, $mine);
+        $this->loaded = $mine;
         // Empty associative maps must serialize as {} not [] in JSON.
         foreach (['shareDomains', 'stacks', 'tofuPassphrases'] as $mapKey) {
             if (empty($data[$mapKey])) {
@@ -537,6 +558,49 @@ class GlobalConfigData extends Data
         }
 
         self::atomicWriteJson($path, $data, 0600);
+    }
+
+    /**
+     * Applies the difference between $before and $after onto $onDisk. Maps
+     * (string-keyed arrays) merge entry by entry; scalars and lists are
+     * replaced whole when they changed, and a key this copy removed is
+     * removed. Keys this copy did not touch keep whatever is on disk, and a
+     * top-level key the file lacks is filled in from this copy.
+     *
+     * @param  array<array-key, mixed>  $onDisk
+     * @param  array<array-key, mixed>  $before
+     * @param  array<array-key, mixed>  $after
+     * @return array<array-key, mixed>
+     */
+    private static function applyChanges(array $onDisk, array $before, array $after, bool $topLevel = true): array
+    {
+        foreach ($before as $key => $was) {
+            if (! array_key_exists($key, $after)) {
+                unset($onDisk[$key]);
+            }
+        }
+
+        foreach ($after as $key => $now) {
+            $was = $before[$key] ?? null;
+
+            // Unchanged keys keep what is on disk. The file always carries every top-level key, so one it lacks
+            // is filled in; an entry missing inside a map was removed by another process and stays removed.
+            if (array_key_exists($key, $before) && $was === $now && (! $topLevel || array_key_exists($key, $onDisk))) {
+                continue;
+            }
+
+            $onDisk[$key] = self::isMap($now) && self::isMap($was) && self::isMap($onDisk[$key] ?? null)
+                ? self::applyChanges($onDisk[$key], $was, $now, topLevel: false)
+                : $now;
+        }
+
+        return $onDisk;
+    }
+
+    /** A string-keyed array, or an empty one: JSON's `{}` decodes to `[]`, and the first entry of an empty map must merge, not replace. */
+    private static function isMap(mixed $value): bool
+    {
+        return is_array($value) && ($value === [] || ! array_is_list($value));
     }
 
     /**

@@ -22,13 +22,9 @@ final class SshKeyPath
 {
     public static function forThisSide(string $key, string $mountRoot = '/mnt'): string
     {
-        if (Os::isWindows() || preg_match('#^([A-Za-z]):[\\\\/](.*)$#', $key, $drive) !== 1) {
-            return $key;
-        }
+        $mounted = Os::isWindows() ? null : HostPath::toWsl($key, $mountRoot);
 
-        $mounted = rtrim($mountRoot, '/').'/'.strtolower($drive[1]).'/'.str_replace('\\', '/', $drive[2]);
-
-        if (! is_file($mounted)) {
+        if ($mounted === null || ! is_file($mounted)) {
             return $key;
         }
 
