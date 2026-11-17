@@ -278,7 +278,7 @@ test('tool:list reports SSO as wired for a CLI-OIDC tool once sso:wire records i
                 ['tool' => 'forgejo', 'instance' => 'main', 'installedAt' => '2026-08-01T00:00:00+00:00', 'host' => 'git.luchtech.dev'],
             ])),
         ),
-        '*get secret -n * -o name*' => Process::result(output: "secret/forgejo-oidc\n"),
+        '*get secret -n * -o name*' => Process::result(output: "secret/forgejo-oidc-main\n"),
         '*' => Process::result(output: ''),
     ]);
 
@@ -739,4 +739,22 @@ test('tool:list lists each kind of wiring resource once per namespace, not once 
 
     Process::assertRanTimes(fn ($process): bool => str_contains((string) $process->command, 'get secret -n larakube-shared -o name'), 1);
     Process::assertNotRan(fn ($process): bool => preg_match('/get secret [a-z][a-z0-9-]*-(smtp|oidc)\b/', (string) $process->command) === 1);
+});
+
+test('tool:list reads wiring from the instance\'s canonical Secret names, the ones the wire commands write', function (): void {
+    // Grafana's vendor still declares the legacy 'grafana-smtp'/'grafana-oidc';
+    // sso:wire and mail:wire write the instance's canonical names instead.
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: base64_encode((string) json_encode([
+            ['tool' => 'grafana', 'instance' => 'monitor-example-com', 'host' => 'monitor.example.com', 'installedAt' => '2026-09-01T00:00:00+00:00'],
+        ]))),
+        '*get secret -n larakube-shared -o name*' => Process::result(output: "secret/grafana-smtp-monitor-example-com\nsecret/grafana-oidc-monitor-example-com\n"),
+        '*' => Process::result(output: ''),
+    ]);
+
+    Artisan::call('tool:list local --json');
+    $row = collect(json_decode(Artisan::output(), true))->firstWhere('tool', 'grafana');
+
+    expect($row['mail'])->toBe('wired')
+        ->and($row['sso'])->toBe('wired');
 });

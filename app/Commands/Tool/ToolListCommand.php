@@ -232,18 +232,24 @@ class ToolListCommand extends Command
             $ns = $toolEnum->namespace();
 
             // 1. Mail (SMTP)
-            if (! ($vendor instanceof HasSmtpWiring) || $vendor->smtpEnv($instance) === null) {
+            // Through ClusterTool, not the vendor: it maps the schema onto the
+            // instance's canonical Secret names, which is what the wire commands
+            // write. A vendor's own 'secret' can be a legacy hand-built name
+            // that no longer exists, which read every such app as unwired.
+            $smtpSchema = $toolEnum->smtpEnv(null, $instance);
+            if (! ($vendor instanceof HasSmtpWiring) || $smtpSchema === null) {
                 $r['mail'] = 'N/A';
             } elseif (! $installed) {
                 $r['mail'] = '—';
             } else {
-                $smtpSecret = $vendor->smtpEnv($instance)['secret'] ?? "{$r['tool']}-smtp";
+                $smtpSecret = $smtpSchema['secret'] ?? "{$r['tool']}-smtp";
                 $wired = $this->resourceExists($kubectl, 'secret', $ns, $smtpSecret);
                 $r['mail'] = $wired ? 'wired' : 'unwired';
             }
 
             // 2. SSO (OIDC / ForwardAuth)
-            $isOidc = $vendor instanceof HasOidcWiring && $vendor->oidcEnv($instance) !== null;
+            $oidcSchema = $toolEnum->oidcEnv(null, $instance);
+            $isOidc = $vendor instanceof HasOidcWiring && $oidcSchema !== null;
             $isFwdAuth = $vendor instanceof UsesForwardAuth;
             if (! $isOidc && ! $isFwdAuth) {
                 $r['sso'] = 'N/A';
@@ -251,7 +257,7 @@ class ToolListCommand extends Command
                 $r['sso'] = '—';
             } else {
                 if ($isOidc) {
-                    $oidcSecret = $vendor->oidcEnv($instance)['secret'] ?? "{$r['tool']}-oidc";
+                    $oidcSecret = $oidcSchema['secret'] ?? "{$r['tool']}-oidc";
                     $wired = $this->resourceExists($kubectl, 'secret', $ns, $oidcSecret);
                 } else {
                     $wired = $this->resourceExists($kubectl, 'middleware', 'larakube-shared', 'sso-proxy-auth');
