@@ -43,7 +43,7 @@ test('setup on Windows fails if distro is missing', function (): void {
     try {
         $this->artisan('setup')
             ->assertExitCode(1)
-            ->expectsOutputToContain("LaraKube Linux distro ('larakube-ubuntu') is not yet installed");
+            ->expectsOutputToContain("LaraKube Linux ('larakube-ubuntu' in WSL) is not installed yet");
     } finally {
         putenv('USERPROFILE');
     }

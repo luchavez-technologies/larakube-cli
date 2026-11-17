@@ -76,7 +76,7 @@ $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
 |
 | When running natively on Windows outside WSL, operational commands
 | (up, down, art, tool:*, etc.) are dispatched transparently into the
-| bundled WSL2 Linux environment (larakube-ubuntu). Native lifecycle
+| LaraKube Linux (the larakube-ubuntu WSL distro). Native lifecycle
 | commands (setup, update, wsl:*) continue to run locally.
 |
 */
@@ -102,7 +102,7 @@ if (\App\Services\WslBridge::isNativeWindows()) {
         if (! $wslBridge->distroExists()) {
             // A Windows host without the distro is for servers and Cluster
             // Tools only; projects (and their commands) live in the distro.
-            fwrite(STDERR, "This command works on a project, and projects live in LaraKube Linux (the larakube-ubuntu WSL distro), which is not installed.\nInstall it from LaraKube Desktop's Setup page, or run: larakube setup\n");
+            fwrite(STDERR, "This command works on a project, and projects live in LaraKube Linux (WSL), which is not installed.\nInstall it from LaraKube Desktop's Setup page, or run: larakube setup\n");
             exit(1);
         }
 

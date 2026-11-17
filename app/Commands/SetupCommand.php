@@ -825,8 +825,8 @@ class SetupCommand extends Command
         // Check distro
         if (! $bridge->distroExists()) {
             $this->newLine();
-            $this->laraKubeWarn("LaraKube Linux distro ('{$bridge->distroName()}') is not yet installed.");
-            $this->line('  LaraKube Desktop can install the distro automatically, or you can import it.');
+            $this->laraKubeWarn("LaraKube Linux ('{$bridge->distroName()}' in WSL) is not installed yet.");
+            $this->line('  LaraKube Desktop can install it for you, or you can import it.');
             $this->line('  If you are using a standard Ubuntu distro, set <fg=cyan>LARAKUBE_WSL_DISTRO=Ubuntu</>.');
             $this->newLine();
 

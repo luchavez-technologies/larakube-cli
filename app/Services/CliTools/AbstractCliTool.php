@@ -448,7 +448,7 @@ abstract class AbstractCliTool
                 return $this->installOnWindows();
             }
 
-            $this->setLastError("{$this->label()} has no native Windows installer; it runs inside the larakube-ubuntu WSL distro.");
+            $this->setLastError("{$this->label()} has no native Windows installer; it runs inside LaraKube Linux (WSL).");
 
             return false;
         }
