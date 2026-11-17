@@ -726,7 +726,7 @@ trait InteractsWithVpn
 
         while (now()->lessThan($deadline)) {
             foreach ($this->vpnPeers($host, $pat) as $peer) {
-                if ((string) ($peer['name'] ?? '') !== $pod) {
+                if ($this->vpnPeerPod($peer) !== $pod) {
                     continue;
                 }
 
@@ -745,6 +745,23 @@ trait InteractsWithVpn
     }
 
     /**
+     * The pod a gateway peer is running as. NetBird keeps a peer's `name` from
+     * when it first enrolled, while `hostname` follows the pod: a client that
+     * restarts with its persisted identity (the PVC) stays the same peer, so
+     * its name keeps the FIRST pod's name. Matching on name alone never found
+     * the live gateway (split-DNS stopped reconciling), and would have retired
+     * it as an orphan.
+     *
+     * @param  array<string, mixed>  $peer
+     */
+    protected function vpnPeerPod(array $peer): string
+    {
+        $hostname = (string) ($peer['hostname'] ?? '');
+
+        return $hostname !== '' ? $hostname : (string) ($peer['name'] ?? '');
+    }
+
+    /**
      * Retire gateway peers left behind by earlier rollouts.
      *
      * Identified by name: anything carrying the gateway prefix that is not the
@@ -759,7 +776,7 @@ trait InteractsWithVpn
     {
         foreach ($peers as $peer) {
             $id = (string) ($peer['id'] ?? '');
-            $name = (string) ($peer['name'] ?? '');
+            $name = $this->vpnPeerPod($peer);
 
             if ($id === '' || $name === $current || ! str_starts_with($name, $prefix)) {
                 continue;

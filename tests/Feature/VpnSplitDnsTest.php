@@ -268,6 +268,32 @@ test('orphaned gateway peers are retired, and the live one never is', function (
         || str_ends_with($request->resolveEndpoint(), '/old'));
 });
 
+test('a gateway that kept its identity across a pod restart is found by hostname, and never retired', function (): void {
+    // NetBird keeps a peer's name from its first enrolment; only hostname tracks
+    // the pod. Live: name 'netbird-client-...-9bv5j' (a pod long gone), hostname
+    // the running pod. Matching name never found it, and the prune would have
+    // deleted the live gateway as an orphan.
+    Process::fake(splitDnsFakes());
+
+    Saloon::fake([
+        ListNameserverGroupsRequest::class => MockResponse::make([]),
+        ListPeersRequest::class => MockResponse::make([
+            ['id' => 'live', 'name' => 'netbird-client-first', 'hostname' => 'netbird-client-new', 'ip' => '100.84.14.83', 'connected' => true],
+            ['id' => 'gone', 'name' => 'netbird-client-old', 'hostname' => 'netbird-client-old', 'ip' => '100.84.1.1', 'connected' => false],
+        ]),
+        ListGroupsRequest::class => MockResponse::make([['id' => 'grp-all', 'name' => 'All']]),
+        SaveNameserverGroupRequest::class => MockResponse::make(['id' => 'ns-1']),
+        DeletePeerRequest::class => MockResponse::make([], 200),
+    ]);
+
+    expect(splitDnsSubject()->gatewayIp('vpn.example.com', 'pat', 'kubectl'))->toBe('100.84.14.83')
+        ->and(splitDnsSubject()->reconcile('kubectl', 'vpn.example.com', 'pat'))->toBeTrue();
+
+    Saloon::assertSent(fn ($request) => $request instanceof DeletePeerRequest && str_ends_with($request->resolveEndpoint(), '/gone'));
+    Saloon::assertNotSent(fn ($request) => $request instanceof DeletePeerRequest && str_ends_with($request->resolveEndpoint(), '/live'));
+    Saloon::assertSent(SaveNameserverGroupRequest::class);
+});
+
 test('the client PVC is mounted where NetBird actually keeps peer identity', function (): void {
     // /etc/netbird was empty on a live pod: the PVC persisted nothing, so every
     // restart registered a NEW peer with a NEW overlay address and orphaned the
