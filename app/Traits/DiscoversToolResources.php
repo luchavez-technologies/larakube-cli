@@ -47,7 +47,10 @@ trait DiscoversToolResources
     }
 
     /**
-     * @return list<array{kind: string, name: string, keys: list<array{key: string, owner: string, value?: string}>}>
+     * `custom` marks the user's own overlay (a ConfigMap and a Secret per
+     * instance), which exists before anything is set in it.
+     *
+     * @return list<array{kind: string, name: string, custom: bool, keys: list<array{key: string, owner: string, value?: string}>}>
      */
     protected function toolResources(Kubectl $kubectl, ToolInstance $names): array
     {
@@ -111,7 +114,7 @@ trait DiscoversToolResources
                 $keys[] = $row;
             }
 
-            $resources[] = ['kind' => $kind, 'name' => $name, 'keys' => $keys];
+            $resources[] = ['kind' => $kind, 'name' => $name, 'custom' => in_array($name, $customNames, true), 'keys' => $keys];
         }
 
         usort($resources, fn (array $a, array $b): int => [$a['kind'], $a['name']] <=> [$b['kind'], $b['name']]);

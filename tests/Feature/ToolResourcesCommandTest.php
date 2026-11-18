@@ -66,6 +66,9 @@ test('tool:resources finds what the workloads reference, labelled or not, with e
         ->and($owners('n8n-custom-flow-example-com'))->toBe(['WEBHOOK_TOKEN' => 'custom'])
         ->and($owners('n8n-smtp-flow-example-com'))->toBe(['N8N_SMTP_PASS' => 'managed'])
         ->and($resources['n8n-config-flow-example-com']['keys'][0])->toBe(['key' => 'TZ', 'owner' => 'managed', 'value' => 'UTC']);
+
+    expect($resources['n8n-custom-flow-example-com']['custom'])->toBeTrue()
+        ->and($resources['n8n-smtp-flow-example-com']['custom'])->toBeFalse();
 });
 
 test('tool:resources never prints a Secret value', function (): void {
