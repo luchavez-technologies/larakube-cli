@@ -53,6 +53,13 @@ spec:
           volumeMounts:
             - name: storage
               mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
       volumes:
         - name: storage
           persistentVolumeClaim:
@@ -129,6 +136,13 @@ spec:
               port: 8000
             initialDelaySeconds: 15
             periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
         - name: windmill-worker
           image: {{ $tool->image('windmill') }}
           env:
@@ -148,10 +162,24 @@ spec:
               value: worker
             - name: WORKER_GROUP
               value: default
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
         - name: windmill-lsp
           image: {{ $tool->image('lsp') }}
           ports:
             - containerPort: 3001
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
 ---
 apiVersion: v1
 kind: Service

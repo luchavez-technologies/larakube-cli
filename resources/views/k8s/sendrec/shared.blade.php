@@ -110,6 +110,13 @@ spec:
                   name: {{ $smtpSecret }}
                   key: EMAIL_FROM_ADDRESS
                   optional: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
           # NOTE: no OIDC_* env vars here on purpose. SendRec's SSO is
           # WORKSPACE-level and configured inside the app (its .env.example
           # declares no OIDC variables at all), so env-based wiring is inert.

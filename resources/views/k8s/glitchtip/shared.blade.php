@@ -155,6 +155,13 @@ spec:
               port: 8000
             initialDelaySeconds: 15
             periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
 ---
 apiVersion: v1
 kind: Service
@@ -224,6 +231,13 @@ spec:
                   name: {{ $smtpSecret }}
                   key: DEFAULT_FROM_EMAIL
                   optional: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
 ---
 @if ($noPlex)
 apiVersion: v1
@@ -271,6 +285,13 @@ spec:
           volumeMounts:
             - name: storage
               mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
       volumes:
         - name: storage
           persistentVolumeClaim:
@@ -312,6 +333,13 @@ spec:
           image: valkey/valkey:8.0-alpine
           ports:
             - containerPort: 6379
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
 ---
 apiVersion: v1
 kind: Service

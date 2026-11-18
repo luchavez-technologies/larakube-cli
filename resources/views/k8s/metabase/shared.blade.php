@@ -112,6 +112,13 @@ spec:
           volumeMounts:
             - name: storage
               mountPath: /metabase-data
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
       volumes:
         - name: storage
 @if($noPlex)
