@@ -27,7 +27,6 @@ use function Laravel\Prompts\password;
 use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
-use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class MailWireCommand extends Command
 {
@@ -280,7 +279,12 @@ class MailWireCommand extends Command
         // Cache only a VERIFIED pair.
         $env = (string) $this->argument('environment');
         $this->withSpin('Caching sender credentials...', function () use ($kubectl, $ns, $sender, $appPassword, $env): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, $this->mailSenderSecretName($kubectl), ['sender' => $sender, 'app-password' => $appPassword]);
+            Kubectl::fromPrefix($kubectl)->putSecret(
+                $ns,
+                $this->mailSenderSecretName($kubectl),
+                ['sender' => $sender, 'app-password' => $appPassword],
+                $this->mailNames($kubectl)?->labels() ?? [],
+            );
 
             if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
                 $this->pushClusterSecret($kubectl, 'STALWART_MAIL_SENDER', $sender, $env);
@@ -524,15 +528,14 @@ class MailWireCommand extends Command
                 $this->readChatWiredMas($kubectl, $ns),
             );
 
-            $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-            $tmp = $temporaryDirectory->path().'/homeserver.yaml';
-            file_put_contents($tmp, $homeserver);
-            $result = Process::run(
-                "{$kubectl} create secret generic {$chat->secret(SecretKind::CONFIG)} -n {$ns} --from-file=homeserver.yaml={$tmp} --dry-run=client -o yaml | {$kubectl} apply -f -",
+            $result = Kubectl::fromPrefix($kubectl)->putSecret(
+                $ns,
+                $chat->secret(SecretKind::CONFIG),
+                ['homeserver.yaml' => $homeserver],
+                $chat->labels(),
             );
-            $temporaryDirectory->delete();
 
-            $ok = $result->successful();
+            $ok = $result->ok;
             if ($ok) {
                 Process::run("{$kubectl} rollout restart deployment/{$chat->deployment()} -n {$ns}");
             }

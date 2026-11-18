@@ -3,6 +3,12 @@ kind: VaultDynamicSecret
 metadata:
   name: {{ $secretName }}-db
   namespace: {{ $namespace }}
+@if (! empty($labels))
+  labels:
+@foreach ($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
+@endif
 spec:
   path: "database/static-creds/{{ $roleName }}"
   method: GET
@@ -18,6 +24,12 @@ kind: ExternalSecret
 metadata:
   name: {{ $secretName }}-db
   namespace: {{ $namespace }}
+@if (! empty($labels))
+  labels:
+@foreach ($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
+@endif
 spec:
   refreshInterval: 5m
   target:
@@ -26,6 +38,12 @@ spec:
     template:
       engineVersion: v2
       metadata:
+@if (! empty($labels))
+        labels:
+@foreach ($labels as $key => $value)
+          {{ $key }}: {{ $value }}
+@endforeach
+@endif
         annotations:
           reloader.stakater.com/auto: "true"
       data:

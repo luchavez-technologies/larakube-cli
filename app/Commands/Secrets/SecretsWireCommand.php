@@ -2,6 +2,7 @@
 
 namespace App\Commands\Secrets;
 
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
@@ -320,7 +321,8 @@ class SecretsWireCommand extends Command
             return false;
         }
 
-        $this->withSpin("Wiring OpenBao rotation into {$ref['secret']}...", function () use ($kubectl, $tenant, $ref): void {
+        $labels = $instance !== null && $instance !== '' ? ToolInstance::forInstance($tool, $instance)->labels() : [];
+        $this->withSpin("Wiring OpenBao rotation into {$ref['secret']}...", function () use ($kubectl, $tenant, $ref, $labels): void {
             $manifest = view('k8s.openbao.eso-db-static', [
                 'namespace' => $ref['namespace'],
                 'openbaoServer' => $this->openBaoServerUrl($kubectl),
@@ -328,6 +330,7 @@ class SecretsWireCommand extends Command
                 'roleName' => $tenant,
                 'passwordKey' => $ref['key'],
                 'passwordTemplate' => $ref['template'] ?? null,
+                'labels' => $labels,
             ])->render();
 
             $temporaryDirectory = TemporaryDirectory::make();

@@ -4,6 +4,7 @@ namespace App\Commands\Sso;
 
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SecretKind;
 use App\Enums\SecretsBackend;
@@ -271,7 +272,12 @@ class SsoWireCommand extends Command
                 return 1;
             }
 
-            Kubectl::fromPrefix($kubectl)->putSecret($ssoNs, $appSecret, ['project-id' => $registered['projectId'], 'app-id' => $registered['appId'], 'client-id' => $registered['clientId'], 'client-secret' => $registered['clientSecret']]);
+            Kubectl::fromPrefix($kubectl)->putSecret(
+                $ssoNs,
+                $appSecret,
+                ['project-id' => $registered['projectId'], 'app-id' => $registered['appId'], 'client-id' => $registered['clientId'], 'client-secret' => $registered['clientSecret']],
+                $schema['labels'] ?? [],
+            );
 
             // A public SPA client has no secret to vault.
             if (! $publicClient && $this->secretsBackendAvailable($kubectl)) {
@@ -622,7 +628,7 @@ class SsoWireCommand extends Command
             // DB, so this CLI path was the only wiring that never wrote it,
             // and tool:list permanently reported a wired Forgejo as unwired.
             // Record the registration the same way, idempotently.
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, $schema['secret'], ['client-id' => $clientId, 'client-secret' => $clientSecret]);
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $schema['secret'], ['client-id' => $clientId, 'client-secret' => $clientSecret], $schema['labels'] ?? []);
 
             // Forgejo/Forgejo caches login sources in memory (a periodic
             // background sync, not an immediate reload) — update-oauth/
@@ -714,7 +720,7 @@ class SsoWireCommand extends Command
             $rbacRole = array_key_first($tool->rbacRoles());
         }
 
-        $app = $this->ensureProxyOidcApp($kubectl, $ssoNs, $ssoHost, $authHost, $pat, $env, $this->ssoAppSecretName(ClusterTool::ZITADEL, $sso->instance, 'proxy'));
+        $app = $this->ensureProxyOidcApp($kubectl, $ssoNs, $ssoHost, $authHost, $pat, $env, $this->ssoAppSecretName(ClusterTool::ZITADEL, $sso->instance, 'proxy'), $sso->labels());
         if ($app === null) {
             return 1;
         }
@@ -859,7 +865,7 @@ class SsoWireCommand extends Command
      *
      * @return array{clientId: string, clientSecret: string}|null
      */
-    protected function ensureProxyOidcApp(string $kubectl, string $ssoNs, string $ssoHost, string $authHost, string $pat, string $env, string $appSecret): ?array
+    protected function ensureProxyOidcApp(string $kubectl, string $ssoNs, string $ssoHost, string $authHost, string $pat, string $env, string $appSecret, array $labels = []): ?array
     {
         $clientId = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'client-id');
         $clientSecret = $this->readClusterSecretKey($kubectl, $ssoNs, $appSecret, 'client-secret');
@@ -893,7 +899,7 @@ class SsoWireCommand extends Command
             return null;
         }
 
-        Kubectl::fromPrefix($kubectl)->putSecret($ssoNs, $appSecret, ['project-id' => $registered['projectId'], 'app-id' => $registered['appId'], 'client-id' => $registered['clientId'], 'client-secret' => $registered['clientSecret']]);
+        Kubectl::fromPrefix($kubectl)->putSecret($ssoNs, $appSecret, ['project-id' => $registered['projectId'], 'app-id' => $registered['appId'], 'client-id' => $registered['clientId'], 'client-secret' => $registered['clientSecret']], $labels);
 
         if ($this->secretsBackendAvailable($kubectl)) {
             $clusterEnv = $env === 'local' ? 'dev' : $env;
@@ -1216,7 +1222,7 @@ class SsoWireCommand extends Command
             'client-id' => $clientId,
             'client-secret' => $clientSecret,
             'name' => 'Zitadel',
-        ]);
+        ], $chat->labels());
 
         // 2. Re-render homeserver.yaml with the oidc_providers: block,
         //    preserving any existing email: block (same read-back discipline).
@@ -1246,21 +1252,18 @@ class SsoWireCommand extends Command
         $rawYaml = (string) base64_decode($raw);
         $homeserver = $this->renderSynapseConfig($rawYaml, $smtp, $oidc, $mas);
 
-        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-        $tmp = $temporaryDirectory->path().'/homeserver.yaml';
-        file_put_contents($tmp, $homeserver);
-        $result = Process::run(
-            "{$kubectl} create secret generic {$chat->secret(SecretKind::CONFIG)} -n {$ns} "
-            ."--from-file=homeserver.yaml={$tmp} "
-            ."--dry-run=client -o yaml | {$kubectl} apply -f -",
+        $result = Kubectl::fromPrefix($kubectl)->putSecret(
+            $ns,
+            $chat->secret(SecretKind::CONFIG),
+            ['homeserver.yaml' => $homeserver],
+            $chat->labels(),
         );
-        $temporaryDirectory->delete();
 
-        if ($result->successful()) {
+        if ($result->ok) {
             Process::run("{$kubectl} rollout restart deployment/{$chat->deployment()} -n {$ns}");
         }
 
-        return $result->successful();
+        return $result->ok;
     }
 
     /**
@@ -1293,17 +1296,14 @@ class SsoWireCommand extends Command
         $rawYaml = (string) base64_decode($raw);
         $homeserver = $this->renderSynapseConfig($rawYaml, $smtp, null, $mas);
 
-        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-        $tmp = $temporaryDirectory->path().'/homeserver.yaml';
-        file_put_contents($tmp, $homeserver);
-        $result = Process::run(
-            "{$kubectl} create secret generic {$chat->secret(SecretKind::CONFIG)} -n {$ns} "
-            ."--from-file=homeserver.yaml={$tmp} "
-            ."--dry-run=client -o yaml | {$kubectl} apply -f -",
+        $result = Kubectl::fromPrefix($kubectl)->putSecret(
+            $ns,
+            $chat->secret(SecretKind::CONFIG),
+            ['homeserver.yaml' => $homeserver],
+            $chat->labels(),
         );
-        $temporaryDirectory->delete();
 
-        if ($result->successful()) {
+        if ($result->ok) {
             Process::run("{$kubectl} rollout restart deployment/{$chat->deployment()} -n {$ns}");
         }
     }
@@ -1441,7 +1441,13 @@ class SsoWireCommand extends Command
             // oidc` above), so this CLI path is what must record the marker
             // secret — every env-var-wired tool gets one from applyToolEnv().
             // Without it, tool:list reports a login that works as unwired.
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, $this->secretsNames($kubectl)?->secret(SecretKind::OIDC) ?? '', ['client-id' => $clientId, 'client-secret' => $clientSecret]);
+            $secretsNames = $this->secretsNames($kubectl);
+            Kubectl::fromPrefix($kubectl)->putSecret(
+                $ns,
+                $secretsNames?->secret(SecretKind::OIDC) ?? '',
+                ['client-id' => $clientId, 'client-secret' => $clientSecret],
+                $secretsNames?->labels() ?? [],
+            );
         }
 
         return $ok;
@@ -1494,7 +1500,14 @@ class SsoWireCommand extends Command
             // IdP with its own static `netbird-dashboard` OIDC client, and Dex
             // federates to the Zitadel client registered above. Pointing the
             // dashboard straight at Zitadel is the retired standalone topology.
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, $this->vpnSecret($kubectl, SecretKind::OIDC), ['client-id' => $clientId, 'client-secret' => $clientSecret]);
+            $vpnInstance = $this->vpnInstance($kubectl);
+            $vpnLabels = $vpnInstance !== '' ? ToolInstance::forInstance(ClusterTool::NETBIRD, $vpnInstance)->labels() : [];
+            Kubectl::fromPrefix($kubectl)->putSecret(
+                $ns,
+                $this->vpnSecret($kubectl, SecretKind::OIDC),
+                ['client-id' => $clientId, 'client-secret' => $clientSecret],
+                $vpnLabels,
+            );
 
             // Per ADR 0018 the values above reach the Deployment through
             // valueFrom, so the running pod keeps its old env until restarted.

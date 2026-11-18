@@ -196,7 +196,7 @@ class MeetWireCommand extends Command
         $ok = true;
 
         $this->withSpin('Pointing Synapse at the Meet bridge...', function () use ($kubectl, $ns, $jwtUrl, $chat, &$ok): void {
-            Kubectl::fromPrefix($kubectl)->putSecret($ns, $chat->name('meet', 'synapse'), ['jwt-url' => $jwtUrl]);
+            Kubectl::fromPrefix($kubectl)->putSecret($ns, $chat->name('meet', 'synapse'), ['jwt-url' => $jwtUrl], $chat->labels());
 
             $raw = Process::run(
                 "{$kubectl} get secret {$chat->secret(SecretKind::CONFIG)} -n {$ns} -o jsonpath=".escapeshellarg('{.data.homeserver\.yaml}'),
@@ -215,17 +215,14 @@ class MeetWireCommand extends Command
             $masPublicIssuer = $this->readChatWiredMas($kubectl, $ns)['public_issuer'] ?? null;
             $homeserver = $this->renderSynapseCalling((string) base64_decode(trim($raw)), $jwtUrl, $masPublicIssuer ?: null);
 
-            $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-            $tmp = $temporaryDirectory->path().'/homeserver.yaml';
-            file_put_contents($tmp, $homeserver);
-            $result = Process::run(
-                "{$kubectl} create secret generic {$chat->secret(SecretKind::CONFIG)} -n {$ns} "
-                ."--from-file=homeserver.yaml={$tmp} "
-                ."--dry-run=client -o yaml | {$kubectl} apply -f -",
+            $result = Kubectl::fromPrefix($kubectl)->putSecret(
+                $ns,
+                $chat->secret(SecretKind::CONFIG),
+                ['homeserver.yaml' => $homeserver],
+                $chat->labels(),
             );
-            $temporaryDirectory->delete();
 
-            $ok = $result->successful();
+            $ok = $result->ok;
             if ($ok) {
                 Process::run("{$kubectl} rollout restart deployment/{$chat->deployment()} -n {$ns}");
             }
