@@ -377,15 +377,16 @@ abstract class AbstractToolRemoveCommand extends Command
             // sheet's role) — see plans/completed/openbao-static-role-coverage.md.
             if ($dropped) {
                 $this->deleteStaticRole($kubectl, $database);
+                $this->unregisterTenant($database);
             }
-
-            $this->unregisterTenant($database);
 
             $temporaryDirectory->delete();
         }
 
-        $tenantKey = ($instance === null || $instance === '') ? $tool->value : "{$tool->value}_{$instance}";
-        $this->unregisterTenant($tenantKey);
+        if ($ok) {
+            $tenantKey = ($instance === null || $instance === '') ? $tool->value : "{$tool->value}_{$instance}";
+            $this->unregisterTenant($tenantKey);
+        }
 
         foreach ($redisTenants as $redisTenant) {
             $this->releaseCommonsRedisIndex($redisTenant);
@@ -433,7 +434,9 @@ abstract class AbstractToolRemoveCommand extends Command
             "{$kubectl} exec -n {$plexNs} deploy/{$service} -- sh -c ".escapeshellarg($cmd),
         );
 
-        $this->unregisterTenant($bucket);
+        if ($ok) {
+            $this->unregisterTenant($bucket);
+        }
 
         return $ok;
     }

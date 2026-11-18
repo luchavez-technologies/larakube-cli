@@ -381,3 +381,26 @@ test('if Zitadel can\'t be reached, removal keeps the Secret so the app can stil
 
     Process::assertNotRan(fn ($process) => str_contains($process->command, 'delete secret documenso-sso'));
 });
+
+test('removal keeps the Commons tenant registered when dropping its database fails', function (): void {
+    $plexRegistry = json_encode([
+        'tenants' => [
+            'documenso_sign_example_com' => ['databases' => ['documenso_sign_example_com']],
+        ],
+    ]);
+
+    Process::fake([
+        ...registeredToolRemoveFakes('documenso:remove', 'sign-example-com', 'sign.example.com'),
+        '*get configmap plex-registry*' => Process::result(output: (string) $plexRegistry),
+        '*exec -i -n larakube-plex deploy/postgres*' => Process::result(
+            errorOutput: 'ERROR: database "documenso_sign_example_com" is being accessed by other users',
+            exitCode: 1,
+        ),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('documenso:remove local --force --purge')
+        ->assertExitCode(0);
+
+    Process::assertNotRan(fn ($process) => str_contains((string) $process->command, 'create configmap plex-registry'));
+});
