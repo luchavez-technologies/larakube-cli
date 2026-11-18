@@ -240,36 +240,7 @@ test('tool:init --tool=forgejo keeps the brand name its previous install was sta
 // forgejo:remove's own coverage lives in GitRemoveCommandTest.php (the
 // resource-set regression test) rather than duplicated here.
 
-test('tool:init --tool=forgejo refuses on a cluster without enough free capacity, non-interactively and without --force', function (): void {
-    Process::fake([
-        ...tinyOneNodeClusterFakes(),
-        '*get configmap plex-commons*' => json_encode([
-            'version' => 1,
-            'services' => [
-                'postgres' => ['enabled' => true],
-                'redis' => ['enabled' => true],
-                'seaweedfs' => ['enabled' => true],
-            ],
-        ]),
-        '*get secret plex-admin*' => base64_encode('test-cred'),
-        '*get secret forgejo-admin*' => Process::result(output: '', exitCode: 1),
-        '*exec *' => Process::result(output: 'success'),
-        '*create namespace*' => Process::result(output: 'namespace created'),
-        '*apply -f *' => Process::result(output: 'applied'),
-        '*rollout *' => Process::result(output: 'rollout success'),
-    ]);
-
-    $this->artisan('tool:init --tool=forgejo local --no-interaction --admin-email=admin@example.com')
-        ->assertExitCode(1)
-        ->expectsOutputToContain('This cluster may not have enough free capacity for this install');
-
-    // The guard must stop BEFORE the Forgejo manifest itself is ever applied
-    // (namespace creation also shells out through "apply -f" and legitimately
-    // still runs ahead of the guard, so this checks the actual manifest file).
-    Process::assertNotRan(fn ($process) => str_contains($process->command, 'larakube-forgejo.yaml'));
-});
-
-test('tool:init --tool=forgejo --force proceeds past a cluster without enough free capacity', function (): void {
+test('tool:init --tool=forgejo refuses on a cluster without enough free capacity, non-interactively and without --ignore-capacity', function (): void {
     Process::fake([
         ...tinyOneNodeClusterFakes(),
         '*get configmap plex-commons*' => json_encode([
@@ -289,6 +260,35 @@ test('tool:init --tool=forgejo --force proceeds past a cluster without enough fr
     ]);
 
     $this->artisan('tool:init --tool=forgejo local --no-interaction --admin-email=admin@example.com --force')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('This cluster does not have enough free capacity for this install');
+
+    // The guard must stop BEFORE the Forgejo manifest itself is ever applied
+    // (namespace creation also shells out through "apply -f" and legitimately
+    // still runs ahead of the guard, so this checks the actual manifest file).
+    Process::assertNotRan(fn ($process) => str_contains($process->command, 'larakube-forgejo.yaml'));
+});
+
+test('tool:init --tool=forgejo --ignore-capacity proceeds past a cluster without enough free capacity', function (): void {
+    Process::fake([
+        ...tinyOneNodeClusterFakes(),
+        '*get configmap plex-commons*' => json_encode([
+            'version' => 1,
+            'services' => [
+                'postgres' => ['enabled' => true],
+                'redis' => ['enabled' => true],
+                'seaweedfs' => ['enabled' => true],
+            ],
+        ]),
+        '*get secret plex-admin*' => base64_encode('test-cred'),
+        '*get secret forgejo-admin*' => Process::result(output: '', exitCode: 1),
+        '*exec *' => Process::result(output: 'success'),
+        '*create namespace*' => Process::result(output: 'namespace created'),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout *' => Process::result(output: 'rollout success'),
+    ]);
+
+    $this->artisan('tool:init --tool=forgejo local --no-interaction --admin-email=admin@example.com --force --ignore-capacity')
         ->assertExitCode(0)
-        ->expectsOutputToContain('Proceeding despite low free cluster capacity (--force).');
+        ->expectsOutputToContain('Proceeding despite insufficient cluster capacity (--ignore-capacity).');
 });

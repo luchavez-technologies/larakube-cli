@@ -24,7 +24,8 @@ class ToolInitCommand extends Command
     protected $signature = 'tool:init
         {environment? : Environment this install targets — "local" (default) or cloud.}
         {--tool= : The tool to deploy (e.g. outline, vaultwarden, zitadel)}
-        {--confirm-commons-restart : Confirm restarting a running Commons service (e.g. Redis), without an interactive prompt}';
+        {--confirm-commons-restart : Confirm restarting a running Commons service (e.g. Redis), without an interactive prompt}
+        {--ignore-capacity : Proceed even when cluster capacity is insufficient}';
 
     protected $description = 'Deploy a LaraKube cluster tool into the shared cluster';
 
@@ -75,6 +76,9 @@ class ToolInitCommand extends Command
         }
         if ($this->option('confirm-commons-restart')) {
             $params['--confirm-commons-restart'] = true;
+        }
+        if ($this->option('ignore-capacity')) {
+            $params['--ignore-capacity'] = true;
         }
 
         $input = new ArrayInput($params);

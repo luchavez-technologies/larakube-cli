@@ -2,8 +2,8 @@
 
 namespace App\Commands\Tool;
 
-use App\Data\ClusterCapacitySnapshot;
 use App\Enums\ClusterTool;
+use App\Services\K8s\ClusterCapacityAssessor;
 use App\Services\K8s\ManifestResourceParser;
 use App\Services\Kubectl;
 use App\Services\Tools\ToolInitSpec;
@@ -16,6 +16,7 @@ use function Laravel\Prompts\confirm;
 
 use LaravelZero\Framework\Commands\Command;
 use LogicException;
+use Symfony\Component\Console\Input\InputOption;
 
 /**
  * What every Cluster Tool's init command stands on. Given a tool, the command
@@ -37,6 +38,15 @@ abstract class AbstractToolInitCommand extends Command
         }
 
         parent::__construct();
+
+        if (! $this->getDefinition()->hasOption('ignore-capacity')) {
+            $this->getDefinition()->addOption(new InputOption(
+                'ignore-capacity',
+                null,
+                InputOption::VALUE_NONE,
+                'Proceed even when cluster capacity is insufficient',
+            ));
+        }
     }
 
     public function handle(): int
@@ -81,30 +91,39 @@ abstract class AbstractToolInitCommand extends Command
      */
     protected function guardClusterCapacity(string $kubectl, string $renderedManifest, float $marginFraction = 0.10): bool
     {
-        $snapshot = $this->clusterCapacitySnapshot($kubectl, $marginFraction);
+        $assessment = (new ClusterCapacityAssessor)->assess(
+            $kubectl,
+            $this->initTool,
+            renderedManifest: $renderedManifest,
+            marginFraction: $marginFraction,
+        );
 
-        if ($snapshot === null) {
+        if ($assessment === null) {
             return true;
         }
 
-        $demand = $this->manifestResourceDemand($renderedManifest, $snapshot->nodeCount);
+        $verdict = $assessment['verdict'] ?? 'fits';
 
-        if ($snapshot->fits($demand['cpu'], $demand['memory'])) {
+        if ($verdict === 'fits') {
             return true;
         }
 
-        $forced = $this->hasOption('force') && (bool) $this->option('force');
+        $this->renderCapacityWarning($assessment);
 
-        if ($forced) {
-            $this->laraKubeWarn('Proceeding despite low free cluster capacity (--force).');
-
+        if ($verdict === 'tight') {
             return true;
         }
 
-        $this->renderCapacityWarning($snapshot, $demand);
+        $ignoreCapacity = $this->hasOption('ignore-capacity') && (bool) $this->option('ignore-capacity');
+
+        if ($ignoreCapacity) {
+            $this->laraKubeWarn('Proceeding despite insufficient cluster capacity (--ignore-capacity).');
+
+            return true;
+        }
 
         if ($this->cannotPrompt()) {
-            $this->laraKubeError('Refusing to install without enough free cluster capacity. Re-run with --force to proceed anyway.');
+            $this->laraKubeError('Refusing to install without enough free cluster capacity. Re-run with --ignore-capacity to proceed anyway.');
 
             return false;
         }
@@ -147,14 +166,33 @@ abstract class AbstractToolInitCommand extends Command
         return true;
     }
 
-    /** @param  array{cpu: int, memory: int}  $demand */
-    private function renderCapacityWarning(ClusterCapacitySnapshot $snapshot, array $demand): void
+    /** @param  array<string, mixed>  $assessment */
+    private function renderCapacityWarning(array $assessment): void
     {
-        $this->laraKubeWarn('This cluster may not have enough free capacity for this install:');
-        $this->line('  ● <fg=red>Needs</>: '.$this->formatMillicores($demand['cpu']).' CPU, '.$this->formatBytes($demand['memory']).' memory');
-        $this->line('    <fg=gray>👉 Free (after a '.(int) round($snapshot->marginFraction * 100).'% safety margin): '
-            .$this->formatMillicores($snapshot->freeCpuMillicores()).' CPU, '.$this->formatBytes($snapshot->freeMemoryBytes())
-            .' memory across '.$snapshot->nodeCount.' node'.($snapshot->nodeCount === 1 ? '' : 's').'</>');
+        $node = $assessment['node'];
+        $demand = $assessment['demand'];
+        $marginPct = (int) round($node['margin_fraction'] * 100);
+        $verdict = $assessment['verdict'] ?? 'wont_fit_now';
+
+        $heading = $verdict === 'tight'
+            ? 'This cluster has tight free capacity for this install:'
+            : 'This cluster does not have enough free capacity for this install:';
+
+        $this->laraKubeWarn($heading);
+        $this->line('  ● <fg=red>Needs</>: '.$this->formatMillicores($demand['cpu_millicores']).' CPU, '.$this->formatBytes($demand['memory_bytes']).' memory');
+        $this->line('    <fg=gray>👉 Free (after a '.$marginPct.'% safety margin): '
+            .$this->formatMillicores($node['free_cpu_millicores']).' CPU, '.$this->formatBytes($node['free_memory_bytes'])
+            .' memory across '.$node['count'].' node'.($node['count'] === 1 ? '' : 's').'</>');
+
+        foreach ($assessment['pause_candidates'] ?? [] as $candidate) {
+            $this->line("    <fg=yellow>Pause</>: `{$candidate['command']}` (frees {$this->formatBytes($candidate['memory_bytes'])})");
+        }
+        foreach ($assessment['alternatives_that_fit'] ?? [] as $alt) {
+            $this->line("    <fg=cyan>Alternative</>: {$alt['label']} (`larakube tool:init --tool={$alt['tool']}`, needs {$this->formatBytes($alt['memory_bytes'])})");
+        }
+        if (in_array($verdict, ['wont_fit_now', 'never_fits'], true)) {
+            $this->line("    <fg=gray>Upsize</>: {$assessment['upsize_hint']}");
+        }
     }
 
     private function formatMillicores(int $millicores): string

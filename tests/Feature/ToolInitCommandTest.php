@@ -98,12 +98,13 @@ test('a command built from the spec has the name, options and description the sp
         }
 
         $built = ToolInitCommands::for($tool);
-        $names = array_values(array_diff(array_keys($built->getDefinition()->getOptions()), array_keys(Artisan::all()['about']->getDefinition()->getOptions()), ['confirm-commons-restart']));
+        $names = array_values(array_diff(array_keys($built->getDefinition()->getOptions()), array_keys(Artisan::all()['about']->getDefinition()->getOptions()), ['confirm-commons-restart', 'ignore-capacity']));
         $spec = array_map(fn (InitOption $option): string => $option->name, ToolInitSpec::for($tool));
         sort($names);
         sort($spec);
 
         expect($built)->toBeInstanceOf(AbstractToolInitCommand::class)
+            ->and($built->getDefinition()->hasOption('ignore-capacity'))->toBeTrue()
             ->and($names)->toBe($spec, "{$tool->value}: the built command and the spec differ")
             ->and($built->getDescription())->toBe(ToolInitSpec::description($tool));
     }

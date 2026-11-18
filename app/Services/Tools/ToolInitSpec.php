@@ -386,6 +386,7 @@ final class ToolInitSpec
         // it stays out of self::for()/fields() and never shows up as a Desktop
         // form field.
         $options[] = '{--confirm-commons-restart : Confirm restarting a running Commons service (e.g. Redis), without an interactive prompt}';
+        $options[] = '{--ignore-capacity : Proceed even when cluster capacity is insufficient}';
 
         return $tool->canonicalTool()->value.':init {environment? : Environment this install targets — "local" (default) or cloud.} '.implode(' ', $options);
     }

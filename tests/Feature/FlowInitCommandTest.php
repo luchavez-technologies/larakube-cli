@@ -210,7 +210,7 @@ function tinyOneNodeCapacity(): array
     ];
 }
 
-test('tool:init --tool=n8n refuses on a cluster without enough free capacity, non-interactively and without --force', function (): void {
+test('tool:init --tool=n8n refuses on a cluster without enough free capacity, non-interactively and without --ignore-capacity', function (): void {
     fakeFlowInitCluster($seen, capacity: tinyOneNodeCapacity());
 
     test()->artisan('tool:init', [
@@ -218,19 +218,20 @@ test('tool:init --tool=n8n refuses on a cluster without enough free capacity, no
         'environment' => 'local',
         '--domain' => 'flow.example.com',
         '--no-interaction' => true,
+        '--force' => true,
     ])
         ->assertExitCode(1)
-        ->expectsOutputToContain('This cluster may not have enough free capacity for this install');
+        ->expectsOutputToContain('This cluster does not have enough free capacity for this install');
 
     expect($seen['manifest'])->toBeNull();
 });
 
-test('tool:init --tool=n8n --force proceeds past a cluster without enough free capacity', function (): void {
+test('tool:init --tool=n8n --ignore-capacity proceeds past a cluster without enough free capacity', function (): void {
     fakeFlowInitCluster($seen, capacity: tinyOneNodeCapacity());
 
-    runFlowInit() // already passes --force
+    runFlowInit('n8n', ['--ignore-capacity' => true])
         ->assertExitCode(0)
-        ->expectsOutputToContain('Proceeding despite low free cluster capacity (--force).');
+        ->expectsOutputToContain('Proceeding despite insufficient cluster capacity (--ignore-capacity).');
 
     expect($seen['manifest'])->not->toBeNull();
 });

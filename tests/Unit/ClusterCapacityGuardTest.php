@@ -83,21 +83,17 @@ test('a manifest sized right at the edge of free headroom still passes', functio
     expect(guardCommand(interactive: true)->guard('kubectl', guardManifest(cpu: '900m', memory: '100Mi')))->toBeTrue();
 });
 
-test('--force proceeds past an undersized cluster without prompting', function (): void {
+test('--force alone no longer bypasses an undersized cluster; --ignore-capacity does', function (): void {
     Process::fake(guardClusterFakes());
 
-    $command = guardCommand(interactive: true, input: ['--force' => true]);
+    $forced = guardCommand(interactive: false, input: ['--force' => true]);
+    expect($forced->guard('kubectl', guardManifest(cpu: '5000m', memory: '5Gi')))->toBeFalse();
 
-    expect($command->guard('kubectl', guardManifest(cpu: '5000m', memory: '5Gi')))->toBeTrue();
+    $ignored = guardCommand(interactive: false, input: ['--ignore-capacity' => true]);
+    expect($ignored->guard('kubectl', guardManifest(cpu: '5000m', memory: '5Gi')))->toBeTrue();
 });
 
-// cannotPrompt() treats app()->runningUnitTests() as always non-interactive
-// (so Prompts never blocks on a real terminal under Pest), which means the
-// "ask and the operator accepts/declines" branch can't be driven from a
-// unit test — only --force and the refusal path are reachable here. Same
-// limitation the rest of this codebase already lives with (e.g.
-// SsoPruneCommandTest only ever drives --force, never an answered prompt).
-test('a non-interactive run with no --force refuses instead of guessing', function (): void {
+test('a non-interactive run with no --ignore-capacity refuses instead of guessing', function (): void {
     Process::fake(guardClusterFakes());
 
     $command = guardCommand(interactive: false);

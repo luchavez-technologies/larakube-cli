@@ -23,6 +23,7 @@ use App\Contracts\UsesCliOidc;
 use App\Contracts\UsesForwardAuth;
 use App\Data\ClusterToolComponentData;
 use App\Data\ToolInstance;
+use App\Services\K8s\ToolFootprint;
 use App\Services\Tools\ToolInitSpec;
 use App\Tools\N8n;
 use App\Tools\Windmill;
@@ -1098,6 +1099,21 @@ enum ClusterTool: string implements HasWorkloadComponents
     }
 
     /**
+     * Lighter substitutes to suggest when this tool does not fit on a cluster.
+     *
+     * @return list<self>
+     */
+    public function alternatives(): array
+    {
+        return match ($this) {
+            self::DIRECTUS, self::TEABLE => [self::POCKETBASE],
+            self::N8N => [self::WINDMILL],
+            self::WINDMILL => [self::N8N],
+            default => [],
+        };
+    }
+
+    /**
      * Catalog definition shared by `tool:list --json` and `tool:catalog --json`
      * so consumers receive one consistent schema for compatibility & init options.
      *
@@ -1127,6 +1143,8 @@ enum ClusterTool: string implements HasWorkloadComponents
                 'plexDatabases' => $this->plexDatabases($engine),
                 'supportsSqlite' => $this->supportsSqlite($engine),
             ],
+            'footprint' => (new ToolFootprint)->measure($this),
+            'alternatives' => array_map(fn (self $alt): string => $alt->value, $this->alternatives()),
             'initFields' => ToolInitSpec::fields($this, $engine, $isLocal),
         ];
     }
