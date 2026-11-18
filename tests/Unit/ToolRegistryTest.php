@@ -70,3 +70,45 @@ test('aliases and unregistering change only the matched row', function (): void 
         ->and($registry->instanceSlugs(ClusterTool::DIRECTUS))->toBe(['data-example-com'])
         ->and($registry->writes)->toHaveCount(2);
 });
+
+test('register compares resourceVersion and retries when a concurrent write conflicts', function (): void {
+    $initial = [['tool' => 'n8n', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'aliases' => []]];
+    $concurrent = [
+        ...$initial,
+        ['tool' => 'directus', 'instance' => 'cms-example-com', 'host' => 'cms.example.com', 'aliases' => []],
+    ];
+
+    $writes = 0;
+    Process::fake([
+        '*get secret larakube-tools-registry*-o jsonpath*resourceVersion*' => Process::sequence([
+            Process::result(output: '101'),
+            Process::result(output: '102'),
+        ]),
+        '*get secret larakube-tools-registry*-o jsonpath*registry*' => Process::sequence([
+            Process::result(output: base64_encode((string) json_encode($initial))),
+            Process::result(output: base64_encode((string) json_encode($concurrent))),
+        ]),
+        '*create namespace*' => Process::result(output: 'namespace/larakube-shared unchanged'),
+        '*create secret generic larakube-tools-registry*' => function (PendingProcess $process) use (&$writes) {
+            $writes++;
+            if ($writes === 1) {
+                return Process::result(
+                    errorOutput: 'Error from server (Conflict): Operation cannot be fulfilled on secrets "larakube-tools-registry": the object has been modified',
+                    exitCode: 1,
+                );
+            }
+
+            return Process::result(output: 'secret/larakube-tools-registry configured');
+        },
+    ]);
+
+    $ok = ToolRegistry::on('kubectl')->register(ClusterTool::YOPASS, ['host' => 'share.example.com'], 'share-example-com');
+
+    expect($ok)->toBeTrue()
+        ->and($writes)->toBe(2);
+
+    Process::assertRan(fn (PendingProcess $p): bool => str_contains((string) $p->command, 'patch --local')
+        && str_contains((string) $p->command, '"resourceVersion":"101"'));
+    Process::assertRan(fn (PendingProcess $p): bool => str_contains((string) $p->command, 'patch --local')
+        && str_contains((string) $p->command, '"resourceVersion":"102"'));
+});

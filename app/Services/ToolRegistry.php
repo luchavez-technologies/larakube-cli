@@ -25,11 +25,15 @@ class ToolRegistry
 
     public const string NAMESPACE = 'larakube-shared';
 
+    private const int MAX_WRITE_ATTEMPTS = 5;
+
     /** Tests install a FakeToolRegistry here (FakeToolRegistry::install()). */
     private static ?Closure $resolver = null;
 
     /** @var list<array<string, mixed>>|null */
     private ?array $rows = null;
+
+    private bool $lastWriteConflicted = false;
 
     final protected function __construct(protected readonly string $kubectl) {}
 
@@ -178,57 +182,62 @@ class ToolRegistry
      */
     public function register(ClusterTool $tool, array $metadata = [], ?string $instance = null): bool
     {
-        $rows = $this->rows();
         $metadata = array_filter($metadata, fn ($value) => $value !== null && $value !== '');
-        $now = Carbon::now()->toIso8601String();
-        $index = $this->matchIndex($rows, $tool, $instance, selfHeal: true);
 
-        if ($index !== null) {
-            $rows[$index] = array_merge($rows[$index], ['tool' => $tool->value], $metadata, $instance !== null ? ['instance' => $instance] : [], ['updatedAt' => $now]);
-        } else {
-            $rows[] = array_merge(['tool' => $tool->value, 'instance' => $instance, 'aliases' => [], 'installedAt' => $now], $metadata, ['updatedAt' => $now]);
-        }
+        return $this->mutate(function (array $rows) use ($tool, $metadata, $instance): array {
+            $now = Carbon::now()->toIso8601String();
+            $index = $this->matchIndex($rows, $tool, $instance, selfHeal: true);
 
-        return $this->save($rows);
+            if ($index !== null) {
+                $rows[$index] = array_merge($rows[$index], ['tool' => $tool->value], $metadata, $instance !== null ? ['instance' => $instance] : [], ['updatedAt' => $now]);
+            } else {
+                $rows[] = array_merge(['tool' => $tool->value, 'instance' => $instance, 'aliases' => [], 'installedAt' => $now], $metadata, ['updatedAt' => $now]);
+            }
+
+            return $rows;
+        });
     }
 
     public function unregister(ClusterTool $tool, ?string $instance = null): bool
     {
-        $rows = $this->rows();
-        $index = $this->matchIndex($rows, $tool, $instance);
-        if ($index === null) {
-            return true;
-        }
+        return $this->mutate(function (array $rows) use ($tool, $instance): array|bool {
+            $index = $this->matchIndex($rows, $tool, $instance);
+            if ($index === null) {
+                return true;
+            }
 
-        unset($rows[$index]);
+            unset($rows[$index]);
 
-        return $this->save(array_values($rows));
+            return array_values($rows);
+        });
     }
 
     public function addAlias(ClusterTool $tool, string $alias, ?string $instance = null): bool
     {
-        $rows = $this->rows();
-        $index = $this->matchIndex($rows, $tool, $instance);
-        if ($index === null) {
-            return false;
-        }
+        return $this->mutate(function (array $rows) use ($tool, $alias, $instance): array|bool {
+            $index = $this->matchIndex($rows, $tool, $instance);
+            if ($index === null) {
+                return false;
+            }
 
-        $rows[$index]['aliases'] = array_values(array_unique([...($rows[$index]['aliases'] ?? []), $alias]));
+            $rows[$index]['aliases'] = array_values(array_unique([...($rows[$index]['aliases'] ?? []), $alias]));
 
-        return $this->save($rows);
+            return $rows;
+        });
     }
 
     public function removeAlias(ClusterTool $tool, string $alias, ?string $instance = null): bool
     {
-        $rows = $this->rows();
-        $index = $this->matchIndex($rows, $tool, $instance);
-        if ($index === null) {
-            return true;
-        }
+        return $this->mutate(function (array $rows) use ($tool, $alias, $instance): array|bool {
+            $index = $this->matchIndex($rows, $tool, $instance);
+            if ($index === null) {
+                return true;
+            }
 
-        $rows[$index]['aliases'] = array_values(array_filter($rows[$index]['aliases'] ?? [], fn ($host) => $host !== $alias));
+            $rows[$index]['aliases'] = array_values(array_filter($rows[$index]['aliases'] ?? [], fn ($host) => $host !== $alias));
 
-        return $this->save($rows);
+            return $rows;
+        });
     }
 
     /** Replace the whole list (tool:list --refresh rebuilds it). */
@@ -238,12 +247,27 @@ class ToolRegistry
     }
 
     /** @param  list<array<string, mixed>>  $rows */
-    public function save(array $rows): bool
+    public function save(array $rows, ?string $resourceVersion = null): bool
     {
-        $ok = $this->write(array_values($rows));
+        $ok = $this->write(array_values($rows), $resourceVersion);
         $this->rows = null;
 
         return $ok;
+    }
+
+    protected function readResourceVersion(): ?string
+    {
+        $result = Process::run(
+            "{$this->kubectl} get secret ".self::SECRET.' -n '.self::NAMESPACE.' -o jsonpath='.escapeshellarg('{.metadata.resourceVersion}'),
+        );
+
+        if (! $result->successful()) {
+            return null;
+        }
+
+        $version = trim($result->output());
+
+        return $version === '' ? null : $version;
     }
 
     /** @return list<array<string, mixed>> */
@@ -258,8 +282,10 @@ class ToolRegistry
     }
 
     /** @param  list<array<string, mixed>>  $rows */
-    protected function write(array $rows): bool
+    protected function write(array $rows, ?string $resourceVersion = null): bool
     {
+        $this->lastWriteConflicted = false;
+
         Process::run("{$this->kubectl} create namespace ".self::NAMESPACE." --dry-run=client -o yaml | {$this->kubectl} apply -f -");
 
         // A file, not --from-literal: the list holds every instance of every tool.
@@ -267,13 +293,53 @@ class ToolRegistry
         $file = $directory->path().'/registry.json';
         file_put_contents($file, json_encode($rows));
 
-        $ok = Process::run(
-            "{$this->kubectl} create secret generic ".self::SECRET.' -n '.self::NAMESPACE
-            ." --from-file=registry.json={$file} --dry-run=client -o yaml | {$this->kubectl} apply -f -",
-        )->successful();
+        $command = "{$this->kubectl} create secret generic ".self::SECRET.' -n '.self::NAMESPACE
+            ." --from-file=registry.json={$file} --dry-run=client -o yaml";
+
+        if ($resourceVersion !== null && $resourceVersion !== '') {
+            $patch = escapeshellarg((string) json_encode(['metadata' => ['resourceVersion' => $resourceVersion]]));
+            $command .= " | {$this->kubectl} patch --local -f - --type=merge -p {$patch} -o yaml";
+        }
+
+        $result = Process::run("{$command} | {$this->kubectl} apply -f -");
         $directory->delete();
 
-        return $ok;
+        if (! $result->successful()) {
+            $combined = strtolower($result->errorOutput().' '.$result->output());
+            $this->lastWriteConflicted = str_contains($combined, 'conflict')
+                || str_contains($combined, 'the object has been modified')
+                || str_contains($combined, '409');
+        }
+
+        return $result->successful();
+    }
+
+    /**
+     * Read-modify-write loop with optimistic concurrency on `resourceVersion`
+     * so concurrent writers cannot silently overwrite each other's changes.
+     *
+     * @param  Closure(list<array<string, mixed>>): (list<array<string, mixed>>|bool)  $mutator
+     */
+    private function mutate(Closure $mutator): bool
+    {
+        for ($attempt = 0; $attempt < self::MAX_WRITE_ATTEMPTS; $attempt++) {
+            $resourceVersion = $this->readResourceVersion();
+            $next = $mutator($this->rows());
+
+            if (is_bool($next)) {
+                return $next;
+            }
+
+            if ($this->save($next, $resourceVersion)) {
+                return true;
+            }
+
+            if (! $this->lastWriteConflicted) {
+                return false;
+            }
+        }
+
+        return false;
     }
 
     /**

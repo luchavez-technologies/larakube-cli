@@ -37,7 +37,12 @@ final class FakeToolRegistry extends ToolRegistry
         return $this->stored;
     }
 
-    protected function write(array $rows): bool
+    protected function readResourceVersion(): ?string
+    {
+        return null;
+    }
+
+    protected function write(array $rows, ?string $resourceVersion = null): bool
     {
         $this->writes[] = $rows;
         $this->stored = $rows;
