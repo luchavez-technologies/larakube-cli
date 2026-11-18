@@ -122,9 +122,21 @@ jobs:
 @endif
 
       - name: 🛡 Create .env file (public/build vars only)
+        env:
+          BUILD_ENV: {!! $secrets['build_env'] ?? ('${'.'{ secrets.'.$upperEnv.'_BUILD_ENV }'.'}') !!}
         run: |
           touch .env
           {!! $publicEnvScript !!}
+          if [ -n "$BUILD_ENV" ]; then
+            printf '%s\n' "$BUILD_ENV" >> .env
+          fi
+          KEYS=$(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' .env | cut -d= -f1 || true)
+          if [ -n "$KEYS" ]; then
+            echo "Injected build-time env keys:"
+            printf '  - %s\n' $KEYS
+          else
+            echo "No build-time env variables configured."
+          fi
 @if($audit['withTests'])
 
       - name: 🧪 Application tests

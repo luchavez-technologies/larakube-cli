@@ -8,6 +8,7 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\InteractsWithRemoteDeploy;
 use App\Traits\InteractsWithSecrets;
 use App\Traits\LaraKubeOutput;
+use App\Traits\PushesBuildEnvToCi;
 use App\Traits\ReadsEnvSources;
 use App\Traits\ResolvesEnvironmentContext;
 use App\Traits\SyncsClusterSecrets;
@@ -15,7 +16,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class DotenvPushCommand extends Command
 {
-    use EmitsJsonOutput, InteractsWithProjectConfig, InteractsWithRemoteDeploy, InteractsWithSecrets, LaraKubeOutput, ReadsEnvSources, ResolvesEnvironmentContext, SyncsClusterSecrets;
+    use EmitsJsonOutput, InteractsWithProjectConfig, InteractsWithRemoteDeploy, InteractsWithSecrets, LaraKubeOutput, PushesBuildEnvToCi, ReadsEnvSources, ResolvesEnvironmentContext, SyncsClusterSecrets;
 
     protected $signature = 'dotenv:push
         {environment? : The environment to push — omit to pick from the project\'s envs}
@@ -77,6 +78,64 @@ class DotenvPushCommand extends Command
         }
 
         $namespace = $config->getNamespace($env);
+
+        // Static SPAs (Docusaurus, Vite, Astro) run Caddy with zero runtime
+        // Secret/ConfigMap — push all .env.<env> variables to CI ({ENV}_BUILD_ENV).
+        if ($config->framework?->isStaticSpa() && $env !== 'local') {
+            $local = $this->parseDotenvVars((string) file_get_contents($envFile));
+            if ($local === []) {
+                if ($this->option('json')) {
+                    $this->jsonOutput([
+                        'success' => true,
+                        'environment' => $env,
+                        'namespace' => $namespace,
+                        'backend' => $this->detectCiPlatform($config, $env),
+                        'pushed' => 0,
+                        'keys' => [],
+                        'message' => "No variables found in '{$envFile}' — nothing to push.",
+                    ]);
+                } else {
+                    $this->laraKubeWarn("No variables found in '{$envFile}' — nothing to push.");
+                }
+
+                return 0;
+            }
+
+            $ciResult = $this->pushBuildEnvToCi($config, $env, $config->getPath());
+            if (! $ciResult['pushed']) {
+                $error = $ciResult['error'] ?? 'Failed to upload CI build environment.';
+                if ($this->option('json')) {
+                    $this->jsonOutput([
+                        'success' => false,
+                        'environment' => $env,
+                        'backend' => $ciResult['platform'],
+                        'secretName' => $ciResult['secretName'],
+                        'error' => $error,
+                    ]);
+                } else {
+                    $this->laraKubeError($error);
+                }
+
+                return 1;
+            }
+
+            if ($this->option('json')) {
+                $this->jsonOutput([
+                    'success' => true,
+                    'environment' => $env,
+                    'namespace' => $namespace,
+                    'backend' => $ciResult['platform'],
+                    'secretName' => $ciResult['secretName'],
+                    'pushed' => $ciResult['count'],
+                    'keys' => $ciResult['keys'],
+                ]);
+            } else {
+                $this->laraKubeInfo("Pushed {$ciResult['count']} build-time variable(s) from .env.{$env} to {$ciResult['platform']} secret '{$ciResult['secretName']}'.");
+            }
+
+            return 0;
+        }
+
         $context = $this->option('context') ?: $this->environmentContextOrCurrent($config, $env);
         $kubectl = Kubectl::forContext($context)->prefix();
         $app = (string) ($this->option('app') ?: $config->getName());
@@ -107,6 +166,26 @@ class DotenvPushCommand extends Command
         }
 
         if ($toPush === []) {
+            $ciSync = $this->syncHybridBuildEnvIfConfigured($config, $env);
+            if ($ciSync !== null && $ciSync['pushed']) {
+                if ($this->option('json')) {
+                    $this->jsonOutput([
+                        'success' => true,
+                        'environment' => $env,
+                        'namespace' => $namespace,
+                        'backend' => $ciSync['platform'],
+                        'secretName' => $ciSync['secretName'],
+                        'pushed' => $ciSync['count'],
+                        'keys' => $ciSync['keys'],
+                        'ci' => $ciSync,
+                    ]);
+                } else {
+                    $this->laraKubeInfo("Pushed {$ciSync['count']} build-time variable(s) from .env.{$env} to {$ciSync['platform']} secret '{$ciSync['secretName']}'.");
+                }
+
+                return 0;
+            }
+
             if ($this->option('json')) {
                 $this->jsonOutput(['success' => true, 'pushed' => 0, 'keys' => [], 'message' => "No known secret keys found in '{$envFile}' — nothing to push."]);
             } else {
@@ -124,20 +203,26 @@ class DotenvPushCommand extends Command
             $this->laraKubeInfo('OpenBao not detected on this cluster — writing directly to the cluster Secret.');
         }
         $this->syncRemoteEnv($config, $env, $context, $namespace);
+        $ciSync = $this->syncHybridBuildEnvIfConfigured($config, $env);
 
         if ($this->option('json')) {
-            $this->jsonOutput([
+            $payload = [
                 'success' => true,
                 'environment' => $env,
                 'namespace' => $namespace,
                 'backend' => 'secret',
                 'pushed' => count($toPush),
                 'keys' => array_keys($toPush),
-            ]);
+            ];
+            if ($ciSync !== null) {
+                $payload['ci'] = $ciSync;
+            }
+            $this->jsonOutput($payload);
         } else {
             $targetSecret = $this->resolveSecretName($namespace, $kubectl, $config);
             $targetConfig = $this->resolveConfigMapName($namespace, $kubectl, $config);
             $this->laraKubeInfo("Pushed .env.{$env} to '{$targetSecret}'/'{$targetConfig}' in '{$namespace}'.");
+            $this->reportHybridCiSync($ciSync);
         }
 
         return 0;
@@ -194,19 +279,62 @@ class DotenvPushCommand extends Command
             return 1;
         }
 
+        $ciSync = $config !== null ? $this->syncHybridBuildEnvIfConfigured($config, $env) : null;
+
         if ($this->option('json')) {
-            $this->jsonOutput([
+            $payload = [
                 'success' => true,
                 'environment' => $env,
                 'namespace' => $namespace,
                 'backend' => 'openbao',
                 'pushed' => count($toPush),
                 'keys' => array_keys($toPush),
-            ]);
+            ];
+            if ($ciSync !== null) {
+                $payload['ci'] = $ciSync;
+            }
+            $this->jsonOutput($payload);
         } else {
             $this->laraKubeInfo('Pushed '.count($toPush)." key(s) to OpenBao and synced '{$targetSecret}' in '{$namespace}'.");
+            $this->reportHybridCiSync($ciSync);
         }
 
         return 0;
+    }
+
+    /**
+     * Best-effort sync of build-time prefix vars (VITE_*, NEXT_PUBLIC_*, PUBLIC_*)
+     * to CI ({ENV}_BUILD_ENV) when a workflow exists for this environment.
+     *
+     * @return array{pushed: bool, platform: string, secretName: string, count: int, keys: list<string>, error: ?string}|null
+     */
+    protected function syncHybridBuildEnvIfConfigured(\App\Data\ConfigData $config, string $env): ?array
+    {
+        $path = $config->getPath();
+        if ($env === 'local' || ! $path || ! $this->hasConfiguredCiWorkflow($path, $env)) {
+            return null;
+        }
+
+        if ($this->buildEnvPayload($config, $env, $path) === '') {
+            return null;
+        }
+
+        return $this->pushBuildEnvToCi($config, $env, $path);
+    }
+
+    /**
+     * @param  array{pushed: bool, platform: string, secretName: string, count: int, keys: list<string>, error: ?string}|null  $ciSync
+     */
+    protected function reportHybridCiSync(?array $ciSync): void
+    {
+        if ($ciSync === null) {
+            return;
+        }
+
+        if ($ciSync['pushed']) {
+            $this->laraKubeInfo("Synced {$ciSync['count']} build-time variable(s) to {$ciSync['platform']} secret '{$ciSync['secretName']}'.");
+        } elseif ($ciSync['error']) {
+            $this->laraKubeWarn("Cluster push succeeded, but CI build env sync skipped: {$ciSync['error']}");
+        }
     }
 }

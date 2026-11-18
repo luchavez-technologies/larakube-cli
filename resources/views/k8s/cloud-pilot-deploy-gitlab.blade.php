@@ -61,9 +61,19 @@ build:{{ $envName }}:
 @endif
   script:
     - |
-      # Public/build vars only — computed from your blueprint, never a secret.
+      # Public/build vars only — computed from your blueprint or {ENV}_BUILD_ENV CI variable.
       touch .env
       {!! $envMeta['publicEnvScript'] !!}
+      if [ -n "${{ '{' }}{{ $envMeta['upperName'] }}_BUILD_ENV:-}" ]; then
+        printf '%s\n' "${{ '{' }}{{ $envMeta['upperName'] }}_BUILD_ENV}" >> .env
+      fi
+      KEYS=$(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' .env | cut -d= -f1 || true)
+      if [ -n "$KEYS" ]; then
+        echo "Injected build-time env keys:"
+        printf '  - %s\n' $KEYS
+      else
+        echo "No build-time env variables configured."
+      fi
     - |
       # Build and push image (BuildKit --secret keeps .env out of layers)
       docker build \

@@ -19,8 +19,6 @@ use function Laravel\Prompts\password;
 use function Laravel\Prompts\table;
 use function Laravel\Prompts\text;
 
-use Spatie\TemporaryDirectory\TemporaryDirectory;
-
 /**
  * The individual cloud-setup steps behind the unified `cloud:configure`
  * command — the bare command chains all of them (configureAll); `--only=`
@@ -42,9 +40,8 @@ trait ConfiguresCloudEnvironment
     // wizard `larakube env` uses, so an environment created on demand here
     // (§ below) is indistinguishable from one created via `env`. EnsuresRealHosts
     // is the same local/placeholder-host guard `cloud:deploy` uses.
-    use EnsuresRealHosts, GathersEnvironmentData, InteractsWithVpn, ResolvesEnvironmentContext;
+    use EnsuresRealHosts, GathersEnvironmentData, InteractsWithVpn, PushesBuildEnvToCi, ResolvesEnvironmentContext;
     use GeneratesProjectInfrastructure, InteractsWithScopedRbac;
-    use StreamsProcessOutput;
     use StreamsProcessOutput;
 
     /**
@@ -226,50 +223,15 @@ trait ConfiguresCloudEnvironment
     }
 
     /**
-     * Detect which CI forge this project's git remote points at, so the guided
-     * flow and `--only=ci` call the right existing workflow generator without
-     * a `--platform` flag — that's the bigger forge/registry axis from
-     * paas-core-expansion.md §7.1, deferred. Defaults to GitHub when the
-     * remote is missing/unrecognized, matching today's behavior.
-     */
-    protected function detectCiPlatform(): string
-    {
-        $platform = $this->flag('platform');
-        if ($platform) {
-            return $platform;
-        }
-
-        $remote = $this->gitRemoteUrl();
-        if (str_contains($remote, 'gitlab.com')) {
-            return 'gitlab';
-        }
-
-        if (str_contains($remote, 'forgejo') || str_contains($remote, 'git.')) {
-            return 'forgejo';
-        }
-
-        return 'github';
-    }
-
-    /**
-     * The project's `origin` remote URL, or '' if there's none (or no git
-     * repo at all). Split out from detectCiPlatform() so tests can simulate
-     * a remote by overriding this one method — no real git binary/repo
-     * needed to exercise the actual GitHub/GitLab dispatch logic.
-     */
-    protected function gitRemoteUrl(): string
-    {
-        return trim(Process::run('git remote get-url origin')->output());
-    }
-
-    /**
      * Dispatch to the right CI workflow generator for the detected forge —
      * the `--only=ci` step of `cloud:configure`. GitLab has its own pipeline
      * format; GitHub and Forgejo share the GitHub Actions one.
      */
     protected function configureCi(?string $environment, bool $rotate): int
     {
-        return $this->detectCiPlatform() === 'gitlab'
+        $config = $this->getProjectConfig(getcwd());
+
+        return $this->detectCiPlatform($config, $environment) === 'gitlab'
             ? $this->configureGitlab($environment, $rotate)
             : $this->configureGha($environment, $rotate);
     }
@@ -343,17 +305,21 @@ trait ConfiguresCloudEnvironment
 
     protected function configureGha(?string $environment = null, bool $rotate = false): int
     {
-        $isForgejo = $this->detectCiPlatform() === 'forgejo';
-        $forgeLabel = $isForgejo ? 'Forgejo' : 'GitHub';
+        $projectPath = getcwd();
+        $initialConfig = $this->getProjectConfig($projectPath);
+        $initialPlatform = $this->detectCiPlatform($initialConfig, $environment);
+        $initialForgeLabel = $initialPlatform === 'forgejo' ? 'Forgejo' : 'GitHub';
 
         $environment ??= $this->askForCloudEnvironment(
-            label: "Which environment are you configuring for {$forgeLabel} Actions?",
+            label: "Which environment are you configuring for {$initialForgeLabel} Actions?",
         );
 
-        $projectPath = getcwd();
+        $resolvedPlatform = $this->detectCiPlatform($initialConfig, $environment);
+        $isForgejo = $resolvedPlatform === 'forgejo';
+        $forgeLabel = $isForgejo ? 'Forgejo' : 'GitHub';
 
         // Repo guard — fail fast before any prompts.
-        $remote = $this->gitRemoteUrl();
+        $remote = $this->resolveEnvironmentRemoteUrl($initialConfig, $environment);
         if (empty($remote)) {
             $this->laraKubeError("No git remote found. Create a {$forgeLabel} repository and add it as origin first:");
             $this->line('    git remote add origin git@'.($isForgejo ? 'git.example.com' : 'github.com').':<owner>/<repo>.git');
@@ -378,7 +344,9 @@ trait ConfiguresCloudEnvironment
             }
 
             $tea = $this->getTeaCommand();
-            if (! $this->teaHasLogin($tea, $repository['host'])) {
+            $preferredLogin = $initialConfig->getEnvironment($environment)?->teaLogin;
+            $teaLogin = $this->resolveTeaLoginName($tea, $repository['host'], $preferredLogin);
+            if ($teaLogin === null) {
                 $this->laraKubeError("tea is not logged in to {$repository['host']}.");
                 $this->line("   <fg=gray>Run</> <fg=yellow>larakube git:login {$environment}</> <fg=gray>first, then re-run this command.</>");
 
@@ -386,7 +354,7 @@ trait ConfiguresCloudEnvironment
             }
 
             $this->info("  🛰 Targeting repository: {$repository['host']}/{$repository['slug']}");
-            $setSecret = fn (string $name, string $value) => $this->setTeaSecret($tea, $name, $value, $repository['slug'], $repository['host']);
+            $setSecret = fn (string $name, string $value) => $this->setTeaSecret($tea, $name, $value, $repository['slug'], $teaLogin);
         } else {
             $repoFlag = '';
             if ($repository !== null && str_contains($repository['host'], 'github')) {
@@ -444,6 +412,7 @@ trait ConfiguresCloudEnvironment
             });
         }
 
+        $config->environments[$environment]->ciPlatform = $isForgejo ? 'forgejo' : 'github';
         $this->saveProjectConfig($projectPath, $config);
 
         if (! confirm("Upload the deploy credentials for '{$environment}' to {$forgeLabel}?", true)) {
@@ -570,6 +539,7 @@ trait ConfiguresCloudEnvironment
                 'k_env' => '${{ secrets.'.$upperEnv.'_KUBECONFIG }}',
                 'k_base' => '${{ secrets.KUBECONFIG }}',
                 'vpn_key' => '${{ secrets.'.$upperEnv.'_NETBIRD_SETUP_KEY }}',
+                'build_env' => '${{ secrets.'.$upperEnv.'_BUILD_ENV }}',
             ],
             'gha' => [
                 'repository' => '${{ github.repository }}',
@@ -871,6 +841,10 @@ trait ConfiguresCloudEnvironment
 
         $setSecret("{$upperEnv}_KUBECONFIG", $kubeConfigContent);
 
+        if (($buildEnv = $this->buildEnvPayload($config, $environment, $projectPath)) !== '') {
+            $setSecret("{$upperEnv}_BUILD_ENV", $buildEnv);
+        }
+
         // Stamp when the scoped CI credential was minted.
         $data = $config->toArray();
         $data['environments'][$environment]['cloud']['rbacGrantedAt'] = gmdate('c');
@@ -879,88 +853,6 @@ trait ConfiguresCloudEnvironment
         $this->laraKubeInfo("Secrets configured successfully for '{$environment}' (namespace-scoped).");
 
         return 0;
-    }
-
-    protected function setGithubSecret(string $gh, string $name, string $value, string $repoFlag): void
-    {
-        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-        $tmpFile = $temporaryDirectory->path().'/gh-secret';
-        file_put_contents($tmpFile, $value);
-
-        $command = 'cat '.escapeshellarg($tmpFile)." | {$gh} secret set ".escapeshellarg($name)." {$repoFlag}";
-        $result = Process::run($command);
-        $temporaryDirectory->delete();
-
-        if (! $result->successful()) {
-            $this->laraKubeError("Failed to set GitHub secret: {$name}");
-            foreach (explode("\n", trim($result->output().$result->errorOutput())) as $line) {
-                $this->line("  <fg=red>{$line}</>");
-            }
-            exit(1);
-        }
-
-        $this->info("  ✅ Secret '{$name}' uploaded successfully.");
-    }
-
-    /**
-     * Store one Actions secret on a Forgejo repository through tea. The value
-     * travels on stdin from a 0600 temp file, never in the command line.
-     */
-    protected function setTeaSecret(string $tea, string $name, string $value, string $repositorySlug, string $login): void
-    {
-        $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
-        $tmpFile = $temporaryDirectory->path().'/tea-secret';
-        file_put_contents($tmpFile, $value);
-
-        $command = 'cat '.escapeshellarg($tmpFile).' | '.rtrim($tea).' actions secrets create '.escapeshellarg($name)
-            .' --stdin --repo '.escapeshellarg($repositorySlug).' --login '.escapeshellarg($login);
-        $result = Process::run($command);
-        $temporaryDirectory->delete();
-
-        if (! $result->successful()) {
-            $this->laraKubeError("Failed to set Forgejo secret: {$name}");
-            foreach (explode("\n", trim($result->output().$result->errorOutput())) as $line) {
-                $this->line("  <fg=red>{$line}</>");
-            }
-            exit(1);
-        }
-
-        $this->info("  ✅ Secret '{$name}' uploaded successfully.");
-    }
-
-    /** Whether tea holds a login for this forge host. */
-    protected function teaHasLogin(string $tea, string $host): bool
-    {
-        $logins = json_decode(Process::run(rtrim($tea).' logins list --output json')->output(), true);
-
-        foreach (is_array($logins) ? $logins : [] as $login) {
-            $url = (string) ($login['url'] ?? $login['URL'] ?? '');
-            $name = (string) ($login['name'] ?? $login['Name'] ?? '');
-
-            if ($name === $host || parse_url($url, PHP_URL_HOST) === $host) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Host and owner/repo from a git remote, for the three URL shapes forges
-     * hand out: scp-like SSH, ssh:// with a port, and HTTPS.
-     *
-     * @return array{host: string, slug: string}|null
-     */
-    protected function parseGitRemote(string $remote): ?array
-    {
-        $remote = trim($remote);
-
-        if (preg_match('#^[a-z][a-z0-9+.-]*://(?:[^@/]+@)?([^/:]+)(?::\d+)?/(.+?)(?:\.git)?/?$#i', $remote, $m)
-            || preg_match('#^(?:[^@]+@)?([^:/]+):(.+?)(?:\.git)?/?$#', $remote, $m)) {
-            return ['host' => strtolower($m[1]), 'slug' => ltrim($m[2], '/')];
-        }
-
-        return null;
     }
 
     /**
@@ -1068,9 +960,10 @@ trait ConfiguresCloudEnvironment
 
         $projectPath = getcwd();
         $envFile = ".env.{$environment}";
+        $initialConfig = $this->getProjectConfig($projectPath);
 
         // GitLab remote guard
-        $remote = $this->gitRemoteUrl();
+        $remote = $this->resolveEnvironmentRemoteUrl($initialConfig, $environment);
         if (empty($remote)) {
             $this->laraKubeError('No git remote found. Add your GitLab repo as origin first:');
             $this->line('    git remote add origin git@gitlab.com:<group>/<repo>.git');
@@ -1079,8 +972,12 @@ trait ConfiguresCloudEnvironment
         }
 
         $projectGitlabPath = '';
+        $parsedRemote = $this->parseGitRemote($remote);
         if (preg_match('/gitlab\.com[:\\/]([^:]+?)(?:\.git)?$/', $remote, $m)) {
             $projectGitlabPath = $m[1];
+            $this->line("  <fg=gray>Targeting GitLab project:</> <fg=cyan>{$projectGitlabPath}</>");
+        } elseif ($parsedRemote !== null) {
+            $projectGitlabPath = $parsedRemote['slug'];
             $this->line("  <fg=gray>Targeting GitLab project:</> <fg=cyan>{$projectGitlabPath}</>");
         } else {
             $this->laraKubeWarn("Could not parse a GitLab project path from remote: {$remote}");
@@ -1090,6 +987,7 @@ trait ConfiguresCloudEnvironment
         // client-facing non-web host (Reverb, S3/CDN, …), which this GitLab
         // path used to skip.
         $config = $this->getProjectConfigObject($projectPath);
+        $config->environments[$environment]->ciPlatform = 'gitlab';
         $previousHost = $config->getHost($environment, 'web');
 
         $host = $this->ensureHosts($config, $environment);
@@ -1156,10 +1054,17 @@ trait ConfiguresCloudEnvironment
             $this->laraKubeWarn("No cluster context for '{$environment}' — skipping kubeconfig upload. Run `larakube cloud:init` first.");
         }
 
-        // No .env content of any kind is uploaded to GitLab — not even a
-        // public-only subset. generateGitlabPipeline() bakes public/build
-        // values as literal `echo` lines instead; runtime credentials only
-        // ever reach the cluster via `dotenv:push`, run from this machine.
+        // Runtime credentials never enter CI; only build-time variables
+        // (.env.{env} for static sites, or VITE_*/PUBLIC_*/NEXT_PUBLIC_* for
+        // hybrid apps) are uploaded as {ENV}_BUILD_ENV when present.
+        if (($buildEnv = $this->buildEnvPayload($config, $environment, $projectPath)) !== '') {
+            if ($glabPath) {
+                Process::run("{$glabPath} variable set {$upperEnv}_BUILD_ENV ".escapeshellarg($buildEnv));
+                $this->line("  <fg=gray>Uploaded</> {$upperEnv}_BUILD_ENV");
+            } else {
+                $this->line("  <fg=yellow>{$upperEnv}_BUILD_ENV</> = <fg=gray>(build-time variables from .env.{$environment})</>");
+            }
+        }
 
         // Upload registry secrets if using a non-native (non-GitLab) private registry
         $registry = $config->getRegistry($environment);
@@ -1259,23 +1164,5 @@ trait ConfiguresCloudEnvironment
         $this->line('  <fg=gray>Pipeline written to:</> .gitlab-ci.yml');
 
         return 0;
-    }
-
-    protected function resolveGlabCommand(): ?string
-    {
-        $candidates = array_filter([
-            trim(Process::run('command -v glab')->output()),
-            '/usr/local/bin/glab',
-            '/opt/homebrew/bin/glab',
-            '/home/linuxbrew/.linuxbrew/bin/glab',
-        ]);
-
-        foreach ($candidates as $path) {
-            if ($path !== '' && @is_executable($path)) {
-                return $path;
-            }
-        }
-
-        return null;
     }
 }

@@ -39,7 +39,10 @@ RUN if [ "$STRICT_HOSTS" = "1" ] && grep -rEq "https?://[a-z0-9.-]+[.](kube|test
       exit 1; \
     fi
 @else
-RUN {{ $buildCommand }}
+# Docusaurus loads .env via dotenv/config at build time, while its docs
+# prose legitimately mentions local (.dev.test / .kube) example URLs.
+RUN --mount=type=secret,id=dotenv,target=/app/.env \
+    {{ $buildCommand }}
 @endif
 
 ############################################

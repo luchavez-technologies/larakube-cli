@@ -171,7 +171,7 @@ test('GHA workflow with default audit config emits security gates and scans the 
     expect($workflowContent)
         ->toContain('--target deploy')
         ->toContain('--file Dockerfile.php')
-        ->toContain('podman save -o image.tar')
+        ->toContain('$BUILDER save -o image.tar')
         ->toContain('--input image.tar --ignore-unfixed --severity CRITICAL --exit-code 1')
         ->not->toContain('docker/build-push-action')
         ->and($build)->toBeLessThan($scan)

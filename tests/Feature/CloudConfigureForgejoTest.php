@@ -19,9 +19,9 @@ function cloudConfigureForgejoRunner(string $gitRemote = ''): object
 
         public function __construct(private string $gitRemote = '') {}
 
-        public function detect(): string
+        public function detect(?ConfigData $config = null, ?string $environment = null): string
         {
-            return $this->detectCiPlatform();
+            return $this->detectCiPlatform($config, $environment);
         }
 
         public function parse(string $remote): ?array
@@ -66,7 +66,33 @@ test('git remotes parse to a host and owner/repo for scp-like SSH, ssh:// with a
         ->and($runner->parse('ssh://git@git.example.com:2222/acme/portal.git'))->toBe(['host' => 'git.example.com', 'slug' => 'acme/portal'])
         ->and($runner->parse('https://git.example.com/acme/portal.git'))->toBe(['host' => 'git.example.com', 'slug' => 'acme/portal'])
         ->and($runner->parse('https://github.com/Acme/Portal'))->toBe(['host' => 'github.com', 'slug' => 'Acme/Portal'])
+        ->and($runner->parse('github:acme/portal.git'))->toBe(['host' => 'github', 'slug' => 'acme/portal'])
         ->and($runner->parse('not a remote'))->toBeNull();
+});
+
+test('per-environment ciPlatform and registry provider override remote detection', function (): void {
+    $config = ConfigData::from([
+        'name' => 'docs',
+        'environments' => [
+            'staging' => [
+                'ciPlatform' => 'forgejo',
+                'gitRemote' => 'forgejo',
+            ],
+            'production' => [
+                'registry' => [
+                    'provider' => 'forgejo',
+                    'image' => 'luchaveztech/larakube-docs',
+                    'host' => 'code.example.org',
+                ],
+            ],
+        ],
+    ]);
+
+    $runner = cloudConfigureForgejoRunner('https://code.example.org/acme/portal.git');
+
+    expect($runner->detect($config, 'staging'))->toBe('forgejo')
+        ->and($runner->detect($config, 'production'))->toBe('forgejo')
+        ->and(cloudConfigureForgejoRunner('ssh://git@git.luchtech.dev:2222/luchaveztech/larakube-docs.git')->detect())->toBe('forgejo');
 });
 
 test('a tea login is found by name or by URL host', function (): void {

@@ -55,3 +55,58 @@ test('git:login stops when no Forgejo is registered on the cluster', function ()
 
     Process::assertNotRan(fn (PendingProcess $process) => str_contains($process->command, 'login add'));
 });
+
+test('git:login accepts --token and --json non-interactively', function (): void {
+    Process::fake(gitLoginFakes());
+
+    $this->artisan('git:login production --domain=git.example.com --token=tok-xyz --json --no-interaction')
+        ->assertExitCode(0)
+        ->expectsOutputToContain(json_encode([
+            'success' => true,
+            'host' => 'git.example.com',
+            'environment' => 'production',
+        ], JSON_UNESCAPED_SLASHES));
+
+    Process::assertRan(fn (PendingProcess $process) => str_contains($process->command, "login add --name 'git.example.com' --url 'https://git.example.com' --no-version-check")
+        && ($process->environment['GITEA_SERVER_TOKEN'] ?? null) === 'tok-xyz'
+        && ! str_contains($process->command, 'tok-xyz'));
+});
+
+test('git:login reads GITEA_SERVER_TOKEN from the environment under --json --no-interaction', function (): void {
+    Process::fake(gitLoginFakes());
+    putenv('GITEA_SERVER_TOKEN=tok-from-env');
+
+    try {
+        $this->artisan('git:login production --domain=git.example.com --json --no-interaction')
+            ->assertExitCode(0)
+            ->expectsOutputToContain('"success":true');
+
+        Process::assertRan(fn (PendingProcess $process) => str_contains($process->command, 'login add')
+            && ($process->environment['GITEA_SERVER_TOKEN'] ?? null) === 'tok-from-env');
+    } finally {
+        putenv('GITEA_SERVER_TOKEN');
+    }
+});
+
+test('git:login emits json error when non-interactive and no token is supplied', function (): void {
+    Process::fake(gitLoginFakes());
+    putenv('GITEA_SERVER_TOKEN');
+
+    $this->artisan('git:login production --domain=git.example.com --json --no-interaction')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('"success":false')
+        ->expectsOutputToContain('Forgejo access token is required');
+
+    Process::assertNotRan(fn (PendingProcess $process) => str_contains($process->command, 'login add'));
+});
+
+test('git:login emits json error when tea login add fails under --json', function (): void {
+    Process::fake(gitLoginFakes([
+        '*login add*' => Process::result(errorOutput: '401 Unauthorized', exitCode: 1),
+    ]));
+
+    $this->artisan('git:login production --domain=git.example.com --token=bad-tok --json --no-interaction')
+        ->assertExitCode(1)
+        ->expectsOutputToContain('"success":false')
+        ->expectsOutputToContain('401 Unauthorized');
+});

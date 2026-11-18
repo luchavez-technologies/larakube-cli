@@ -248,5 +248,20 @@ class EnvironmentData extends Data
          * as ExternalDNS's cloudflare-proxied annotation on every app Ingress.
          */
         public bool $proxied = false,
+        /**
+         * Git remote name (e.g. 'origin', 'forgejo') targeted for this env's CI/CD
+         * pipeline when a repo has multiple remotes. Null falls back to 'origin'.
+         */
+        public ?string $gitRemote = null,
+        /**
+         * Explicit CI forge platform for this env ('github', 'forgejo', 'gitlab').
+         * Null falls back to host/registry auto-detection.
+         */
+        public ?string $ciPlatform = null,
+        /**
+         * Explicit `tea` CLI login name (from `tea logins list`) when multiple
+         * accounts exist for the same Forgejo host or a custom login alias is used.
+         */
+        public ?string $teaLogin = null,
     ) {}
 }

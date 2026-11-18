@@ -65,9 +65,8 @@ test('tool:resources finds what the workloads reference, labelled or not, with e
     expect($owners('n8n-secrets-flow-example-com'))->toBe(['db-password' => 'rotated', 'encryption-key' => 'managed'])
         ->and($owners('n8n-custom-flow-example-com'))->toBe(['WEBHOOK_TOKEN' => 'custom'])
         ->and($owners('n8n-smtp-flow-example-com'))->toBe(['N8N_SMTP_PASS' => 'managed'])
-        ->and($resources['n8n-config-flow-example-com']['keys'][0])->toBe(['key' => 'TZ', 'owner' => 'managed', 'value' => 'UTC']);
-
-    expect($resources['n8n-custom-flow-example-com']['custom'])->toBeTrue()
+        ->and($resources['n8n-config-flow-example-com']['keys'][0])->toBe(['key' => 'TZ', 'owner' => 'managed', 'value' => 'UTC'])
+        ->and($resources['n8n-custom-flow-example-com']['custom'])->toBeTrue()
         ->and($resources['n8n-smtp-flow-example-com']['custom'])->toBeFalse();
 });
 
