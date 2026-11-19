@@ -16,8 +16,12 @@ terraform {
     }
 
     use_lockfile = true
+@if(! empty($credentialsFile))
+    shared_credentials_files = ["{{ $credentialsFile }}"]
+    profile                  = "{{ $profile ?? 'r2' }}"
+@endif
 
-    # S3-compatible (non-AWS) endpoints — DO Spaces et al.
+    # S3-compatible (non-AWS) endpoints — Cloudflare R2 / DO Spaces et al.
     skip_credentials_validation = true
     skip_requesting_account_id  = true
     skip_metadata_api_check     = true

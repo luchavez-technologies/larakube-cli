@@ -213,10 +213,10 @@ trait InteractsWithOpenTofu
             file_put_contents($dir.'/'.$name, $contents);
         }
 
-        if ($remote = $this->remoteStateConfig()) {
+        if ($remote = $this->remoteStateConfig($stack)) {
             file_put_contents($dir.'/backend.tf', view('tofu.backend-s3', $remote + ['stack' => $stack])->render());
         } elseif (file_exists($dir.'/backend.tf')) {
-            // Env removed since the last run — don't leave a stale backend behind.
+            // Env/config removed since the last run — don't leave a stale backend behind.
             @unlink($dir.'/backend.tf');
         }
 
@@ -224,27 +224,51 @@ trait InteractsWithOpenTofu
     }
 
     /**
-     * Opt-in S3-compatible remote state, read from the environment (a job
-     * container sets these; laptop use keeps local state). Both bucket and
-     * endpoint are required for the backend to activate. Backend credentials
-     * come from AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, inherited by the
-     * tofu process — nothing to inject here.
+     * Opt-in S3-compatible remote state: env vars take precedence (for headless
+     * jobs), then GlobalConfigData (Cloudflare R2). Existing stacks with local
+     * `terraform.tfstate` and no `backend.tf` stay local unless migrating.
      *
-     * @return array{bucket: string, endpoint: string, region: string}|null
+     * @return array{bucket: string, endpoint: string, region: string, credentialsFile?: string, profile?: string}|null
      */
-    protected function remoteStateConfig(): ?array
+    protected function remoteStateConfig(?string $stack = null, bool $ignoreLocalState = false): ?array
     {
         $bucket = getenv('LARAKUBE_TOFU_STATE_BUCKET') ?: null;
         $endpoint = getenv('LARAKUBE_TOFU_STATE_ENDPOINT') ?: null;
 
-        if (! $bucket || ! $endpoint) {
+        if ($bucket && $endpoint) {
+            return [
+                'bucket' => $bucket,
+                'endpoint' => $endpoint,
+                'region' => getenv('LARAKUBE_TOFU_STATE_REGION') ?: 'us-east-1',
+            ];
+        }
+
+        $config = $this->getGlobalConfig();
+        if (! $config->tofuStateEnabled || ! $config->tofuStateBucket || ! $config->tofuStateEndpoint) {
             return null;
         }
 
+        if (! $ignoreLocalState && $stack !== null) {
+            $dir = home_path('.larakube/tofu/'.$stack);
+            if (file_exists($dir.'/terraform.tfstate') && ! file_exists($dir.'/backend.tf')) {
+                return null;
+            }
+        }
+
+        $credentialsFile = home_path(\App\Services\Cloudflare\CloudflareR2Service::CREDENTIALS_FILE);
+        if (! file_exists($credentialsFile) && $config->tofuStateAccessKeyId && $config->tofuStateSecretAccessKey) {
+            app(\App\Services\Cloudflare\CloudflareR2Service::class)->writeCredentialsFile(
+                $config->tofuStateAccessKeyId,
+                $config->tofuStateSecretAccessKey,
+            );
+        }
+
         return [
-            'bucket' => $bucket,
-            'endpoint' => $endpoint,
-            'region' => getenv('LARAKUBE_TOFU_STATE_REGION') ?: 'us-east-1',
+            'bucket' => $config->tofuStateBucket,
+            'endpoint' => $config->tofuStateEndpoint,
+            'region' => 'auto',
+            'credentialsFile' => $credentialsFile,
+            'profile' => 'r2',
         ];
     }
 
@@ -269,7 +293,8 @@ trait InteractsWithOpenTofu
         // With a remote backend the local workdir has no tfstate even after an
         // apply — let `tofu destroy` consult the real (remote) state instead of
         // callers concluding there's nothing to tear down.
-        if ($this->remoteStateConfig() !== null) {
+        if ((getenv('LARAKUBE_TOFU_STATE_BUCKET') && getenv('LARAKUBE_TOFU_STATE_ENDPOINT'))
+            || file_exists($this->tofuWorkdir($stack).'/backend.tf')) {
             return true;
         }
 

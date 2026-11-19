@@ -92,6 +92,14 @@ class GlobalConfigData extends Data
          */
         public array $cloudAccounts = [],
         public array $shareDomains = [],
+        /** OpenTofu remote state configuration (optional; e.g. Cloudflare R2). */
+        public bool $tofuStateEnabled = false,
+        public ?string $tofuStateProvider = null,
+        public ?string $tofuStateBucket = null,
+        public ?string $tofuStateAccountId = null,
+        public ?string $tofuStateEndpoint = null,
+        public ?string $tofuStateAccessKeyId = null,
+        public ?string $tofuStateSecretAccessKey = null,
     ) {}
 
     public function getEmail(): ?string
