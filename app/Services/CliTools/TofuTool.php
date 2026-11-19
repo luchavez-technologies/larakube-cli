@@ -11,6 +11,8 @@ class TofuTool extends AbstractCliTool implements InstallsOnWindows, InstallsVia
 {
     use ManagesHomebrewPackage;
 
+    public const MIN_S3_LOCKFILE_VERSION = '1.10.0';
+
     public function slug(): string
     {
         return 'tofu';

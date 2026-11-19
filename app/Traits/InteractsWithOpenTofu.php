@@ -214,9 +214,7 @@ trait InteractsWithOpenTofu
         }
 
         if ($remote = $this->remoteStateConfig($stack)) {
-            $isEnvRemote = (bool) (getenv('LARAKUBE_TOFU_STATE_BUCKET') && getenv('LARAKUBE_TOFU_STATE_ENDPOINT'));
-            $useLockfile = $isEnvRemote ? true : $this->supportsS3Lockfile($this->resolveTofuBinary()['path'] ?? null);
-            file_put_contents($dir.'/backend.tf', view('tofu.backend-s3', $remote + ['stack' => $stack, 'useLockfile' => $useLockfile])->render());
+            file_put_contents($dir.'/backend.tf', view('tofu.backend-s3', $remote + ['stack' => $stack])->render());
         } elseif (file_exists($dir.'/backend.tf')) {
             // Env/config removed since the last run — don't leave a stale backend behind.
             @unlink($dir.'/backend.tf');
@@ -226,23 +224,24 @@ trait InteractsWithOpenTofu
     }
 
     /**
-     * Native S3 state locking (`use_lockfile = true`) requires OpenTofu >= 1.10
-     * or Terraform >= 1.10. Defaults to true when version cannot be probed
-     * (e.g. headless/mocked runs) and false when an older binary is present.
+     * Detect when a local OpenTofu/Terraform binary is too old for S3 native
+     * locking (`use_lockfile = true` requires >= 1.10.0). Returns the detected
+     * version string when outdated, or null when OK / unknown.
      */
-    protected function supportsS3Lockfile(?string $binaryPath): bool
+    protected function outdatedTofuVersion(?string $binaryPath): ?string
     {
         if ($binaryPath === null || $binaryPath === '') {
-            return true;
+            return null;
         }
 
-        $res = Process::timeout(5)->run(escapeshellarg($binaryPath).' --version');
+        $res = Process::timeout(5)->run(escapeshellarg($binaryPath).' version');
         $out = trim($res->output());
-        if (preg_match('/(?:OpenTofu|Terraform)\s+v(\d+\.\d+\.\d+)/i', $out, $m) === 1) {
-            return version_compare($m[1], '1.10.0', '>=');
+        if (preg_match('/(?:OpenTofu|Terraform)\s+v(\d+\.\d+\.\d+)/i', $out, $m) === 1
+            && version_compare($m[1], \App\Services\CliTools\TofuTool::MIN_S3_LOCKFILE_VERSION, '<')) {
+            return $m[1];
         }
 
-        return true;
+        return null;
     }
 
     /**

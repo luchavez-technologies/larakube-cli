@@ -37,6 +37,13 @@ class CloudStateMigrateCommand extends Command
             return $this->failResult($isJson, 'OpenTofu or Terraform binary is required.');
         }
 
+        if (($oldVersion = $this->outdatedTofuVersion($bin['path'])) !== null) {
+            return $this->failResult(
+                $isJson,
+                "OpenTofu >= 1.10.0 is required for R2 remote state (found v{$oldVersion}). Run `brew upgrade opentofu` or `larakube setup:reinstall tofu`.",
+            );
+        }
+
         $config = $this->getGlobalConfig();
         if (! $config->tofuStateEnabled || ! $config->tofuStateBucket || ! $config->tofuStateEndpoint) {
             $token = (string) ($this->option('cloudflare-token') ?: ($config->cloudflareToken ?? ''));
@@ -173,8 +180,7 @@ class CloudStateMigrateCommand extends Command
             return false;
         }
 
-        $useLockfile = $this->supportsS3Lockfile($bin['path']);
-        file_put_contents("{$dir}/backend.tf", view('tofu.backend-s3', $remote + ['stack' => $stack, 'useLockfile' => $useLockfile])->render());
+        file_put_contents("{$dir}/backend.tf", view('tofu.backend-s3', $remote + ['stack' => $stack])->render());
 
         $env = $this->tofuEnv($stack, $bin['isOpenTofu']);
         $cmd = escapeshellarg($bin['path']).' -chdir='.escapeshellarg($dir).' init -migrate-state -force-copy -input=false -no-color';

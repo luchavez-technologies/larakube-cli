@@ -60,7 +60,7 @@ test('cloud:state:migrate writes backend.tf, runs tofu init -migrate-state, and 
         ->and(file_exists($dir.'/.local-backup/terraform.tfstate'))->toBeTrue();
 });
 
-test('cloud:state:migrate omits use_lockfile when local OpenTofu is older than 1.10', function (): void {
+test('cloud:state:migrate fails clearly when local OpenTofu is older than 1.10', function (): void {
     $home = sys_get_temp_dir().'/larakube-migrate-162-'.uniqid();
     mkdir($home.'/.larakube/tofu/prod-vps', 0700, true);
     mkdir($home.'/.larakube/bin', 0700, true);
@@ -81,17 +81,15 @@ test('cloud:state:migrate omits use_lockfile when local OpenTofu is older than 1
 
     Process::fake([
         '*command -v tofu*' => Process::result(output: $home.'/.larakube/bin/tofu'),
-        '*--version*' => Process::result(output: "OpenTofu v1.6.2\non darwin_arm64"),
-        '*init -migrate-state*' => Process::result(output: 'Successfully configured the backend "s3"!'),
+        '*version*' => Process::result(output: "OpenTofu v1.6.2\non darwin_arm64"),
         '*' => Process::result(output: ''),
     ]);
 
     $this->artisan('cloud:state:migrate prod-vps --force --json')
-        ->assertExitCode(0);
+        ->assertExitCode(1)
+        ->expectsOutputToContain('1.10.0');
 
-    $backendTf = (string) file_get_contents($home.'/.larakube/tofu/prod-vps/backend.tf');
-    expect($backendTf)->not->toContain('use_lockfile')
-        ->toContain('endpoints = {');
+    expect(file_exists($home.'/.larakube/tofu/prod-vps/backend.tf'))->toBeFalse();
 });
 
 test('cloud:state:migrate rolls back backend.tf if tofu migration fails', function (): void {

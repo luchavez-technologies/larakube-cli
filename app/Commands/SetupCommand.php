@@ -493,7 +493,12 @@ class SetupCommand extends Command
         // they already have never touches it.
         $this->newLine();
         if (CliTool::TOFU->isInstalled()) {
-            $this->line('  <fg=green>✓</> OpenTofu already installed at: '.(CliTool::TOFU->resolveBinary() ?? 'tofu'));
+            $tofuPath = CliTool::TOFU->resolveBinary() ?? 'tofu';
+            $this->line('  <fg=green>✓</> OpenTofu already installed at: '.$tofuPath);
+            $tofuVersion = CliTool::TOFU->service()->version($tofuPath);
+            if ($tofuVersion !== null && version_compare(ltrim($tofuVersion, 'v'), \App\Services\CliTools\TofuTool::MIN_S3_LOCKFILE_VERSION, '<')) {
+                $this->laraKubeWarn("OpenTofu v{$tofuVersion} is older than ".\App\Services\CliTools\TofuTool::MIN_S3_LOCKFILE_VERSION.' (required for R2/S3 remote state locking). Upgrade with: brew upgrade opentofu or larakube setup:reinstall tofu');
+            }
         } elseif (! $this->input->isInteractive()) {
             $this->line('  <fg=gray>OpenTofu is not installed — `larakube setup --tools=tofu` adds it when you want cloud:create.</>');
         } elseif (confirm('Install OpenTofu too? (needed only to provision new servers with cloud:create)', default: true)) {
