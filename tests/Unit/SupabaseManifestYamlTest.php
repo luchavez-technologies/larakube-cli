@@ -174,3 +174,9 @@ test('every Supabase part that needs the database waits for it before starting, 
         expect(implode(' ', $wait['command']))->toContain('pg_isready -q -h supabase-db-supa-example-com -p 5432');
     }
 });
+
+test('supabase ingress names no ingress class, like every other Cluster Tool, so LaraKube\'s Traefik serves it', function (): void {
+    $ingress = collect(supabaseManifestDocs('ingress'))->firstWhere('kind', 'Ingress');
+
+    expect($ingress['spec'])->not->toHaveKey('ingressClassName');
+});

@@ -27,8 +27,9 @@ metadata:
 @if($vpnOnly)
     traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-{{ $vpnMiddleware }}@kubernetescrd
 @endif
+# No ingressClassName: LaraKube's Traefik serves class-less Ingresses and the cluster has no
+# IngressClass, so naming one makes Traefik skip it. No route, no status address, no DNS record.
 spec:
-  ingressClassName: traefik
 @if(! $proxied)
   tls:
     - hosts:
