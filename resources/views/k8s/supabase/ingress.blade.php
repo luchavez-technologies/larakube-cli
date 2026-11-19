@@ -3,7 +3,6 @@
     $names = \App\Data\ToolInstance::forInstance($tool, $instance);
     $gatewayName = $names->deployment();
     $ingressName = $names->deployment();
-    $tlsSecret = $names->name('tls');
     $vpnMiddleware = $names->name('vpn-only');
     $labels = '';
     foreach ($names->labels() as $k => $v) {
@@ -34,9 +33,6 @@ spec:
   tls:
     - hosts:
         - {{ $host }}
-@if($isLocal)
-      secretName: {{ $tlsSecret }}
-@endif
 @endif
   rules:
     - host: {{ $host }}

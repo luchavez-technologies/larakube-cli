@@ -71,6 +71,8 @@ spec:
       containers:
         - name: supabase-db
           image: {{ $tool->vendor()->image('db') }}
+          # Upstream's command: its postgresql.conf, and no Realtime polling noise in the logs.
+          args: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf", "-c", "log_min_messages=fatal"]
           ports:
             - containerPort: 5432
               name: postgres
@@ -79,9 +81,18 @@ spec:
               value: /var/run/postgresql
             - name: POSTGRES_PORT
               value: "5432"
+            - name: PGPORT
+              value: "5432"
             - name: POSTGRES_DB
               value: postgres
+            - name: PGDATABASE
+              value: postgres
             - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: db-password
+            - name: PGPASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ $secretName }}
@@ -106,31 +117,35 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 5
           volumeMounts:
+            # A subfolder: a fresh block-storage disk carries lost+found, and initdb refuses a non-empty directory.
             - name: db-data
               mountPath: /var/lib/postgresql/data
+              subPath: pgdata
             - name: pgsodium-config
               mountPath: /etc/postgresql-custom
-            - name: db-init
-              mountPath: /docker-entrypoint-initdb.d/migrations/99-roles.sql
-              subPath: roles.sql
-            - name: db-init
-              mountPath: /docker-entrypoint-initdb.d/migrations/99-realtime.sql
-              subPath: realtime.sql
+            # Placed exactly as upstream's compose file: init-scripts run as superuser (roles.sql alters
+            # reserved roles, webhooks.sql creates an event trigger), migrations run after them.
             - name: db-init
               mountPath: /docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql
               subPath: webhooks.sql
             - name: db-init
+              mountPath: /docker-entrypoint-initdb.d/init-scripts/99-roles.sql
+              subPath: roles.sql
+            - name: db-init
               mountPath: /docker-entrypoint-initdb.d/init-scripts/99-jwt.sql
               subPath: jwt.sql
             - name: db-init
-              mountPath: /docker-entrypoint-initdb.d/init-scripts/99-logs.sql
+              mountPath: /docker-entrypoint-initdb.d/migrations/97-_supabase.sql
+              subPath: _supabase.sql
+            - name: db-init
+              mountPath: /docker-entrypoint-initdb.d/migrations/99-realtime.sql
+              subPath: realtime.sql
+            - name: db-init
+              mountPath: /docker-entrypoint-initdb.d/migrations/99-logs.sql
               subPath: logs.sql
             - name: db-init
-              mountPath: /docker-entrypoint-initdb.d/init-scripts/99-pooler.sql
+              mountPath: /docker-entrypoint-initdb.d/migrations/99-pooler.sql
               subPath: pooler.sql
-            - name: db-init
-              mountPath: /docker-entrypoint-initdb.d/init-scripts/97-_supabase.sql
-              subPath: _supabase.sql
       volumes:
         - name: db-data
           persistentVolumeClaim:

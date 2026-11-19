@@ -72,3 +72,59 @@ test('supabase storage reads the Commons S3 login from its Secret, never from li
         ->and($env['AWS_SECRET_ACCESS_KEY'])->not->toHaveKey('value')
         ->and($env['AWS_SECRET_ACCESS_KEY']['valueFrom']['secretKeyRef']['key'])->toBe('s3-secret-key');
 });
+
+function supabaseManifestDocs(string $view, array $overrides = []): array
+{
+    $rendered = view("k8s.supabase.{$view}", [
+        'instance' => 'supa-example-com',
+        'host' => 'supa.example.com',
+        'isLocal' => false,
+        'noPlex' => false,
+        's3Bucket' => 'b',
+        's3Endpoint' => 'http://s3',
+        's3Region' => 'us-east-1',
+        'withRealtime' => true,
+        'withFunctions' => true,
+        'withImgproxy' => true,
+        'withPooler' => true,
+        ...$overrides,
+    ])->render();
+
+    return array_values(array_filter(array_map(
+        fn (string $doc): mixed => trim($doc) === '' ? null : Yaml::parse($doc),
+        preg_split('/^---\s*$/m', $rendered) ?: [],
+    )));
+}
+
+test('supabase db runs upstream SQL as upstream places it: roles and webhooks as superuser init scripts', function (): void {
+    $db = collect(supabaseManifestDocs('db'))->firstWhere('kind', 'StatefulSet');
+    $mounts = collect($db['spec']['template']['spec']['containers'][0]['volumeMounts'])->pluck('mountPath', 'subPath');
+
+    expect($mounts['roles.sql'])->toBe('/docker-entrypoint-initdb.d/init-scripts/99-roles.sql')
+        ->and($mounts['webhooks.sql'])->toBe('/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql')
+        ->and($mounts['_supabase.sql'])->toBe('/docker-entrypoint-initdb.d/migrations/97-_supabase.sql')
+        ->and($mounts['pooler.sql'])->toBe('/docker-entrypoint-initdb.d/migrations/99-pooler.sql')
+        ->and($mounts['pgdata'])->toBe('/var/lib/postgresql/data')
+        ->and($db['spec']['template']['spec']['containers'][0]['args'])->toContain('config_file=/etc/postgresql/postgresql.conf');
+});
+
+test('supabase edge functions get upstream main router with its helper, and supavisor creates its tenant on start', function (): void {
+    $docs = collect(supabaseManifestDocs('optional'));
+    $router = $docs->first(fn (array $d): bool => $d['kind'] === 'ConfigMap' && str_contains($d['metadata']['name'], 'functions-main'));
+    $pooler = $docs->first(fn (array $d): bool => $d['kind'] === 'Deployment' && str_contains($d['metadata']['name'], 'supavisor'));
+    $realtime = $docs->first(fn (array $d): bool => $d['kind'] === 'Deployment' && str_contains($d['metadata']['name'], 'realtime'));
+    $realtimeEnv = collect($realtime['spec']['template']['spec']['containers'][0]['env'])->keyBy('name');
+
+    expect($router['data'])->toHaveKeys(['index.ts', 'memory-pressure.ts', 'deno.jsonc'])
+        ->and(implode(' ', $pooler['spec']['template']['spec']['containers'][0]['command']))->toContain('/app/bin/migrate && /app/bin/supavisor eval')
+        ->and($realtimeEnv['RELEASE_COOKIE']['valueFrom']['secretKeyRef']['key'])->toBe('realtime-release-cookie')
+        ->and($realtimeEnv['APP_NAME']['value'])->toBe('realtime');
+});
+
+test('supabase studio only mounts the functions volume when Edge Functions is installed', function (): void {
+    $studio = fn (bool $functions): array => collect(supabaseManifestDocs('core', ['withFunctions' => $functions]))
+        ->first(fn (array $d): bool => $d['kind'] === 'Deployment' && str_contains($d['metadata']['name'], 'studio'));
+
+    expect(collect($studio(true)['spec']['template']['spec']['volumes'])->pluck('name'))->toContain('functions')
+        ->and(collect($studio(false)['spec']['template']['spec']['volumes'])->pluck('name'))->not->toContain('functions');
+});

@@ -20,6 +20,7 @@ final class SupabaseKeys
             ...self::apiKeys($jwtSecret, $iat),
             'secret-key-base' => base64_encode(random_bytes(48)),
             'realtime-db-enc-key' => bin2hex(random_bytes(8)),
+            'realtime-release-cookie' => bin2hex(random_bytes(28)),
             'vault-enc-key' => bin2hex(random_bytes(16)),
             'pg-meta-crypto-key' => base64_encode(random_bytes(24)),
             'db-password' => bin2hex(random_bytes(16)),

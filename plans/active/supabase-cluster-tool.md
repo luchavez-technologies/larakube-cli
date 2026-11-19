@@ -1,6 +1,19 @@
 # Supabase cluster tool + Desktop flip card
 
-## Status: PLANNED (approved 2026-11-16). Depends on `app-fit-and-capacity.md` (Part A) shipping first.
+## Status: BUILT. Not yet installed on a live server.
+
+- **Built:** Part B (CLI `1b4d1625`, review fixes `af2a3ede`, upstream-parity fixes in the commit adding this status) and Part C (Desktop `7a02569`, sizes and fit `2634507`, focus handling in the commit after it).
+- **Checked against upstream `docker/` (master):**
+  - Image tags, vendored SQL and Envoy config are identical to upstream.
+  - Every service's environment was diffed against `docker-compose.yml`.
+  - Envoy loads the rendered gateway config: 7 clusters plus the listener. Studio answers 401 without basic auth, and the REST API answers 401 without an apikey.
+  - The database, Auth, PostgREST, Storage, Realtime, Supavisor and Edge Functions all ran locally in Docker with the exact rendered settings. The role logins work, pgvector is enabled, and the pooler tenant is created.
+- **Remaining:**
+  1. A live install, on GCP first: Studio login, sign-up through `/auth/v1/signup`, an upload landing in the Commons bucket, and the vector extension present.
+  2. Including Supabase's database in `backup:run` (ADR 0032 follow-up).
+  3. The asymmetric `sb_` keys: the stack runs in upstream's legacy HS256 mode (`ANON_KEY_ASYMMETRIC` empty), as upstream's default `.env` does.
+  4. The S3 protocol endpoint (`S3_PROTOCOL_ACCESS_KEY_*`): upstream offers it, but it isn't wired here.
+  5. Deploying Edge Functions: they live on the functions volume, one folder each, and nothing deploys to it yet.
 
 
 ## Context

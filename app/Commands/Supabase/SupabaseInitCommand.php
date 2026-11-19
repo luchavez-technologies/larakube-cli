@@ -221,10 +221,14 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
      */
     private function removeDisabledComponents(string $kubectl, string $ns, ToolInstance $names, array $enabled): void
     {
+        // The functions volume stays: it holds the user's own functions.
+        $configMaps = ['functions' => 'functions-main', 'supavisor' => 'pooler-config'];
+
         foreach ($enabled as $component => $keep) {
             if (! $keep) {
                 $name = $names->name($component);
-                Process::run("{$kubectl} delete deployment/{$name} service/{$name} -n {$ns} --ignore-not-found");
+                $refs = "deployment/{$name} service/{$name}".(isset($configMaps[$component]) ? " configmap/{$names->name($configMaps[$component])}" : '');
+                Process::run("{$kubectl} delete {$refs} -n {$ns} --ignore-not-found");
             }
         }
     }
@@ -260,7 +264,9 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
     private function enableVectorExtension(string $kubectl, string $ns, string $dbStatefulSet): bool
     {
         $result = Process::run(
-            "{$kubectl} exec -n {$ns} statefulset/{$dbStatefulSet} -- psql -U postgres -d postgres -c ".escapeshellarg('create extension if not exists vector with schema extensions;'),
+            // supabase_admin over TCP, with the container's own PGPASSWORD: upstream's superuser login (postgres-meta
+            // uses it too), where a local-socket login depends on the image's peer mapping.
+            "{$kubectl} exec -n {$ns} statefulset/{$dbStatefulSet} -- psql -h localhost -U supabase_admin -d postgres -c ".escapeshellarg('create extension if not exists vector with schema extensions;'),
         );
 
         if (! $result->successful()) {

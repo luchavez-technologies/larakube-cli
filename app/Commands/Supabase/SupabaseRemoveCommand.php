@@ -58,6 +58,8 @@ class SupabaseRemoveCommand extends AbstractToolRemoveCommand
             new ResourceRef('StatefulSet', $names->name('db'), $ns),
             new ResourceRef('Service', $names->name('db'), $ns),
             new ResourceRef('ConfigMap', $names->name('db-init'), $ns),
+            new ResourceRef('ConfigMap', $names->name('functions-main'), $ns),
+            new ResourceRef('ConfigMap', $names->name('pooler-config'), $ns),
             new ResourceRef('Secret', $names->secret(SecretKind::SMTP), $ns),
         ];
 
@@ -66,6 +68,8 @@ class SupabaseRemoveCommand extends AbstractToolRemoveCommand
             $refs[] = new ResourceRef('PersistentVolumeClaim', $names->volume('db'), $ns);
             $refs[] = new ResourceRef('PersistentVolumeClaim', $names->volume('pgsodium'), $ns);
             $refs[] = new ResourceRef('PersistentVolumeClaim', $names->volume('storage'), $ns);
+            $refs[] = new ResourceRef('PersistentVolumeClaim', $names->volume('functions'), $ns);
+            $refs[] = new ResourceRef('PersistentVolumeClaim', $names->volume('snippets'), $ns);
         }
 
         return $this->cluster()->delete(...$refs)->ok;

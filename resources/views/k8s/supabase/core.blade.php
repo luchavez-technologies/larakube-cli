@@ -10,6 +10,7 @@
     $storageName = $names->name('storage');
     $studioName = $names->name('studio');
     $storagePvc = $names->volume('storage');
+    $snippetsPvc = $names->volume('snippets');
     $noPlex ??= false;
     $labelsFor = function (string $component) use ($names): string {
         $out = '';
@@ -73,6 +74,26 @@ spec:
               value: authenticated
             - name: GOTRUE_JWT_EXP
               value: "3600"
+            - name: GOTRUE_JWT_ISSUER
+              value: "https://{{ $host }}"
+            - name: GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED
+              value: "false"
+            # No SMS provider is wired, so phone sign-up stays off.
+            - name: GOTRUE_EXTERNAL_PHONE_ENABLED
+              value: "false"
+            - name: GOTRUE_SMS_AUTOCONFIRM
+              value: "false"
+            # Email links go through the gateway, where Auth lives under /auth/v1.
+            - name: GOTRUE_MAILER_URLPATHS_INVITE
+              value: /auth/v1/verify
+            - name: GOTRUE_MAILER_URLPATHS_CONFIRMATION
+              value: /auth/v1/verify
+            - name: GOTRUE_MAILER_URLPATHS_RECOVERY
+              value: /auth/v1/verify
+            - name: GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE
+              value: /auth/v1/verify
+            - name: GOTRUE_SMTP_SENDER_NAME
+              value: Supabase
             - name: GOTRUE_JWT_SECRET
               valueFrom:
                 secretKeyRef:
@@ -165,9 +186,17 @@ spec:
             - name: PGRST_DB_URI
               value: "postgres://authenticator:$(DB_PASSWORD)@{{ $dbHost }}:5432/postgres"
             - name: PGRST_DB_SCHEMAS
-              value: "public,storage,graphql_public"
+              value: "public,graphql_public"
             - name: PGRST_DB_ANON_ROLE
               value: anon
+            - name: PGRST_DB_MAX_ROWS
+              value: "1000"
+            - name: PGRST_DB_EXTRA_SEARCH_PATH
+              value: public
+            - name: PGRST_ADMIN_SERVER_PORT
+              value: "3001"
+            - name: PGRST_ADMIN_SERVER_HOST
+              value: localhost
             - name: PGRST_JWT_SECRET
               valueFrom:
                 secretKeyRef:
@@ -318,6 +347,16 @@ spec:
                   key: service-role-key
             - name: POSTGREST_URL
               value: "http://{{ $restName }}:3000"
+            # What Storage verifies request JWTs with (upstream's name for it).
+            - name: AUTH_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: jwt-secret
+            - name: STORAGE_PUBLIC_URL
+              value: "https://{{ $host }}"
+            - name: REQUEST_ALLOW_X_FORWARDED_PATH
+              value: "true"
             - name: PGRST_JWT_SECRET
               valueFrom:
                 secretKeyRef:
@@ -402,6 +441,19 @@ spec:
       targetPort: 5000
       name: http
 ---
+# Studio's saved SQL snippets.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $snippetsPvc }}
+  namespace: larakube-shared
+  labels:{!! $labelsFor('studio') !!}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 256Mi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -410,6 +462,9 @@ metadata:
   labels:{!! $labelsFor('studio') !!}
 spec:
   replicas: 1
+  # Its volumes attach to one node: stop the old pod before starting the new one.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: {{ $studioName }}
@@ -425,6 +480,9 @@ spec:
             - containerPort: 3000
               name: http
           env:
+            # Next.js binds to $HOSTNAME, which Kubernetes sets to the pod name.
+            - name: HOSTNAME
+              value: "0.0.0.0"
             - name: STUDIO_PG_META_URL
               value: "http://{{ $metaName }}:8080"
             - name: POSTGRES_PORT
@@ -438,11 +496,28 @@ spec:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: db-password
+            - name: POSTGRES_USER_READ_WRITE
+              value: postgres
             - name: PG_META_CRYPTO_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: pg-meta-crypto-key
+            - name: PGRST_DB_SCHEMAS
+              value: "public,graphql_public"
+            - name: PGRST_DB_MAX_ROWS
+              value: "1000"
+            - name: PGRST_DB_EXTRA_SEARCH_PATH
+              value: public
+            # No Logflare/Vector in this stack, so Studio's log pages stay off.
+            - name: ENABLED_FEATURES_LOGS_ALL
+              value: "false"
+            - name: SNIPPETS_MANAGEMENT_FOLDER
+              value: /app/snippets
+@if($withFunctions ?? true)
+            - name: EDGE_FUNCTIONS_MANAGEMENT_FOLDER
+              value: /app/edge-functions
+@endif
             - name: DEFAULT_ORGANIZATION_NAME
               value: LaraKube
             - name: DEFAULT_PROJECT_NAME
@@ -466,6 +541,16 @@ spec:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: jwt-secret
+            - name: SUPABASE_PUBLISHABLE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: publishable-key
+            - name: SUPABASE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: secret-key
           resources:
             requests:
               cpu: 200m
@@ -473,6 +558,23 @@ spec:
             limits:
               cpu: 1000m
               memory: 1Gi
+          volumeMounts:
+            - name: snippets
+              mountPath: /app/snippets
+@if($withFunctions ?? true)
+            - name: functions
+              mountPath: /app/edge-functions
+              readOnly: true
+@endif
+      volumes:
+        - name: snippets
+          persistentVolumeClaim:
+            claimName: {{ $snippetsPvc }}
+@if($withFunctions ?? true)
+        - name: functions
+          persistentVolumeClaim:
+            claimName: {{ $names->volume('functions') }}
+@endif
 ---
 apiVersion: v1
 kind: Service
