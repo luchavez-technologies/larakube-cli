@@ -126,6 +126,8 @@ test('tool:init --tool=outline registers itself in the cluster tool registry, in
         return match (true) {
             str_contains($cmd, 'get configmap plex-commons') => Process::result(output: json_encode($spec)),
             str_contains($cmd, 'get configmap plex-registry') => Process::result(output: '', exitCode: 1),
+            // A registry that doesn't exist yet: --ignore-not-found reads it as empty.
+            str_contains($cmd, 'get secret larakube-tools-registry') && str_contains($cmd, '--ignore-not-found') => Process::result(output: ''),
             str_contains($cmd, 'get secret larakube-tools-registry') => Process::result(output: '', exitCode: 1),
             str_contains($cmd, 'S3_ACCESS_KEY') => Process::result(output: base64_encode('larakube')),
             str_contains($cmd, 'S3_SECRET_KEY') => Process::result(output: base64_encode('s3-secret')),

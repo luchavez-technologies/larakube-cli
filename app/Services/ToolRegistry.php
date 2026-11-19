@@ -255,14 +255,18 @@ class ToolRegistry
         return $ok;
     }
 
-    protected function readResourceVersion(): ?string
+    /**
+     * The registry Secret's resourceVersion: null when it doesn't exist yet,
+     * false when the cluster couldn't be read (so nothing may be written).
+     */
+    protected function readResourceVersion(): string|false|null
     {
         $result = Process::run(
-            "{$this->kubectl} get secret ".self::SECRET.' -n '.self::NAMESPACE.' -o jsonpath='.escapeshellarg('{.metadata.resourceVersion}'),
+            "{$this->kubectl} get secret ".self::SECRET.' -n '.self::NAMESPACE.' --ignore-not-found -o jsonpath='.escapeshellarg('{.metadata.resourceVersion}'),
         );
 
         if (! $result->successful()) {
-            return null;
+            return false;
         }
 
         $version = trim($result->output());
@@ -323,7 +327,15 @@ class ToolRegistry
     private function mutate(Closure $mutator): bool
     {
         for ($attempt = 0; $attempt < self::MAX_WRITE_ATTEMPTS; $attempt++) {
+            // The version is read before the rows, and the rows are never the
+            // cached copy: a write landing in between makes ours conflict and
+            // retry instead of overwriting rows this process never saw.
             $resourceVersion = $this->readResourceVersion();
+            if ($resourceVersion === false) {
+                return false;
+            }
+
+            $this->rows = null;
             $next = $mutator($this->rows());
 
             if (is_bool($next)) {

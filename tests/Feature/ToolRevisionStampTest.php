@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Process;
 function toolRevisionStampFakes(): array
 {
     return [
+        '*get secret larakube-tools-registry*--ignore-not-found*' => Process::result(output: ''),
         '*get secret *' => Process::result(output: '', exitCode: 1),
         '*create namespace*' => Process::result(output: 'namespace created'),
         '*create secret generic*' => Process::result(output: 'secret created'),

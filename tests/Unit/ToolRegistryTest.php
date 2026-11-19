@@ -112,3 +112,44 @@ test('register compares resourceVersion and retries when a concurrent write conf
     Process::assertRan(fn (PendingProcess $p): bool => str_contains((string) $p->command, 'patch --local')
         && str_contains((string) $p->command, '"resourceVersion":"102"'));
 });
+
+test('a write never saves rows read before another process changed the registry', function (): void {
+    $initial = [['tool' => 'n8n', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'aliases' => []]];
+    $changed = [
+        ...$initial,
+        ['tool' => 'directus', 'instance' => 'cms-example-com', 'host' => 'cms.example.com', 'aliases' => []],
+    ];
+    $written = null;
+
+    Process::fake([
+        '*get secret larakube-tools-registry*-o jsonpath*resourceVersion*' => Process::result(output: '205'),
+        '*get secret larakube-tools-registry*-o jsonpath*registry*' => Process::sequence([
+            Process::result(output: base64_encode((string) json_encode($initial))),
+            Process::result(output: base64_encode((string) json_encode($changed))),
+        ]),
+        '*create namespace*' => Process::result(output: 'namespace/larakube-shared unchanged'),
+        '*create secret generic larakube-tools-registry*' => function (PendingProcess $process) use (&$written) {
+            preg_match('/--from-file=registry\.json=(\S+)/', (string) $process->command, $match);
+            $written = json_decode((string) file_get_contents($match[1]), true);
+
+            return Process::result(output: 'secret/larakube-tools-registry configured');
+        },
+    ]);
+
+    $registry = ToolRegistry::on('kubectl');
+    expect($registry->rows())->toHaveCount(1);
+
+    $registry->register(ClusterTool::YOPASS, ['host' => 'share.example.com'], 'share-example-com');
+
+    expect(array_column($written, 'tool'))->toBe(['n8n', 'directus', 'yopass']);
+});
+
+test('nothing is written when the registry cannot be read', function (): void {
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(errorOutput: 'Unable to connect to the server', exitCode: 1),
+        '*' => Process::result(),
+    ]);
+
+    expect(ToolRegistry::on('kubectl')->register(ClusterTool::YOPASS, ['host' => 'share.example.com'], 'share-example-com'))->toBeFalse();
+    Process::assertNotRan(fn (PendingProcess $p): bool => str_contains((string) $p->command, 'create secret generic'));
+});

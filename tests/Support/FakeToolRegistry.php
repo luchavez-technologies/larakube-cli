@@ -37,7 +37,7 @@ final class FakeToolRegistry extends ToolRegistry
         return $this->stored;
     }
 
-    protected function readResourceVersion(): ?string
+    protected function readResourceVersion(): string|false|null
     {
         return null;
     }
