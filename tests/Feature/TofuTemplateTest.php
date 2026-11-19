@@ -141,3 +141,19 @@ test('gcp/vps template renders custom sshPort in firewall and startup-script', f
         ->and($hcl)->toContain('"startup-script" = <<-EOF')
         ->and($hcl)->toContain('Port 8443');
 });
+
+test('GCP and AWS servers get a reserved public IP, so a resize that stops the VM keeps its address', function (): void {
+    $gcp = view('tofu.gcp.vps', [
+        'region' => 'us-central1', 'zone' => 'us-central1-a', 'dropletName' => 'larakube-vps-test', 'size' => 'e2-medium',
+        'sshPubKey' => 'ssh-ed25519 AAAAC3Nz test', 'sshSources' => '"0.0.0.0/0"', 'apiSources' => '"0.0.0.0/0"',
+    ])->render();
+    $aws = view('tofu.aws.vps', [
+        'region' => 'us-east-1', 'size' => 't4g.small', 'dropletName' => 'larakube-aws-alt', 'sshKeyName' => 'k', 'sshPubKey' => 'ssh-ed25519 AAAAC3Nz test',
+    ])->render();
+
+    expect($gcp)->toContain('resource "google_compute_address" "larakube"')
+        ->and($gcp)->toContain('nat_ip = google_compute_address.larakube.address')
+        ->and($gcp)->toContain('value = google_compute_address.larakube.address')
+        ->and($aws)->toContain('resource "aws_eip" "larakube"')
+        ->and($aws)->toContain('value = aws_eip.larakube.public_ip');
+});

@@ -188,8 +188,20 @@ resource "aws_instance" "larakube" {
   }
 }
 
+# An Elastic IP, not the auto-assigned one: changing the instance type stops it, and EC2 releases an
+# auto-assigned public IP on every stop. The k3s API certificate, kubeconfig and DNS all name this IP.
+resource "aws_eip" "larakube" {
+  instance = aws_instance.larakube.id
+  domain   = "vpc"
+
+  tags = {
+    Name      = "{{ $dropletName }}"
+    ManagedBy = "LaraKube"
+  }
+}
+
 output "ip" {
-  value = aws_instance.larakube.public_ip
+  value = aws_eip.larakube.public_ip
 }
 
 output "id" {

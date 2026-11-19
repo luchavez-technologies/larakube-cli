@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Data\StackData;
 use App\Enums\CloudProvider;
 use App\Facades\State;
+use App\Services\Kubectl;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithAws;
 use App\Traits\InteractsWithEnvironments;
@@ -13,8 +14,9 @@ use App\Traits\InteractsWithGcp;
 use App\Traits\InteractsWithHetzner;
 use App\Traits\InteractsWithOpenTofu;
 use App\Traits\InteractsWithProjectConfig;
-use App\Traits\InteractsWithRemoteSsh;
 use App\Traits\LaraKubeOutput;
+use App\Traits\ManagesSshKeys;
+use App\Traits\ProvisionsK3sNode;
 use App\Traits\ReadsCommandOptions;
 use App\Traits\ResolvesEnvironmentContext;
 
@@ -26,7 +28,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class CloudScaleCommand extends Command
 {
-    use EmitsJsonOutput, InteractsWithAws, InteractsWithEnvironments, InteractsWithGcp, InteractsWithHetzner, InteractsWithOpenTofu, InteractsWithProjectConfig, InteractsWithRemoteSsh, LaraKubeOutput, ReadsCommandOptions, ResolvesEnvironmentContext;
+    use EmitsJsonOutput, InteractsWithAws, InteractsWithEnvironments, InteractsWithGcp, InteractsWithHetzner, InteractsWithOpenTofu, InteractsWithProjectConfig, LaraKubeOutput, ManagesSshKeys, ProvisionsK3sNode, ReadsCommandOptions, ResolvesEnvironmentContext;
 
     protected $signature = 'cloud:scale
         {environment? : Environment bound to a stack (e.g. prod) or direct stack name}
@@ -275,6 +277,15 @@ class CloudScaleCommand extends Command
         // Terraform returning only means the provider accepted the resize
         // request — many providers reboot the VM to apply it, and nothing
         // above confirms k3s (or even sshd) actually survived that.
+        // A resize that stops the VM can bring it back on a new public IP (an ephemeral GCP address,
+        // an auto-assigned EC2 one). OpenTofu's output is the truth, not what was stored before.
+        $newIp = $this->tofuOutput($bin, $stack->name, 'ip');
+        $ipChanged = $newIp !== null && $stack->ip !== null && $newIp !== $stack->ip;
+        $previousIp = $stack->ip;
+        if ($ipChanged) {
+            $stack->ip = $newIp;
+        }
+
         if ($stack->ip !== null && $stack->sshKey !== null && is_file($stack->sshKey)) {
             $this->laraKubeInfo("Waiting for '{$stack->name}' to come back...");
 
@@ -283,6 +294,10 @@ class CloudScaleCommand extends Command
                 $this->laraKubeError($message);
                 State::setLastError($message);
 
+                return 1;
+            }
+
+            if ($ipChanged && ! $this->followNewIp($stack, (string) $previousIp)) {
                 return 1;
             }
 
@@ -313,6 +328,50 @@ class CloudScaleCommand extends Command
         $this->newLine();
 
         return 0;
+    }
+
+    /**
+     * Points everything that names the server's public IP at its new one: the stored stack, the k3s
+     * API certificate (tls-san), the kubeconfig (same context name, new server URL), Traefik's
+     * ingress endpoint (which ExternalDNS publishes as the DNS A records) and the `ssh <name>` alias.
+     */
+    private function followNewIp(StackData $stack, string $previousIp): bool
+    {
+        $ip = (string) $stack->ip;
+        $port = (string) ($stack->port ?? 22);
+        $key = (string) $stack->sshKey;
+
+        $this->laraKubeWarn("'{$stack->name}' came back on a new public IP ({$previousIp} → {$ip}). Updating LaraKube to match...");
+
+        $config = $this->getGlobalConfig();
+        $config->putStack($stack);
+        $config->save();
+
+        if (! $this->runRemoteCommand('larakube', $ip, $port, $key, $this->ensureK3sTlsSanScript($ip))) {
+            $this->laraKubeError("Could not add {$ip} to the k3s API certificate. Run `larakube cloud:harden` against {$ip} to retry.");
+
+            return false;
+        }
+
+        if ($stack->context !== null) {
+            // Same context, new server URL. The cluster's CA is unchanged, so this is all the kubeconfig needs;
+            // re-fetching and merging would keep the old entry, since a merge keeps the first value per name.
+            $kubeconfig = Kubectl::current();
+            $cluster = trim($kubeconfig->raw(['config', 'view', '-o', "jsonpath={.contexts[?(@.name==\"{$stack->context}\")].context.cluster}"])->output) ?: $stack->context;
+            if (! $kubeconfig->raw(['config', 'set-cluster', $cluster, "--server=https://{$ip}:6443"])->ok) {
+                $this->laraKubeError("Could not point the '{$stack->context}' kubeconfig context at https://{$ip}:6443.");
+
+                return false;
+            }
+
+            if ($this->traefikInstalledOnContext($stack->context) && ! $this->deployTraefik($stack->context, $ip, force: true)) {
+                $this->laraKubeWarn("Traefik still advertises {$previousIp}, so DNS records keep the old address. Run `larakube traefik:setup` to retry.");
+            }
+        }
+
+        $this->upsertSshConfigHost($stack->name, $ip, 'larakube', $port, $key);
+
+        return true;
     }
 
     private function resolveTargetStack(): ?StackData

@@ -34,6 +34,15 @@ resource "google_project_service" "compute" {
   disable_on_destroy = false
 }
 
+# A reserved address, not an ephemeral one: changing the machine type stops the VM, and GCP may
+# release an ephemeral IP on stop. The k3s API certificate, kubeconfig and DNS all name this IP.
+resource "google_compute_address" "larakube" {
+  name   = "{{ $dropletName }}-ip"
+  region = "{{ $region }}"
+
+  depends_on = [google_project_service.compute]
+}
+
 resource "google_compute_instance" "larakube" {
   name         = "{{ $dropletName }}"
   machine_type = "{{ $size }}"
@@ -54,7 +63,7 @@ resource "google_compute_instance" "larakube" {
   network_interface {
     network = "default"
     access_config {
-      // Ephemeral public NAT IP
+      nat_ip = google_compute_address.larakube.address
     }
   }
 
@@ -121,7 +130,7 @@ resource "google_compute_firewall" "larakube_http" {
 }
 
 output "ip" {
-  value = google_compute_instance.larakube.network_interface[0].access_config[0].nat_ip
+  value = google_compute_address.larakube.address
 }
 
 output "id" {
