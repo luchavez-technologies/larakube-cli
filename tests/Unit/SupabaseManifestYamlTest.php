@@ -128,3 +128,11 @@ test('supabase studio only mounts the functions volume when Edge Functions is in
     expect(collect($studio(true)['spec']['template']['spec']['volumes'])->pluck('name'))->toContain('functions')
         ->and(collect($studio(false)['spec']['template']['spec']['volumes'])->pluck('name'))->not->toContain('functions');
 });
+
+test('supabase db seeds its config volume from the image before Postgres starts, without overwriting it', function (): void {
+    $db = collect(supabaseManifestDocs('db'))->firstWhere('kind', 'StatefulSet');
+    $init = $db['spec']['template']['spec']['initContainers'][0];
+
+    expect(implode(' ', $init['command']))->toContain('cp -an /etc/postgresql-custom/. /seed/')
+        ->and($init['volumeMounts'][0])->toBe(['name' => 'pgsodium-config', 'mountPath' => '/seed']);
+});

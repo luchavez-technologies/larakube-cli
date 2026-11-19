@@ -68,6 +68,20 @@ spec:
       labels:
         app: {{ $dbName }}{!! $podLabels !!}
     spec:
+      # The image keeps config postgresql.conf includes in /etc/postgresql-custom (supautils, wal-g,
+      # read-replica, conf.d, extension scripts). Docker fills an empty named volume with those files;
+      # a PVC starts empty, so copy them in. -n never overwrites, so pgsodium's key survives restarts.
+      initContainers:
+        - name: seed-config
+          image: {{ $tool->vendor()->image('db') }}
+          command: ["sh", "-c", "cp -an /etc/postgresql-custom/. /seed/ && chown -R postgres:postgres /seed"]
+          volumeMounts:
+            - name: pgsodium-config
+              mountPath: /seed
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
       containers:
         - name: supabase-db
           image: {{ $tool->vendor()->image('db') }}
