@@ -358,11 +358,18 @@ key_provider "pbkdf2" "larakube" {
 method "aes_gcm" "larakube" {
   keys = key_provider.pbkdf2.larakube
 }
+method "unencrypted" "migrate" {}
 state {
   method = method.aes_gcm.larakube
+  fallback {
+    method = method.unencrypted.migrate
+  }
 }
 plan {
   method = method.aes_gcm.larakube
+  fallback {
+    method = method.unencrypted.migrate
+  }
 }
 HCL;
     }
