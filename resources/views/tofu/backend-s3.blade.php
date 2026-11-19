@@ -15,7 +15,9 @@ terraform {
       s3 = "{{ $endpoint }}"
     }
 
+@if($useLockfile ?? true)
     use_lockfile = true
+@endif
 @if(! empty($credentialsFile))
     shared_credentials_files = ["{{ $credentialsFile }}"]
     profile                  = "{{ $profile ?? 'r2' }}"

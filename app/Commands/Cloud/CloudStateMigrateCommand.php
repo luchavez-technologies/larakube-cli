@@ -173,7 +173,8 @@ class CloudStateMigrateCommand extends Command
             return false;
         }
 
-        file_put_contents("{$dir}/backend.tf", view('tofu.backend-s3', $remote + ['stack' => $stack])->render());
+        $useLockfile = $this->supportsS3Lockfile($bin['path']);
+        file_put_contents("{$dir}/backend.tf", view('tofu.backend-s3', $remote + ['stack' => $stack, 'useLockfile' => $useLockfile])->render());
 
         $env = $this->tofuEnv($stack, $bin['isOpenTofu']);
         $cmd = escapeshellarg($bin['path']).' -chdir='.escapeshellarg($dir).' init -migrate-state -force-copy -input=false -no-color';

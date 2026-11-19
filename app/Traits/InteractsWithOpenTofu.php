@@ -214,13 +214,35 @@ trait InteractsWithOpenTofu
         }
 
         if ($remote = $this->remoteStateConfig($stack)) {
-            file_put_contents($dir.'/backend.tf', view('tofu.backend-s3', $remote + ['stack' => $stack])->render());
+            $isEnvRemote = (bool) (getenv('LARAKUBE_TOFU_STATE_BUCKET') && getenv('LARAKUBE_TOFU_STATE_ENDPOINT'));
+            $useLockfile = $isEnvRemote ? true : $this->supportsS3Lockfile($this->resolveTofuBinary()['path'] ?? null);
+            file_put_contents($dir.'/backend.tf', view('tofu.backend-s3', $remote + ['stack' => $stack, 'useLockfile' => $useLockfile])->render());
         } elseif (file_exists($dir.'/backend.tf')) {
             // Env/config removed since the last run — don't leave a stale backend behind.
             @unlink($dir.'/backend.tf');
         }
 
         return $dir;
+    }
+
+    /**
+     * Native S3 state locking (`use_lockfile = true`) requires OpenTofu >= 1.10
+     * or Terraform >= 1.10. Defaults to true when version cannot be probed
+     * (e.g. headless/mocked runs) and false when an older binary is present.
+     */
+    protected function supportsS3Lockfile(?string $binaryPath): bool
+    {
+        if ($binaryPath === null || $binaryPath === '') {
+            return true;
+        }
+
+        $res = Process::timeout(5)->run(escapeshellarg($binaryPath).' --version');
+        $out = trim($res->output());
+        if (preg_match('/(?:OpenTofu|Terraform)\s+v(\d+\.\d+\.\d+)/i', $out, $m) === 1) {
+            return version_compare($m[1], '1.10.0', '>=');
+        }
+
+        return true;
     }
 
     /**
