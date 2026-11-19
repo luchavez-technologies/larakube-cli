@@ -328,7 +328,7 @@ trait InteractsWithOpenTofu
      * The OpenTofu state-encryption config for TF_ENCRYPTION (PBKDF2). Empty string
      * for Terraform (no native encryption) — its state stays plaintext on disk.
      */
-    protected function tofuEncryptionEnv(string $stack, bool $isOpenTofu): string
+    protected function tofuEncryptionEnv(string $stack, bool $isOpenTofu, bool $allowUnencryptedFallback = false): string
     {
         if (! $isOpenTofu) {
             return '';
@@ -351,7 +351,8 @@ trait InteractsWithOpenTofu
             $config->save();
         }
 
-        return <<<HCL
+        if ($allowUnencryptedFallback) {
+            return <<<HCL
 key_provider "pbkdf2" "larakube" {
   passphrase = "{$passphrase}"
 }
@@ -372,6 +373,22 @@ plan {
   }
 }
 HCL;
+        }
+
+        return <<<HCL
+key_provider "pbkdf2" "larakube" {
+  passphrase = "{$passphrase}"
+}
+method "aes_gcm" "larakube" {
+  keys = key_provider.pbkdf2.larakube
+}
+state {
+  method = method.aes_gcm.larakube
+}
+plan {
+  method = method.aes_gcm.larakube
+}
+HCL;
     }
 
     /**
@@ -384,7 +401,7 @@ HCL;
      * @param  array<string, string>  $extra
      * @return array<string, string>
      */
-    protected function tofuEnv(string $stack, bool $isOpenTofu, array $extra = []): array
+    protected function tofuEnv(string $stack, bool $isOpenTofu, array $extra = [], bool $allowUnencryptedFallback = false): array
     {
         $env = [];
 
@@ -431,7 +448,7 @@ HCL;
             $env['AWS_REGION'] = $awsRegion;
         }
 
-        $encryption = $this->tofuEncryptionEnv($stack, $isOpenTofu);
+        $encryption = $this->tofuEncryptionEnv($stack, $isOpenTofu, $allowUnencryptedFallback);
         if ($encryption !== '') {
             $env['TF_ENCRYPTION'] = $encryption;
         }

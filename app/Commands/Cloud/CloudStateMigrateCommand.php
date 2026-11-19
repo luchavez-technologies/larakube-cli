@@ -195,7 +195,7 @@ class CloudStateMigrateCommand extends Command
             return true;
         }
 
-        $env = $this->tofuEnv($stack, $bin['isOpenTofu']);
+        $env = $this->tofuEnv($stack, $bin['isOpenTofu'], allowUnencryptedFallback: true);
         $cmd = escapeshellarg($bin['path']).' -chdir='.escapeshellarg($dir).' init -migrate-state -force-copy -input=false -no-color';
 
         $result = Process::env($env)->timeout(120)->run($cmd);
