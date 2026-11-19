@@ -321,3 +321,15 @@ test('supabase:show --json reports Studio\'s basic-auth login', function (): voi
 
     expect($payload['credentials'] ?? null)->toBe(['admin_username' => 'ops@example.com', 'admin_password' => 's3cret']);
 });
+
+test('supabase:init announces each step as a ▸ line, so Desktop can show where the install is', function (): void {
+    Process::fake(supabaseClusterFakes());
+
+    $this->artisan('tool:init --tool=supabase local --domain=supabase.example.com --admin-email=ops@example.com --no-interaction')
+        ->expectsOutputToContain("▸ Preparing Supabase's keys")
+        ->expectsOutputToContain('▸ Applying Supabase\'s manifests')
+        ->expectsOutputToContain('▸ Waiting for the database to start')
+        ->expectsOutputToContain('▸ Waiting for Auth to start')
+        ->expectsOutputToContain('▸ Enabling pgvector')
+        ->assertExitCode(0);
+});

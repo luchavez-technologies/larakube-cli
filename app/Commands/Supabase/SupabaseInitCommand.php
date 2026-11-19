@@ -82,6 +82,7 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
             $s3Secrets = ['s3-access-key' => (string) $s3Creds['access'], 's3-secret-key' => (string) $s3Creds['secret']];
         }
 
+        $this->laraKubeStep("Preparing Supabase's keys");
         $keys = $this->resolveIdempotentKeys($kubectl, $ns, $names, $env, $s3Secrets);
 
         $vars = [
@@ -278,7 +279,14 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
             $workloads[] = "deployment/{$names->name($component)}";
         }
 
+        $labels = [
+            'db' => 'the database', 'auth' => 'Auth', 'rest' => 'the REST API', 'meta' => 'postgres-meta', 'storage' => 'Storage',
+            'studio' => 'Studio', 'realtime' => 'Realtime', 'functions' => 'Edge Functions', 'imgproxy' => 'image transforms', 'supavisor' => 'the connection pooler',
+        ];
+
         foreach ($workloads as $workload) {
+            $component = (string) preg_replace('/^(statefulset|deployment)\/supabase-(\w+)-.*$/', '$2', $workload);
+            $this->laraKubeStep('Waiting for '.($labels[$component] ?? $workload).' to start');
             $result = Process::timeout(330)->run("{$kubectl} rollout status {$workload} -n {$ns} --timeout=300s");
 
             if (! $result->successful()) {
@@ -293,6 +301,7 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
 
     private function enableVectorExtension(string $kubectl, string $ns, string $dbStatefulSet): bool
     {
+        $this->laraKubeStep('Enabling pgvector');
         $result = Process::run(
             // supabase_admin over TCP, with the container's own PGPASSWORD: upstream's superuser login (postgres-meta
             // uses it too), where a local-socket login depends on the image's peer mapping.

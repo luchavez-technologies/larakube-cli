@@ -288,6 +288,16 @@ trait LaraKubeOutput
     /**
      * Render a raw line of text.
      */
+    /**
+     * Marks the start of an install step. LaraKube Desktop reads these `▸` lines from the run's log to
+     * draw a live step list (and the current step on its Activity pill), so keep each label short,
+     * plain and in the present progressive ("Starting the database").
+     */
+    protected function laraKubeStep(string $label): void
+    {
+        $this->laraKubeLine("▸ {$label}");
+    }
+
     protected function laraKubeLine(string $message): void
     {
         $line = '  '.$this->stripConsoleTags($this->maskSecrets($message))."\n";

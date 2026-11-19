@@ -498,6 +498,10 @@ trait InteractsWithPlex
         $spec = $plex->commonsSpec();
 
         if ($spec === null) {
+            if (method_exists($this, 'laraKubeStep')) {
+                $this->laraKubeStep('Setting up the shared Commons ('.implode(', ', $services).')');
+            }
+
             // Defaults to yes: bootstrapping the Commons is non-destructive
             // (plex:init is idempotent), so --no-interaction auto-proceeds
             // instead of auto-refusing.
@@ -528,6 +532,10 @@ trait InteractsWithPlex
         $missing = array_diff($services, $offered);
 
         if (! empty($missing)) {
+            if (method_exists($this, 'laraKubeStep')) {
+                $this->laraKubeStep('Adding '.implode(', ', $missing).' to the shared Commons');
+            }
+
             if (confirm('The Commons is missing required service(s): '.implode(', ', $missing).'. Would you like to enable them now?', true)) {
                 $allServices = array_values(array_unique(array_merge($offered, $services)));
                 $bootstrap = ['--services' => implode(',', $allServices)];
@@ -699,6 +707,10 @@ trait InteractsWithPlex
     {
         $plex ??= $this->plex();
         $isReattach = $plex->isBucketRegistered($bucket);
+
+        if (method_exists($this, 'laraKubeStep')) {
+            $this->laraKubeStep("Creating the storage bucket {$bucket}");
+        }
 
         $spinLabel = $isReattach
             ? "Reattaching to existing object-storage bucket '{$bucket}' in the Commons..."

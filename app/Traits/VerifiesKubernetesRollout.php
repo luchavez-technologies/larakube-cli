@@ -43,6 +43,7 @@ trait VerifiesKubernetesRollout
         // crashing the command instead of returning false. Confirmed live on
         // Documenso, 2026-08-05.
         $applyFlags = $extraApplyFlags !== '' ? ' '.$extraApplyFlags : '';
+        $this->announceStep('Applying '.($tool?->brandName() ?? $deployment).'\'s manifests');
         $applyResult = Process::timeout(70)->run("{$kubectl} apply -f ".escapeshellarg($manifestPath).' --request-timeout=60s'.$applyFlags);
         if (! $applyResult->successful()) {
             if ($err = trim($applyResult->errorOutput() ?: $applyResult->output())) {
@@ -55,6 +56,7 @@ trait VerifiesKubernetesRollout
             return false;
         }
 
+        $this->announceStep('Waiting for '.($tool?->brandName() ?? $deployment).' to start');
         $rolloutResult = Process::timeout($timeoutSeconds + 10)->run("{$kubectl} rollout status deployment/{$deployment} -n ".escapeshellarg($namespace)." --timeout={$timeoutSeconds}s");
         if (! $rolloutResult->successful()) {
             if ($err = trim($rolloutResult->errorOutput() ?: $rolloutResult->output())) {
@@ -68,5 +70,13 @@ trait VerifiesKubernetesRollout
         }
 
         return true;
+    }
+
+    /** A `▸` step line for Desktop's live step list, when the using class can print one. */
+    private function announceStep(string $label): void
+    {
+        if (method_exists($this, 'laraKubeStep')) {
+            $this->laraKubeStep($label);
+        }
     }
 }
