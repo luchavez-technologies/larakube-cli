@@ -47,3 +47,4 @@ Consequences**. Statuses: `Accepted`, `Superseded by NNNN`, `Proposed`.
 | [0029](0029-cloud-provider-connect-is-multi-account-by-design.md) | Connecting a cloud provider account is multi-account by design, keyed by the provider's own identity | Accepted |
 | [0030](0030-paused-apps-stay-paused.md) | A paused app stays paused: no install or update applies over it, even with `--force` | Accepted |
 | [0031](0031-capacity-verdicts-and-ignore-capacity.md) | Capacity verdicts (`fits`/`tight`/`wont_fit_now`/`never_fits`) and `--ignore-capacity` | Accepted |
+| [0032](0032-supabase-dedicated-postgres.md) | Dedicated per-instance `supabase/postgres` for Supabase | Accepted |

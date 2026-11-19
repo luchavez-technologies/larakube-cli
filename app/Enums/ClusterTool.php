@@ -26,6 +26,7 @@ use App\Data\ToolInstance;
 use App\Services\K8s\ToolFootprint;
 use App\Services\Tools\ToolInitSpec;
 use App\Tools\N8n;
+use App\Tools\Supabase;
 use App\Tools\Windmill;
 use App\Vendors\AnalyticsTool;
 use App\Vendors\CrmTool;
@@ -69,6 +70,7 @@ enum ClusterTool: string implements HasWorkloadComponents
 
         return match ($this) {
             self::POCKETBASE => DataTool::POCKETBASE,
+            self::SUPABASE => new Supabase,
             self::DIRECTUS => DataTool::DIRECTUS,
             self::WORDPRESS => DataTool::WORDPRESS,
             self::N8N => new N8n,
@@ -109,6 +111,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         return match ($this) {
             self::POCKETBASE => 'PocketBase (Embedded SQLite)',
+            self::SUPABASE => 'Supabase (Postgres, Auth, Storage & Realtime)',
             self::DIRECTUS => 'Directus (Headless CMS)',
             self::WORDPRESS => 'WordPress (CMS & Website Platform)',
             self::N8N => 'n8n (Workflow Automation)',
@@ -159,6 +162,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         return match ($this) {
             self::POCKETBASE => '🗄️',
+            self::SUPABASE => '🟢',
             self::DIRECTUS => '🐰',
             self::WORDPRESS => '🌐',
             self::N8N => '⚡',
@@ -205,6 +209,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         return match ($this) {
             self::POCKETBASE => 'PocketBase',
+            self::SUPABASE => 'Supabase',
             self::DIRECTUS => 'Directus',
             self::WORDPRESS => 'WordPress',
             self::N8N => 'n8n',
@@ -269,7 +274,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function service(): ?SharedClusterService
     {
         return match ($this) {
-            self::POCKETBASE, self::DIRECTUS, self::WORDPRESS => SharedClusterService::DATA,
+            self::POCKETBASE, self::SUPABASE, self::DIRECTUS, self::WORDPRESS => SharedClusterService::DATA,
             self::N8N => SharedClusterService::N8N,
             self::WINDMILL => SharedClusterService::WINDMILL,
             self::FORGEJO => SharedClusterService::FORGEJO,
@@ -663,7 +668,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         return match ($this) {
             self::POCKETBASE, self::DIRECTUS, self::WORDPRESS => 'data',
-            self::N8N, self::WINDMILL => null,
+            self::SUPABASE, self::N8N, self::WINDMILL => null,
             self::FORGEJO => 'git',
             self::MATRIX => 'chat',
             self::TWENTY => 'crm',
@@ -715,6 +720,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         return match ($this->canonicalTool()) {
             self::POCKETBASE => 'Embedded SQLite & Backend API',
+            self::SUPABASE => 'Open-source Postgres, Auth, Storage & Realtime',
             self::DIRECTUS => 'Headless CMS & Data Platform',
             self::WORDPRESS => 'Publishing & Content Management System',
             self::N8N => 'Workflow Automation',
@@ -782,6 +788,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         return match ($this->canonicalTool()) {
             self::POCKETBASE => [ToolCategory::DATABASE, ToolCategory::BACKEND, ToolCategory::AUTH, ToolCategory::STORAGE],
+            self::SUPABASE => [ToolCategory::DATABASE, ToolCategory::BACKEND, ToolCategory::AUTH, ToolCategory::STORAGE],
             self::DIRECTUS => [ToolCategory::DATABASE, ToolCategory::BACKEND, ToolCategory::AUTH],
             self::WORDPRESS => [ToolCategory::BACKEND, ToolCategory::DATABASE, ToolCategory::STORAGE],
             self::N8N => [ToolCategory::DEVOPS, ToolCategory::PRODUCTIVITY, ToolCategory::COMMUNICATION],
@@ -841,6 +848,13 @@ enum ClusterTool: string implements HasWorkloadComponents
                 'cache' => [],
                 'storage' => ['s3'],
                 'auth' => ['oidc'],
+                'mail' => ['smtp'],
+            ],
+            self::SUPABASE => [
+                'databases' => [],
+                'cache' => [],
+                'storage' => ['s3'],
+                'auth' => [],
                 'mail' => ['smtp'],
             ],
             self::DIRECTUS => [
@@ -1106,7 +1120,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function alternatives(): array
     {
         return match ($this) {
-            self::DIRECTUS, self::TEABLE => [self::POCKETBASE],
+            self::SUPABASE, self::DIRECTUS, self::TEABLE => [self::POCKETBASE],
             self::N8N => [self::WINDMILL],
             self::WINDMILL => [self::N8N],
             default => [],
@@ -1532,6 +1546,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         return match ($this->canonicalTool($engine)) {
             self::POCKETBASE,
+            self::SUPABASE,
             self::DIRECTUS,
             self::WORDPRESS,
             self::ZITADEL,
@@ -1570,7 +1585,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     public function hasInstanceAwareRemoval(): bool
     {
         return match ($this) {
-            self::POCKETBASE, self::DIRECTUS, self::WORDPRESS, self::OUTLINE, self::TWENTY,
+            self::POCKETBASE, self::SUPABASE, self::DIRECTUS, self::WORDPRESS, self::OUTLINE, self::TWENTY,
             self::PENPOT, self::YOPASS, self::DOCUMENSO,
             self::N8N, self::WINDMILL, self::KUTT, self::UMAMI, self::PLAUSIBLE,
             self::TEABLE, self::PLANKA, self::KUMA, self::METABASE,
@@ -1891,7 +1906,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         return match ($this) {
             self::GRAFANA, self::FORGEJO, self::OUTLINE,
-            self::N8N, self::WINDMILL, self::DOCUMENSO, self::POCKETBASE,
+            self::N8N, self::WINDMILL, self::DOCUMENSO, self::POCKETBASE, self::SUPABASE,
             self::DIRECTUS, self::WORDPRESS, self::KUTT, self::UMAMI, self::PLAUSIBLE,
             self::TEABLE, self::PLANKA, self::HEADLAMP,
             self::LIVEKIT, self::BULWARK, self::OCIS, self::NETBIRD,
@@ -2121,6 +2136,7 @@ enum ClusterTool: string implements HasWorkloadComponents
 
     // Canonical Individual Tool Cases
     case POCKETBASE = 'pocketbase';
+    case SUPABASE = 'supabase';
     case DIRECTUS = 'directus';
     case WORDPRESS = 'wordpress';
     case N8N = 'n8n';

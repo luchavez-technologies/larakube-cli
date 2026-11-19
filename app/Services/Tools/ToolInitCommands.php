@@ -28,6 +28,7 @@ use App\Commands\PocketBase\PocketBaseInitCommand;
 use App\Commands\Resume\ResumeInitCommand;
 use App\Commands\Sendrec\SendrecInitCommand;
 use App\Commands\Stalwart\StalwartInitCommand;
+use App\Commands\Supabase\SupabaseInitCommand;
 use App\Commands\Teable\TeableInitCommand;
 use App\Commands\Tool\AbstractToolInitCommand;
 use App\Commands\Twenty\TwentyInitCommand;
@@ -78,6 +79,7 @@ final class ToolInitCommands
             ChatwootInitCommand::class => new class($tool) extends ChatwootInitCommand {},
             KuttInitCommand::class => new class($tool) extends KuttInitCommand {},
             StalwartInitCommand::class => new class($tool) extends StalwartInitCommand {},
+            SupabaseInitCommand::class => new class($tool) extends SupabaseInitCommand {},
             LiveKitInitCommand::class => new class($tool) extends LiveKitInitCommand {},
             MetabaseInitCommand::class => new class($tool) extends MetabaseInitCommand {},
             GrafanaInitCommand::class => new class($tool) extends GrafanaInitCommand {},
@@ -131,6 +133,7 @@ final class ToolInitCommands
             ClusterTool::RESUME => ResumeInitCommand::class,
             ClusterTool::SENDREC => SendrecInitCommand::class,
             ClusterTool::STALWART => StalwartInitCommand::class,
+            ClusterTool::SUPABASE => SupabaseInitCommand::class,
             ClusterTool::TEABLE => TeableInitCommand::class,
             ClusterTool::TWENTY => TwentyInitCommand::class,
             ClusterTool::UMAMI => UmamiInitCommand::class,

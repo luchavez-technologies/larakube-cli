@@ -86,6 +86,12 @@ final class ToolFootprint
 
         $views = match ($tool) {
             ClusterTool::POCKETBASE => [['name' => 'pocketbase', 'view' => 'k8s.pocketbase.pocketbase', 'optional' => false]],
+            ClusterTool::SUPABASE => [
+                ['name' => 'db', 'view' => 'k8s.supabase.db', 'optional' => false],
+                ['name' => 'core', 'view' => 'k8s.supabase.core', 'optional' => false],
+                ['name' => 'optional', 'view' => 'k8s.supabase.optional', 'optional' => true],
+                ['name' => 'gateway', 'view' => 'k8s.supabase.gateway', 'optional' => false],
+            ],
             ClusterTool::DIRECTUS => [['name' => 'directus', 'view' => 'k8s.directus.directus', 'optional' => false]],
             ClusterTool::WORDPRESS => [['name' => 'wordpress', 'view' => 'k8s.wordpress.wordpress', 'optional' => false]],
             ClusterTool::N8N => [['name' => 'n8n', 'view' => 'k8s.n8n.shared', 'optional' => false]],
@@ -149,6 +155,10 @@ final class ToolFootprint
         $noTraces = (bool) ($options['no-traces'] ?? $options['noTraces'] ?? false);
         $noMonitoring = (bool) ($options['no-monitoring'] ?? $options['noMonitoring'] ?? false);
         $noPlex = (bool) ($options['no-plex'] ?? $options['noPlex'] ?? false);
+        $noRealtime = (bool) ($options['no-realtime'] ?? $options['noRealtime'] ?? false);
+        $noFunctions = (bool) ($options['no-functions'] ?? $options['noFunctions'] ?? false);
+        $noImgproxy = (bool) ($options['no-imgproxy'] ?? $options['noImgproxy'] ?? false);
+        $noPooler = (bool) ($options['no-pooler'] ?? $options['noPooler'] ?? false);
 
         return [
             'host' => 'tool.footprint.invalid',
@@ -188,6 +198,10 @@ final class ToolFootprint
             'enableTraces' => ! $noTraces,
             'withLogs' => ! $noLogs,
             'withTraces' => ! $noTraces,
+            'withRealtime' => ! $noRealtime,
+            'withFunctions' => ! $noFunctions,
+            'withImgproxy' => ! $noImgproxy,
+            'withPooler' => ! $noPooler,
             'includeSmtp' => false,
             'smtpHost' => 'mail.footprint.invalid',
             'smtpPort' => 465,
