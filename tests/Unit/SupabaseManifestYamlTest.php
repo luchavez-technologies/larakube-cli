@@ -159,3 +159,18 @@ test('supabase manifests leave no Blade syntax behind, and every database URL na
         expect($urls[0])->each->toContain('$(DB_PASSWORD)@supabase-db-supa-example-com:5432/');
     }
 });
+
+test('every Supabase part that needs the database waits for it before starting, and only those', function (): void {
+    $deployments = collect([...supabaseManifestDocs('core'), ...supabaseManifestDocs('optional'), ...supabaseManifestDocs('gateway')])
+        ->where('kind', 'Deployment')
+        ->mapWithKeys(fn (array $d): array => [preg_replace('/^supabase-|-supa-example-com$/', '', $d['metadata']['name']) => $d]);
+
+    $waits = $deployments->filter(fn (array $d): bool => collect($d['spec']['template']['spec']['initContainers'] ?? [])->contains('name', 'wait-for-db'));
+
+    expect($waits->keys()->sort()->values()->all())->toBe(['auth', 'meta', 'realtime', 'rest', 'storage', 'supavisor']);
+
+    foreach ($waits as $deployment) {
+        $wait = collect($deployment['spec']['template']['spec']['initContainers'])->firstWhere('name', 'wait-for-db');
+        expect(implode(' ', $wait['command']))->toContain('pg_isready -q -h supabase-db-supa-example-com -p 5432');
+    }
+});

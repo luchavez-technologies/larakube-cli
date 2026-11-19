@@ -38,6 +38,7 @@ spec:
       labels:
         app: {{ $authName }}{!! $podLabelsFor('auth') !!}
     spec:
+@include('k8s.supabase.partials.wait-for-db', ['dbHost' => $dbHost])
       containers:
         - name: supabase-auth
           image: {{ $tool->vendor()->image('auth') }}
@@ -171,6 +172,7 @@ spec:
       labels:
         app: {{ $restName }}{!! $podLabelsFor('rest') !!}
     spec:
+@include('k8s.supabase.partials.wait-for-db', ['dbHost' => $dbHost])
       containers:
         - name: supabase-rest
           image: {{ $tool->vendor()->image('rest') }}
@@ -249,6 +251,7 @@ spec:
       labels:
         app: {{ $metaName }}{!! $podLabelsFor('meta') !!}
     spec:
+@include('k8s.supabase.partials.wait-for-db', ['dbHost' => $dbHost])
       containers:
         - name: supabase-meta
           image: {{ $tool->vendor()->image('meta') }}
@@ -328,6 +331,7 @@ spec:
       labels:
         app: {{ $storageName }}{!! $podLabelsFor('storage') !!}
     spec:
+@include('k8s.supabase.partials.wait-for-db', ['dbHost' => $dbHost])
       containers:
         - name: supabase-storage
           image: {{ $tool->vendor()->image('storage') }}

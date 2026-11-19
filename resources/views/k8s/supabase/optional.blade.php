@@ -39,6 +39,7 @@ spec:
       labels:
         app: {{ $names->name('realtime') }}{!! $podLabelsFor('realtime') !!}
     spec:
+@include('k8s.supabase.partials.wait-for-db', ['dbHost' => $dbHost])
       containers:
         - name: supabase-realtime
           image: {{ $tool->vendor()->image('realtime') }}
@@ -369,6 +370,7 @@ spec:
       labels:
         app: {{ $names->name('supavisor') }}{!! $podLabelsFor('supavisor') !!}
     spec:
+@include('k8s.supabase.partials.wait-for-db', ['dbHost' => $dbHost])
       containers:
         - name: supabase-pooler
           image: {{ $tool->vendor()->image('supavisor') }}
