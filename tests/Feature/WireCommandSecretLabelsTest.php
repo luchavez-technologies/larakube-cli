@@ -148,7 +148,13 @@ test('secrets:wire labels VaultDynamicSecret, ExternalSecret, and target Secret 
         ],
     ])->render();
 
-    expect($rendered)
-        ->toContain('luchtech.dev/tool: documenso')
-        ->toContain('luchtech.dev/instance: sign-example-com');
+    $expected = [Labels::TOOL => 'documenso', Labels::INSTANCE => 'sign-example-com'];
+    [$generator, $externalSecret] = array_map(
+        fn (string $doc): array => Symfony\Component\Yaml\Yaml::parse($doc),
+        preg_split('/^---$/m', $rendered) ?: [],
+    );
+
+    expect($generator['metadata']['labels'])->toBe($expected)
+        ->and($externalSecret['metadata']['labels'])->toBe($expected)
+        ->and($externalSecret['spec']['target']['template']['metadata']['labels'])->toBe($expected);
 });

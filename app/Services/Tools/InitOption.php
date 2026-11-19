@@ -84,11 +84,6 @@ final readonly class InitOption
         return self::flag('force', 'Skip the confirmation prompt');
     }
 
-    public static function ignoreCapacity(): self
-    {
-        return self::flag('ignore-capacity', 'Proceed even when cluster capacity is insufficient');
-    }
-
     public static function domain(string $description): self
     {
         return self::value('domain', $description);

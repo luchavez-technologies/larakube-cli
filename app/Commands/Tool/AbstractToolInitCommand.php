@@ -66,8 +66,9 @@ abstract class AbstractToolInitCommand extends Command
 
     /**
      * Every check that must pass before a tool's manifest is applied: a
-     * paused app stays paused, then the capacity guard. `--force` bypasses
-     * only the capacity guard (`tool:update` always passes it).
+     * paused app stays paused, then the capacity guard. Only
+     * `--ignore-capacity` bypasses the capacity guard; `--force` skips
+     * confirmations and bypasses neither (ADRs 0030 and 0031).
      */
     protected function guardPreInstall(string $kubectl, string $renderedManifest): bool
     {
@@ -83,8 +84,8 @@ abstract class AbstractToolInitCommand extends Command
      * when the operator accepts the risk; false means the caller must not
      * apply the manifest.
      *
-     * `--force` always bypasses the check. Non-interactively, with no
-     * `--force` and a real risk, this refuses rather than guessing — the
+     * Only `--ignore-capacity` bypasses the check. Non-interactively, without
+     * it and with a real risk, this refuses rather than guessing — the
      * same convention `RequiresFlagsWhenNonInteractive` uses for a missing
      * flag: never silently proceed in headless mode on something this
      * consequential.

@@ -6,7 +6,7 @@ metadata:
 @if (! empty($labels))
   labels:
 @foreach ($labels as $key => $value)
-    {{ $key }}: {{ $value }}
+    {{ $key }}: "{{ $value }}"
 @endforeach
 @endif
 spec:
@@ -27,7 +27,7 @@ metadata:
 @if (! empty($labels))
   labels:
 @foreach ($labels as $key => $value)
-    {{ $key }}: {{ $value }}
+    {{ $key }}: "{{ $value }}"
 @endforeach
 @endif
 spec:
@@ -41,7 +41,7 @@ spec:
 @if (! empty($labels))
         labels:
 @foreach ($labels as $key => $value)
-          {{ $key }}: {{ $value }}
+          {{ $key }}: "{{ $value }}"
 @endforeach
 @endif
         annotations:
