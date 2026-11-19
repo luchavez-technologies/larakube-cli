@@ -213,7 +213,7 @@ spec:
                   name: {{ $secretName }}
                   key: db-password
             - name: SUPABASE_DB_URL
-              value: "postgres://postgres:$(DB_PASSWORD)@{{ $dbHost }}:5432/postgres"
+              value: "postgres://postgres:$(DB_PASSWORD){{ "@".$dbHost }}:5432/postgres"
             - name: SUPABASE_PUBLIC_URL
               value: "https://{{ $host ?? '' }}"
             - name: VERIFY_JWT
@@ -390,7 +390,7 @@ spec:
                   name: {{ $secretName }}
                   key: db-password
             - name: DATABASE_URL
-              value: "ecto://supabase_admin:$(DB_PASSWORD)@{{ $dbHost }}:5432/_supabase"
+              value: "ecto://supabase_admin:$(DB_PASSWORD){{ "@".$dbHost }}:5432/_supabase"
             - name: POSTGRES_HOST
               value: {{ $dbHost }}
             - name: POSTGRES_PORT

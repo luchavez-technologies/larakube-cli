@@ -136,3 +136,22 @@ test('supabase db seeds its config volume from the image before Postgres starts,
     expect(implode(' ', $init['command']))->toContain('cp -an /etc/postgresql-custom/. /seed/')
         ->and($init['volumeMounts'][0])->toBe(['name' => 'pgsodium-config', 'mountPath' => '/seed']);
 });
+
+test('supabase manifests leave no Blade syntax behind, and every database URL names the db host', function (): void {
+    foreach (['db', 'core', 'optional', 'gateway', 'ingress'] as $view) {
+        $rendered = view("k8s.supabase.{$view}", [
+            'instance' => 'supa-example-com', 'host' => 'supa.example.com', 'isLocal' => false, 'noPlex' => false,
+            's3Bucket' => 'b', 's3Endpoint' => 'http://s3', 's3Region' => 'us-east-1',
+            'withRealtime' => true, 'withFunctions' => true, 'withImgproxy' => true, 'withPooler' => true,
+        ])->render();
+
+        // `@{{ … }}` is Blade's escape for a literal `{{ … }}`: "$(DB_PASSWORD)@{{ $dbHost }}" once rendered as "…{{ $dbHost }}".
+        expect($rendered)->not->toContain('{{')
+            ->and($rendered)->not->toContain('{!!');
+
+        preg_match_all('#(?:postgres|ecto)://[^"]+#', $rendered, $urls);
+        foreach ($urls[0] as $url) {
+            expect($url)->toContain('$(DB_PASSWORD)@supabase-db-supa-example-com:5432/');
+        }
+    }
+});

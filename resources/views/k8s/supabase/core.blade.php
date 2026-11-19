@@ -59,7 +59,7 @@ spec:
                   name: {{ $secretName }}
                   key: db-password
             - name: GOTRUE_DB_DATABASE_URL
-              value: "postgres://supabase_auth_admin:$(DB_PASSWORD)@{{ $dbHost }}:5432/postgres"
+              value: "postgres://supabase_auth_admin:$(DB_PASSWORD){{ "@".$dbHost }}:5432/postgres"
             - name: GOTRUE_SITE_URL
               value: "https://{{ $host }}"
             - name: GOTRUE_URI_ALLOW_LIST
@@ -184,7 +184,7 @@ spec:
                   name: {{ $secretName }}
                   key: db-password
             - name: PGRST_DB_URI
-              value: "postgres://authenticator:$(DB_PASSWORD)@{{ $dbHost }}:5432/postgres"
+              value: "postgres://authenticator:$(DB_PASSWORD){{ "@".$dbHost }}:5432/postgres"
             - name: PGRST_DB_SCHEMAS
               value: "public,graphql_public"
             - name: PGRST_DB_ANON_ROLE
@@ -368,7 +368,7 @@ spec:
                   name: {{ $secretName }}
                   key: db-password
             - name: DATABASE_URL
-              value: "postgres://supabase_storage_admin:$(DB_PASSWORD)@{{ $dbHost }}:5432/postgres"
+              value: "postgres://supabase_storage_admin:$(DB_PASSWORD){{ "@".$dbHost }}:5432/postgres"
             - name: FILE_SIZE_LIMIT
               value: "52428800"
             - name: STORAGE_BACKEND
