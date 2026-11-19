@@ -180,6 +180,10 @@ class CloudStateMigrateCommand extends Command
             return false;
         }
 
+        if (file_exists("{$dir}/.terraform.tfstate.lock.info")) {
+            @unlink("{$dir}/.terraform.tfstate.lock.info");
+        }
+
         file_put_contents("{$dir}/backend.tf", view('tofu.backend-s3', $remote + ['stack' => $stack])->render());
 
         $env = $this->tofuEnv($stack, $bin['isOpenTofu']);
@@ -187,8 +191,9 @@ class CloudStateMigrateCommand extends Command
 
         $result = Process::env($env)->timeout(120)->run($cmd);
         if (! $result->successful()) {
-            // Roll back backend.tf so local state remains intact on failure.
+            // Roll back backend.tf and any lock file so local state remains intact on failure.
             @unlink("{$dir}/backend.tf");
+            @unlink("{$dir}/.terraform.tfstate.lock.info");
             if (! $isJson) {
                 $this->laraKubeError("Failed migrating '{$stack}': ".trim($result->errorOutput() ?: $result->output()));
             }
