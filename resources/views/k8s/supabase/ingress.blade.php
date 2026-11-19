@@ -21,20 +21,23 @@ metadata:
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
-@if(! $isLocal && ! $proxied)
+{{-- Like every other Cluster Tool: a certificate either way, and --proxied only turns on Cloudflare's
+     proxy for the record. Cloudflare in front still connects to this origin over HTTPS. --}}
+@unless($isLocal)
     traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+@if($proxied)
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
 @endif
+@endunless
 @if($vpnOnly)
     traefik.ingress.kubernetes.io/router.middlewares: larakube-shared-{{ $vpnMiddleware }}@kubernetescrd
 @endif
 # No ingressClassName: LaraKube's Traefik serves class-less Ingresses and the cluster has no
 # IngressClass, so naming one makes Traefik skip it. No route, no status address, no DNS record.
 spec:
-@if(! $proxied)
   tls:
     - hosts:
         - {{ $host }}
-@endif
   rules:
     - host: {{ $host }}
       http:

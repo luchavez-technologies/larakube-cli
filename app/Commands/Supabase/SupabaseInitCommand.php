@@ -43,7 +43,7 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
         $names = ToolInstance::forInstance(ClusterTool::SUPABASE, $instance);
         $isLocal = $env === 'local';
         $vpnOnly = (bool) $this->option('vpn-only');
-        $proxied = (bool) $this->option('proxied');
+        $proxied = $this->resolveProxied($isLocal);
         $noPlex = (bool) $this->option('no-plex');
 
         [$withRealtime, $withFunctions, $withImgproxy, $withPooler] = $this->resolveComponents();

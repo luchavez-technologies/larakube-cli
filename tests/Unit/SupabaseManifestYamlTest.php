@@ -180,3 +180,12 @@ test('supabase ingress names no ingress class, like every other Cluster Tool, so
 
     expect($ingress['spec'])->not->toHaveKey('ingressClassName');
 });
+
+test('supabase ingress asks Let\'s Encrypt for a certificate whether or not Cloudflare proxies it', function (bool $proxied): void {
+    $ingress = collect(supabaseManifestDocs('ingress', ['proxied' => $proxied]))->firstWhere('kind', 'Ingress');
+    $annotations = $ingress['metadata']['annotations'];
+
+    expect($annotations['traefik.ingress.kubernetes.io/router.tls.certresolver'] ?? null)->toBe('letsencrypt')
+        ->and($ingress['spec']['tls'][0]['hosts'])->toBe(['supa.example.com'])
+        ->and(($annotations['external-dns.alpha.kubernetes.io/cloudflare-proxied'] ?? null) === 'true')->toBe($proxied);
+})->with(['DNS only' => [false], 'Cloudflare proxied' => [true]]);
