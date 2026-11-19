@@ -56,6 +56,13 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
         $s3Secrets = [];
 
         if (! $noPlex) {
+            $driver = $this->commonsObjectStorage();
+
+            // Creates the Commons, or adds the object store to it, when the cluster has neither yet.
+            if (! $this->ensureCommons([$driver->value])) {
+                return 1;
+            }
+
             // Without real Commons credentials Storage would start and then fail on every upload.
             $s3Creds = $this->readCommonsS3Credentials();
             if (! is_array($s3Creds) || ($s3Creds['access'] ?? '') === '' || ($s3Creds['secret'] ?? '') === '') {
@@ -65,9 +72,13 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
             }
 
             $s3Bucket = $names->bucket();
-            $this->allocateStorageBucket(StorageDriver::SEAWEEDFS, $s3Bucket);
-            $s3Endpoint = (string) ($s3Creds['endpoint'] ?? "http://seaweedfs.{$this->plexNamespace()}.svc.cluster.local:8333");
-            $s3Region = (string) ($s3Creds['region'] ?? 'us-east-1');
+            if (! $this->allocateStorageBucket($driver, $s3Bucket)) {
+                return 1;
+            }
+
+            // Storage reads and writes server-side and serves downloads itself (/storage/v1), so the
+            // in-cluster endpoint is enough; no browser-reachable S3 host is needed.
+            $s3Endpoint = "http://{$driver->value}.{$this->plexNamespace()}.svc.cluster.local:{$driver->port()}";
             $s3Secrets = ['s3-access-key' => (string) $s3Creds['access'], 's3-secret-key' => (string) $s3Creds['secret']];
         }
 
@@ -138,6 +149,17 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
         $this->laraKubeInfo("Supabase is ready at https://{$host} (Studio basic auth user: {$keys['dashboard-username']}).");
 
         return 0;
+    }
+
+    /** The object store the Commons already runs (SeaweedFS or MinIO), or SeaweedFS for a new one. */
+    private function commonsObjectStorage(): StorageDriver
+    {
+        $spec = $this->getCommonsSpec();
+        $enabled = $spec !== null ? $this->enabledCommonsServices($spec) : [];
+
+        return in_array('seaweedfs', $enabled, true) || ! in_array('minio', $enabled, true)
+            ? StorageDriver::SEAWEEDFS
+            : StorageDriver::MINIO;
     }
 
     protected function resolveEnvironment(): string

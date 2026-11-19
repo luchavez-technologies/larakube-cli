@@ -247,3 +247,38 @@ test('supabase:remove --purge leaves the Commons alone for a --no-plex install',
     Process::assertNotRan(fn ($p): bool => str_contains((string) $p->command, 'deploy/seaweedfs'));
     Process::assertRan(fn ($p): bool => str_contains((string) $p->command, 'persistentvolumeclaim/supabase-storage-supabase-example-com'));
 });
+
+test('supabase:init offers to create the Commons when the cluster has none', function (): void {
+    Process::fake(supabaseClusterFakes([
+        '*get configmap plex-commons*' => Process::result(output: '', exitCode: 1),
+    ]));
+
+    $this->artisan('tool:init --tool=supabase local --domain=supabase.example.com --admin-email=ops@example.com')
+        ->expectsConfirmation('No Commons on this cluster yet. Create one now?', 'no')
+        ->expectsOutputToContain('A Commons is required')
+        ->assertExitCode(1);
+
+    Process::assertNotRan(fn ($p): bool => str_contains((string) $p->command, 'supabase.yaml'));
+});
+
+test('supabase:init uses the MinIO a Commons already runs, not SeaweedFS', function (): void {
+    $applied = '';
+    Process::fake(supabaseClusterFakes([
+        '*get configmap plex-commons*' => Process::result(output: json_encode([
+            'version' => 1,
+            'services' => ['minio' => ['enabled' => true]],
+        ])),
+        '*supabase.yaml*' => function ($process) use (&$applied) {
+            preg_match("/apply -f '([^']+supabase\\.yaml)'/", (string) $process->command, $match);
+            $applied = isset($match[1]) ? (string) file_get_contents($match[1]) : '';
+
+            return Process::result(output: 'applied');
+        },
+    ]));
+
+    $this->artisan('tool:init --tool=supabase local --domain=supabase.example.com --admin-email=ops@example.com --no-interaction')
+        ->assertExitCode(0);
+
+    expect($applied)->toContain('http://minio.larakube-plex.svc.cluster.local:9000')
+        ->not->toContain('seaweedfs');
+});
