@@ -122,6 +122,12 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
+        // Registered once applied, before waiting on the rest: an install that then fails partway is
+        // still listed, so supabase:remove can clean it up (and a re-run finds it).
+        $this->registerDeployedTool(ClusterTool::SUPABASE, $kubectl, $host, $instance, [
+            'noPlex' => $noPlex,
+        ]);
+
         $this->removeDisabledComponents($kubectl, $ns, $names, [
             'realtime' => $withRealtime,
             'functions' => $withFunctions,
@@ -141,10 +147,6 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
         if (! $this->enableVectorExtension($kubectl, $ns, $names->name('db'))) {
             return 1;
         }
-
-        $this->registerDeployedTool(ClusterTool::SUPABASE, $kubectl, $host, $instance, [
-            'noPlex' => $noPlex,
-        ]);
 
         $this->laraKubeInfo("Supabase is ready at https://{$host} (Studio basic auth user: {$keys['dashboard-username']}).");
 

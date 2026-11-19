@@ -70,11 +70,13 @@ spec:
     spec:
       # The image keeps config postgresql.conf includes in /etc/postgresql-custom (supautils, wal-g,
       # read-replica, conf.d, extension scripts). Docker fills an empty named volume with those files;
-      # a PVC starts empty, so copy them in. -n never overwrites, so pgsodium's key survives restarts.
+      # a PVC starts empty, so copy them in on every start. Only the image's own files are replaced, so
+      # they follow the image on upgrades, and pgsodium's key (written at runtime, not in the image)
+      # survives. tar, not cp: the image's BusyBox `cp -an src/. dst/` copies nothing and exits 0.
       initContainers:
         - name: seed-config
           image: {{ $tool->vendor()->image('db') }}
-          command: ["sh", "-c", "cp -an /etc/postgresql-custom/. /seed/ && chown -R postgres:postgres /seed"]
+          command: ["sh", "-c", "tar -C /etc/postgresql-custom -cf - . | tar -C /seed -xf - && chown -R postgres:postgres /seed"]
           volumeMounts:
             - name: pgsodium-config
               mountPath: /seed

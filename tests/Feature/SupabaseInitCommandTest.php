@@ -188,6 +188,7 @@ test('supabase:init removes an optional part that a re-run turns off', function 
 });
 
 test('supabase:init waits for the database before pgvector, and fails when it never becomes ready', function (): void {
+    $registry = Tests\Support\FakeToolRegistry::install();
     Process::fake(supabaseClusterFakes([
         '*rollout status statefulset/supabase-db-*' => Process::result(errorOutput: 'timed out', exitCode: 1),
     ]));
@@ -197,6 +198,8 @@ test('supabase:init waits for the database before pgvector, and fails when it ne
         ->assertExitCode(1);
 
     Process::assertNotRan(fn ($p): bool => str_contains((string) $p->command, 'create extension'));
+    // Registered anyway, so supabase:remove can clean up an install that failed partway.
+    expect(collect($registry->stored)->pluck('tool'))->toContain('supabase');
 });
 
 test('supabase:init fails when pgvector cannot be enabled', function (): void {

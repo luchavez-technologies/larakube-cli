@@ -129,11 +129,11 @@ test('supabase studio only mounts the functions volume when Edge Functions is in
         ->and(collect($studio(false)['spec']['template']['spec']['volumes'])->pluck('name'))->not->toContain('functions');
 });
 
-test('supabase db seeds its config volume from the image before Postgres starts, without overwriting it', function (): void {
+test('supabase db seeds its config volume from the image before Postgres starts', function (): void {
     $db = collect(supabaseManifestDocs('db'))->firstWhere('kind', 'StatefulSet');
     $init = $db['spec']['template']['spec']['initContainers'][0];
 
-    expect(implode(' ', $init['command']))->toContain('cp -an /etc/postgresql-custom/. /seed/')
+    expect(implode(' ', $init['command']))->toContain('tar -C /etc/postgresql-custom -cf - . | tar -C /seed -xf -')
         ->and($init['volumeMounts'][0])->toBe(['name' => 'pgsodium-config', 'mountPath' => '/seed']);
 });
 
@@ -150,8 +150,6 @@ test('supabase manifests leave no Blade syntax behind, and every database URL na
             ->and($rendered)->not->toContain('{!!');
 
         preg_match_all('#(?:postgres|ecto)://[^"]+#', $rendered, $urls);
-        foreach ($urls[0] as $url) {
-            expect($url)->toContain('$(DB_PASSWORD)@supabase-db-supa-example-com:5432/');
-        }
+        expect($urls[0])->each->toContain('$(DB_PASSWORD)@supabase-db-supa-example-com:5432/');
     }
 });
