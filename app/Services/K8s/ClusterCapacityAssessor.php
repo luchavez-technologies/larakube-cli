@@ -30,6 +30,9 @@ final class ClusterCapacityAssessor
         'cert-manager',
     ];
 
+    /** The object stores a Commons can run; an app with buckets needs one of them. */
+    private const array COMMONS_OBJECT_STORES = ['seaweedfs', 'minio', 'garage'];
+
     /**
      * @param  array<string, mixed>  $options
      * @return array{
@@ -305,9 +308,6 @@ final class ClusterCapacityAssessor
 
         return $demand;
     }
-
-    /** The object stores a Commons can run; an app with buckets needs one of them. */
-    private const array COMMONS_OBJECT_STORES = ['seaweedfs', 'minio', 'garage'];
 
     /**
      * Adds what the install would create in the Commons on top of the app
