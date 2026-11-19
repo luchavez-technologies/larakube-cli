@@ -100,6 +100,7 @@ class GlobalConfigData extends Data
         public ?string $tofuStateEndpoint = null,
         public ?string $tofuStateAccessKeyId = null,
         public ?string $tofuStateSecretAccessKey = null,
+        public ?string $tofuStateApiToken = null,
     ) {}
 
     public function getEmail(): ?string

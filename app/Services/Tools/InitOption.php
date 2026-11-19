@@ -35,9 +35,9 @@ final readonly class InitOption
         public ?string $customLabel = null,
     ) {}
 
-    public static function flag(string $name, string $description): self
+    public static function flag(string $name, string $description, ?string $label = null): self
     {
-        return new self($name, self::FLAG, $description, false);
+        return new self($name, self::FLAG, $description, false, customLabel: $label);
     }
 
     /**

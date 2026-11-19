@@ -5,6 +5,7 @@ namespace App\Services\K8s;
 use App\Data\ClusterCapacitySnapshot;
 use App\Enums\ClusterTool;
 use App\Services\Kubectl;
+use App\Services\PlexService;
 use App\Support\K8sAnnotations;
 use App\Support\Labels;
 
@@ -111,6 +112,10 @@ final class ClusterCapacityAssessor
             $demand = $renderedManifest !== null
                 ? $this->creditLiveWorkloads($kubectl, $this->demandFromManifest($renderedManifest, $snapshot->nodeCount), $renderedManifest, $snapshot->nodeCount)
                 : (new ToolFootprint)->measure($tool, $options, $snapshot->nodeCount);
+
+            if ($tool !== null && $renderedManifest === null) {
+                $demand = $this->withCommonsToCreate($kubectl, $tool, $options, $demand, $snapshot->nodeCount);
+            }
 
             $verdict = $this->verdictFor($snapshot, $breakdown, $demand['cpu_millicores'], $demand['memory_bytes']);
             $result['demand'] = $demand;
@@ -299,6 +304,63 @@ final class ClusterCapacityAssessor
         $demand['memory_bytes'] = max(0, (int) $demand['memory_bytes'] - $liveMemory);
 
         return $demand;
+    }
+
+    /** The object stores a Commons can run; an app with buckets needs one of them. */
+    private const array COMMONS_OBJECT_STORES = ['seaweedfs', 'minio', 'garage'];
+
+    /**
+     * Adds what the install would create in the Commons on top of the app
+     * itself. An app with buckets that finds no object store in the Commons
+     * gets SeaweedFS created alongside it (ensureCommons()), and that has its
+     * own requests. A running Commons is already counted as used, and
+     * `--no-plex` creates nothing there.
+     *
+     * Databases and Redis are left out: whether an app uses the Commons
+     * engine depends on its own choices (n8n can run on SQLite), and an
+     * over-count blocks a launch outright.
+     *
+     * @param  array<string, mixed>  $options
+     * @param  array{cpu_millicores: int, memory_bytes: int, components: list<array<string, mixed>>}  $demand
+     * @return array{cpu_millicores: int, memory_bytes: int, components: list<array<string, mixed>>}
+     */
+    private function withCommonsToCreate(string $kubectl, ClusterTool $tool, array $options, array $demand, int $nodeCount): array
+    {
+        if ((bool) ($options['no-plex'] ?? $options['noPlex'] ?? false) || $tool->commonsBuckets() === []) {
+            return $demand;
+        }
+
+        $json = trim(Kubectl::fromPrefix($kubectl)->raw(['get', 'configmap', 'plex-commons', '-n', 'larakube-plex', '-o', 'jsonpath={.data.commons\\.json}'])->output);
+        $spec = $json !== '' ? json_decode($json, true) : null;
+        $running = array_keys(array_filter(
+            is_array($spec['services'] ?? null) ? $spec['services'] : [],
+            fn (mixed $service): bool => is_array($service) && ($service['enabled'] ?? false),
+        ));
+
+        if (array_intersect(self::COMMONS_OBJECT_STORES, $running) !== []) {
+            return $demand;
+        }
+
+        // Exactly what `plex:init --services=seaweedfs` would add: SeaweedFS alone (Postgres and Redis
+        // are on by default only when nothing names them).
+        $manifest = view('k8s.plex.commons', [
+            'spec' => (new PlexService)->normalizeCommonsSpec([
+                'services' => ['postgres' => ['enabled' => false], 'redis' => ['enabled' => false], 'seaweedfs' => ['enabled' => true]],
+            ]),
+            'specJsonIndented' => '',
+            'isLocal' => false,
+            'withMonitoring' => false,
+        ])->render();
+        $commons = $this->demandFromManifest($manifest, $nodeCount);
+
+        return [
+            'cpu_millicores' => $demand['cpu_millicores'] + $commons['cpu_millicores'],
+            'memory_bytes' => $demand['memory_bytes'] + $commons['memory_bytes'],
+            'components' => [
+                ...$demand['components'],
+                ...array_map(fn (array $component): array => [...$component, 'name' => 'Plex Commons '.$component['name']], $commons['components']),
+            ],
+        ];
     }
 
     private function demandFromManifest(string $renderedManifest, int $liveNodeCount): array

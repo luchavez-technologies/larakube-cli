@@ -130,3 +130,23 @@ test('re-applying an app counts only what it adds on top of what already runs', 
     'an unchanged re-apply adds nothing, so it fits' => [true, 'fits'],
     'the same manifest with nothing running is new demand' => [false, 'never_fits'],
 ]);
+
+test('an app with buckets on a cluster with no Commons object store also counts the SeaweedFS its install creates', function (?array $commons, array $options, bool $counted): void {
+    Process::fake([
+        '*get configmap plex-commons*' => Process::result(output: $commons === null ? '' : json_encode($commons)),
+        ...capacityFakes(nodeCpu: '4', nodeMemory: '8Gi', nodeUsedMemory: '1Gi'),
+    ]);
+
+    $assessment = (new ClusterCapacityAssessor)->assess('kubectl --context=ctx', ClusterTool::SUPABASE, $options);
+    $commonsParts = array_filter($assessment['demand']['components'], fn (array $c): bool => str_starts_with($c['name'], 'Plex Commons '));
+    $app = (new App\Services\K8s\ToolFootprint)->measure(ClusterTool::SUPABASE, $options);
+
+    expect($commonsParts !== [])->toBe($counted)
+        ->and($assessment['demand']['memory_bytes'])->toBe($app['memory_bytes'] + ($counted ? 256 * 1024 * 1024 : 0));
+})->with([
+    'no Commons yet' => [null, [], true],
+    'Commons without an object store' => [['services' => ['postgres' => ['enabled' => true]]], [], true],
+    'Commons already runs SeaweedFS' => [['services' => ['seaweedfs' => ['enabled' => true]]], [], false],
+    'Commons already runs MinIO' => [['services' => ['minio' => ['enabled' => true]]], [], false],
+    '--no-plex keeps files on a volume' => [null, ['no-plex' => true], false],
+]);

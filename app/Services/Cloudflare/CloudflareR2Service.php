@@ -113,6 +113,7 @@ class CloudflareR2Service
             $config->tofuStateEndpoint = $endpoint;
             $config->tofuStateAccessKeyId = $tokenId;
             $config->tofuStateSecretAccessKey = $secretAccessKey;
+            $config->tofuStateApiToken = $token;
             $config->save();
         }
 
