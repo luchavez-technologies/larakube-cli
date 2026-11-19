@@ -230,8 +230,15 @@ spec:
             # so a re-init updates it and never touches yours.
             - name: functions
               mountPath: /home/deno/functions
+            # One subPath per file, never the ConfigMap as a folder: a folder mount is symlinks into a hidden
+            # ..data/ dir, and Edge Runtime copies main/ to /var/tmp/sb-compile-edge-runtime without them
+            # ("Module not found: …/main/index.ts"). subPath mounts are plain files.
             - name: functions-main
-              mountPath: /home/deno/functions/main
+              mountPath: /home/deno/functions/main/index.ts
+              subPath: index.ts
+            - name: functions-main
+              mountPath: /home/deno/functions/main/memory-pressure.ts
+              subPath: memory-pressure.ts
             - name: functions-import-map
               mountPath: /home/deno/functions/deno.jsonc
               subPath: deno.jsonc
@@ -244,11 +251,6 @@ spec:
         - name: functions-main
           configMap:
             name: {{ $names->name('functions-main') }}
-            items:
-              - key: index.ts
-                path: index.ts
-              - key: memory-pressure.ts
-                path: memory-pressure.ts
         - name: functions-import-map
           configMap:
             name: {{ $names->name('functions-main') }}

@@ -115,7 +115,13 @@ test('supabase edge functions get upstream main router with its helper, and supa
     $realtime = $docs->first(fn (array $d): bool => $d['kind'] === 'Deployment' && str_contains($d['metadata']['name'], 'realtime'));
     $realtimeEnv = collect($realtime['spec']['template']['spec']['containers'][0]['env'])->keyBy('name');
 
-    expect($router['data'])->toHaveKeys(['index.ts', 'memory-pressure.ts', 'deno.jsonc'])
+    $functions = $docs->first(fn (array $d): bool => $d['kind'] === 'Deployment' && str_contains($d['metadata']['name'], 'functions'));
+    $routerMounts = collect($functions['spec']['template']['spec']['containers'][0]['volumeMounts'])->where('name', 'functions-main');
+
+    // Edge Runtime copies main/ before compiling it, and a ConfigMap folder mount's symlinks don't survive that.
+    expect($routerMounts->pluck('subPath')->all())->toBe(['index.ts', 'memory-pressure.ts'])
+        ->and($routerMounts->pluck('mountPath')->all())->toBe(['/home/deno/functions/main/index.ts', '/home/deno/functions/main/memory-pressure.ts'])
+        ->and($router['data'])->toHaveKeys(['index.ts', 'memory-pressure.ts', 'deno.jsonc'])
         ->and(implode(' ', $pooler['spec']['template']['spec']['containers'][0]['command']))->toContain('/app/bin/migrate && /app/bin/supavisor eval')
         ->and($realtimeEnv['RELEASE_COOKIE']['valueFrom']['secretKeyRef']['key'])->toBe('realtime-release-cookie')
         ->and($realtimeEnv['APP_NAME']['value'])->toBe('realtime');
