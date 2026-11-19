@@ -38,13 +38,17 @@ class BackupPruneCommand extends Command
         {--keep-monthly=6  : Then keep the newest backup of each of the last N months}
         {--apply           : Actually delete. Without this the command only shows what would go.}
         {--force           : Skip the confirmation prompt}
-        {--context=        : Target a specific kube-context}';
+        {--context=        : Target a specific kube-context}
+        {--json            : Output the retention plan as JSON (without deleting)}';
 
     protected $description = 'Delete old backups on a grandfather-father-son schedule';
 
     public function handle(): int
     {
-        $this->renderHeader();
+        $isJson = (bool) $this->option('json');
+        if (! $isJson) {
+            $this->renderHeader();
+        }
 
         $kubectl = Kubectl::forContext($this->resolveToolContext(
             (string) $this->argument('environment'),
@@ -53,7 +57,11 @@ class BackupPruneCommand extends Command
         $config = $this->readBackupConfig($kubectl, $this->backupNamespace());
 
         if ($config === null) {
-            $this->laraKubeError('No backup destination configured. Run `larakube backup:init` first.');
+            if ($isJson) {
+                $this->line((string) json_encode(['success' => false, 'error' => 'No backup destination configured.']));
+            } else {
+                $this->laraKubeError('No backup destination configured. Run `larakube backup:init` first.');
+            }
 
             return 1;
         }
@@ -61,8 +69,21 @@ class BackupPruneCommand extends Command
         $runs = $this->listBackupRuns($config);
 
         if ($runs === []) {
-            $this->laraKubeWarn('Nothing at the destination to prune.');
-            $this->newLine();
+            if ($isJson) {
+                $this->line((string) json_encode([
+                    'success' => true,
+                    'bucket' => $config['bucket'],
+                    'keepCount' => 0,
+                    'deleteCount' => 0,
+                    'freedBytes' => 0,
+                    'freedHuman' => '0 B',
+                    'retention' => $this->describeRetention(),
+                    'items' => [],
+                ]));
+            } else {
+                $this->laraKubeWarn('Nothing at the destination to prune.');
+                $this->newLine();
+            }
 
             return 0;
         }
@@ -79,6 +100,36 @@ class BackupPruneCommand extends Command
             // means backup:restore refuses them — so they are pure cost. They
             // are the reason this command should be run after a failed backup.
             $drop[$stamp] = $run;
+        }
+
+        $freedBytes = array_sum(array_column($drop, 'bytes'));
+        $freed = $this->humanBytes($freedBytes);
+
+        if ($isJson) {
+            $items = [];
+            foreach (array_reverse($runs, true) as $stamp => $run) {
+                $items[] = [
+                    'stamp' => (string) $stamp,
+                    'takenAt' => $run['taken'],
+                    'bytes' => $run['bytes'],
+                    'size' => $this->humanBytes($run['bytes']),
+                    'complete' => $run['complete'],
+                    'action' => isset($drop[$stamp]) ? 'delete' : 'keep',
+                ];
+            }
+
+            $this->output->writeln((string) json_encode([
+                'success' => true,
+                'bucket' => $config['bucket'],
+                'keepCount' => count($keep),
+                'deleteCount' => count($drop),
+                'freedBytes' => $freedBytes,
+                'freedHuman' => $freed,
+                'retention' => $this->describeRetention(),
+                'items' => $items,
+            ]), \Symfony\Component\Console\Output\OutputInterface::OUTPUT_RAW);
+
+            return 0;
         }
 
         $rows = [];
@@ -102,7 +153,6 @@ class BackupPruneCommand extends Command
             return 0;
         }
 
-        $freed = $this->humanBytes(array_sum(array_column($drop, 'bytes')));
         $this->line('  <fg=gray>Would delete</> <fg=blue>'.count($drop).'</> <fg=gray>backups, freeing</> <fg=blue>'.$freed.'</>');
         $this->line('  <fg=gray>Keeping</> <fg=blue>'.count($keep).'</> <fg=gray>('.$this->describeRetention().')</>');
         $this->newLine();
