@@ -347,9 +347,15 @@ spec:
             - name: GLOBAL_S3_FORCE_PATH_STYLE
               value: "true"
             - name: AWS_ACCESS_KEY_ID
-              value: "{{ $s3AccessKey }}"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: s3-access-key
             - name: AWS_SECRET_ACCESS_KEY
-              value: "{{ $s3SecretKey }}"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: s3-secret-key
             - name: AWS_DEFAULT_REGION
               value: "{{ $s3Region ?? 'us-east-1' }}"
 @endif

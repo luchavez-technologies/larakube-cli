@@ -50,23 +50,28 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
 
         Process::run("{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -");
 
-        $keys = $this->resolveIdempotentKeys($kubectl, $ns, $names, $env);
-
         $s3Bucket = 'supabase';
         $s3Endpoint = '';
-        $s3AccessKey = '';
-        $s3SecretKey = '';
         $s3Region = 'us-east-1';
+        $s3Secrets = [];
 
         if (! $noPlex) {
+            // Without real Commons credentials Storage would start and then fail on every upload.
+            $s3Creds = $this->readCommonsS3Credentials();
+            if (! is_array($s3Creds) || ($s3Creds['access'] ?? '') === '' || ($s3Creds['secret'] ?? '') === '') {
+                $this->laraKubeError('Could not read the Plex Commons S3 credentials. Run plex:status to check the Commons, or install with --no-plex to keep files on a volume.');
+
+                return 1;
+            }
+
             $s3Bucket = $names->bucket();
             $this->allocateStorageBucket(StorageDriver::SEAWEEDFS, $s3Bucket);
-            $s3Creds = $this->readCommonsS3Credentials();
             $s3Endpoint = (string) ($s3Creds['endpoint'] ?? "http://seaweedfs.{$this->plexNamespace()}.svc.cluster.local:8333");
-            $s3AccessKey = (string) ($s3Creds['access'] ?? 'seaweedfs-access-key');
-            $s3SecretKey = (string) ($s3Creds['secret'] ?? 'seaweedfs-secret-key');
             $s3Region = (string) ($s3Creds['region'] ?? 'us-east-1');
+            $s3Secrets = ['s3-access-key' => (string) $s3Creds['access'], 's3-secret-key' => (string) $s3Creds['secret']];
         }
+
+        $keys = $this->resolveIdempotentKeys($kubectl, $ns, $names, $env, $s3Secrets);
 
         $vars = [
             'instance' => $instance,
@@ -77,8 +82,6 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
             'noPlex' => $noPlex,
             's3Bucket' => $s3Bucket,
             's3Endpoint' => $s3Endpoint,
-            's3AccessKey' => $s3AccessKey,
-            's3SecretKey' => $s3SecretKey,
             's3Region' => $s3Region,
             'withRealtime' => $withRealtime,
             'withFunctions' => $withFunctions,
@@ -108,7 +111,25 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $this->enableVectorExtension($kubectl, $ns, $names->name('db'));
+        $this->removeDisabledComponents($kubectl, $ns, $names, [
+            'realtime' => $withRealtime,
+            'functions' => $withFunctions,
+            'imgproxy' => $withImgproxy,
+            'supavisor' => $withPooler,
+        ]);
+
+        if (! $this->waitForStack($kubectl, $ns, $names, [
+            'realtime' => $withRealtime,
+            'functions' => $withFunctions,
+            'imgproxy' => $withImgproxy,
+            'supavisor' => $withPooler,
+        ])) {
+            return 1;
+        }
+
+        if (! $this->enableVectorExtension($kubectl, $ns, $names->name('db'))) {
+            return 1;
+        }
 
         $this->registerDeployedTool(ClusterTool::SUPABASE, $kubectl, $host, $instance, [
             'noPlex' => $noPlex,
@@ -155,8 +176,11 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
         ];
     }
 
-    /** @return array<string, string> */
-    private function resolveIdempotentKeys(string $kubectl, string $ns, ToolInstance $names, string $env): array
+    /**
+     * @param  array<string, string>  $extra  values stored alongside the keys but never generated (the Commons S3 login)
+     * @return array<string, string>
+     */
+    private function resolveIdempotentKeys(string $kubectl, string $ns, ToolInstance $names, string $env, array $extra = []): array
     {
         $secretName = $names->secret();
         $existing = Kubectl::fromPrefix($kubectl)->raw(['get', 'secret', $secretName, '-n', $ns, '-o', 'json', '--ignore-not-found'])->json();
@@ -169,7 +193,13 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
             }
         }
 
-        Kubectl::fromPrefix($kubectl)->putSecret($ns, $secretName, $keys, $names->labels());
+        // The API keys are JWTs signed with the JWT secret: unless all three were kept, re-sign the keys
+        // with the secret now in use, so a partial Secret never pairs one secret with another's keys.
+        if (! isset($existingData['jwt-secret'], $existingData['anon-key'], $existingData['service-role-key'])) {
+            $keys = [...$keys, ...SupabaseKeys::apiKeys($keys['jwt-secret'])];
+        }
+
+        Kubectl::fromPrefix($kubectl)->putSecret($ns, $secretName, [...$keys, ...$extra], $names->labels());
 
         if ($this->secretsBackendAvailable($kubectl)) {
             $clusterEnv = $env === 'local' ? 'dev' : $env;
@@ -183,10 +213,62 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
         return $keys;
     }
 
-    private function enableVectorExtension(string $kubectl, string $ns, string $dbStatefulSet): void
+    /**
+     * Turning an optional part off on a re-run removes it: apply alone never
+     * deletes what the manifest stopped mentioning.
+     *
+     * @param  array<string, bool>  $enabled  component => whether it stays
+     */
+    private function removeDisabledComponents(string $kubectl, string $ns, ToolInstance $names, array $enabled): void
     {
-        Process::run(
+        foreach ($enabled as $component => $keep) {
+            if (! $keep) {
+                $name = $names->name($component);
+                Process::run("{$kubectl} delete deployment/{$name} service/{$name} -n {$ns} --ignore-not-found");
+            }
+        }
+    }
+
+    /**
+     * The gateway answering is not the stack being up: the database has to be
+     * ready before pgvector can be enabled, and a crash-looping Auth or
+     * Storage must not end in "Supabase is ready".
+     *
+     * @param  array<string, bool>  $optional  optional component => whether it is installed
+     */
+    private function waitForStack(string $kubectl, string $ns, ToolInstance $names, array $optional): bool
+    {
+        $workloads = ["statefulset/{$names->name('db')}"];
+
+        foreach (['auth', 'rest', 'meta', 'storage', 'studio', ...array_keys(array_filter($optional))] as $component) {
+            $workloads[] = "deployment/{$names->name($component)}";
+        }
+
+        foreach ($workloads as $workload) {
+            $result = Process::timeout(330)->run("{$kubectl} rollout status {$workload} -n {$ns} --timeout=300s");
+
+            if (! $result->successful()) {
+                $this->laraKubeError("Supabase's {$workload} did not become ready. Check it with: kubectl describe {$workload} -n {$ns}");
+
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function enableVectorExtension(string $kubectl, string $ns, string $dbStatefulSet): bool
+    {
+        $result = Process::run(
             "{$kubectl} exec -n {$ns} statefulset/{$dbStatefulSet} -- psql -U postgres -d postgres -c ".escapeshellarg('create extension if not exists vector with schema extensions;'),
         );
+
+        if (! $result->successful()) {
+            $this->laraKubeError('Could not enable the pgvector extension: '.trim($result->errorOutput() ?: $result->output()));
+
+            return false;
+        }
+
+        return true;
     }
 }

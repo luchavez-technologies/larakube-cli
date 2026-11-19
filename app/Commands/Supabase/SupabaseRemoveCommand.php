@@ -15,6 +15,14 @@ class SupabaseRemoveCommand extends AbstractToolRemoveCommand
         return ClusterTool::SUPABASE;
     }
 
+    /** A `--no-plex` install keeps files on its own volume and never leased a Commons bucket to drop. */
+    protected function usesBundledStorage(string $kubectl, string $namespace): bool
+    {
+        $names = $this->names($kubectl);
+
+        return $names !== null && $this->cluster()->exists(new ResourceRef('PersistentVolumeClaim', $names->volume('storage'), $namespace));
+    }
+
     protected function teardown(string $kubectl, string $namespace): bool
     {
         $names = $this->names($kubectl);
