@@ -217,6 +217,12 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
             }
         }
 
+        // Studio's basic-auth login: the admin email given at install, kept from then on.
+        $adminEmail = trim((string) ($this->option('admin-email') ?? ''));
+        if ($adminEmail !== '' && ! isset($existingData['dashboard-username'])) {
+            $keys['dashboard-username'] = $adminEmail;
+        }
+
         // The API keys are JWTs signed with the JWT secret: unless all three were kept, re-sign the keys
         // with the secret now in use, so a partial Secret never pairs one secret with another's keys.
         if (! isset($existingData['jwt-secret'], $existingData['anon-key'], $existingData['service-role-key'])) {

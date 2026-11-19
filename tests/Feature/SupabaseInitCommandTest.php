@@ -285,3 +285,39 @@ test('supabase:init uses the MinIO a Commons already runs, not SeaweedFS', funct
     expect($applied)->toContain('http://minio.larakube-plex.svc.cluster.local:9000')
         ->not->toContain('seaweedfs');
 });
+
+test('supabase:init makes the admin email Studio\'s login on a first install', function (): void {
+    Process::fake(supabaseClusterFakes());
+
+    $this->artisan('tool:init --tool=supabase local --domain=supabase.example.com --admin-email=ops@example.com --no-interaction')
+        ->assertExitCode(0);
+
+    Process::assertRan(fn ($job): bool => (appliedSecret($job)['data']['dashboard-username'] ?? null) === 'ops@example.com');
+});
+
+test('supabase:init keeps a Studio login already stored', function (): void {
+    Process::fake(supabaseClusterFakes([
+        '*get secret supabase-secrets-supabase-example-com*' => Process::result(output: (string) json_encode(['data' => ['dashboard-username' => base64_encode('supabase')]])),
+    ]));
+
+    $this->artisan('tool:init --tool=supabase local --domain=supabase.example.com --admin-email=ops@example.com --no-interaction')
+        ->assertExitCode(0);
+
+    Process::assertRan(fn ($job): bool => (appliedSecret($job)['data']['dashboard-username'] ?? null) === 'supabase');
+});
+
+test('supabase:show --json reports Studio\'s basic-auth login', function (): void {
+    Tests\Support\FakeToolRegistry::install([['tool' => 'supabase', 'instance' => 'supabase-example-com', 'host' => 'supabase.example.com']]);
+    Process::fake([
+        '*get secret supabase-secrets-supabase-example-com*' => Process::result(output: (string) json_encode(['data' => [
+            'dashboard-username' => base64_encode('ops@example.com'),
+            'dashboard-password' => base64_encode('s3cret'),
+        ]])),
+        '*' => Process::result(output: ''),
+    ]);
+
+    Illuminate\Support\Facades\Artisan::call('supabase:show', ['environment' => 'local', '--domain' => 'supabase.example.com', '--json' => true]);
+    $payload = json_decode(Illuminate\Support\Facades\Artisan::output(), true);
+
+    expect($payload['credentials'] ?? null)->toBe(['admin_username' => 'ops@example.com', 'admin_password' => 's3cret']);
+});
