@@ -163,7 +163,12 @@ class CloudStateMigrateCommand extends Command
     private function migrateSingleStack(array $bin, string $stack, bool $isJson): bool
     {
         $dir = $this->tofuWorkdir($stack);
-        if (! file_exists("{$dir}/terraform.tfstate")) {
+        $hasLocalFile = file_exists("{$dir}/terraform.tfstate") && filesize("{$dir}/terraform.tfstate") > 0;
+        $dotState = "{$dir}/.terraform/terraform.tfstate";
+        $dotDecoded = is_file($dotState) ? json_decode((string) file_get_contents($dotState), true) : null;
+        $alreadyRemoteInDot = is_array($dotDecoded) && (($dotDecoded['backend']['type'] ?? null) === 's3');
+
+        if (! $hasLocalFile && ! $alreadyRemoteInDot) {
             if (! $isJson) {
                 $this->laraKubeWarn("Skipping '{$stack}': no local terraform.tfstate found.");
             }
@@ -185,6 +190,10 @@ class CloudStateMigrateCommand extends Command
         }
 
         file_put_contents("{$dir}/backend.tf", view('tofu.backend-s3', $remote + ['stack' => $stack])->render());
+
+        if ($alreadyRemoteInDot && ! $hasLocalFile) {
+            return true;
+        }
 
         $env = $this->tofuEnv($stack, $bin['isOpenTofu']);
         $cmd = escapeshellarg($bin['path']).' -chdir='.escapeshellarg($dir).' init -migrate-state -force-copy -input=false -no-color';
