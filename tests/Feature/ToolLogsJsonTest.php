@@ -45,3 +45,29 @@ test('--json passes --since-time through, so a caller can ask only for new lines
         && str_contains((string) $process->command, '--since-time=2026-11-18T01:00:00Z')
         && str_contains((string) $process->command, '--prefix'));
 });
+
+test('--json reads a tool registered without an instance through its own Deployments\' pod selectors', function (): void {
+    // ExternalDNS: registered with an empty instance, its pods labelled only `app=` and `dns-zone=`.
+    FakeToolRegistry::install([['tool' => 'external-dns', 'instance' => '']]);
+
+    Process::fake([
+        '*get deployments*' => Process::result(output: json_encode(['items' => [
+            ['metadata' => ['name' => 'external-dns-larakube-app'], 'spec' => ['selector' => ['matchLabels' => ['app' => 'external-dns-larakube-app']]]],
+            ['metadata' => ['name' => 'traefik'], 'spec' => ['selector' => ['matchLabels' => ['app' => 'traefik']]]],
+        ]])),
+        '*get pods*app=external-dns-larakube-app*' => Process::result(output: json_encode(['items' => [
+            ['metadata' => ['name' => 'external-dns-larakube-app-7d5b-qsbdh', 'labels' => ['app' => 'external-dns-larakube-app']]],
+        ]])),
+        '* logs *app=external-dns-larakube-app*' => Process::result(output: '[pod/external-dns-larakube-app-7d5b-qsbdh/external-dns] 2026-11-19T12:31:42.000000000Z All records are already up to date'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $exit = Artisan::call('external-dns:logs', ['--json' => true]);
+    $payload = json_decode(Artisan::output(), true);
+
+    expect($exit)->toBe(0)
+        ->and($payload['instance'])->toBeNull()
+        ->and($payload['lines'])->toHaveCount(1)
+        ->and($payload['lines'][0]['line'])->toBe('All records are already up to date');
+    Process::assertNotRan(fn ($process): bool => str_contains((string) $process->command, 'app=traefik'));
+});

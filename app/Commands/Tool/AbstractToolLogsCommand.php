@@ -73,6 +73,46 @@ abstract class AbstractToolLogsCommand extends Command
     abstract protected function tool(): ClusterTool;
 
     /**
+     * Pod name => component label for every pod the selectors match.
+     *
+     * @param  list<string>  $selectors
+     * @return array<string, string>
+     */
+    private function podComponents(Kubectl $cluster, string $ns, array $selectors): array
+    {
+        $components = [];
+
+        foreach ($selectors as $selector) {
+            foreach ($cluster->raw(['get', 'pods', '-n', $ns, '-l', $selector, '-o', 'json'])->json()['items'] ?? [] as $pod) {
+                $components[(string) ($pod['metadata']['name'] ?? '')] = (string) ($pod['metadata']['labels'][Labels::COMPONENT] ?? '');
+            }
+        }
+
+        return $components;
+    }
+
+    /**
+     * The pod selectors of this tool's Deployments, found by name (`<tool>` or `<tool>-…`).
+     *
+     * @return list<string>
+     */
+    private function deploymentSelectors(Kubectl $cluster, string $ns, ClusterTool $tool): array
+    {
+        $selectors = [];
+
+        foreach ($cluster->raw(['get', 'deployments', '-n', $ns, '-o', 'json'])->json()['items'] ?? [] as $deployment) {
+            $name = (string) ($deployment['metadata']['name'] ?? '');
+            $matchLabels = $deployment['spec']['selector']['matchLabels'] ?? [];
+
+            if (($name === $tool->value || str_starts_with($name, $tool->value.'-')) && is_array($matchLabels) && $matchLabels !== []) {
+                $selectors[] = Labels::selector($matchLabels);
+            }
+        }
+
+        return $selectors;
+    }
+
+    /**
      * Recent lines from every pod of the instance, merged and in time order,
      * each tagged with the component it came from.
      */
@@ -81,20 +121,24 @@ abstract class AbstractToolLogsCommand extends Command
         $env = (string) $this->argument('environment');
         $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
         $cluster = Kubectl::forContext($context);
-        $instance = $this->resolveInstanceForDomain($cluster->prefix(), $tool, (string) ($this->option('domain') ?: ''));
-        $names = ToolInstance::forInstance($tool, (string) ($instance ?? ''));
+        $instance = (string) ($this->resolveInstanceForDomain($cluster->prefix(), $tool, (string) ($this->option('domain') ?: '')) ?? '');
         $component = (string) ($this->option('component') ?: '') ?: null;
-        $selector = $names->selector($component);
-        $ns = $names->namespace();
+        $ns = $tool->namespace();
+        $selectors = $instance !== '' ? [ToolInstance::forInstance($tool, $instance)->selector($component)] : [];
 
-        $components = [];
-        foreach ($cluster->raw(['get', 'pods', '-n', $ns, '-l', $selector, '-o', 'json'])->json()['items'] ?? [] as $pod) {
-            $components[(string) ($pod['metadata']['name'] ?? '')] = (string) ($pod['metadata']['labels'][Labels::COMPONENT] ?? '');
+        $components = $this->podComponents($cluster, $ns, $selectors);
+
+        // A tool registered without an instance, or whose pods predate the standard labels (ExternalDNS
+        // labels its pods `app=` and `dns-zone=` only): read the pods its own Deployments select, the
+        // same pods `<tool>:logs` tails in text mode.
+        if ($components === [] && $component === null) {
+            $selectors = $this->deploymentSelectors($cluster, $ns, $tool);
+            $components = $this->podComponents($cluster, $ns, $selectors);
         }
 
         $lines = [];
 
-        if ($components !== []) {
+        foreach ($components !== [] ? $selectors : [] as $selector) {
             $args = ['logs', '-n', $ns, '-l', $selector, '--prefix', '--all-containers', '--timestamps', '--max-log-requests=20', '--tail='.max(1, (int) ($this->option('tail') ?: 100))];
             if ($this->option('since-time')) {
                 $args[] = '--since-time='.$this->option('since-time');
@@ -115,13 +159,13 @@ abstract class AbstractToolLogsCommand extends Command
                     'line' => $m[4],
                 ];
             }
-
-            usort($lines, fn (array $a, array $b): int => strcmp($a['time'], $b['time']));
         }
+
+        usort($lines, fn (array $a, array $b): int => strcmp($a['time'], $b['time']));
 
         $this->line((string) json_encode([
             'success' => true,
-            'instance' => $names->instance,
+            'instance' => $instance !== '' ? $instance : null,
             'components' => array_values(array_unique(array_filter(array_values($components)))),
             'lines' => $lines,
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
