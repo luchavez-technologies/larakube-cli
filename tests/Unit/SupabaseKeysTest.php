@@ -39,6 +39,6 @@ test('SupabaseKeys generates valid HS256 anon and service_role JWTs and required
 
     expect($keys['publishable-key'])->toStartWith('sb_publishable_')
         ->and($keys['secret-key'])->toStartWith('sb_secret_')
-        ->and(strlen($keys['realtime-db-enc-key']))->toBe(16)
-        ->and(strlen($keys['vault-enc-key']))->toBe(32);
+        ->and($keys['realtime-db-enc-key'])->toHaveLength(16)
+        ->and($keys['vault-enc-key'])->toHaveLength(32);
 });

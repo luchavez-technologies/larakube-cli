@@ -74,7 +74,7 @@ final class ManifestResourceParser
     {
         $quantity = trim($quantity);
 
-        if (! preg_match('/^(\d+(?:\.\d+)?)\s*([EPTGMk]i?)?$/', $quantity, $m)) {
+        if (! preg_match('/^(\d+(?:\.\d+)?)\s*([EPTGMK]i|[EPTGMk])?$/', $quantity, $m)) {
             return null;
         }
 

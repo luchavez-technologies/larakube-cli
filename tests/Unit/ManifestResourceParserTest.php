@@ -85,6 +85,11 @@ test('memory quantity parsing handles binary and decimal suffixes, distinct from
     expect(ManifestResourceParser::memoryQuantityToBytes('512Mi'))->toBe(512 * 1024 ** 2)
         ->and(ManifestResourceParser::memoryQuantityToBytes('1Gi'))->toBe(1024 ** 3)
         ->and(ManifestResourceParser::memoryQuantityToBytes('1G'))->toBe(1000 ** 3)
+        // Nodes report allocatable memory in Ki; decimal kilo is a lowercase k.
+        ->and(ManifestResourceParser::memoryQuantityToBytes('8131764Ki'))->toBe(8131764 * 1024)
+        ->and(ManifestResourceParser::memoryQuantityToBytes('128k'))->toBe(128 * 1000)
+        ->and(ManifestResourceParser::memoryQuantityToBytes('128ki'))->toBeNull()
+        ->and(ManifestResourceParser::memoryQuantityToBytes('1Ti'))->toBe(1024 ** 4)
         ->and(ManifestResourceParser::memoryQuantityToBytes('garbage'))->toBeNull();
 });
 

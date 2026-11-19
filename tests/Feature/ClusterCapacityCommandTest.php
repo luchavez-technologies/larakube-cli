@@ -103,3 +103,30 @@ test('ClusterCapacityAssessor returns fits, tight, wont_fit_now, and never_fits 
     $neverFits = (new ClusterCapacityAssessor)->assess('kubectl --context=ctx', ClusterTool::GRAFANA);
     expect($neverFits['verdict'])->toBe('never_fits');
 });
+
+test('re-applying an app counts only what it adds on top of what already runs', function (bool $alreadyRunning, string $verdict): void {
+    $deployment = [
+        'apiVersion' => 'apps/v1',
+        'kind' => 'Deployment',
+        'metadata' => ['name' => 'grafana-monitor-example-com', 'namespace' => 'larakube-shared'],
+        'spec' => ['replicas' => 1, 'template' => ['spec' => ['containers' => [[
+            'name' => 'grafana',
+            'resources' => ['requests' => ['cpu' => '200m', 'memory' => '900Mi']],
+        ]]]]],
+    ];
+
+    // A 1Gi node already busy with that very Deployment.
+    Process::fake([
+        '*get deployment grafana-monitor-example-com -n larakube-shared*' => Process::result(output: $alreadyRunning ? json_encode($deployment) : ''),
+        ...capacityFakes(nodeCpu: '2', nodeMemory: '1Gi', nodeUsedMemory: '950Mi', pods: [
+            fakePod('larakube-shared', 'grafana-monitor-example-com-abc', '200m', '900Mi', [Labels::TOOL => 'grafana']),
+        ]),
+    ]);
+
+    $assessment = (new ClusterCapacityAssessor)->assess('kubectl --context=ctx', ClusterTool::GRAFANA, renderedManifest: json_encode($deployment));
+
+    expect($assessment['verdict'])->toBe($verdict);
+})->with([
+    'an unchanged re-apply adds nothing, so it fits' => [true, 'fits'],
+    'the same manifest with nothing running is new demand' => [false, 'never_fits'],
+]);

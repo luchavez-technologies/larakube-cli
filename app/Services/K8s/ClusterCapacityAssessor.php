@@ -109,7 +109,7 @@ final class ClusterCapacityAssessor
 
         if ($tool !== null || $renderedManifest !== null) {
             $demand = $renderedManifest !== null
-                ? $this->demandFromManifest($renderedManifest, $snapshot->nodeCount)
+                ? $this->creditLiveWorkloads($kubectl, $this->demandFromManifest($renderedManifest, $snapshot->nodeCount), $renderedManifest, $snapshot->nodeCount)
                 : (new ToolFootprint)->measure($tool, $options, $snapshot->nodeCount);
 
             $verdict = $this->verdictFor($snapshot, $breakdown, $demand['cpu_millicores'], $demand['memory_bytes']);
@@ -139,6 +139,11 @@ final class ClusterCapacityAssessor
         int $demandCpu,
         int $demandMemory,
     ): string {
+        // A re-apply that adds nothing (see creditLiveWorkloads()) changes no usage.
+        if ($demandCpu === 0 && $demandMemory === 0) {
+            return 'fits';
+        }
+
         $freeCpu = $snapshot->freeCpuMillicores();
         $freeMemory = $snapshot->freeMemoryBytes();
 
@@ -243,6 +248,59 @@ final class ClusterCapacityAssessor
     }
 
     /** @return array{cpu_millicores: int, memory_bytes: int, components: list<array<string, mixed>>} */
+    /**
+     * Re-applying a manifest replaces workloads that already run: only the
+     * difference is new demand. Subtracts what the manifest's Deployments and
+     * DaemonSets request on the cluster right now (by name and namespace),
+     * with the same per-container floor demandFromManifest() uses, so an
+     * unchanged re-apply asks for nothing. A first install has nothing live
+     * and keeps its full demand.
+     *
+     * @param  array<string, mixed>  $demand
+     * @return array<string, mixed>
+     */
+    private function creditLiveWorkloads(string $kubectl, array $demand, string $renderedManifest, int $liveNodeCount): array
+    {
+        $byNamespace = [];
+        foreach ((new ManifestResourceParser)->parse($renderedManifest) as $workload) {
+            if ($workload->name !== '' && $workload->namespace !== '') {
+                $byNamespace[$workload->namespace][strtolower($workload->kind)][] = $workload->name;
+            }
+        }
+
+        $liveCpu = 0;
+        $liveMemory = 0;
+        foreach ($byNamespace as $namespace => $kinds) {
+            foreach ($kinds as $kind => $names) {
+                $live = Kubectl::fromPrefix($kubectl)->raw(['get', $kind, ...array_values(array_unique($names)), '-n', $namespace, '-o', 'json', '--ignore-not-found'])->json();
+                $items = $live === null ? [] : (isset($live['items']) && is_array($live['items']) ? $live['items'] : [$live]);
+
+                foreach ($items as $item) {
+                    if (! is_array($item)) {
+                        continue;
+                    }
+
+                    $replicas = ($item['kind'] ?? '') === 'DaemonSet' ? max(1, $liveNodeCount) : (int) ($item['spec']['replicas'] ?? 1);
+                    foreach ($item['spec']['template']['spec']['containers'] ?? [] as $container) {
+                        $requests = $container['resources']['requests'] ?? [];
+                        $cpu = isset($requests['cpu']) ? ManifestResourceParser::cpuQuantityToMillicores((string) $requests['cpu']) : null;
+                        $memory = isset($requests['memory']) ? ManifestResourceParser::memoryQuantityToBytes((string) $requests['memory']) : null;
+                        // Same rule as the demand side: a container with a resources
+                        // block counts what it declares; only one with none gets the floor.
+                        $declared = ! empty($container['resources']['requests']) || ! empty($container['resources']['limits']);
+                        $liveCpu += ($cpu ?? ($declared ? 0 : 50)) * $replicas;
+                        $liveMemory += ($memory ?? ($declared ? 0 : 67_108_864)) * $replicas;
+                    }
+                }
+            }
+        }
+
+        $demand['cpu_millicores'] = max(0, (int) $demand['cpu_millicores'] - $liveCpu);
+        $demand['memory_bytes'] = max(0, (int) $demand['memory_bytes'] - $liveMemory);
+
+        return $demand;
+    }
+
     private function demandFromManifest(string $renderedManifest, int $liveNodeCount): array
     {
         $cpu = 0;

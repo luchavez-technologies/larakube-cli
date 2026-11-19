@@ -48,5 +48,5 @@ test('supabase optional view omits disabled components cleanly', function (): vo
         'withPooler' => false,
     ])->render();
 
-    expect(trim($rendered))->toBe('');
+    expect(trim($rendered))->toBeEmpty();
 });
