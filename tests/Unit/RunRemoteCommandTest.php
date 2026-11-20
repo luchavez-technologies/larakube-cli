@@ -64,7 +64,7 @@ function withStubSsh(string $output, Closure $callback): mixed
 }
 
 test('runRemoteCommand streams remote output to stdout in normal mode', function (): void {
-    $printed = withStubSsh("Hit:1 noble InRelease\n", function (): string {
+    $printed = withStubSsh("Hit:1 resolute InRelease\n", function (): string {
         ob_start();
         remoteSshRunner()->run('root', '1.2.3.4', '22', '/key', 'apt-get update');
 
@@ -77,7 +77,7 @@ test('runRemoteCommand streams remote output to stdout in normal mode', function
 test('runRemoteCommand keeps stdout clean under --json so the result line stays parseable', function (): void {
     State::setJsonMode(true);
 
-    $printed = withStubSsh("Hit:1 noble InRelease\n", function (): string {
+    $printed = withStubSsh("Hit:1 resolute InRelease\n", function (): string {
         ob_start();
         remoteSshRunner()->run('root', '1.2.3.4', '22', '/key', 'apt-get update');
 

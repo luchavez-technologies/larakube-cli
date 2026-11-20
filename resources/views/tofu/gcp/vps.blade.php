@@ -55,7 +55,7 @@ resource "google_compute_instance" "larakube" {
   boot_disk {
     auto_delete = true
     initialize_params {
-      image = "{{ $image ?? 'ubuntu-os-cloud/ubuntu-2404-lts-amd64' }}"
+      image = "{{ $image ?? 'ubuntu-os-cloud/ubuntu-2604-lts-amd64' }}"
       size  = {{ $diskSize ?? 30 }}
     }
   }

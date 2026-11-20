@@ -453,7 +453,7 @@ spec:
              entirely and tries a raw bind-mount as real root instead, which
              fails without CAP_SYS_ADMIN.
 
-             On Ubuntu 24.04+ nodes, `kernel.apparmor_restrict_unprivileged_userns=1`
+             On Ubuntu 26.04 nodes, `kernel.apparmor_restrict_unprivileged_userns=1`
              (the node default here) ALSO blocks unshare(CLONE_NEWUSER) for
              any process not covered by an AppArmor profile that allows
              `userns,` — mediated separately from Linux capabilities, so

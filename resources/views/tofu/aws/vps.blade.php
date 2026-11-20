@@ -46,14 +46,14 @@ data "aws_subnets" "default" {
   }
 }
 
-# Find latest official Ubuntu 24.04 LTS Noble AMI
+# Find latest official Ubuntu 26.04 LTS Resolute AMI
 data "aws_ami" "ubuntu" {
   most_recent = true
   owners      = ["099720109477"] # Canonical
 
   filter {
     name   = "name"
-    values = ["{{ $amiPattern ?? 'ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*' }}"]
+    values = ["{{ $amiPattern ?? 'ubuntu/images/hvm-ssd-gp3/ubuntu-resolute-26.04-amd64-server-*' }}"]
   }
 
   filter {

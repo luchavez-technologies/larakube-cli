@@ -47,7 +47,7 @@ resource "digitalocean_droplet" "larakube" {
   region      = "{{ $region }}"
   size        = "{{ $size }}"
   resize_disk = {{ ($resizeDisk ?? false) ? 'true' : 'false' }}
-  image       = "{{ $image ?? 'ubuntu-24-04-x64' }}"
+  image       = "{{ $image ?? 'ubuntu-26-04-x64' }}"
   ssh_keys    = [local.ssh_fingerprint]
   tags        = ["larakube"]
 @if(isset($sshPort) && (int) $sshPort !== 22)

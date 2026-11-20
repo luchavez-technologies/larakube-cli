@@ -200,7 +200,7 @@ test('cloud:scale updates server_type in main.tf for hetzner stack', function ()
 resource "hcloud_server" "larakube" {
   name        = "my-hetzner-server"
   server_type = "cx22"
-  image       = "ubuntu-24.04"
+  image       = "ubuntu-26.04"
   location    = "fsn1"
 }
 HCL;

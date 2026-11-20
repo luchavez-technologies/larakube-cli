@@ -9,7 +9,8 @@
 
 2. **Ubuntu 26.04 LTS ("Resolute Raccoon") Readiness**:
    - Prepare LaraKube for Ubuntu 26.04 LTS across OpenTofu provisioning templates and CI/CD pipelines as GitHub Actions transitions `ubuntu-latest` to 26.04.
-   - Centralize provider OS image mappings (AWS, DigitalOcean, Hetzner, GCP) supporting both Ubuntu 24.04 and 26.04.
+   - Centralize provider OS image mappings (AWS, DigitalOcean, Hetzner, GCP).
+   - **Superseded by ADR 0033:** 24.04 is dropped. Servers boot 26.04 only and `--ubuntu-version` is removed; the dual-version design below is historical.
    - Add CI matrix verification against `ubuntu-26.04` to catch cgroups v2, kernel 7.0, and AppArmor unprivileged namespace changes early.
 
 ---
