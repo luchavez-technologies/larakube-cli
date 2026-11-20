@@ -2,6 +2,9 @@
 
 namespace App\Support;
 
+use OpenSSLAsymmetricKey;
+use RuntimeException;
+
 /**
  * Generates self-hosted Supabase secrets and HS256 JWT API keys matching
  * upstream `docker/utils/generate-keys.sh`, plus optional `sb_publishable_` /
@@ -74,7 +77,7 @@ final class SupabaseKeys
     {
         $key = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1']);
         if ($key === false) {
-            throw new \RuntimeException('Could not generate an EC P-256 key pair.');
+            throw new RuntimeException('Could not generate an EC P-256 key pair.');
         }
 
         $ec = (array) (openssl_pkey_get_details($key)['ec'] ?? []);
@@ -98,14 +101,14 @@ final class SupabaseKeys
     }
 
     /** @param  array<string, mixed>  $payload */
-    private static function signEs256(array $payload, \OpenSSLAsymmetricKey $key, string $kid): string
+    private static function signEs256(array $payload, OpenSSLAsymmetricKey $key, string $kid): string
     {
         $header = self::base64UrlEncode((string) json_encode(['alg' => 'ES256', 'typ' => 'JWT', 'kid' => $kid], JSON_UNESCAPED_SLASHES));
         $body = self::base64UrlEncode((string) json_encode($payload, JSON_UNESCAPED_SLASHES));
         $signingInput = "{$header}.{$body}";
 
         if (! openssl_sign($signingInput, $der, $key, OPENSSL_ALGO_SHA256)) {
-            throw new \RuntimeException('Could not sign an ES256 token.');
+            throw new RuntimeException('Could not sign an ES256 token.');
         }
 
         return "{$signingInput}.".self::base64UrlEncode(self::derToRawSignature((string) $der));
