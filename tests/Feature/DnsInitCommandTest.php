@@ -657,6 +657,10 @@ test('tool:init --tool=external-dns labels the group as a tool instance and regi
         ->and($applied)->toContain('luchtech.dev/instance: example-com')
         ->and($applied)->toContain('app: external-dns-example-com')
         ->and(collect($registry->stored)->where('tool', 'external-dns')->pluck('instance')->all())->toBe(['example-com']);
+    Process::assertRan(fn ($p): bool => str_contains((string) $p->command, 'annotate')
+        && str_contains((string) $p->command, 'luchtech.dev/instance=example-com')
+        && str_contains((string) $p->command, 'luchtech.dev/revision=')
+        && ! str_contains((string) $p->command, 'cloudflare-token'));
 });
 
 test('external-dns:remove unregisters the group it removes', function (): void {
