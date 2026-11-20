@@ -1160,7 +1160,23 @@ enum ClusterTool: string implements HasWorkloadComponents
             'footprint' => (new ToolFootprint)->measure($this),
             'alternatives' => array_map(fn (self $alt): string => $alt->value, $this->alternatives()),
             'initFields' => ToolInitSpec::fields($this, $engine, $isLocal),
+            'panels' => $this->panels(),
         ];
+    }
+
+    /**
+     * Extra panels a GUI shows on this tool's page, by id, so the GUI draws what it is sent instead of
+     * checking tool names. `edge-functions`: list and deploy the instance's Edge Functions
+     * (supabase:functions:list / supabase:functions:deploy).
+     *
+     * @return list<string>
+     */
+    public function panels(): array
+    {
+        return match ($this) {
+            self::SUPABASE => ['edge-functions'],
+            default => [],
+        };
     }
 
     /**
