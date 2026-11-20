@@ -230,6 +230,16 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
             $keys = [...$keys, ...SupabaseKeys::apiKeys($keys['jwt-secret'])];
         }
 
+        // The key pair behind the sb_ keys shares one key id and embeds the JWT secret, so it is made
+        // as a whole, from the secret now in use, unless all of it was kept.
+        if (! isset($existingData['jwt-secret'], $existingData['jwt-keys'], $existingData['jwt-jwks'], $existingData['anon-key-asymmetric'], $existingData['service-role-key-asymmetric'])) {
+            $keys = [...$keys, ...SupabaseKeys::asymmetricKeys($keys['jwt-secret'])];
+        } else {
+            foreach (['jwt-keys', 'jwt-jwks', 'anon-key-asymmetric', 'service-role-key-asymmetric'] as $k) {
+                $keys[$k] = (string) base64_decode((string) $existingData[$k]);
+            }
+        }
+
         Kubectl::fromPrefix($kubectl)->putSecret($ns, $secretName, [...$keys, ...$extra], $names->labels());
 
         if ($this->secretsBackendAvailable($kubectl)) {
@@ -237,6 +247,8 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
             $this->pushClusterSecret($kubectl, 'SUPABASE_JWT_SECRET', $keys['jwt-secret'], $clusterEnv);
             $this->pushClusterSecret($kubectl, 'SUPABASE_ANON_KEY', $keys['anon-key'], $clusterEnv);
             $this->pushClusterSecret($kubectl, 'SUPABASE_SERVICE_ROLE_KEY', $keys['service-role-key'], $clusterEnv);
+            $this->pushClusterSecret($kubectl, 'SUPABASE_PUBLISHABLE_KEY', $keys['publishable-key'], $clusterEnv);
+            $this->pushClusterSecret($kubectl, 'SUPABASE_SECRET_KEY', $keys['secret-key'], $clusterEnv);
             $this->pushClusterSecret($kubectl, 'SUPABASE_DB_PASSWORD', $keys['db-password'], $clusterEnv);
             $this->pushClusterSecret($kubectl, 'SUPABASE_DASHBOARD_PASSWORD', $keys['dashboard-password'], $clusterEnv);
         }

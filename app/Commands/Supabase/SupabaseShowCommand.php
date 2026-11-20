@@ -26,6 +26,13 @@ class SupabaseShowCommand extends AbstractToolShowCommand
             $this->newLine();
         }
 
+        if (isset($creds['publishable_key'], $creds['secret_key'])) {
+            $this->line('  <fg=gray>API keys (send as the apikey header):</>');
+            $this->line("  <fg=gray>Publishable:</> <fg=blue>{$creds['publishable_key']}</> <fg=gray>(safe in browsers and apps)</>");
+            $this->line("  <fg=gray>Secret:</>      <fg=yellow>{$creds['secret_key']}</> <fg=gray>(servers only: bypasses row-level security)</>");
+            $this->newLine();
+        }
+
         if (isset($creds['s3_endpoint'])) {
             $this->line('  <fg=gray>S3 endpoint (rclone, AWS SDKs; path-style):</>');
             $this->line("  <fg=gray>Endpoint:</>    <fg=blue>{$creds['s3_endpoint']}</>");
@@ -39,7 +46,7 @@ class SupabaseShowCommand extends AbstractToolShowCommand
 
     /**
      * Studio sits behind the gateway's basic auth; its login lives in the instance's Secret
-     * (also in OpenBao as SUPABASE_DASHBOARD_PASSWORD). Storage's S3 key pair comes from the same Secret.
+     * (also in OpenBao as SUPABASE_DASHBOARD_PASSWORD). The sb_ API keys and Storage's S3 key pair come from the same Secret.
      *
      * @return array<string, string>|null
      */
@@ -55,12 +62,19 @@ class SupabaseShowCommand extends AbstractToolShowCommand
 
         $username = base64_decode((string) ($data['dashboard-username'] ?? ''));
         $password = base64_decode((string) ($data['dashboard-password'] ?? ''));
+        $publishable = base64_decode((string) ($data['publishable-key'] ?? ''));
+        $secret = base64_decode((string) ($data['secret-key'] ?? ''));
         $s3KeyId = base64_decode((string) ($data['s3-protocol-access-key-id'] ?? ''));
         $s3Secret = base64_decode((string) ($data['s3-protocol-access-key-secret'] ?? ''));
 
         $credentials = $username !== '' && $password !== ''
             ? ['admin_username' => $username, 'admin_password' => $password]
             : [];
+
+        // The sb_ keys only work once their key pair exists (the gateway checks for it).
+        if ($publishable !== '' && $secret !== '' && isset($data['anon-key-asymmetric'])) {
+            $credentials += ['publishable_key' => $publishable, 'secret_key' => $secret];
+        }
 
         if ($s3KeyId !== '' && $s3Secret !== '' && $host !== null) {
             $credentials += [

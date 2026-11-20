@@ -74,6 +74,11 @@ spec:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: jwt-secret
+            - name: API_JWT_JWKS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: jwt-jwks
             - name: SECRET_KEY_BASE
               valueFrom:
                 secretKeyRef:
@@ -196,6 +201,25 @@ spec:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: jwt-secret
+            - name: SUPABASE_JWKS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: jwt-jwks
+            - name: SB_PUBLISHABLE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: publishable-key
+            - name: SB_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: secret-key
+            - name: SUPABASE_PUBLISHABLE_KEYS
+              value: '{"default":"$(SB_PUBLISHABLE_KEY)"}'
+            - name: SUPABASE_SECRET_KEYS
+              value: '{"default":"$(SB_SECRET_KEY)"}'
             - name: SUPABASE_URL
               value: "http://{{ $names->deployment() }}:8000"
             - name: SUPABASE_ANON_KEY

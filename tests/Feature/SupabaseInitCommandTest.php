@@ -378,3 +378,53 @@ test('supabase:show --json reports the S3 endpoint and its key pair', function (
         's3_secret_access_key' => 's3-secret',
     ]);
 });
+
+test('supabase:init wires the sb_ key pair into every service, made from the JWT secret in use', function (): void {
+    $applied = '';
+    Process::fake(supabaseClusterFakes([
+        '*get secret supabase-secrets-supabase-example-com*' => Process::result(output: (string) json_encode(['data' => [
+            'jwt-secret' => base64_encode('kept-jwt-secret'),
+            'anon-key' => base64_encode('kept-anon'),
+            'service-role-key' => base64_encode('kept-service'),
+        ]])),
+        '*supabase.yaml*' => function ($process) use (&$applied) {
+            preg_match("/apply -f '([^']+supabase\\.yaml)'/", (string) $process->command, $match);
+            $applied = isset($match[1]) ? (string) file_get_contents($match[1]) : '';
+
+            return Process::result(output: 'applied');
+        },
+    ]));
+
+    $this->artisan('tool:init --tool=supabase local --domain=supabase.example.com --admin-email=ops@example.com --no-interaction')
+        ->assertExitCode(0);
+
+    foreach (['GOTRUE_JWT_KEYS', 'API_JWT_JWKS', 'JWT_JWKS', 'SUPABASE_JWKS', 'ANON_KEY_ASYMMETRIC', 'SERVICE_ROLE_KEY_ASYMMETRIC', 'SUPABASE_PUBLISHABLE_KEYS'] as $var) {
+        expect($applied)->toContain("name: {$var}");
+    }
+
+    Process::assertRan(function ($job): bool {
+        $data = appliedSecret($job)['data'] ?? [];
+        $jwks = json_decode((string) ($data['jwt-jwks'] ?? ''), true);
+
+        return ($data['jwt-secret'] ?? null) === 'kept-jwt-secret'
+            && ($jwks['keys'][1]['k'] ?? null) === rtrim(strtr(base64_encode('kept-jwt-secret'), '+/', '-_'), '=')
+            && str_starts_with((string) ($data['anon-key-asymmetric'] ?? ''), 'eyJ');
+    });
+});
+
+test('supabase:show --json reports the sb_ API keys once their key pair exists', function (): void {
+    Tests\Support\FakeToolRegistry::install([['tool' => 'supabase', 'instance' => 'supabase-example-com', 'host' => 'supabase.example.com']]);
+    Process::fake([
+        '*get secret supabase-secrets-supabase-example-com*' => Process::result(output: (string) json_encode(['data' => [
+            'publishable-key' => base64_encode('sb_publishable_x'),
+            'secret-key' => base64_encode('sb_secret_y'),
+            'anon-key-asymmetric' => base64_encode('eyJ.a.b'),
+        ]])),
+        '*' => Process::result(output: ''),
+    ]);
+
+    Illuminate\Support\Facades\Artisan::call('supabase:show', ['environment' => 'local', '--domain' => 'supabase.example.com', '--json' => true]);
+    $payload = json_decode(Illuminate\Support\Facades\Artisan::output(), true);
+
+    expect($payload['credentials'] ?? null)->toBe(['publishable_key' => 'sb_publishable_x', 'secret_key' => 'sb_secret_y']);
+});

@@ -100,6 +100,11 @@ spec:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: jwt-secret
+            - name: GOTRUE_JWT_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: jwt-keys
             - name: GOTRUE_EXTERNAL_EMAIL_ENABLED
               value: "true"
             - name: GOTRUE_MAILER_AUTOCONFIRM
@@ -203,7 +208,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ $secretName }}
-                  key: jwt-secret
+                  key: jwt-jwks
             - name: PGRST_DB_USE_LEGACY_GUCS
               value: "false"
             - name: PGRST_APP_SETTINGS_JWT_SECRET
@@ -366,6 +371,11 @@ spec:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: jwt-secret
+            - name: JWT_JWKS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: jwt-jwks
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:

@@ -104,6 +104,16 @@ spec:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: secret-key
+            - name: ANON_KEY_ASYMMETRIC
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: anon-key-asymmetric
+            - name: SERVICE_ROLE_KEY_ASYMMETRIC
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: service-role-key-asymmetric
             - name: DASHBOARD_USERNAME
               valueFrom:
                 secretKeyRef:
