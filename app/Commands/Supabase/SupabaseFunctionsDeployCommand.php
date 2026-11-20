@@ -2,11 +2,9 @@
 
 namespace App\Commands\Supabase;
 
-use App\Data\ToolInstance;
-use App\Enums\ClusterTool;
-use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithClusterContext;
+use App\Traits\InteractsWithSupabaseFunctions;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
 use Illuminate\Support\Facades\Process;
@@ -20,11 +18,7 @@ use LaravelZero\Framework\Commands\Command;
  */
 class SupabaseFunctionsDeployCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, LaraKubeOutput, ResolvesToolEnvironment;
-
-    private const string FUNCTIONS_DIR = '/home/deno/functions';
-
-    private const string CONTAINER = 'supabase-edge-functions';
+    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithSupabaseFunctions, LaraKubeOutput, ResolvesToolEnvironment;
 
     protected $signature = 'supabase:functions:deploy
         {environment=local : Environment Supabase is installed in}
@@ -51,26 +45,16 @@ class SupabaseFunctionsDeployCommand extends Command
             return 1;
         }
 
-        $env = $this->resolveToolEnvironment(ClusterTool::SUPABASE);
-        $context = $this->resolveToolContext($env, (string) $this->option('context') ?: null);
-        $kubectl = Kubectl::forContext($context)->prefix();
-
-        $instance = $this->resolveInstanceForTool(ClusterTool::SUPABASE, $kubectl, (string) ($this->option('domain') ?: ''));
-        if ($instance === false) {
-            return 1;
-        }
-        if ($instance === null || $instance === '') {
-            $this->laraKubeError('Supabase is not installed on this cluster.');
+        $target = $this->resolveFunctionsTarget();
+        if (is_string($target)) {
+            $this->laraKubeError($target);
 
             return 1;
         }
 
-        $names = ToolInstance::forInstance(ClusterTool::SUPABASE, $instance);
-        $deployment = $names->name('functions');
-        $namespace = $names->namespace();
+        ['kubectl' => $kubectl, 'deployment' => $deployment, 'namespace' => $namespace, 'host' => $host] = $target;
 
-        $found = Kubectl::forContext($context)->raw(['get', 'deployment', $deployment, '-n', $namespace, '--ignore-not-found', '-o', 'name']);
-        if (! $found->ok || trim($found->output) === '') {
+        if (! $target['enabled']) {
             $this->laraKubeError('Edge Functions are turned off for this Supabase. Re-run its install without --no-functions first.');
 
             return 1;
@@ -82,7 +66,7 @@ class SupabaseFunctionsDeployCommand extends Command
         // COPYFILE_DISABLE keeps macOS's tar from adding ._ metadata files.
         $copy = Process::timeout(300)->run(
             'COPYFILE_DISABLE=1 tar -cf - -C '.escapeshellarg($path).' '.$quoted
-            ." | {$kubectl} exec -i deploy/{$deployment} -n {$namespace} -c ".self::CONTAINER.' -- '
+            ." | {$kubectl} exec -i deploy/{$deployment} -n {$namespace} -c ".self::FUNCTIONS_CONTAINER.' -- '
             .'sh -c '.escapeshellarg('cd '.self::FUNCTIONS_DIR." && rm -rf -- {$quoted} && tar -xf -"),
         );
 
@@ -104,11 +88,11 @@ class SupabaseFunctionsDeployCommand extends Command
             return 1;
         }
 
-        $host = $this->getToolInstanceData($kubectl, ClusterTool::SUPABASE, $instance)?->host;
         $this->laraKubeInfo('Deployed '.count($folders).' Edge Function folder(s).');
         foreach ($folders as $folder) {
-            if (! str_starts_with($folder, '_')) {
-                $this->line('  <fg=blue>'.($host !== null && $host !== '' ? "https://{$host}" : '').'/functions/v1/'.$folder.'</>');
+            $url = $this->functionUrl($host, $folder);
+            if ($url !== null) {
+                $this->line("  <fg=blue>{$url}</>");
             }
         }
 
