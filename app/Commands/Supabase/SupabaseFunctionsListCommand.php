@@ -9,9 +9,10 @@ use App\Traits\InteractsWithSupabaseFunctions;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
 use Illuminate\Support\Facades\Process;
-use LaravelZero\Framework\Commands\Command;
 
 use function Laravel\Prompts\table;
+
+use LaravelZero\Framework\Commands\Command;
 
 /**
  * The Edge Functions deployed to a self-hosted Supabase: every folder on Edge Runtime's functions volume
