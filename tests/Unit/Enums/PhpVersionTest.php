@@ -4,7 +4,7 @@ use App\Data\ConfigData;
 use App\Enums\PhpVersion;
 
 test('php version has correct labels', function (): void {
-    expect(PhpVersion::PHP_8_6->getLabel())->toBe('PHP 8.6 (Newest: Laravel has not certified it yet)')
+    expect(PhpVersion::PHP_8_6->getLabel())->toBe('PHP 8.6 (Newest)')
         ->and(PhpVersion::PHP_8_5->getLabel())->toBe('PHP 8.5 (Recommended)')
         ->and(PhpVersion::PHP_7_4->getLabel())->toBe('PHP 7.4');
 });
