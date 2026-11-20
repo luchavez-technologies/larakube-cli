@@ -326,6 +326,21 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
             return false;
         }
 
+        // Studio's MCP read tools log in as supabase_read_only_user with the database password, and the image leaves
+        // that role without one. Set here too, not only in roles.sql, which runs once on a new database. The password
+        // is read inside the pod and fed to psql on stdin (psql won't expand :'pgpass' in -c), so it never reaches a
+        // command line.
+        $this->laraKubeStep("Letting Studio's AI tools read the database");
+        $result = Process::input("ALTER ROLE supabase_read_only_user WITH PASSWORD :'pgpass';\n")->run(
+            "{$kubectl} exec -n {$ns} -i statefulset/{$dbStatefulSet} -- sh -c "
+            .escapeshellarg('psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -v pgpass="$PGPASSWORD"'),
+        );
+
+        // Supabase itself works without it; only the MCP read tools need it.
+        if (! $result->successful()) {
+            $this->laraKubeWarn("Studio's AI tools can't read the database yet: ".trim($result->errorOutput() ?: $result->output()));
+        }
+
         return true;
     }
 }

@@ -331,7 +331,19 @@ test('supabase:init announces each step as a ▸ line, so Desktop can show where
         ->expectsOutputToContain('▸ Waiting for the database to start')
         ->expectsOutputToContain('▸ Waiting for Auth to start')
         ->expectsOutputToContain('▸ Enabling pgvector')
+        ->expectsOutputToContain("▸ Letting Studio's AI tools read the database")
         ->assertExitCode(0);
+});
+
+test('supabase:init gives the read-only role the database password over stdin, never on a command line', function (): void {
+    Process::fake(supabaseClusterFakes());
+
+    $this->artisan('tool:init --tool=supabase local --domain=supabase.example.com --admin-email=ops@example.com --no-interaction')
+        ->assertExitCode(0);
+
+    Process::assertRan(fn ($p): bool => str_contains((string) $p->command, 'exec -n larakube-shared -i')
+        && str_contains((string) $p->command, 'pgpass="$PGPASSWORD"')
+        && str_contains((string) $p->input, "ALTER ROLE supabase_read_only_user WITH PASSWORD :'pgpass';"));
 });
 
 test('supabase:init gives Storage an S3 key pair, and keeps an existing pair on re-run', function (): void {
