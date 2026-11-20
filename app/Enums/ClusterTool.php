@@ -1166,15 +1166,15 @@ enum ClusterTool: string implements HasWorkloadComponents
 
     /**
      * Extra panels a GUI shows on this tool's page, by id, so the GUI draws what it is sent instead of
-     * checking tool names. `edge-functions`: list and deploy the instance's Edge Functions
-     * (supabase:functions:list / supabase:functions:deploy).
+     * checking tool names. `edge-functions`: list, deploy and delete the instance's Edge Functions
+     * (supabase:functions:*). `mcp`: open the instance's MCP server on this machine (supabase:mcp).
      *
      * @return list<string>
      */
     public function panels(): array
     {
         return match ($this) {
-            self::SUPABASE => ['edge-functions'],
+            self::SUPABASE => ['edge-functions', 'mcp'],
             default => [],
         };
     }

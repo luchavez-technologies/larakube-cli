@@ -108,6 +108,6 @@ test('tool:catalog tells a GUI which extra panels a tool has, by id', function (
     Artisan::call('tool:catalog --q=n8n --json');
     $n8n = collect(json_decode(Artisan::output(), true)['data'])->firstWhere('tool', 'n8n');
 
-    expect($supabase['panels'])->toBe(['edge-functions'])
+    expect($supabase['panels'])->toBe(['edge-functions', 'mcp'])
         ->and($n8n['panels'])->toBe([]);
 });
