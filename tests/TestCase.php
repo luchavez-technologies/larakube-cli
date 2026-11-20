@@ -3,7 +3,6 @@
 namespace Tests;
 
 use App\Facades\State;
-
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Sleep;

@@ -1,8 +1,8 @@
 <?php
 
-use App\Facades\State;
 use App\Data\ConfigData;
 use App\Enums\AppFramework;
+use App\Facades\State;
 use App\Traits\GeneratesProjectInfrastructure;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
