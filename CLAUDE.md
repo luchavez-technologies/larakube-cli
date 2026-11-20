@@ -1,6 +1,6 @@
 ## Running PHP/Composer
 
-Requires PHP 8.4 installed locally (see CONTRIBUTING.md for the extension list) — run everything directly on the host.
+Requires PHP 8.5 installed locally (see CONTRIBUTING.md for the extension list) — run everything directly on the host.
 
 - `composer format` (automated refactoring and code formatting — runs `rector process` and `pint` per repo-wide hard rule)
 - `composer analyse` (static analysis — runs `phpstan analyse --memory-limit=2G`)

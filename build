@@ -58,7 +58,7 @@ build_standalone() {
     PLATFORM=$1
     ARCH=$2
     echo "🏗 Packaging standalone binary for $PLATFORM ($ARCH)..."
-    run_php ./vendor/bin/phpacker build $PLATFORM $ARCH --src=builds/larakube.phar --dest=builds/standalone -q
+    run_php ./vendor/bin/phpacker build $PLATFORM $ARCH --php=8.5 --src=builds/larakube.phar --dest=builds/standalone -q
 }
 
 # 🔍 Static analysis gate — fail before packaging if new code has an undefined

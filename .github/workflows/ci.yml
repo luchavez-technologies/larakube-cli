@@ -31,7 +31,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: '8.5'
           extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, bcmath, zip, pcntl, posix, openssl, curl, phar, opcache
           ini-values: phar.readonly=0, opcache.enable_cli=1, opcache.memory_consumption=256, opcache.max_accelerated_files=20000
           coverage: none
@@ -388,7 +388,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: '8.5'
           extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, bcmath, zip, pcntl, posix, openssl, curl, phar, opcache
           ini-values: phar.readonly=0, opcache.enable_cli=1
           coverage: none

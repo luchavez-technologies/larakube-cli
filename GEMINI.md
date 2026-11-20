@@ -17,7 +17,7 @@ LaraKube is designed for the age of AI agents:
 ## 🛠 Technical Standards
 
 ### 🔄 Development Workflow
-Whenever you modify the LaraKube CLI codebase, you **must** proactively run formatters, linters, and tests to ensure code consistency. Requires PHP 8.4+ installed locally.
+Whenever you modify the LaraKube CLI codebase, you **must** proactively run formatters, linters, and tests to ensure code consistency. Requires PHP 8.5+ installed locally.
 
 ```bash
 composer format    # Runs rector process && pint
@@ -72,7 +72,7 @@ Running targeted tests (e.g. `pest tests/Feature/SpecificTest.php`) during activ
 -   **Standalone**: Distributed as a Mach-O/Linux binary with embedded PHP runtime.
 -   **K3s Bridge**: Automated image sideloading via `k3s ctr images import` for local builds.
 -   **Total Cleanup**: `larakube uninstall` performs a synchronized wipe of manifests, cluster resources, and Docker images.
--   **Host PHP**: Local development runs directly on a PHP 8.4 install — see CONTRIBUTING.md.
+-   **Host PHP**: Local development runs directly on a PHP 8.5 install — see CONTRIBUTING.md.
 
 ### 🏷️ Conventional Commits & SemVer Standards (ADR 0025)
 All commit messages MUST follow Conventional Commits: `<type>(<scope>): <summary in imperative mood>`.
