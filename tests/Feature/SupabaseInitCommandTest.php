@@ -333,3 +333,48 @@ test('supabase:init announces each step as a ▸ line, so Desktop can show where
         ->expectsOutputToContain('▸ Enabling pgvector')
         ->assertExitCode(0);
 });
+
+test('supabase:init gives Storage an S3 key pair, and keeps an existing pair on re-run', function (): void {
+    $applied = '';
+    Process::fake(supabaseClusterFakes([
+        '*get secret supabase-secrets-supabase-example-com*' => Process::result(output: (string) json_encode(['data' => [
+            's3-protocol-access-key-id' => base64_encode('existing-s3-id'),
+            's3-protocol-access-key-secret' => base64_encode('existing-s3-secret'),
+        ]])),
+        '*supabase.yaml*' => function ($process) use (&$applied) {
+            preg_match("/apply -f '([^']+supabase\\.yaml)'/", (string) $process->command, $match);
+            $applied = isset($match[1]) ? (string) file_get_contents($match[1]) : '';
+
+            return Process::result(output: 'applied');
+        },
+    ]));
+
+    $this->artisan('tool:init --tool=supabase local --domain=supabase.example.com --admin-email=ops@example.com --no-interaction')
+        ->assertExitCode(0);
+
+    expect($applied)->toContain('S3_PROTOCOL_ACCESS_KEY_ID')
+        ->and($applied)->toContain('key: s3-protocol-access-key-secret');
+    Process::assertRan(fn ($job): bool => (appliedSecret($job)['data']['s3-protocol-access-key-id'] ?? null) === 'existing-s3-id'
+        && (appliedSecret($job)['data']['s3-protocol-access-key-secret'] ?? null) === 'existing-s3-secret');
+});
+
+test('supabase:show --json reports the S3 endpoint and its key pair', function (): void {
+    Tests\Support\FakeToolRegistry::install([['tool' => 'supabase', 'instance' => 'supabase-example-com', 'host' => 'supabase.example.com']]);
+    Process::fake([
+        '*get secret supabase-secrets-supabase-example-com*' => Process::result(output: (string) json_encode(['data' => [
+            's3-protocol-access-key-id' => base64_encode('s3-id'),
+            's3-protocol-access-key-secret' => base64_encode('s3-secret'),
+        ]])),
+        '*' => Process::result(output: ''),
+    ]);
+
+    Illuminate\Support\Facades\Artisan::call('supabase:show', ['environment' => 'local', '--domain' => 'supabase.example.com', '--json' => true]);
+    $payload = json_decode(Illuminate\Support\Facades\Artisan::output(), true);
+
+    expect($payload['credentials'] ?? null)->toBe([
+        's3_endpoint' => 'https://supabase.example.com/storage/v1/s3',
+        's3_region' => 'stub',
+        's3_access_key_id' => 's3-id',
+        's3_secret_access_key' => 's3-secret',
+    ]);
+});

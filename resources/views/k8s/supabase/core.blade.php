@@ -406,6 +406,18 @@ spec:
               value: stub
             - name: REGION
               value: stub
+            # The S3-compatible endpoint at /storage/v1/s3 (rclone, the AWS SDKs); any
+            # client signing with this key pair gets full access to Storage.
+            - name: S3_PROTOCOL_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: s3-protocol-access-key-id
+            - name: S3_PROTOCOL_ACCESS_KEY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: s3-protocol-access-key-secret
             - name: GLOBAL_S3_PREFIX
               value: ""
             - name: ENABLE_IMAGE_TRANSFORMATION

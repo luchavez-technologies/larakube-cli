@@ -18,6 +18,8 @@ test('SupabaseKeys generates valid HS256 anon and service_role JWTs and required
         'dashboard-password',
         'publishable-key',
         'secret-key',
+        's3-protocol-access-key-id',
+        's3-protocol-access-key-secret',
     ]);
 
     foreach (['anon-key' => 'anon', 'service-role-key' => 'service_role'] as $key => $role) {

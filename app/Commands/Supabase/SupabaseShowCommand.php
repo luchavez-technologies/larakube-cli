@@ -18,20 +18,30 @@ class SupabaseShowCommand extends AbstractToolShowCommand
     {
         $creds = $this->credentials($host, $env, $instance);
 
-        if ($creds !== null) {
+        if (isset($creds['admin_username'], $creds['admin_password'])) {
             $this->newLine();
             $this->line('  <fg=gray>Studio login (basic auth):</>');
             $this->line("  <fg=gray>Username:</>  <fg=blue>{$creds['admin_username']}</>");
             $this->line("  <fg=gray>Password:</>  <fg=yellow>{$creds['admin_password']}</>");
             $this->newLine();
         }
+
+        if (isset($creds['s3_endpoint'])) {
+            $this->line('  <fg=gray>S3 endpoint (rclone, AWS SDKs; path-style):</>');
+            $this->line("  <fg=gray>Endpoint:</>    <fg=blue>{$creds['s3_endpoint']}</>");
+            $this->line("  <fg=gray>Region:</>      <fg=blue>{$creds['s3_region']}</>");
+            $this->line("  <fg=gray>Access key:</>  <fg=blue>{$creds['s3_access_key_id']}</>");
+            $this->line("  <fg=gray>Secret key:</>  <fg=yellow>{$creds['s3_secret_access_key']}</>");
+            $this->line('  <fg=gray>These keys can read and write every bucket.</>');
+            $this->newLine();
+        }
     }
 
     /**
      * Studio sits behind the gateway's basic auth; its login lives in the instance's Secret
-     * (also in OpenBao as SUPABASE_DASHBOARD_PASSWORD).
+     * (also in OpenBao as SUPABASE_DASHBOARD_PASSWORD). Storage's S3 key pair comes from the same Secret.
      *
-     * @return array{admin_username: string, admin_password: string}|null
+     * @return array<string, string>|null
      */
     protected function credentials(?string $host, string $env, string $instance = ''): ?array
     {
@@ -45,9 +55,23 @@ class SupabaseShowCommand extends AbstractToolShowCommand
 
         $username = base64_decode((string) ($data['dashboard-username'] ?? ''));
         $password = base64_decode((string) ($data['dashboard-password'] ?? ''));
+        $s3KeyId = base64_decode((string) ($data['s3-protocol-access-key-id'] ?? ''));
+        $s3Secret = base64_decode((string) ($data['s3-protocol-access-key-secret'] ?? ''));
 
-        return $username !== '' && $password !== ''
+        $credentials = $username !== '' && $password !== ''
             ? ['admin_username' => $username, 'admin_password' => $password]
-            : null;
+            : [];
+
+        if ($s3KeyId !== '' && $s3Secret !== '' && $host !== null) {
+            $credentials += [
+                's3_endpoint' => "https://{$host}/storage/v1/s3",
+                // Storage's REGION, which signed requests must name.
+                's3_region' => 'stub',
+                's3_access_key_id' => $s3KeyId,
+                's3_secret_access_key' => $s3Secret,
+            ];
+        }
+
+        return $credentials !== [] ? $credentials : null;
     }
 }

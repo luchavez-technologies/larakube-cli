@@ -28,6 +28,9 @@ final class SupabaseKeys
             'dashboard-password' => bin2hex(random_bytes(16)),
             'publishable-key' => 'sb_publishable_'.self::base64UrlEncode(random_bytes(18)),
             'secret-key' => 'sb_secret_'.self::base64UrlEncode(random_bytes(24)),
+            // Storage's S3-compatible endpoint (/storage/v1/s3), in upstream's .env.example shape.
+            's3-protocol-access-key-id' => bin2hex(random_bytes(16)),
+            's3-protocol-access-key-secret' => bin2hex(random_bytes(32)),
         ];
     }
 
