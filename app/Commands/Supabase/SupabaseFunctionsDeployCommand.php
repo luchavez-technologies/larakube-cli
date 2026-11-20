@@ -40,6 +40,8 @@ class SupabaseFunctionsDeployCommand extends Command
             return 1;
         }
 
+        $path = $this->functionsFolderIn($path);
+
         $folders = $this->foldersToDeploy($path, array_values(array_filter((array) $this->option('function'), 'is_string')));
         if ($folders === null) {
             return 1;
@@ -97,6 +99,24 @@ class SupabaseFunctionsDeployCommand extends Command
         }
 
         return 0;
+    }
+
+    /**
+     * The folder holding the functions. Picking the project's `supabase` folder (or the project
+     * itself) is an easy slip, so a `functions/` (or `supabase/functions/`) inside it is used instead,
+     * unless that folder is itself a function, with its own index file.
+     */
+    private function functionsFolderIn(string $path): string
+    {
+        foreach (["{$path}/functions", "{$path}/supabase/functions"] as $candidate) {
+            if (is_dir($candidate) && glob("{$candidate}/index.{ts,js,tsx,jsx,mjs}", GLOB_BRACE) === []) {
+                $this->laraKubeLine("Using the functions folder inside it: {$candidate}");
+
+                return $candidate;
+            }
+        }
+
+        return $path;
     }
 
     /**

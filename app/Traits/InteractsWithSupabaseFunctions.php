@@ -5,6 +5,7 @@ namespace App\Traits;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Services\Kubectl;
+use Illuminate\Support\Facades\Process;
 
 /**
  * Finding a Supabase instance's Edge Runtime, for the supabase:functions:* commands. Self-hosted Edge
@@ -53,6 +54,33 @@ trait InteractsWithSupabaseFunctions
             'namespace' => $namespace,
             'enabled' => $found->ok && trim($found->output) !== '',
         ];
+    }
+
+    /**
+     * The folders on Edge Runtime's functions volume, as name => last-modified Unix time, leaving out its
+     * own `main` router. A string is the error when the pod can't be read.
+     *
+     * @param  array{kubectl: string, deployment: string, namespace: string}  $target
+     * @return array<string, ?int>|string
+     */
+    protected function deployedFunctionFolders(array $target): array|string
+    {
+        $listing = Process::timeout(60)->run(
+            "{$target['kubectl']} exec deploy/{$target['deployment']} -n {$target['namespace']} -c ".self::FUNCTIONS_CONTAINER.' -- '
+            .'find '.self::FUNCTIONS_DIR." -mindepth 1 -maxdepth 1 -type d -not -name main -not -name '.*' -printf '%f\\t%T@\\n'",
+        );
+
+        if (! $listing->successful()) {
+            return 'Could not read the functions volume: '.trim($listing->errorOutput() ?: $listing->output());
+        }
+
+        $folders = [];
+        foreach (array_filter(explode("\n", trim($listing->output()))) as $line) {
+            [$name, $modified] = array_pad(explode("\t", $line, 2), 2, '');
+            $folders[$name] = is_numeric($modified) ? (int) $modified : null;
+        }
+
+        return $folders;
     }
 
     /** A function's public URL, or null for a shared folder (`_shared`) or an instance with no host. */

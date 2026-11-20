@@ -8,7 +8,6 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithSupabaseFunctions;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesToolEnvironment;
-use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\table;
 
@@ -48,23 +47,19 @@ class SupabaseFunctionsListCommand extends Command
             return $this->finish($json, $result, 'Edge Functions are turned off for this Supabase.');
         }
 
-        $listing = Process::timeout(60)->run(
-            "{$target['kubectl']} exec deploy/{$target['deployment']} -n {$target['namespace']} -c ".self::FUNCTIONS_CONTAINER.' -- '
-            .'find '.self::FUNCTIONS_DIR." -mindepth 1 -maxdepth 1 -type d -not -name main -not -name '.*' -printf '%f\\t%T@\\n'",
-        );
-
-        if (! $listing->successful()) {
-            return $this->failWith($json, 'Could not read the functions volume: '.trim($listing->errorOutput() ?: $listing->output()));
+        $folders = $this->deployedFunctionFolders($target);
+        if (is_string($folders)) {
+            return $this->failWith($json, $folders);
         }
 
         $functions = [];
-        foreach (array_filter(explode("\n", trim($listing->output()))) as $line) {
-            [$name, $modified] = array_pad(explode("\t", $line, 2), 2, '');
+        foreach ($folders as $name => $modified) {
+            $name = (string) $name;
             $functions[] = [
                 'name' => $name,
                 'shared' => str_starts_with($name, '_'),
                 'url' => $this->functionUrl($target['host'], $name),
-                'updatedAt' => is_numeric($modified) ? date(DATE_ATOM, (int) $modified) : null,
+                'updatedAt' => $modified !== null ? date(DATE_ATOM, $modified) : null,
             ];
         }
         usort($functions, fn (array $a, array $b): int => [$a['shared'], $a['name']] <=> [$b['shared'], $b['name']]);

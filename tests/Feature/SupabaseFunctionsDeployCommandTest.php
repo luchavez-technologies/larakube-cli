@@ -93,3 +93,26 @@ test('supabase:functions:deploy names a missing function and a missing folder', 
         ->expectsOutputToContain('No functions folder at /no/such/folder')
         ->assertExitCode(1);
 });
+
+test('supabase:functions:deploy given the project\'s supabase folder deploys the functions folder inside it', function (): void {
+    Process::fake(supabaseFunctionsFakes());
+    $functions = supabaseFunctionsFolder(['todo-summary', 'hello']);
+    $project = dirname($functions);
+
+    $this->artisan("supabase:functions:deploy prod --context=ctx --path={$project}")
+        ->expectsOutputToContain("Using the functions folder inside it: {$functions}")
+        ->expectsOutputToContain('https://supabase.example.com/functions/v1/todo-summary')
+        ->doesntExpectOutputToContain('/functions/v1/functions')
+        ->assertExitCode(0);
+
+    Process::assertRan(fn ($p): bool => str_contains((string) $p->command, "tar -cf - -C '{$functions}'"));
+});
+
+test('supabase:functions:deploy treats a functions folder with its own index file as a function', function (): void {
+    Process::fake(supabaseFunctionsFakes());
+    $path = supabaseFunctionsFolder(['functions']);
+
+    $this->artisan("supabase:functions:deploy prod --context=ctx --path={$path}")
+        ->expectsOutputToContain('https://supabase.example.com/functions/v1/functions')
+        ->assertExitCode(0);
+});
