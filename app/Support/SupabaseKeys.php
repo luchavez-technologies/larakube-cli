@@ -75,7 +75,9 @@ final class SupabaseKeys
      */
     public static function asymmetricKeys(string $jwtSecret, ?int $issuedAt = null): array
     {
-        $key = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1']);
+        // private_key_bits means nothing for an EC key, but the bundled static PHP has no openssl.cnf to
+        // default it from and refuses any key "shorter than 384 bits" without it, EC included.
+        $key = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1', 'private_key_bits' => 2048]);
         if ($key === false) {
             throw new RuntimeException('Could not generate an EC P-256 key pair.');
         }
