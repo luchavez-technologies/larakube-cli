@@ -282,7 +282,7 @@ trait LaraKubeOutput
     {
         $lines = str_repeat("\n", $count);
 
-        State::isJsonMode() ? fwrite(STDERR, $lines) : $this->writeConsole($lines);
+        State::isJsonMode() ? State::writeStderr($lines) : $this->writeConsole($lines);
     }
 
     /**
@@ -302,7 +302,7 @@ trait LaraKubeOutput
     {
         $line = '  '.$this->stripConsoleTags($this->maskSecrets($message))."\n";
 
-        State::isJsonMode() ? fwrite(STDERR, $line) : $this->writeConsole($line);
+        State::isJsonMode() ? State::writeStderr($line) : $this->writeConsole($line);
     }
 
     /**
@@ -332,7 +332,7 @@ trait LaraKubeOutput
             return;
         }
 
-        echo $text;
+        State::writeStdout($text);
     }
 
     /**

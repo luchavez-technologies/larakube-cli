@@ -47,9 +47,8 @@ sleep 0.3
 echo "Apply complete! Resources: 4 added, 0 changed, 0 destroyed."
 SH);
 
-    ob_start();
     $result = tofuInterruptRunner()->apply($bin, 'interrupt-stack');
-    $printed = (string) ob_get_clean();
+    $printed = State::strayOutput();
 
     expect($result['code'])->toBe(0)
         ->and($printed)->toContain('Creating...')
@@ -75,9 +74,8 @@ echo "google_compute_instance.larakube: Creating..."
 echo "Apply complete! Resources: 4 added, 0 changed, 0 destroyed."
 SH);
 
-        ob_start();
         $result = tofuInterruptRunner()->apply($bin, 'interrupt-stack-windows');
-        $printed = (string) ob_get_clean();
+        $printed = State::strayOutput();
 
         expect($result['code'])->toBe(0)
             ->and($printed)->toContain('Creating...')
@@ -93,9 +91,7 @@ test('tofu exit codes pass through unchanged', function (): void {
     $directory = TemporaryDirectory::make();
     $bin = tofuInterruptStub($directory, 'echo "Error: quota exceeded"; exit 1');
 
-    ob_start();
     $result = tofuInterruptRunner()->apply($bin, 'interrupt-stack');
-    ob_end_clean();
 
     expect($result['code'])->toBe(1);
 });
@@ -105,10 +101,10 @@ test('under --json the tofu stream stays off stdout', function (): void {
     $directory = TemporaryDirectory::make();
     $bin = tofuInterruptStub($directory, 'echo "Plan: 4 to add"');
 
-    ob_start();
     tofuInterruptRunner()->apply($bin, 'interrupt-stack');
 
-    expect((string) ob_get_clean())->toBeEmpty();
+    expect(State::strayOutput())->toBeEmpty()
+        ->and(State::strayOutput('stderr'))->toContain('Plan: 4 to add');
 
     $directory->delete();
 });
@@ -138,9 +134,8 @@ PHP);
     $bin = ['path' => $path, 'isOpenTofu' => true];
     $originalHandler = pcntl_signal_get_handler(SIGTERM);
 
-    ob_start();
     $result = tofuInterruptRunner()->apply($bin, 'interrupt-stack', ['LARAKUBE_TEST_PARENT_PID' => (string) getmypid()]);
-    $printed = (string) ob_get_clean();
+    $printed = State::strayOutput();
 
     expect($printed)->toContain('Stopping — waiting for OpenTofu')
         ->toContain('Gracefully shutting down')

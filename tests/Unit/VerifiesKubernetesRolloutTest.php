@@ -30,7 +30,9 @@ test('applyAndVerifyRollout returns true only once both apply and rollout succee
         "kubectl rollout status deployment/traefik -n 'traefik' --timeout=120s" => Process::result(exitCode: 0),
     ]);
 
-    expect(rolloutVerifier()->apply('kubectl', '/tmp/manifest.yaml', 'traefik', 'traefik'))->toBeTrue();
+    expect(rolloutVerifier()->apply('kubectl', '/tmp/manifest.yaml', 'traefik', 'traefik'))->toBeTrue()
+        // A helper with no command output still announces its steps, captured rather than printed over the test run.
+        ->and(State::strayOutput())->toContain("▸ Applying traefik's manifests")->toContain('▸ Waiting for traefik to start');
 });
 
 test('applyAndVerifyRollout fails fast when the apply itself fails, without checking rollout', function (): void {

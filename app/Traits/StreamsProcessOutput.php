@@ -41,7 +41,7 @@ trait StreamsProcessOutput
         }
 
         return $process->run($command, function (string $type, string $output): void {
-            State::isJsonMode() ? fwrite(STDERR, $output) : print $output;
+            State::isJsonMode() ? State::writeStderr($output) : State::writeStdout($output);
         })->exitCode();
     }
 
@@ -63,7 +63,7 @@ trait StreamsProcessOutput
         }
 
         $result = $process->run($command, function (string $type, string $output): void {
-            State::isJsonMode() ? fwrite(STDERR, $output) : print $output;
+            State::isJsonMode() ? State::writeStderr($output) : State::writeStdout($output);
         });
 
         // Read combined output from the result itself, not the callback above:
@@ -115,7 +115,7 @@ trait StreamsProcessOutput
         return Process::timeout($timeoutSeconds)
             ->input($input)
             ->run($command, function (string $type, string $output): void {
-                State::isJsonMode() ? fwrite(STDERR, $output) : print $output;
+                State::isJsonMode() ? State::writeStderr($output) : State::writeStdout($output);
             })->exitCode();
     }
 

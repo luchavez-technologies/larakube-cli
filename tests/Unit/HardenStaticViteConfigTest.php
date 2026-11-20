@@ -1,5 +1,6 @@
 <?php
 
+use App\Facades\State;
 use App\Data\ConfigData;
 use App\Enums\AppFramework;
 use App\Traits\GeneratesProjectInfrastructure;
@@ -88,12 +89,10 @@ TS;
     $termwind = new Symfony\Component\Console\Output\BufferedOutput;
     Termwind\renderUsing($termwind);
 
-    ob_start();
-
     try {
         hardenStaticViteHolder()->hardenStaticViteConfig(hardenStaticViteConfigData($dir));
     } finally {
-        $echoed = (string) ob_get_clean();
+        $echoed = State::strayOutput();
         Termwind\renderUsing(new Symfony\Component\Console\Output\NullOutput);
     }
 

@@ -2,6 +2,8 @@
 
 namespace Tests;
 
+use App\Facades\State;
+
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Sleep;
@@ -27,6 +29,9 @@ abstract class TestCase extends BaseTestCase
     {
         parent::setUp();
         $this->pinTestHostBinaries();
+        // Steps and streamed output from a helper with no command output (a test's anonymous class,
+        // an enum) or from a --json run go to memory, not over the test runner's own output.
+        State::captureStrayOutput();
         // Point HOME at a fresh, UNIQUE-PER-TEST temp dir so
         // GlobalConfigData::load() returns defaults (TLD=kube) and never
         // reads the developer's real config. Unique, not a shared fixed

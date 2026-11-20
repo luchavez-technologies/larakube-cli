@@ -160,7 +160,7 @@ trait InteractsWithRemoteSsh
         // Under --json, stdout carries only the one result line, so the
         // remote script's live output goes to stderr with the rest of the log.
         $result = Process::forever()->run($sshCommand, function (string $type, string $output): void {
-            State::isJsonMode() ? fwrite(STDERR, $output) : print $output;
+            State::isJsonMode() ? State::writeStderr($output) : State::writeStdout($output);
         });
 
         return $result->successful();
@@ -175,7 +175,7 @@ trait InteractsWithRemoteSsh
         $sshCommand = "ssh -i {$keyPath} -p {$port} {$user}@{$ip} ".escapeshellarg('bash -lc '.escapeshellarg($script));
 
         $result = Process::forever()->run($sshCommand, function (string $type, string $output): void {
-            State::isJsonMode() ? fwrite(STDERR, $output) : print $output;
+            State::isJsonMode() ? State::writeStderr($output) : State::writeStdout($output);
         });
 
         return $result->successful();

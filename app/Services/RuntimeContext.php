@@ -23,6 +23,13 @@ class RuntimeContext
     protected ?OutputStyle $stdout = null;
 
     /**
+     * Where stray stdout and stderr go instead of the terminal, once captureStrayOutput() is on.
+     *
+     * @var array{stdout: resource, stderr: resource}|null
+     */
+    protected ?array $strayOutput = null;
+
+    /**
      * Sensitive values registered for redaction in CLI output (keyed by value).
      *
      * @var array<string, true>
@@ -76,6 +83,56 @@ class RuntimeContext
     public function isTesting(): bool
     {
         return app()->runningUnitTests();
+    }
+
+    /**
+     * Write to stdout outside a command's own output: from an enum or a helper that has no
+     * OutputStyle, or a process's streamed output.
+     */
+    public function writeStdout(string $text): void
+    {
+        if ($this->strayOutput !== null) {
+            fwrite($this->strayOutput['stdout'], $text);
+
+            return;
+        }
+
+        echo $text;
+    }
+
+    /** Write to stderr: progress under --json, which keeps stdout for the one JSON result. */
+    public function writeStderr(string $text): void
+    {
+        fwrite($this->strayOutput['stderr'] ?? STDERR, $text);
+    }
+
+    /**
+     * Send writeStdout()/writeStderr() to memory instead of the terminal. The test suite turns this
+     * on for every test, so a helper without a command's output can't print over the test runner.
+     */
+    public function captureStrayOutput(): self
+    {
+        $stdout = fopen('php://memory', 'w+');
+        $stderr = fopen('php://memory', 'w+');
+        $this->strayOutput = $stdout !== false && $stderr !== false ? ['stdout' => $stdout, 'stderr' => $stderr] : null;
+
+        return $this;
+    }
+
+    /**
+     * What was written to stdout or stderr since captureStrayOutput().
+     *
+     * @param  'stdout'|'stderr'  $stream
+     */
+    public function strayOutput(string $stream = 'stdout'): string
+    {
+        if ($this->strayOutput === null) {
+            return '';
+        }
+
+        rewind($this->strayOutput[$stream]);
+
+        return (string) stream_get_contents($this->strayOutput[$stream]);
     }
 
     public function setJsonMode(bool $jsonMode = true): self

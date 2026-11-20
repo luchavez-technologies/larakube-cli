@@ -667,7 +667,7 @@ HCL;
 
     private function writeTofuStream(string $output): void
     {
-        State::isJsonMode() ? fwrite(STDERR, $output) : print $output;
+        State::isJsonMode() ? State::writeStderr($output) : State::writeStdout($output);
     }
 
     /** Recursive delete — the workdir includes a nested .terraform/ provider cache. */
