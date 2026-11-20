@@ -33,7 +33,8 @@ enum PhpVersion: string implements HasCommandOptions, HasHiddenComponents, HasSe
     public function getLabel(): string
     {
         return match ($this) {
-            self::PHP_8_5 => 'PHP 8.5 (Latest)',
+            self::PHP_8_6 => 'PHP 8.6 (Newest: Laravel has not certified it yet)',
+            self::PHP_8_5 => 'PHP 8.5 (Recommended)',
             self::PHP_8_4 => 'PHP 8.4',
             self::PHP_8_3 => 'PHP 8.3',
             self::PHP_8_2 => 'PHP 8.2',
@@ -43,6 +44,7 @@ enum PhpVersion: string implements HasCommandOptions, HasHiddenComponents, HasSe
         };
     }
 
+    case PHP_8_6 = '8.6';
     case PHP_8_5 = '8.5';
     case PHP_8_4 = '8.4';
     case PHP_8_3 = '8.3';

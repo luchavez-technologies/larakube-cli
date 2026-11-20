@@ -217,6 +217,7 @@ test('workspace:images also lists the builder images that new pulls', function (
     $result = json_decode(trim(Illuminate\Support\Facades\Artisan::output()), true);
 
     expect(array_column($result['builders'], 'image'))->toBe([
+        'ghcr.io/luchavez-technologies/larakube-builder/php:8.6',
         'ghcr.io/luchavez-technologies/larakube-builder/php:8.5',
         'ghcr.io/luchavez-technologies/larakube-builder/php:8.4',
         'ghcr.io/luchavez-technologies/larakube-builder/php:8.3',

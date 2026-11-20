@@ -13,7 +13,7 @@ final class BuilderImage
     public const REGISTRY = 'ghcr.io/luchavez-technologies/larakube-builder';
 
     /** PHP versions that have a builder image. Scaffolding offers 8.3 and newer. */
-    public const PHP_VERSIONS = ['8.5', '8.4', '8.3'];
+    public const PHP_VERSIONS = ['8.6', '8.5', '8.4', '8.3'];
 
     public const PYTHON_VERSIONS = ['3.12'];
 
