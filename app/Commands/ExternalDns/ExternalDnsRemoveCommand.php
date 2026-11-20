@@ -107,6 +107,8 @@ class ExternalDnsRemoveCommand extends Command
 
             // Cluster-scoped — not garbage-collected with the namespace objects.
             Process::run("{$kubectl} delete clusterrolebinding/external-dns-{$slug} --ignore-not-found");
+
+            $this->unregisterTool($kubectl, ClusterTool::EXTERNAL_DNS, $slug);
         }
 
         // The ClusterRole is shared by every instance, so it only goes when

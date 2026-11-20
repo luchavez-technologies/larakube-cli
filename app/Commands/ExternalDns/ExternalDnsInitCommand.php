@@ -178,6 +178,9 @@ abstract class ExternalDnsInitCommand extends AbstractToolInitCommand
             return $exit;
         }
 
+        // A group has no web address of its own, so it is registered by its slug alone.
+        $this->registerTool($kubectl, ClusterTool::EXTERNAL_DNS, [], $groupSlug);
+
         $this->newLine();
         $this->laraKubeInfo("✅ ExternalDNS is managing {$zoneList}.");
         $this->newLine();

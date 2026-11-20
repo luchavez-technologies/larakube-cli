@@ -637,3 +637,44 @@ test('tool:init --tool=external-dns --provider=google requires credentials non-i
 
     $this->artisan('tool:init --tool=external-dns prod --context=ctx --provider=google --no-interaction --force')->run();
 })->throws(MissingFlagException::class, 'Missing required --gcp-credentials');
+
+test('tool:init --tool=external-dns labels the group as a tool instance and registers it, so its Configuration can be found', function (): void {
+    $registry = Tests\Support\FakeToolRegistry::install();
+    $applied = '';
+    Process::fake(dnsFakes('abc12345', [
+        '*apply -f -*' => function ($process) use (&$applied) {
+            $applied .= $process->command;
+
+            return Process::result(output: 'applied');
+        },
+    ]));
+    dnsZonesSaloonFake(['example.com']);
+
+    $this->artisan('tool:init --tool=external-dns prod --context=ctx --cloudflare-token=t --no-interaction --force')
+        ->assertExitCode(0);
+
+    expect($applied)->toContain('luchtech.dev/tool: external-dns')
+        ->and($applied)->toContain('luchtech.dev/instance: example-com')
+        ->and($applied)->toContain('app: external-dns-example-com')
+        ->and(collect($registry->stored)->where('tool', 'external-dns')->pluck('instance')->all())->toBe(['example-com']);
+});
+
+test('external-dns:remove unregisters the group it removes', function (): void {
+    $registry = Tests\Support\FakeToolRegistry::install([['tool' => 'external-dns', 'instance' => 'example-com']]);
+    Process::fake([
+        '*get deployments*' => Process::result(output: (string) json_encode(['items' => [[
+            'metadata' => [
+                'name' => 'external-dns-example-com',
+                'labels' => ['luchtech.dev/dns-zone' => 'example-com'],
+                'annotations' => ['luchtech.dev/dns-domain' => 'example.com', 'luchtech.dev/dns-owner-id' => 'larakube-abc12345-example-com'],
+            ],
+            'status' => ['readyReplicas' => 1],
+        ]]])),
+        '*delete *' => Process::result(output: 'deleted'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('external-dns:remove prod --context=ctx --zone=example.com --force')->assertExitCode(0);
+
+    expect(collect($registry->stored)->where('tool', 'external-dns')->all())->toBeEmpty();
+});

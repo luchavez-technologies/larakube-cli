@@ -25,6 +25,9 @@
   The ClusterRole is cluster-scoped and read-only, so all instances share one;
   each instance gets its own ServiceAccount and binding.
 --}}
+{{-- The standard tool labels make each group a tool instance, so the Configuration and Logs views
+     find it like any other app. The Deployment's selector keeps its own label: it can't change. --}}
+@php($toolLabels = \App\Data\ToolInstance::forInstance(\App\Enums\ClusterTool::EXTERNAL_DNS, $slug)->labels())
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -72,6 +75,9 @@ metadata:
   labels:
     app.kubernetes.io/name: external-dns
     {{ \App\Support\Labels::DNS_ZONE }}: {{ $slug }}
+@foreach($toolLabels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
   annotations:
     {{ \App\Support\Labels::DNS_DOMAIN }}: {{ implode(',', $zones) }}
     {{ \App\Support\Labels::DNS_OWNER_ID }}: {{ $ownerId }}
@@ -87,6 +93,9 @@ spec:
       labels:
         app: external-dns-{{ $slug }}
         {{ \App\Support\Labels::DNS_ZONE }}: {{ $slug }}
+@foreach($toolLabels as $key => $value)
+        {{ $key }}: {{ $value }}
+@endforeach
     spec:
       serviceAccountName: external-dns-{{ $slug }}
       containers:
