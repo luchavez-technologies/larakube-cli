@@ -23,10 +23,10 @@ class SupabaseMcpCommand extends Command
 {
     use DeploysClusterTool, InteractsWithClusterContext, LaraKubeOutput, ResolvesToolEnvironment;
 
+    public const string MCP_PATH = '/api/mcp?features=docs%2Cdatabase%2Cdebugging%2Cdevelopment';
+
     /** Studio's port inside the cluster, and where it serves MCP with the tools the client may use. */
     private const int STUDIO_PORT = 3000;
-
-    public const string MCP_PATH = '/api/mcp?features=docs%2Cdatabase%2Cdebugging%2Cdevelopment';
 
     protected $signature = 'supabase:mcp
         {environment=local : Environment Supabase is installed in}
