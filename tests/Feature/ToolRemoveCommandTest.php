@@ -61,7 +61,7 @@ test('n8n:remove keeps the database, the encryption key and the data volume by d
         ->assertExitCode(0)
         ->doesntExpectOutputToContain('Dropping database')
         ->expectsOutputToContain('Removing n8n resources...')
-        ->expectsOutputToContain('Persistent data (Plex Commons DB + S3 buckets) was preserved.');
+        ->expectsOutputToContain('Its data (database, files and volumes) was kept.');
 
     Process::assertRan(fn ($p) => str_contains($p->command, 'delete deployment/n8n-flow-example-com service/n8n-flow-example-com ingress/n8n-flow-example-com secret/n8n-smtp-flow-example-com')
         && str_contains($p->command, 'middleware/n8n-vpn-only-flow-example-com'));

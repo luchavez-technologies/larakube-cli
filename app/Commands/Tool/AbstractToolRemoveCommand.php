@@ -175,10 +175,10 @@ abstract class AbstractToolRemoveCommand extends Command
         }
 
         if ($isPurging) {
-            $this->laraKubeInfo("{$tool->getLabel()} removed from {$namespace} in '{$env}' (Commons database destroyed).");
+            $this->laraKubeInfo("{$tool->getLabel()} removed from {$namespace} in '{$env}', and its data was deleted.");
         } else {
             $this->laraKubeInfo("{$tool->getLabel()} removed from {$namespace} in '{$env}'.");
-            $this->line('  <fg=gray>Note:</> Persistent data (Plex Commons DB + S3 buckets) was preserved.');
+            $this->line('  <fg=gray>Note:</> Its data (database, files and volumes) was kept.');
             $this->line("  To restore, re-run <fg=blue>larakube {$tool->initInvocation()}</>. To destroy data, re-run with <fg=yellow>--purge</>.");
         }
 
