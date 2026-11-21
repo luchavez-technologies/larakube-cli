@@ -215,6 +215,7 @@ test('shouldDispatchToWsl routes only local WSL commands into WSL on Windows', f
         ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:accounts', '--provider=do']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:stacks']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:destroy', 'prod']))->toBeFalse()
+        ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:forget', 'old-box']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:scale', 'prod', '--size=s-2vcpu-4gb']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:restart', '--stack=prod']))->toBeFalse()
         ->and($bridge->shouldDispatchToWsl(['larakube', 'cloud:repair', '--stack=prod']))->toBeFalse()

@@ -72,7 +72,7 @@ class WslBridge
      * @var list<string>
      */
     private const HOST_COMMANDS = [
-        'cloud:create', 'cloud:destroy', 'cloud:nuke', 'cloud:scale', 'cloud:repair', 'cloud:harden',
+        'cloud:create', 'cloud:destroy', 'cloud:forget', 'cloud:nuke', 'cloud:scale', 'cloud:repair', 'cloud:harden',
         'cloud:init', 'cloud:init:doks', 'cloud:init:eks', 'cloud:init:gke', 'cloud:migrate',
         'traefik:setup', 'devbox:connect', 'k9s',
         'setup', 'setup:status', 'setup:reinstall', 'update', 'uninstall',
