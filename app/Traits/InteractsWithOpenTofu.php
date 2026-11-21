@@ -14,6 +14,7 @@ use function Laravel\Prompts\confirm;
 
 use RuntimeException;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
+use Throwable;
 
 /**
  * Drives OpenTofu (or a Terraform fallback) for the `cloud:create` / `cloud:destroy`
@@ -332,7 +333,7 @@ trait InteractsWithOpenTofu
         foreach ([$key, "{$key}.tflock"] as $object) {
             try {
                 $response = $connector->send(new \App\Http\Integrations\Cloudflare\Requests\DeleteR2ObjectRequest($config->tofuStateAccountId, $config->tofuStateBucket, $object));
-            } catch (\Throwable) {
+            } catch (Throwable) {
                 return "{$config->tofuStateBucket}/{$key}";
             }
 
