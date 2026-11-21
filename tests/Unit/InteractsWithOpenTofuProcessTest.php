@@ -174,7 +174,7 @@ test('a chosen Google Cloud account reaches OpenTofu as its own token, not gclou
         // Where gcloud is found.
         '*' => Process::result(output: '/opt/google-cloud-sdk/bin/gcloud'),
     ]);
-    App\Facades\State::setTransientGcpAccount('ops@example.com');
+    State::setTransientGcpAccount('ops@example.com');
 
     $env = tofuHelper()->env('mystack', false);
 
@@ -185,10 +185,10 @@ test('a chosen Google Cloud account reaches OpenTofu as its own token, not gclou
 
 test('a service-account key wins over the chosen account, since the key names its own account', function (): void {
     Process::fake(['*' => Process::result(output: 'ya29.should-not-be-used')]);
-    $key = Spatie\TemporaryDirectory\TemporaryDirectory::make()->path('sa.json');
+    $key = TemporaryDirectory::make()->path('sa.json');
     file_put_contents($key, '{"type":"service_account"}');
-    App\Facades\State::setTransientGcpAccount('ops@example.com');
-    App\Facades\State::setTransientGcpCredentials($key);
+    State::setTransientGcpAccount('ops@example.com');
+    State::setTransientGcpCredentials($key);
 
     $env = tofuHelper()->env('mystack', false);
 

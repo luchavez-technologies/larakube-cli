@@ -405,8 +405,8 @@ HCL;
             return null;
         }
 
-        $gcloud = \App\Support\Os::quoteExecutable(CliTool::GCLOUD->resolveBinary() ?? 'gcloud');
-        $result = Process::run("{$gcloud} auth print-access-token --account=".escapeshellarg($account).\App\Support\Os::silenceStderr());
+        $gcloud = Os::quoteExecutable(CliTool::GCLOUD->resolveBinary() ?? 'gcloud');
+        $result = Process::run("{$gcloud} auth print-access-token --account=".escapeshellarg($account).Os::silenceStderr());
         $token = trim($result->output());
 
         if (! $result->successful() || $token === '') {
