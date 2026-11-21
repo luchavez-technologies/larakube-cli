@@ -4,6 +4,7 @@ namespace App\Commands\Cloud;
 
 use App\Data\StackData;
 use App\Exceptions\MissingFlagException;
+use App\Traits\DiscoversUnfinishedStacks;
 use App\Traits\ForgetsStacks;
 use App\Traits\InteractsWithOpenTofu;
 use App\Traits\InteractsWithRemoteSsh;
@@ -23,23 +24,26 @@ use LaravelZero\Framework\Commands\Command;
  */
 class CloudForgetCommand extends Command
 {
-    use ForgetsStacks, InteractsWithOpenTofu, InteractsWithRemoteSsh, LaraKubeOutput, ManagesDevBoxTunnel, RequiresFlagsWhenNonInteractive;
+    use DiscoversUnfinishedStacks, ForgetsStacks, InteractsWithOpenTofu, InteractsWithRemoteSsh, LaraKubeOutput, ManagesDevBoxTunnel, RequiresFlagsWhenNonInteractive;
 
     protected $signature = 'cloud:forget
         {stack : The stack to forget}
         {--force : Forget it without asking to type its name}';
 
-    protected $description = 'Remove a server from LaraKube without deleting it at the cloud provider';
+    protected $description = 'Remove a server, or an unfinished setup, from LaraKube without deleting it at the cloud provider';
 
     public function handle(): int
     {
         $this->renderHeader();
 
         $name = (string) $this->argument('stack');
-        $stack = $this->getGlobalConfig()->findStack($name);
+        // A create that never finished has only its OpenTofu folder (and maybe state in R2); forgetting it
+        // needs no decryption, so it is the way out when destroy can't read that state.
+        $stack = $this->getGlobalConfig()->findStack($name)
+            ?? (is_dir(home_path(".larakube/tofu/{$name}")) ? $this->synthesizeUnfinishedStack($name, home_path(".larakube/tofu/{$name}")) : null);
 
         if ($stack === null) {
-            $this->laraKubeError("No registered stack named '{$name}'.");
+            $this->laraKubeError("No registered stack or unfinished setup named '{$name}'.");
 
             return 1;
         }

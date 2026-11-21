@@ -46,7 +46,7 @@ test('cloud:forget names a stack it does not know', function (): void {
     Process::fake(['*' => Process::result(output: '')]);
 
     $this->artisan('cloud:forget nope --force')
-        ->expectsOutputToContain("No registered stack named 'nope'.")
+        ->expectsOutputToContain("No registered stack or unfinished setup named 'nope'.")
         ->assertExitCode(1);
 });
 
@@ -99,4 +99,24 @@ test('when the state in R2 cannot be deleted, forgetting still finishes and name
         ->assertExitCode(0);
 
     expect(GlobalConfigData::load()->findStack('old-box'))->toBeNull();
+});
+
+test('cloud:forget also clears an unfinished setup, which destroy cannot read', function (): void {
+    cloudForgetUseR2();
+    $config = GlobalConfigData::load();
+    $config->tofuPassphrases['half-made'] = str_repeat('p', 32);
+    $config->save();
+    @mkdir(home_path('.larakube/tofu/half-made'), 0700, true);
+    file_put_contents(home_path('.larakube/tofu/half-made/main.tf'), 'provider "google" {}');
+    Process::fake(['*' => Process::result(output: '')]);
+    Saloon::fake([DeleteR2ObjectRequest::class => MockResponse::make(['success' => true])]);
+
+    $this->artisan('cloud:forget half-made --force')
+        ->expectsOutputToContain("Forgot 'half-made'.")
+        ->assertExitCode(0);
+
+    expect(home_path('.larakube/tofu/half-made'))->not->toBeDirectory()
+        ->and(GlobalConfigData::load()->tofuPassphrases)->not->toHaveKey('half-made');
+    Saloon::assertSent(fn ($request): bool => $request instanceof DeleteR2ObjectRequest
+        && str_contains($request->resolveEndpoint(), 'tofu-state/half-made/terraform.tfstate'));
 });
