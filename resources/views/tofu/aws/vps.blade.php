@@ -159,27 +159,20 @@ resource "aws_instance" "larakube" {
 
   # Cloud-init to ensure root login with the operator's public key
   user_data = <<-EOF
-              #!/bin/bash
-              mkdir -p /root/.ssh
-              chmod 700 /root/.ssh
-              echo '{{ $sshPubKey }}' > /root/.ssh/authorized_keys
-              chmod 600 /root/.ssh/authorized_keys
-              sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
-              if [ -d /etc/ssh/sshd_config.d ]; then
-                sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config.d/*.conf 2>/dev/null || true
-              fi
+#!/bin/bash
+mkdir -p /root/.ssh
+chmod 700 /root/.ssh
+echo '{{ $sshPubKey }}' > /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
+sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+if [ -d /etc/ssh/sshd_config.d ]; then
+  sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config.d/*.conf 2>/dev/null || true
+fi
 @if(isset($sshPort) && (int) $sshPort !== 22)
-              sed -i 's/^#\?Port .*/Port {{ $sshPort }}/' /etc/ssh/sshd_config
-              grep -qxF 'Port {{ $sshPort }}' /etc/ssh/sshd_config || echo 'Port {{ $sshPort }}' >> /etc/ssh/sshd_config
-              if [ -d /etc/ssh/sshd_config.d ]; then
-                sed -i 's/^#\?Port .*/Port {{ $sshPort }}/' /etc/ssh/sshd_config.d/*.conf 2>/dev/null || true
-              fi
-              if systemctl is-active --quiet ssh.socket 2>/dev/null; then
-                systemctl disable --now ssh.socket 2>/dev/null || true
-                systemctl enable --now ssh.service 2>/dev/null || true
-              fi
+@include('tofu.partials.ssh-port-script')
+@else
+systemctl restart ssh || systemctl restart sshd || true
 @endif
-              systemctl reload ssh || systemctl restart ssh || systemctl restart sshd || true
               EOF
 
   tags = {

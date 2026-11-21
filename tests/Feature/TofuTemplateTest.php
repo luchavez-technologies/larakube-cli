@@ -157,3 +157,35 @@ test('GCP and AWS servers get a reserved public IP, so a resize that stops the V
         ->and($aws)->toContain('resource "aws_eip" "larakube"')
         ->and($aws)->toContain('value = aws_eip.larakube.public_ip');
 });
+
+/** The heredoc body as OpenTofu hands it to the VM: `<<-EOF` strips the indentation every line shares. */
+function tofuFirstBootScript(string $hcl): string
+{
+    preg_match('/<<-EOF\n(.*?)\n\s*EOF/s', $hcl, $match);
+    $lines = explode("\n", $match[1] ?? '');
+    $indent = min(array_map(fn (string $line): int => strlen($line) - strlen(ltrim($line, ' ')), array_filter($lines, fn (string $line): bool => trim($line) !== '')));
+
+    return implode("\n", array_map(fn (string $line): string => substr($line, $indent), $lines));
+}
+
+test('a custom SSH port reaches sshd the way Ubuntu applies it under socket activation, on every provider', function (string $template, array $vars): void {
+    $hcl = view($template, $vars + [
+        'region' => 'r1', 'size' => 's1', 'zone' => 'r1-a', 'dropletName' => 'alt-port', 'sshKeyName' => 'alt-key',
+        'sshPubKey' => 'ssh-ed25519 AAAAC3NzaC1lZDI1 user@host', 'keyFingerprint' => '3b:16',
+        'sshSources' => '"0.0.0.0/0"', 'apiSources' => '"0.0.0.0/0"', 'sshPort' => 8443,
+    ])->render();
+
+    $script = tofuFirstBootScript($hcl);
+
+    // A shebang the VM can run, and the port applied by daemon-reload + restart of ssh.socket (LP #2069041).
+    expect(strtok($script, "\n"))->toBe('#!/bin/bash')
+        ->and($script)->toContain("Port 8443")
+        ->and($script)->toContain('systemctl daemon-reload')
+        ->and($script)->toContain('systemctl restart ssh.socket')
+        ->and($script)->not->toContain('disable --now ssh.socket');
+})->with([
+    'DigitalOcean' => ['tofu.do.vps', []],
+    'Google Cloud' => ['tofu.gcp.vps', []],
+    'AWS' => ['tofu.aws.vps', []],
+    'Hetzner' => ['tofu.hetzner.vps', []],
+]);
