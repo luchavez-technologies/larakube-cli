@@ -34,7 +34,7 @@ test('cloud:forget removes the server from LaraKube and never runs OpenTofu or a
         ->assertExitCode(0);
 
     expect(GlobalConfigData::load()->findStack('old-box'))->toBeNull()
-        ->and(is_dir(home_path('.larakube/tofu/old-box')))->toBeFalse();
+        ->and(home_path('.larakube/tofu/old-box'))->not->toBeDirectory();
     Process::assertNotRan(fn ($p): bool => (bool) preg_match('/\b(tofu|terraform|gcloud)\b.*(destroy|delete|apply)/', implode(' ', (array) $p->command)));
 });
 
