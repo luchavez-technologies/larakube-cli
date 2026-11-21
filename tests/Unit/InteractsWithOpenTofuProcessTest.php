@@ -198,6 +198,20 @@ test('a service-account key wins over the chosen account, since the key names it
     Process::assertNotRan(fn ($p): bool => str_contains((string) $p->command, 'print-access-token'));
 });
 
+test('every stack shares one provider plugin cache, so a new server does not download its provider again', function (): void {
+    $env = tofuHelper()->env('mystack', false);
+
+    expect($env['TF_PLUGIN_CACHE_DIR'])->toBe(home_path('.larakube/tofu-plugin-cache'))
+        ->and($env['TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE'])->toBe('true')
+        ->and(home_path('.larakube/tofu-plugin-cache'))->toBeDirectory();
+});
+
+test('a plugin cache directory the caller already chose is kept', function (): void {
+    $env = tofuHelper()->env('mystack', false, ['TF_PLUGIN_CACHE_DIR' => '/ci/cache']);
+
+    expect($env['TF_PLUGIN_CACHE_DIR'])->toBe('/ci/cache');
+});
+
 test('LARAKUBE_TOFU_PASSPHRASE overrides the global-config passphrase and is never persisted', function (): void {
     putenv('LARAKUBE_TOFU_PASSPHRASE=orchestrator-supplied-passphrase');
 

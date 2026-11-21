@@ -529,6 +529,19 @@ HCL;
         // Non-interactive provider installs; never prompt for input mid-run.
         $env['TF_IN_AUTOMATION'] = '1';
 
+        // One copy of each provider plugin for every stack. Without it each new server downloads its
+        // own (Google's is well over 100 MB), so every create and retry waited on the download again.
+        // A caller's own cache directory wins.
+        if (! isset($env['TF_PLUGIN_CACHE_DIR']) && ! getenv('TF_PLUGIN_CACHE_DIR')) {
+            $cache = home_path('.larakube/tofu-plugin-cache');
+            if (is_dir($cache) || @mkdir($cache, 0755, true)) {
+                $env['TF_PLUGIN_CACHE_DIR'] = $cache;
+                // A new stack has no lock file yet, and without this a cached plugin is only used when
+                // the lock file already lists its checksum: the cache would fill but never be read.
+                $env['TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE'] = 'true';
+            }
+        }
+
         return $env;
     }
 
