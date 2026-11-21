@@ -392,6 +392,34 @@ HCL;
     }
 
     /**
+     * An access token for the chosen Google Cloud account, or null to fall back to the credentials
+     * found. Only when no service-account key was given: a key names its own account, while gcloud's
+     * Application Default Credentials file is whichever account last ran `application-default login`.
+     */
+    protected function gcpAccountAccessToken(?string $credentials): ?string
+    {
+        $account = $this->getGcpAccount();
+        $adc = home_path('.config/gcloud/application_default_credentials.json');
+
+        if ($account === null || $account === '' || ($credentials !== null && $credentials !== $adc) || ! CliTool::GCLOUD->isInstalled()) {
+            return null;
+        }
+
+        $gcloud = \App\Support\Os::quoteExecutable(CliTool::GCLOUD->resolveBinary() ?? 'gcloud');
+        $result = Process::run("{$gcloud} auth print-access-token --account=".escapeshellarg($account).\App\Support\Os::silenceStderr());
+        $token = trim($result->output());
+
+        if (! $result->successful() || $token === '') {
+            return null;
+        }
+
+        // Kept out of any output that echoes the environment.
+        State::registerSecret($token);
+
+        return $token;
+    }
+
+    /**
      * The env vars for a Tofu invocation: the DO token plus (OpenTofu only)
      * the encryption config. Extra per-call vars merge in. Passed via
      * Process::env(), which MERGES over the inherited environment — so e.g.
@@ -418,7 +446,12 @@ HCL;
             $env['TF_VAR_gcp_project_id'] = $projectId;
         }
 
-        if ($creds = $this->getGcpCredentials()) {
+        $creds = $this->getGcpCredentials();
+        if (($gcpToken = $this->gcpAccountAccessToken($creds)) !== null) {
+            // The account chosen for this stack, by its own token. gcloud's Application Default
+            // Credentials belong to whoever last ran `application-default login`, not to that account.
+            $env['GOOGLE_OAUTH_ACCESS_TOKEN'] = $gcpToken;
+        } elseif ($creds) {
             if (file_exists($creds)) {
                 $env['GOOGLE_APPLICATION_CREDENTIALS'] = $creds;
                 $env['TF_VAR_gcp_credentials'] = file_get_contents($creds);

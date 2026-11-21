@@ -168,6 +168,36 @@ test('tofuEnv skips the DO token when none is configured and merges extras', fun
         ->and($env['TF_IN_AUTOMATION'])->toBe('1');
 });
 
+test('a chosen Google Cloud account reaches OpenTofu as its own token, not gcloud\'s default credentials', function (): void {
+    Process::fake([
+        "*auth print-access-token --account='ops@example.com'*" => Process::result(output: "ya29.ops-token\n"),
+        // Where gcloud is found.
+        '*' => Process::result(output: '/opt/google-cloud-sdk/bin/gcloud'),
+    ]);
+    App\Facades\State::setTransientGcpAccount('ops@example.com');
+
+    $env = tofuHelper()->env('mystack', false);
+
+    expect($env['GOOGLE_OAUTH_ACCESS_TOKEN'] ?? null)->toBe('ya29.ops-token')
+        ->and($env)->not->toHaveKey('TF_VAR_gcp_credentials')
+        ->and($env)->not->toHaveKey('GOOGLE_APPLICATION_CREDENTIALS');
+});
+
+test('a service-account key wins over the chosen account, since the key names its own account', function (): void {
+    Process::fake(['*' => Process::result(output: 'ya29.should-not-be-used')]);
+    $key = Spatie\TemporaryDirectory\TemporaryDirectory::make()->path('sa.json');
+    file_put_contents($key, '{"type":"service_account"}');
+    App\Facades\State::setTransientGcpAccount('ops@example.com');
+    App\Facades\State::setTransientGcpCredentials($key);
+
+    $env = tofuHelper()->env('mystack', false);
+
+    expect($env)->not->toHaveKey('GOOGLE_OAUTH_ACCESS_TOKEN')
+        ->and($env['GOOGLE_APPLICATION_CREDENTIALS'])->toBe($key)
+        ->and($env['TF_VAR_gcp_credentials'])->toBe('{"type":"service_account"}');
+    Process::assertNotRan(fn ($p): bool => str_contains((string) $p->command, 'print-access-token'));
+});
+
 test('LARAKUBE_TOFU_PASSPHRASE overrides the global-config passphrase and is never persisted', function (): void {
     putenv('LARAKUBE_TOFU_PASSPHRASE=orchestrator-supplied-passphrase');
 
