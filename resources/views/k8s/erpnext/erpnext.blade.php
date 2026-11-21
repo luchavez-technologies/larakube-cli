@@ -9,7 +9,7 @@
     $configMapName = $names->name('bootstrap');
     $dbHost = "mariadb.{$plexNamespace}.svc.cluster.local";
     $redisUrl = "redis://redis.{$plexNamespace}.svc.cluster.local:6379/{$redisIndex}";
-    $image = 'docker.io/frappe/erpnext:v15';
+    $image = 'docker.io/frappe/erpnext:v16.60.0';
 @endphp
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -47,6 +47,9 @@ data:
       sleep 2
     done
 
+    # The sites volume starts empty, and bench finds its apps through sites/apps.txt.
+    ls -1 apps > sites/apps.txt
+
     python3 - <<'PY'
     import json, os
     path = '/home/frappe/frappe-bench/sites/common_site_config.json'
@@ -68,13 +71,23 @@ data:
     })
     with open(path, 'w') as f:
         json.dump(cfg, f, indent=2)
+
+    # Frappe keeps the database password in the site's own config, so carry the
+    # Secret's current one (and the public URL) into it on every start.
+    site = '/home/frappe/frappe-bench/sites/frontend/site_config.json'
+    if os.path.exists(site):
+        with open(site) as f:
+            site_cfg = json.load(f)
+        site_cfg['db_password'] = os.environ['DB_PASSWORD']
+        site_cfg['host_name'] = os.environ['SITE_URL']
+        with open(site, 'w') as f:
+            json.dump(site_cfg, f, indent=1)
     PY
 
     if [ ! -f /home/frappe/frappe-bench/sites/frontend/site_config.json ]; then
       echo "Creating initial ERPNext site 'frontend'..."
       bench new-site frontend \
         --no-setup-db \
-        --no-mariadb-socket \
         --db-host "${DB_HOST}" \
         --db-port 3306 \
         --db-name "${DB_NAME}" \
@@ -82,9 +95,10 @@ data:
         --db-password "${DB_PASSWORD}" \
         --admin-password "${ADMIN_PASSWORD}" \
         --install-app erpnext
+      bench --site frontend set-config host_name "${SITE_URL}"
     else
       echo "Site 'frontend' already initialized — running pending migrations..."
-      bench --site frontend migrate --skip-failing || true
+      bench --site frontend migrate
     fi
   sync-wiring.py: |
     import os
@@ -179,7 +193,7 @@ spec:
       initContainers:
         - name: bootstrap
           image: {{ $image }}
-          command: ["/bin/bash", "/bootstrap/bootstrap.sh"]
+          args: ["/bin/bash", "/bootstrap/bootstrap.sh"]
           env:
             - name: DB_HOST
               value: "{{ $dbHost }}"
@@ -189,6 +203,8 @@ spec:
               value: "{{ $dbName }}"
             - name: REDIS_URL
               value: "{{ $redisUrl }}"
+            - name: SITE_URL
+              value: "https://{{ $host }}"
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -207,7 +223,7 @@ spec:
       containers:
         - name: frontend
           image: {{ $image }}
-          command: ["nginx-entrypoint.sh"]
+          args: ["nginx-entrypoint.sh"]
           env:
             - name: BACKEND
               value: "127.0.0.1:8000"
@@ -215,6 +231,9 @@ spec:
               value: "127.0.0.1:9000"
             - name: FRAPPE_SITE_NAME_HEADER
               value: "frontend"
+            # Traefik terminates TLS; pass its https on so ERPNext builds https links and SSO redirects.
+            - name: TRUST_UPSTREAM_FORWARDED_PROTO
+              value: "on"
             - name: CLIENT_MAX_BODY_SIZE
               value: "50m"
           ports:
@@ -238,11 +257,11 @@ spec:
               cpu: 250m
         - name: backend
           image: {{ $image }}
-          command:
+          args:
             - /bin/bash
             - -c
             - |
-              python3 /bootstrap/sync-wiring.py || true
+              python3 /bootstrap/sync-wiring.py || echo "WARNING: could not sync SSO/SMTP settings into ERPNext; see the error above." >&2
               exec /home/frappe/frappe-bench/env/bin/gunicorn \
                 --chdir=/home/frappe/frappe-bench/sites \
                 --bind=127.0.0.1:8000 \
@@ -275,7 +294,7 @@ spec:
               cpu: 1000m
         - name: websocket
           image: {{ $image }}
-          command: ["node", "/home/frappe/frappe-bench/apps/frappe/socketio.js"]
+          args: ["node", "/home/frappe/frappe-bench/apps/frappe/socketio.js"]
           ports:
             - name: socketio
               containerPort: 9000
@@ -291,7 +310,7 @@ spec:
               cpu: 250m
         - name: worker
           image: {{ $image }}
-          command: ["bench", "worker", "--queue", "short,default,long"]
+          args: ["bench", "worker", "--queue", "short,default,long"]
           volumeMounts:
             - name: sites
               mountPath: /home/frappe/frappe-bench/sites
@@ -304,7 +323,7 @@ spec:
               cpu: 500m
         - name: scheduler
           image: {{ $image }}
-          command: ["bench", "schedule"]
+          args: ["bench", "schedule"]
           volumeMounts:
             - name: sites
               mountPath: /home/frappe/frappe-bench/sites

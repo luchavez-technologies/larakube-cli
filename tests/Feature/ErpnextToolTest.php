@@ -72,3 +72,39 @@ test('k8s.erpnext.erpnext renders a single-pod Recreate deployment with RWO site
         ->toContain('external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"')
         ->toContain("host: {$host}");
 });
+
+test('k8s.erpnext.erpnext boots a fresh sites volume the way the image expects', function (): void {
+    $host = 'erpnext.example.com';
+    $names = ToolInstance::forHost(ClusterTool::ERPNEXT, $host);
+
+    $yaml = view('k8s.erpnext.erpnext', [
+        'host' => $host,
+        'names' => $names,
+        'dbName' => $names->database(),
+        'plexNamespace' => 'larakube-plex',
+        'redisIndex' => 3,
+    ])->render();
+
+    expect($yaml)
+        // bench finds its apps through sites/apps.txt, which an empty volume lacks
+        ->toContain('ls -1 apps > sites/apps.txt')
+        // `command:` would replace the image entrypoint that links the built assets
+        ->not->toMatch('/^\s+command:/m')
+        ->toContain('args: ["nginx-entrypoint.sh"]')
+        ->toMatch('/image: docker\.io\/frappe\/erpnext:v\d+\.\d+\.\d+$/m')
+        ->toContain("site_cfg['db_password'] = os.environ['DB_PASSWORD']")
+        ->toContain('value: "https://erpnext.example.com"')
+        ->toContain('bench --site frontend migrate')
+        ->not->toContain('--skip-failing')
+        ->not->toContain('|| true');
+});
+
+test('ERPNext syncs its OpenBao keys into the db-password and admin-password Secret keys', function (): void {
+    $config = ClusterTool::ERPNEXT->openbaoSyncConfig('main');
+
+    expect($config['secret'])->toBe(ToolInstance::forInstance(ClusterTool::ERPNEXT, 'main')->secret())
+        ->and($config['keyMap'])->toBe([
+            'ERPNEXT_DB_PASSWORD' => 'db-password',
+            'ERPNEXT_ADMIN_PASSWORD' => 'admin-password',
+        ]);
+});

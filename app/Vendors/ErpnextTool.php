@@ -115,7 +115,7 @@ final class ErpnextTool implements ClusterToolVendor, HasCommonsDatabases, HasCo
     {
         return [
             'secret' => 'erpnext-secrets',
-            'keys' => ['DB_PASSWORD', 'ADMIN_PASSWORD'],
+            'keyMap' => ['ERPNEXT_DB_PASSWORD' => 'db-password', 'ERPNEXT_ADMIN_PASSWORD' => 'admin-password'],
         ];
     }
 

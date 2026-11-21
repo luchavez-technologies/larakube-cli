@@ -55,6 +55,8 @@ abstract class ErpnextInitCommand extends AbstractToolInitCommand
         $adminPassword = $this->readClusterSecretKey($kubectl, $ns, $names->secret(), 'admin-password') ?? Str::random(24);
 
         $dbName = $names->database();
+        // Once secrets:wire has OpenBao rotating this role, its password is the real one.
+        $dbPassword = $this->resolveManagedDbPassword($kubectl, $dbName, $dbPassword);
 
         if (! $this->allocateDatabase(DatabaseDriver::MARIADB, $dbName, $dbPassword)) {
             return 1;
@@ -79,11 +81,13 @@ abstract class ErpnextInitCommand extends AbstractToolInitCommand
         });
 
         if ($this->secretsBackendAvailable($kubectl)) {
-            $this->pushClusterSecret($kubectl, $names->secret(), [
-                'DB_PASSWORD' => $dbPassword,
-                'ADMIN_PASSWORD' => $adminPassword,
-            ]);
-            $this->syncClusterSecretToNamespace($kubectl, $names->secret(), $ns);
+            $clusterEnv = $env === 'local' ? 'dev' : $env;
+            // Only secrets:wire registers the rotating role, together with the ExternalSecret that
+            // carries each new password back into this Secret; until then OpenBao keeps a copy.
+            if (! $this->databaseEngineMounted($kubectl)) {
+                $this->pushClusterSecret($kubectl, 'ERPNEXT_DB_PASSWORD', $dbPassword, $clusterEnv);
+            }
+            $this->pushClusterSecret($kubectl, 'ERPNEXT_ADMIN_PASSWORD', $adminPassword, $clusterEnv);
         }
 
         $manifest = view('k8s.erpnext.erpnext', [
