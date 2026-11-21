@@ -60,7 +60,7 @@ trait InteractsWithGcp
         $gcloudAuthed = CliTool::GCLOUD->isInstalled() && Process::run("{$gcloudBin} auth print-access-token".\App\Support\Os::silenceStderr())->successful();
 
         if ($this->flag('no-interaction')) {
-            $projectId = $this->getGcpProjectId();
+            $projectId = $this->projectTheAccountCanUse($gcloudBin, $this->getGcpProjectId());
             if (! $projectId) {
                 $this->laraKubeError('No Google Cloud Project ID found. Pass --gcp-project= or set GOOGLE_PROJECT when running non-interactively.');
 
@@ -184,6 +184,52 @@ trait InteractsWithGcp
         $this->laraKubeInfo("Using Google Cloud project: {$projectId}");
 
         return true;
+    }
+
+    /**
+     * The saved project, when the chosen account can use it. The saved project is whichever one was
+     * last used, possibly under another account; then the account's only project is used instead, or
+     * null with an error naming its projects. A project passed with --gcp-project or set in the
+     * environment is used as given, as is any project when the account's projects can't be listed.
+     */
+    protected function projectTheAccountCanUse(string $gcloudBin, ?string $projectId): ?string
+    {
+        $account = $this->getGcpAccount();
+        $explicit = State::transientGcpProject() || getenv('GOOGLE_PROJECT') || getenv('CLOUDSDK_CORE_PROJECT') || getenv('GCP_PROJECT');
+
+        if ($explicit || ! $account || ! CliTool::GCLOUD->isInstalled()) {
+            return $projectId;
+        }
+
+        $listed = Process::run("{$gcloudBin} projects list --format=\"value(projectId)\" --account=".escapeshellarg($account).\App\Support\Os::silenceStderr());
+        if (! $listed->successful()) {
+            return $projectId;
+        }
+
+        $projects = array_values(array_filter(array_map('trim', explode("\n", $listed->output()))));
+        if ($projectId !== null && in_array($projectId, $projects, true)) {
+            return $projectId;
+        }
+
+        if (count($projects) === 1) {
+            $only = $projects[0];
+            $this->laraKubeInfo($projectId !== null
+                ? "Using {$only}, the only Google Cloud project {$account} can use ({$projectId} belongs to another account)."
+                : "Using {$only}, the only Google Cloud project {$account} can use.");
+            $this->setGcpProjectId($only);
+            State::setTransientGcpProject($only);
+
+            return $only;
+        }
+
+        $choices = implode(', ', $projects);
+        $this->laraKubeError(match (true) {
+            $projects === [] => "{$account} has no Google Cloud project. Create one, then pass --gcp-project=.",
+            $projectId === null => "{$account} has several Google Cloud projects. Pass --gcp-project= with one of: {$choices}.",
+            default => "{$projectId} is not a project {$account} can use. Pass --gcp-project= with one of: {$choices}.",
+        });
+
+        return null;
     }
 
     /**

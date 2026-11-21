@@ -288,3 +288,48 @@ test('cloud:destroy hydrates GCP account and projectId from StackData', function
     expect(State::transientGcpAccount())->toBe('lead@enterprise.com')
         ->and(State::transientGcpProject())->toBe('ent-prod-777');
 });
+
+test('a saved project from another account is swapped for the chosen account\'s only project', function (): void {
+    Process::fake([
+        '*config set account*' => Process::result(''),
+        '*auth print-access-token*' => Process::result('ya29.ops-token'),
+        "*projects list --format=\"value(projectId)\" --account='ops@example.com'*" => Process::result("ops-only-project\n"),
+        '*' => Process::result('/opt/google-cloud-sdk/bin/gcloud'),
+    ]);
+
+    $command = gcpMultiAccountRunner(['--gcp-account' => 'ops@example.com', '--no-interaction' => true]);
+    $command->fakeGlobalConfig->setGcpProjectId('someone-elses-project');
+
+    expect($command->gcpCredentials())->toBeTrue()
+        ->and(State::transientGcpProject())->toBe('ops-only-project')
+        ->and($command->fakeGlobalConfig->getGcpProjectId())->toBe('ops-only-project');
+});
+
+test('a saved project the chosen account can use is kept', function (): void {
+    Process::fake([
+        '*config set account*' => Process::result(''),
+        '*auth print-access-token*' => Process::result('ya29.ops-token'),
+        '*projects list --format="value(projectId)"*' => Process::result("other-project\nkept-project\n"),
+        '*' => Process::result('/opt/google-cloud-sdk/bin/gcloud'),
+    ]);
+
+    $command = gcpMultiAccountRunner(['--gcp-account' => 'ops@example.com', '--no-interaction' => true]);
+    $command->fakeGlobalConfig->setGcpProjectId('kept-project');
+
+    expect($command->gcpCredentials())->toBeTrue()
+        ->and($command->fakeGlobalConfig->getGcpProjectId())->toBe('kept-project');
+});
+
+test('a saved project the account cannot use, with several to choose from, stops instead of guessing', function (): void {
+    Process::fake([
+        '*config set account*' => Process::result(''),
+        '*auth print-access-token*' => Process::result('ya29.ops-token'),
+        '*projects list --format="value(projectId)"*' => Process::result("first-project\nsecond-project\n"),
+        '*' => Process::result('/opt/google-cloud-sdk/bin/gcloud'),
+    ]);
+
+    $command = gcpMultiAccountRunner(['--gcp-account' => 'ops@example.com', '--no-interaction' => true]);
+    $command->fakeGlobalConfig->setGcpProjectId('someone-elses-project');
+
+    expect($command->gcpCredentials())->toBeFalse();
+});

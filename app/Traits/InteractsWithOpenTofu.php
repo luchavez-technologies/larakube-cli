@@ -308,6 +308,43 @@ trait InteractsWithOpenTofu
         $this->deleteDirectoryRecursive(home_path('.larakube/tofu/'.$stack));
     }
 
+    /**
+     * Delete a stack's state from the R2 remote backend, as removeTofuWorkdir() does locally. Its
+     * passphrase goes with the stack, so the object could never be decrypted again, and a later
+     * cloud:create under the same name would fail on it ("cipher: message authentication failed").
+     * Returns the object's key when it could not be deleted, so it can be removed by hand, and null
+     * when it is gone or remote state isn't in use.
+     */
+    protected function removeRemoteTofuState(string $stack): ?string
+    {
+        $config = $this->getGlobalConfig();
+        $key = "tofu-state/{$stack}/terraform.tfstate";
+
+        if (! $config->tofuStateEnabled || ! $config->tofuStateBucket) {
+            return null;
+        }
+
+        if (! $config->tofuStateApiToken || ! $config->tofuStateAccountId) {
+            return "{$config->tofuStateBucket}/{$key}";
+        }
+
+        $connector = \App\Http\Integrations\Cloudflare\CloudflareConnector::make($config->tofuStateApiToken);
+        foreach ([$key, "{$key}.tflock"] as $object) {
+            try {
+                $response = $connector->send(new \App\Http\Integrations\Cloudflare\Requests\DeleteR2ObjectRequest($config->tofuStateAccountId, $config->tofuStateBucket, $object));
+            } catch (\Throwable) {
+                return "{$config->tofuStateBucket}/{$key}";
+            }
+
+            // A lock file only exists mid-run, so a missing one is expected; a missing state is fine too.
+            if (! $response->successful() && $response->status() !== 404) {
+                return "{$config->tofuStateBucket}/{$key}";
+            }
+        }
+
+        return null;
+    }
+
     /** True once a stack has real state (i.e. it has been applied at least once). */
     protected function tofuStateExists(string $stack): bool
     {

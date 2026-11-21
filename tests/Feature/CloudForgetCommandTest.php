@@ -3,7 +3,11 @@
 use App\Data\GlobalConfigData;
 use App\Data\StackData;
 use App\Exceptions\MissingFlagException;
+use App\Http\Integrations\Cloudflare\Requests\DeleteR2ObjectRequest;
 use Illuminate\Support\Facades\Process;
+use Saloon\Http\Faking\MockClient;
+use Saloon\Http\Faking\MockResponse;
+use Saloon\Laravel\Facades\Saloon;
 
 function cloudForgetRegister(): void
 {
@@ -56,3 +60,43 @@ test('cloud:forget needs --force when it cannot ask, and forgets nothing', funct
         expect(GlobalConfigData::load()->findStack('old-box'))->not->toBeNull();
     }
 })->throws(MissingFlagException::class, 'Missing required --force');
+
+function cloudForgetUseR2(): void
+{
+    $config = GlobalConfigData::load();
+    $config->tofuStateEnabled = true;
+    $config->tofuStateBucket = 'larakube-tofu-state';
+    $config->tofuStateEndpoint = 'https://account.r2.cloudflarestorage.com';
+    $config->tofuStateAccountId = 'acct123';
+    $config->tofuStateApiToken = 'cf-token';
+    $config->save();
+}
+
+afterEach(function (): void {
+    MockClient::destroyGlobal();
+});
+
+test('forgetting a server deletes its state in R2 too, so its name can be reused', function (): void {
+    cloudForgetRegister();
+    cloudForgetUseR2();
+    Process::fake(['*' => Process::result(output: '')]);
+    Saloon::fake([DeleteR2ObjectRequest::class => MockResponse::make(['success' => true])]);
+
+    $this->artisan('cloud:forget old-box --force')->assertExitCode(0);
+
+    Saloon::assertSent(fn ($request): bool => $request instanceof DeleteR2ObjectRequest
+        && $request->resolveEndpoint() === 'client/v4/accounts/acct123/r2/buckets/larakube-tofu-state/objects/tofu-state/old-box/terraform.tfstate');
+});
+
+test('when the state in R2 cannot be deleted, forgetting still finishes and names the object to delete by hand', function (): void {
+    cloudForgetRegister();
+    cloudForgetUseR2();
+    Process::fake(['*' => Process::result(output: '')]);
+    Saloon::fake([DeleteR2ObjectRequest::class => MockResponse::make(['success' => false], 403)]);
+
+    $this->artisan('cloud:forget old-box --force')
+        ->expectsOutputToContain('larakube-tofu-state/tofu-state/old-box/terraform.tfstate')
+        ->assertExitCode(0);
+
+    expect(GlobalConfigData::load()->findStack('old-box'))->toBeNull();
+});

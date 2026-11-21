@@ -162,7 +162,7 @@ class CloudDestroyCommand extends Command
 
         if (! $this->tofuStateExists($stack->name)) {
             $this->laraKubeWarn('No Tofu state found for this stack — removing the registry entry only.');
-            $this->forgetStack($stack->name);
+            $this->forgetStackEverywhere($stack);
 
             return 0;
         }
@@ -179,19 +179,5 @@ class CloudDestroyCommand extends Command
         $this->laraKubeInfo("✅ Destroyed and unregistered '{$stack->name}'.");
 
         return 0;
-    }
-
-    private function forgetStack(string $name): void
-    {
-        $config = $this->getGlobalConfig();
-        $config->removeStack($name);
-        $config->save();
-
-        // removeStack() just cleared this stack's encryption passphrase — leaving
-        // its (now permanently undecryptable) local state file behind would break
-        // `cloud:create` under the same stack name later with a "cipher: message
-        // authentication failed" error, since a fresh passphrase can't decrypt
-        // ciphertext it never encrypted.
-        $this->removeTofuWorkdir($name);
     }
 }
