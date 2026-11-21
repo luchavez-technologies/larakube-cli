@@ -244,6 +244,7 @@ test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance
         ClusterTool::SENDREC,
         ClusterTool::RESUME,
         ClusterTool::OCIS,
+        ClusterTool::ERPNEXT,
     ];
 
     foreach (ClusterTool::cases() as $tool) {

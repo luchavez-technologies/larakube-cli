@@ -120,6 +120,7 @@ final class ToolFootprint
             ClusterTool::OCIS => [['name' => 'ocis', 'view' => 'k8s.ocis.ocis', 'optional' => false]],
             ClusterTool::OUTLINE => [['name' => 'outline', 'view' => 'k8s.outline.shared', 'optional' => false]],
             ClusterTool::TEABLE => [['name' => 'teable', 'view' => 'k8s.teable.teable', 'optional' => false]],
+            ClusterTool::ERPNEXT => [['name' => 'erpnext', 'view' => 'k8s.erpnext.erpnext', 'optional' => false]],
             ClusterTool::DOCUMENSO => [['name' => 'documenso', 'view' => 'k8s.documenso.shared', 'optional' => false]],
             ClusterTool::CHATWOOT => [['name' => 'chatwoot', 'view' => 'k8s.chatwoot.shared', 'optional' => false]],
             ClusterTool::HEADLAMP => [['name' => 'headlamp', 'view' => 'k8s.headlamp.headlamp', 'optional' => false]],

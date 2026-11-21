@@ -32,6 +32,7 @@ use App\Vendors\AnalyticsTool;
 use App\Vendors\CrmTool;
 use App\Vendors\DashboardTool;
 use App\Vendors\DnsTool;
+use App\Vendors\ErpnextTool;
 use App\Vendors\ErrorTool;
 use App\Vendors\InsightTool;
 use App\Vendors\LinkTool;
@@ -90,6 +91,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::BULWARK => new WebmailTool,
             self::OUTLINE => new NoteTool,
             self::TEABLE => new SheetTool,
+            self::ERPNEXT => new ErpnextTool,
             self::GRAFANA => new MonitorTool,
             self::TWENTY => new CrmTool,
             self::CHATWOOT => new SupportTool,
@@ -131,6 +133,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::OCIS => 'ownCloud Infinite Scale (oCIS)',
             self::OUTLINE => 'Outline (Team Knowledge Base)',
             self::TEABLE => 'Teable (Spreadsheet Database)',
+            self::ERPNEXT => 'ERPNext (Accounting & ERP)',
             self::DOCUMENSO => 'Documenso (Document Signing)',
             self::CHATWOOT => 'Chatwoot (Customer Support)',
             self::UMAMI => 'Umami (Web Analytics)',
@@ -182,6 +185,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::OCIS => '☁️',
             self::OUTLINE => '📝',
             self::TEABLE => '📋',
+            self::ERPNEXT => '📒',
             self::DOCUMENSO => '✍️',
             self::CHATWOOT => '💬',
             self::UMAMI => '📊',
@@ -229,6 +233,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::OCIS => 'oCIS',
             self::OUTLINE => 'Outline',
             self::TEABLE => 'Teable',
+            self::ERPNEXT => 'ERPNext',
             self::DOCUMENSO => 'Documenso',
             self::CHATWOOT => 'Chatwoot',
             self::UMAMI => 'Umami',
@@ -292,6 +297,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::OCIS => SharedClusterService::DRIVE,
             self::OUTLINE => SharedClusterService::NOTES,
             self::TEABLE => SharedClusterService::SHEET,
+            self::ERPNEXT => SharedClusterService::ERPNEXT,
             self::DOCUMENSO => SharedClusterService::SIGN,
             self::CHATWOOT => SharedClusterService::SUPPORT,
             self::UMAMI, self::PLAUSIBLE => SharedClusterService::ANALYTICS,
@@ -684,6 +690,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::OCIS => 'drive',
             self::OUTLINE => 'notes',
             self::TEABLE => 'sheets',
+            self::ERPNEXT => null,
             self::DOCUMENSO => 'sign',
             self::CHATWOOT => 'support',
             self::UMAMI, self::PLAUSIBLE => null,
@@ -740,6 +747,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::OCIS => 'Cloud Storage & File Sync',
             self::OUTLINE => 'Team Wiki & Knowledge Base',
             self::TEABLE => 'Spreadsheet Database',
+            self::ERPNEXT => 'Double-Entry Accounting, Invoicing & ERP',
             self::DOCUMENSO => 'Digital Document Signing',
             self::CHATWOOT => 'Customer Support & Live Chat',
             self::UMAMI => 'Privacy-Focused Web Analytics',
@@ -775,6 +783,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::PENPOT => ['Backend', 'Frontend', 'Exporter'],
             self::GLITCHTIP => ['Web API', 'Worker'],
             self::LIVEKIT => ['LiveKit Server', 'JWT Auth'],
+            self::ERPNEXT => ['Frontend', 'Backend', 'WebSocket', 'Worker', 'Scheduler'],
             default => [],
         };
     }
@@ -808,6 +817,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::OCIS => [ToolCategory::STORAGE, ToolCategory::PRODUCTIVITY],
             self::OUTLINE => [ToolCategory::PRODUCTIVITY, ToolCategory::COMMUNICATION],
             self::TEABLE => [ToolCategory::DATABASE, ToolCategory::PRODUCTIVITY, ToolCategory::BACKEND],
+            self::ERPNEXT => [ToolCategory::PRODUCTIVITY],
             self::DOCUMENSO => [ToolCategory::PRODUCTIVITY, ToolCategory::SECURITY],
             self::CHATWOOT => [ToolCategory::COMMUNICATION, ToolCategory::PRODUCTIVITY],
             self::UMAMI, self::PLAUSIBLE => [ToolCategory::ANALYTICS],
@@ -980,6 +990,13 @@ enum ClusterTool: string implements HasWorkloadComponents
                 'databases' => ['postgresql'],
                 'cache' => ['redis'],
                 'storage' => ['s3'],
+                'auth' => ['oidc'],
+                'mail' => ['smtp'],
+            ],
+            self::ERPNEXT => [
+                'databases' => ['mariadb'],
+                'cache' => ['redis'],
+                'storage' => [],
                 'auth' => ['oidc'],
                 'mail' => ['smtp'],
             ],
@@ -1366,6 +1383,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::RESUME => ['reactive-resume-user' => 'Can log in to Reactive Resume'],
             self::DOCUMENSO => ['documenso-user' => 'Can log in to Documenso'],
             self::TEABLE => ['teable-user' => 'Can log in to Teable'],
+            self::ERPNEXT => ['erpnext-user' => 'Can log in to ERPNext'],
             // Confirmed live 2026-08-21: admin@ourfridays.com (a partner-org
             // identity, same one Outline's incident involved) hit Penpot's
             // auto-provision-on-first-login prompt via plain Zitadel SSO —
@@ -1605,6 +1623,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::PENPOT, self::YOPASS, self::DOCUMENSO,
             self::N8N, self::WINDMILL, self::KUTT, self::UMAMI, self::PLAUSIBLE,
             self::TEABLE, self::PLANKA, self::KUMA, self::METABASE,
+            self::ERPNEXT,
             self::GLITCHTIP, self::CHATWOOT, self::SENDREC, self::RESUME,
             self::OCIS => true,
             default => false,
@@ -1925,6 +1944,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::N8N, self::WINDMILL, self::DOCUMENSO, self::POCKETBASE, self::SUPABASE,
             self::DIRECTUS, self::WORDPRESS, self::KUTT, self::UMAMI, self::PLAUSIBLE,
             self::TEABLE, self::PLANKA, self::HEADLAMP,
+            self::ERPNEXT,
             self::LIVEKIT, self::BULWARK, self::OCIS, self::NETBIRD,
             self::TWENTY, self::VAULTWARDEN, self::MATRIX, self::STALWART,
             self::OPENBAO, self::ZITADEL,
@@ -2172,6 +2192,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     case OCIS = 'ocis';
     case OUTLINE = 'outline';
     case TEABLE = 'teable';
+    case ERPNEXT = 'erpnext';
     case DOCUMENSO = 'documenso';
     case CHATWOOT = 'chatwoot';
     case UMAMI = 'umami';

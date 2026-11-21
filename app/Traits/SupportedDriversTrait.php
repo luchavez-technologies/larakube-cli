@@ -52,6 +52,7 @@ trait SupportedDriversTrait
         }
 
         return match ($subject) {
+            ClusterTool::ERPNEXT => [DatabaseDriver::MARIADB, DatabaseDriver::MYSQL],
             ClusterTool::MATRIX => [DatabaseDriver::POSTGRESQL],
             ClusterTool::PLANKA, ClusterTool::OUTLINE,
             ClusterTool::TWENTY, ClusterTool::DOCUMENSO, ClusterTool::CHATWOOT,

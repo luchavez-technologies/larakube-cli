@@ -318,6 +318,13 @@ final class ToolInitSpec
                 InitOption::force(),
                 InitOption::proxied(),
             ],
+            ClusterTool::ERPNEXT => [
+                InitOption::context(),
+                InitOption::domain('Base domain OR full host for ERPNext (example.com → erpnext.example.com)'),
+                InitOption::vpnOnly(),
+                InitOption::force(),
+                InitOption::proxied(),
+            ],
             ClusterTool::TWENTY => [
                 InitOption::context(),
                 InitOption::domain('Base domain OR full host for Twenty (example.com → prefix.example.com)'),
@@ -434,6 +441,7 @@ final class ToolInitSpec
             ClusterTool::SENDREC => 'Deploy the Sendrec async video platform stack into larakube-shared',
             ClusterTool::STALWART => 'Deploy the Stalwart mail server (SMTP/IMAP/JMAP) into larakube-shared',
             ClusterTool::TEABLE => 'Deploy Teable (spreadsheet database) into larakube-shared',
+            ClusterTool::ERPNEXT => 'Deploy ERPNext (open-source accounting & ERP) into larakube-shared',
             ClusterTool::TWENTY => 'Deploy the Twenty CRM stack into larakube-shared',
             ClusterTool::UMAMI => 'Deploy the Umami web analytics stack into larakube-shared',
             ClusterTool::VAULTWARDEN => 'Deploy the cluster-wide Vaultwarden team password manager into larakube-vault',

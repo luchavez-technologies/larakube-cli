@@ -62,6 +62,7 @@ enum SharedClusterService: string
             self::DESIGN => 'k8s.penpot.ingress',
             self::RESUME => 'k8s.resume.ingress',
             self::PASTE => 'k8s.yopass.ingress',
+            self::ERPNEXT => 'k8s.erpnext.ingress',
         };
     }
 
@@ -146,7 +147,7 @@ enum SharedClusterService: string
     public function isLocalOnly(): bool
     {
         return match ($this) {
-            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::FORGEJO, self::N8N, self::WINDMILL, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM, self::DATA, self::RECORD, self::DASHBOARD, self::MEET, self::DESIGN, self::RESUME, self::PASTE => false,
+            self::GRAFANA, self::UPTIME_KUMA, self::VAULT, self::VPN, self::ERRORS, self::SECRETS, self::FORGEJO, self::N8N, self::WINDMILL, self::SHEET, self::DRIVE, self::INSIGHTS, self::MAIL, self::CHAT, self::SSO, self::WEBMAIL, self::NOTES, self::ANALYTICS, self::TASKS, self::SIGN, self::SUPPORT, self::LINK, self::CRM, self::DATA, self::RECORD, self::DASHBOARD, self::MEET, self::DESIGN, self::RESUME, self::PASTE, self::ERPNEXT => false,
             default => true,
         };
     }
@@ -174,6 +175,7 @@ enum SharedClusterService: string
             self::N8N => 'n8n',
             self::WINDMILL => 'Windmill',
             self::SHEET => 'Sheet',
+            self::ERPNEXT => 'ERPNext',
             self::DRIVE => 'Drive',
             self::INSIGHTS => 'Metabase',
             self::MAIL => 'Stalwart',
@@ -233,6 +235,7 @@ enum SharedClusterService: string
             self::N8N => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::N8N).' -n larakube-shared',
             self::WINDMILL => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::WINDMILL).' -n larakube-shared',
             self::SHEET => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::TEABLE).' -n larakube-shared',
+            self::ERPNEXT => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::ERPNEXT).' -n larakube-shared',
             self::DRIVE => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::OCIS).' -n larakube-shared',
             self::INSIGHTS => 'deployment -l '.\App\Support\Labels::toolSelector(ClusterTool::METABASE).' -n larakube-shared',
             // By label: Stalwart's Deployment is named per instance.
@@ -361,6 +364,7 @@ enum SharedClusterService: string
             self::N8N => 'Refreshing n8n ingress...',
             self::WINDMILL => 'Refreshing Windmill ingress...',
             self::SHEET => 'Refreshing Sheet ingress...',
+            self::ERPNEXT => 'Refreshing ERPNext ingress...',
             self::DRIVE => 'Refreshing Drive ingress...',
             self::INSIGHTS => 'Refreshing Insights (Metabase) ingress...',
             self::MAIL => 'Refreshing Stalwart (Mail) ingress...',
@@ -406,6 +410,7 @@ enum SharedClusterService: string
     case N8N = 'n8n';
     case WINDMILL = 'windmill';
     case SHEET = 'sheet';
+    case ERPNEXT = 'erpnext';
     case INSIGHTS = 'insights';
     case MAIL = 'mail';
     case CHAT = 'chat';

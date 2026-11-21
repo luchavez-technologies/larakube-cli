@@ -6,6 +6,7 @@ use App\Commands\Bulwark\BulwarkInitCommand;
 use App\Commands\Chatwoot\ChatwootInitCommand;
 use App\Commands\Directus\DirectusInitCommand;
 use App\Commands\Documenso\DocumensoInitCommand;
+use App\Commands\Erpnext\ErpnextInitCommand;
 use App\Commands\ExternalDns\ExternalDnsInitCommand;
 use App\Commands\Forgejo\ForgejoInitCommand;
 use App\Commands\GlitchTip\GlitchTipInitCommand;
@@ -91,6 +92,7 @@ final class ToolInitCommands
             ResumeInitCommand::class => new class($tool) extends ResumeInitCommand {},
             OpenBaoInitCommand::class => new class($tool) extends OpenBaoInitCommand {},
             TeableInitCommand::class => new class($tool) extends TeableInitCommand {},
+            ErpnextInitCommand::class => new class($tool) extends ErpnextInitCommand {},
             ZitadelInitCommand::class => new class($tool) extends ZitadelInitCommand {},
             TwentyInitCommand::class => new class($tool) extends TwentyInitCommand {},
             KumaInitCommand::class => new class($tool) extends KumaInitCommand {},
@@ -135,6 +137,7 @@ final class ToolInitCommands
             ClusterTool::STALWART => StalwartInitCommand::class,
             ClusterTool::SUPABASE => SupabaseInitCommand::class,
             ClusterTool::TEABLE => TeableInitCommand::class,
+            ClusterTool::ERPNEXT => ErpnextInitCommand::class,
             ClusterTool::TWENTY => TwentyInitCommand::class,
             ClusterTool::UMAMI => UmamiInitCommand::class,
             ClusterTool::VAULTWARDEN => VaultwardenInitCommand::class,
