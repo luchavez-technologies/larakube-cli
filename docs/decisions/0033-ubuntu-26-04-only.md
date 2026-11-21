@@ -1,6 +1,6 @@
 # 0033: Ubuntu 26.04 LTS Is the Only Supported Server OS
 
-**Status:** Accepted
+**Status:** Superseded by [0034](0034-ubuntu-24-04-until-containerd-fix.md)
 
 ## Context
 

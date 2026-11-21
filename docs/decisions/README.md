@@ -48,4 +48,5 @@ Consequences**. Statuses: `Accepted`, `Superseded by NNNN`, `Proposed`.
 | [0030](0030-paused-apps-stay-paused.md) | A paused app stays paused: no install or update applies over it, even with `--force` | Accepted |
 | [0031](0031-capacity-verdicts-and-ignore-capacity.md) | Capacity verdicts (`fits`/`tight`/`wont_fit_now`/`never_fits`) and `--ignore-capacity` | Accepted |
 | [0032](0032-supabase-dedicated-postgres.md) | Dedicated per-instance `supabase/postgres` for Supabase | Accepted |
-| [0033](0033-ubuntu-26-04-only.md) | Ubuntu 26.04 LTS is the only supported server OS; `--ubuntu-version` removed | Accepted |
+| [0033](0033-ubuntu-26-04-only.md) | Ubuntu 26.04 LTS is the only supported server OS; `--ubuntu-version` removed | Superseded by 0034 |
+| [0034](0034-ubuntu-24-04-until-containerd-fix.md) | Servers boot Ubuntu 24.04 LTS until k3s ships the containerd AppArmor fix | Accepted |

@@ -96,7 +96,7 @@ resource "hcloud_firewall" "larakube" {
 resource "hcloud_server" "larakube" {
   name         = "{{ $dropletName }}"
   server_type  = "{{ $size }}"
-  image        = "{{ $image ?? 'ubuntu-26.04' }}"
+  image        = "{{ $image ?? 'ubuntu-24.04' }}"
   location     = "{{ $region }}"
   ssh_keys     = [local.ssh_key_id]
   firewall_ids = [hcloud_firewall.larakube.id]
