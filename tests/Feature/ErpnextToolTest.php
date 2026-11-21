@@ -91,6 +91,10 @@ test('k8s.erpnext.erpnext boots a fresh sites volume the way the image expects',
         // `command:` would replace the image entrypoint that links the built assets
         ->not->toMatch('/^\s+command:/m')
         ->toContain('args: ["nginx-entrypoint.sh"]')
+        // the bench's own Python, which has frappe installed; the system python3 does not
+        ->toContain('/home/frappe/frappe-bench/env/bin/python /bootstrap/sync-wiring.py')
+        // gunicorn binds 127.0.0.1, so a probe on the pod IP would never pass
+        ->not->toContain('port: 8000')
         ->toMatch('/image: docker\.io\/frappe\/erpnext:v\d+\.\d+\.\d+$/m')
         ->toContain("site_cfg['db_password'] = os.environ['DB_PASSWORD']")
         ->toContain('value: "https://erpnext.example.com"')

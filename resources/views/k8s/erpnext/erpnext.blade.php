@@ -261,7 +261,7 @@ spec:
             - /bin/bash
             - -c
             - |
-              python3 /bootstrap/sync-wiring.py || echo "WARNING: could not sync SSO/SMTP settings into ERPNext; see the error above." >&2
+              /home/frappe/frappe-bench/env/bin/python /bootstrap/sync-wiring.py || echo "WARNING: could not sync SSO/SMTP settings into ERPNext; see the error above." >&2
               exec /home/frappe/frappe-bench/env/bin/gunicorn \
                 --chdir=/home/frappe/frappe-bench/sites \
                 --bind=127.0.0.1:8000 \
@@ -272,14 +272,11 @@ spec:
                 --timeout=120 \
                 --preload \
                 frappe.app:application
+          # No probe of its own: gunicorn listens on 127.0.0.1 only, and the frontend's
+          # /api/method/ping check already goes through nginx to it.
           ports:
             - name: gunicorn
               containerPort: 8000
-          readinessProbe:
-            tcpSocket:
-              port: 8000
-            initialDelaySeconds: 10
-            periodSeconds: 10
           volumeMounts:
             - name: sites
               mountPath: /home/frappe/frappe-bench/sites
