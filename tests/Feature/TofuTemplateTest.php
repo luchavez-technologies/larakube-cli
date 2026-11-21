@@ -179,7 +179,7 @@ test('a custom SSH port reaches sshd the way Ubuntu applies it under socket acti
 
     // A shebang the VM can run, and the port applied by daemon-reload + restart of ssh.socket (LP #2069041).
     expect(strtok($script, "\n"))->toBe('#!/bin/bash')
-        ->and($script)->toContain("Port 8443")
+        ->and($script)->toContain('Port 8443')
         ->and($script)->toContain('systemctl daemon-reload')
         ->and($script)->toContain('systemctl restart ssh.socket')
         ->and($script)->not->toContain('disable --now ssh.socket');
