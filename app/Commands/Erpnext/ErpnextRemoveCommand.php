@@ -26,12 +26,14 @@ class ErpnextRemoveCommand extends AbstractToolRemoveCommand
             new ResourceRef('Service', $deployment, $namespace),
             new ResourceRef('Ingress', $deployment, $namespace),
             new ResourceRef('ConfigMap', $names->name('bootstrap'), $namespace),
-            new ResourceRef('Secret', $names->secret(), $namespace),
             new ResourceRef('Secret', $names->secret(SecretKind::SMTP), $namespace),
             new ResourceRef('Secret', $names->secret(SecretKind::OIDC), $namespace),
         ];
 
+        // The site on the kept volume and database still uses these passwords, so a
+        // later install must find them again; only a purge, which drops both, removes them.
         if ((bool) $this->option('purge')) {
+            $targets[] = new ResourceRef('Secret', $names->secret(), $namespace);
             $targets[] = new ResourceRef('PersistentVolumeClaim', $names->volume('sites'), $namespace);
         }
 

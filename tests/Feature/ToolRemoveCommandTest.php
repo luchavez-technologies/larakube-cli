@@ -404,3 +404,39 @@ test('removal keeps the Commons tenant registered when dropping its database fai
 
     Process::assertNotRan(fn ($process) => str_contains((string) $process->command, 'create configmap plex-registry'));
 });
+
+/** A registered ERPNext instance at erpnext.example.com. */
+function erpnextRemoveFakes(array $extra = []): array
+{
+    $deployment = 'erpnext-erpnext-example-com';
+
+    return [...registeredToolRemoveFakes('erpnext:remove', 'erpnext-example-com', 'erpnext.example.com'),
+        "*get deployment/{$deployment} *-o json*" => Process::result(output: json_encode(['kind' => 'Deployment', 'metadata' => ['name' => $deployment, 'labels' => []]])),
+        "*get deployment/{$deployment} *-o name*" => Process::result(output: "deployment/{$deployment}"),
+        '*get deployment/*' => Process::result(output: ''),
+        ...$extra,
+        '*' => Process::result(output: ''),
+    ];
+}
+
+test('erpnext:remove keeps the passwords the kept site still uses, so a reinstall shows the real login', function (): void {
+    Process::fake(erpnextRemoveFakes(['* delete *' => Process::result(output: 'deleted')]));
+
+    $this->artisan('erpnext:remove local --force')->assertExitCode(0);
+
+    Process::assertRan(fn ($p) => str_contains($p->command, 'deployment/erpnext-erpnext-example-com'));
+    Process::assertNotRan(fn ($p) => str_contains($p->command, 'secret/erpnext-secrets-')
+        || str_contains($p->command, 'persistentvolumeclaim/'));
+});
+
+test('erpnext:remove --purge deletes the passwords along with the site volume', function (): void {
+    Process::fake(erpnextRemoveFakes([
+        '*exec *' => Process::result(output: 'dropped'),
+        '* delete *' => Process::result(output: 'deleted'),
+    ]));
+
+    $this->artisan('erpnext:remove local --force --purge')->assertExitCode(0);
+
+    Process::assertRan(fn ($p) => str_contains($p->command, 'secret/erpnext-secrets-erpnext-example-com')
+        && str_contains($p->command, 'persistentvolumeclaim/erpnext-sites-erpnext-example-com'));
+});
