@@ -72,6 +72,9 @@ abstract class N8nInitCommand extends AbstractToolInitCommand
         // credential saved in n8n undecryptable.
         $dbPassword = $cluster->secretValue($ns, $names->secret(), 'db-password') ?? Str::random(24);
         $encryptionKey = $cluster->secretValue($ns, $names->secret(), 'encryption-key') ?? Str::random(32);
+        // Shared by n8n and its task-runner sidecar; reused so a re-run doesn't
+        // restart both just to swap a token.
+        $runnersAuthToken = $cluster->secretValue($ns, $names->secret(), 'runners-auth-token') ?? Str::random(48);
 
         $dbName = $names->database();
 
@@ -90,6 +93,7 @@ abstract class N8nInitCommand extends AbstractToolInitCommand
         $this->withSpin('Syncing secrets...', fn () => $cluster->putSecret($ns, $names->secret(), [
             'encryption-key' => $encryptionKey,
             'db-password' => $dbPassword,
+            'runners-auth-token' => $runnersAuthToken,
         ], $names->labels()));
 
         $customEnv = $this->seedCustomEnvAtInit($cluster, $names, $kubectl, $env, $customEnvSet, $customEnvSetSecret);

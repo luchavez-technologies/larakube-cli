@@ -110,13 +110,15 @@ test('forgejo manifest parses a declared resources block on its server Deploymen
         ->and($container->limitsMemoryBytes)->toBe(ManifestResourceParser::memoryQuantityToBytes('1Gi'));
 });
 
-test('n8n manifest parses a declared resources block on its single container', function (): void {
+test('n8n manifest parses declared resources on n8n and its task-runner sidecar', function (): void {
     $profiles = parseManifest(n8nRenderedManifest());
 
     $deployment = collect($profiles)->first(fn (WorkloadResourceProfile $p) => $p->kind === 'Deployment');
 
     expect($deployment)->not->toBeNull()
-        ->and($deployment->containers)->toHaveCount(1);
+        ->and($deployment->containers)->toHaveCount(2)
+        ->and($deployment->containers[1]->name)->toBe('runners')
+        ->and($deployment->containers[1]->declared)->toBeTrue();
 
     $container = $deployment->containers[0];
 
@@ -126,8 +128,9 @@ test('n8n manifest parses a declared resources block on its single container', f
         ->and($container->requestsMemoryBytes)->toBe(ManifestResourceParser::memoryQuantityToBytes('512Mi'))
         ->and($container->limitsCpuMillicores)->toBe(1000)
         ->and($container->limitsMemoryBytes)->toBe(ManifestResourceParser::memoryQuantityToBytes('1Gi'))
-        ->and($deployment->requestsCpuMillicoresPerReplica())->toBe(100)
-        ->and($deployment->requestsMemoryBytesPerReplica())->toBe(ManifestResourceParser::memoryQuantityToBytes('512Mi'));
+        // The capacity guard counts the runner too: 100m + 50m, 512Mi + 128Mi.
+        ->and($deployment->requestsCpuMillicoresPerReplica())->toBe(150)
+        ->and($deployment->requestsMemoryBytesPerReplica())->toBe(ManifestResourceParser::memoryQuantityToBytes('640Mi'));
 });
 
 test('monitoring stack parses declared resources across all six components, including the promtail DaemonSet', function (): void {

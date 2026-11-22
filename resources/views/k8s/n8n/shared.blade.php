@@ -83,6 +83,29 @@ spec:
               value: https://{{ $host }}/
             - name: N8N_EDITOR_BASE_URL
               value: https://{{ $host }}/
+            {{-- Code nodes run in the `runners` sidecar below, not inside n8n:
+                 internal mode is deprecated, shares n8n's own access, and has no
+                 Python. Both containers share the pod's network, so the broker
+                 stays on its default 127.0.0.1 and is never exposed. --}}
+            - name: N8N_RUNNERS_MODE
+              value: external
+            - name: N8N_RUNNERS_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $names->secret() }}
+                  key: runners-auth-token
+            {{-- Pinned where a future n8n release changes the default:
+                 a Code node keeps its 5 minutes instead of dropping to 1,
+                 community nodes must be verified, and the Compression node
+                 takes the new, smaller unzip limits now. --}}
+            - name: N8N_RUNNERS_TASK_TIMEOUT
+              value: "300"
+            - name: N8N_UNVERIFIED_PACKAGES_ENABLED
+              value: "false"
+            - name: N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES
+              value: "268435456"
+            - name: N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES
+              value: "1000"
 @if($noPlex)
             - name: DB_TYPE
               value: sqlite
@@ -140,6 +163,25 @@ spec:
           volumeMounts:
             - name: storage
               mountPath: /home/node/.n8n
+        {{-- Runs JavaScript and Python Code nodes for n8n. Its launcher starts
+             each runner on demand and stops it when idle. --}}
+        - name: runners
+          image: {{ $tool->image('runners') }}
+          env:
+            - name: N8N_RUNNERS_TASK_BROKER_URI
+              value: http://127.0.0.1:5679
+            - name: N8N_RUNNERS_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $names->secret() }}
+                  key: runners-auth-token
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
       volumes:
         - name: storage
           persistentVolumeClaim:

@@ -44,3 +44,24 @@ test('n8n deployment wires the custom env overlay via envFrom, ahead of its own 
     $rendered = n8nManifest();
     expect(strpos($rendered, 'envFrom:'))->toBeLessThan(strpos($rendered, 'env:'));
 });
+
+test('n8n runs Code nodes in an external runners sidecar on the same version, sharing one token', function (): void {
+    $deployment = collect(n8nDocuments(n8nManifest()))->firstWhere('kind', 'Deployment');
+    $containers = collect($deployment['spec']['template']['spec']['containers'])->keyBy('name');
+    $n8nEnv = collect($containers['n8n']['env'])->keyBy('name');
+    $runnersEnv = collect($containers['runners']['env'])->keyBy('name');
+
+    $version = fn (string $image): string => substr($image, strrpos($image, ':') + 1);
+
+    expect($n8nEnv['N8N_RUNNERS_MODE']['value'])->toBe('external')
+        ->and($runnersEnv['N8N_RUNNERS_TASK_BROKER_URI']['value'])->toBe('http://127.0.0.1:5679')
+        // Both sides read the same Secret key, so the token always matches.
+        ->and($n8nEnv['N8N_RUNNERS_AUTH_TOKEN']['valueFrom']['secretKeyRef']['key'])->toBe('runners-auth-token')
+        ->and($runnersEnv['N8N_RUNNERS_AUTH_TOKEN']['valueFrom'])->toBe($n8nEnv['N8N_RUNNERS_AUTH_TOKEN']['valueFrom'])
+        // The runners image must match n8n's version exactly.
+        ->and($version($containers['runners']['image']))->toBe($version($containers['n8n']['image']))
+        // The broker stays on its default loopback address, unexposed.
+        ->and($n8nEnv->has('N8N_RUNNERS_BROKER_LISTEN_ADDRESS'))->toBeFalse()
+        ->and($n8nEnv['N8N_RUNNERS_TASK_TIMEOUT']['value'])->toBe('300')
+        ->and($n8nEnv['N8N_UNVERIFIED_PACKAGES_ENABLED']['value'])->toBe('false');
+});
