@@ -297,20 +297,24 @@ abstract class AbstractToolRemoveCommand extends Command
      * "was never there". Null when the probe itself failed (cluster or
      * Postgres unreachable) — that is not evidence the database is absent.
      */
-    protected function commonsDatabaseExists(string $kubectl, string $plexNs, string $database): ?bool
+    protected function commonsDatabaseExists(string $kubectl, string $plexNs, string $database, DatabaseDriver $driver = DatabaseDriver::POSTGRESQL): ?bool
     {
-        $client = DatabaseDriver::POSTGRESQL->commonsAdminClient();
-
-        $result = Process::run(
-            "{$kubectl} exec deploy/postgres -n {$plexNs} -- {$client} -U postgres -tAc "
-            .escapeshellarg('SELECT 1 FROM pg_database WHERE datname = '.$this->quoteSqlLiteral($database)),
-        );
+        $result = $driver === DatabaseDriver::POSTGRESQL
+            ? Process::run(
+                "{$kubectl} exec deploy/postgres -n {$plexNs} -- {$driver->commonsAdminClient()} -U postgres -tAc "
+                .escapeshellarg('SELECT 1 FROM pg_database WHERE datname = '.$this->quoteSqlLiteral($database)),
+            )
+            : Process::run(
+                "{$kubectl} exec deploy/{$driver->value} -n {$plexNs} -- sh -c ".escapeshellarg($driver->commonsListDatabasesCommand()),
+            );
 
         if (! $result->successful()) {
             return null;
         }
 
-        return trim($result->output()) === '1';
+        return $driver === DatabaseDriver::POSTGRESQL
+            ? trim($result->output()) === '1'
+            : in_array($database, array_map('trim', explode("\n", $result->output())), true);
     }
 
     /** Single-quoted SQL literal, doubling any embedded quote. */
@@ -338,7 +342,8 @@ abstract class AbstractToolRemoveCommand extends Command
 
         $ok = true;
         $plexNs = $this->plexNamespace();
-        $client = DatabaseDriver::POSTGRESQL->commonsAdminClient();
+        $driver = $this->commonsDatabaseDriver($engine);
+        $client = $driver->commonsAdminClient();
 
         foreach ($databases as $database) {
             // Reported, never used to skip: DROP DATABASE IF EXISTS succeeds on a
@@ -346,22 +351,24 @@ abstract class AbstractToolRemoveCommand extends Command
             // reports success and drops nothing. Silence there reads as "data
             // destroyed" when it means the opposite. The drop still runs either
             // way — a probe that cannot reach Postgres must not stop a teardown.
-            $exists = $this->commonsDatabaseExists($kubectl, $plexNs, $database);
+            $exists = $this->commonsDatabaseExists($kubectl, $plexNs, $database, $driver);
             if ($exists === null) {
-                $this->laraKubeWarn("Could not check whether Commons database '{$database}' exists — Postgres or the cluster is unreachable.");
+                $this->laraKubeWarn("Could not check whether Commons database '{$database}' exists — {$driver->getLabel()} or the cluster is unreachable.");
             } elseif (! $exists) {
                 $this->laraKubeWarn("No Commons database named '{$database}' — nothing to drop.");
                 $this->line('  <fg=gray>If this tool has data, its tenant is under a different name and survives this purge.</>');
             }
 
-            $sql = $this->buildDropTenantSql($database, $database);
+            $sql = $driver === DatabaseDriver::POSTGRESQL
+                ? $this->buildDropTenantSql($database, $database)
+                : (string) $driver->commonsDropSql($database, $database);
             $temporaryDirectory = (new TemporaryDirectory)->permission(0700)->deleteWhenDestroyed()->create();
             $tmp = $temporaryDirectory->path().'/drop.sql';
             file_put_contents($tmp, $sql);
 
             $dropped = $this->removeResources(
                 "Dropping database '{$database}' from Plex Commons (if exists)...",
-                "{$kubectl} exec -i -n {$plexNs} deploy/postgres -- sh -c "
+                "{$kubectl} exec -i -n {$plexNs} deploy/{$driver->value} -- sh -c "
                 .escapeshellarg($client).' < '.escapeshellarg($tmp),
             );
             $ok = $dropped && $ok;
@@ -445,6 +452,29 @@ abstract class AbstractToolRemoveCommand extends Command
      * The engine $instance runs, for tools with more than one, read from the
      * live cluster. null means unknown, so every engine's tenants are covered.
      */
+    /**
+     * The Commons engine holding this tool's database: the instance's own engine
+     * when it chose one, else the only relational engine the tool supports (ERPNext
+     * runs on MariaDB alone), else Postgres, where every other Commons tenant lives.
+     */
+    protected function commonsDatabaseDriver(?string $engine): DatabaseDriver
+    {
+        $relational = [DatabaseDriver::POSTGRESQL, DatabaseDriver::MYSQL, DatabaseDriver::MARIADB];
+        $asDriver = fn (string $name): ?DatabaseDriver => DatabaseDriver::tryFrom($name === 'postgresql' ? 'postgres' : $name);
+
+        $chosen = $engine !== null ? $asDriver($engine) : null;
+        if ($chosen !== null && in_array($chosen, $relational, true)) {
+            return $chosen;
+        }
+
+        $supported = array_values(array_filter(
+            array_map($asDriver, $this->tool()->commonsCapabilities($engine)['databases'] ?? []),
+            fn (?DatabaseDriver $driver): bool => $driver !== null && in_array($driver, $relational, true),
+        ));
+
+        return count($supported) === 1 ? $supported[0] : DatabaseDriver::POSTGRESQL;
+    }
+
     protected function instanceEngine(string $kubectl, ?string $instance): ?string
     {
         return null;

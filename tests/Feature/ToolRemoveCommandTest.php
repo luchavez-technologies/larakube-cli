@@ -439,4 +439,10 @@ test('erpnext:remove --purge deletes the passwords along with the site volume', 
 
     Process::assertRan(fn ($p) => str_contains($p->command, 'secret/erpnext-secrets-erpnext-example-com')
         && str_contains($p->command, 'persistentvolumeclaim/erpnext-sites-erpnext-example-com'));
+
+    // ERPNext's database lives in the Commons MariaDB, never Postgres.
+    Process::assertRan(fn ($p) => str_contains($p->command, 'exec -i -n')
+        && str_contains($p->command, 'deploy/mariadb')
+        && str_contains($p->command, 'mariadb -uroot'));
+    Process::assertNotRan(fn ($p) => str_contains($p->command, 'deploy/postgres'));
 });
