@@ -194,3 +194,19 @@ test('Commons spec preserves custom CPU limits and connection tuning overrides',
         ->and($spec['services']['seaweedfs']['cpu'])->toBe('1500m')
         ->and($spec['services']['seaweedfs']['memory'])->toBe('2Gi');
 });
+
+test('Redis Commons manifest uses tcpSocket probes with generous timeout instead of exec redis-cli ping', function (): void {
+    $spec = plexSpec()->defaultCommonsSpec();
+    $yaml = view('k8s.plex.commons', [
+        'spec' => $spec,
+        'specJsonIndented' => '',
+        'isLocal' => true,
+        'withMonitoring' => false,
+    ])->render();
+
+    expect($yaml)
+        ->not->toContain('redis-cli')
+        ->toContain("tcpSocket:\n              port: 6379")
+        ->toContain('timeoutSeconds: 3')
+        ->toContain('failureThreshold: 6');
+});

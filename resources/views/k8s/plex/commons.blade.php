@@ -440,15 +440,18 @@ spec:
               memory: "{{ $spec['services']['redis']['memory'] }}"
               cpu: "{{ $spec['services']['redis']['cpu'] ?? '250m' }}"
           readinessProbe:
-            exec:
-              command: ["redis-cli", "ping"]
+            tcpSocket:
+              port: {{ $spec['services']['redis']['port'] }}
             initialDelaySeconds: 2
             periodSeconds: 5
+            timeoutSeconds: 3
           livenessProbe:
-            exec:
-              command: ["redis-cli", "ping"]
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            tcpSocket:
+              port: {{ $spec['services']['redis']['port'] }}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 6
 @if($withMonitoring ?? false)
         - name: redis-exporter
           image: {{ \App\Enums\CacheDriver::REDIS->exporterImage() }}
