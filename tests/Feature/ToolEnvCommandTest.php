@@ -109,3 +109,38 @@ test('tool:env refuses when the tool is not registered on this cluster', functio
         ->assertExitCode(1)
         ->expectsOutputToContain('is not registered on this cluster');
 });
+
+test('tool:env --json reports each setting with its saved value or its default', function (): void {
+    toolEnvRegistry([['tool' => 'n8n', 'instance' => 'flow-example-com', 'host' => 'flow.example.com', 'engine' => 'n8n']]);
+
+    // Only the time limit was saved; the community-nodes switch is still on its default.
+    $configMap = json_encode([
+        'apiVersion' => 'v1', 'kind' => 'ConfigMap',
+        'metadata' => ['name' => 'n8n-custom-flow-example-com', 'namespace' => 'larakube-shared'],
+        'data' => ['N8N_RUNNERS_TASK_TIMEOUT' => '600'],
+    ]);
+
+    Process::fake([
+        '*get configmap/*' => Process::result(output: $configMap),
+        '*get secret/*' => Process::result(output: ''),
+    ]);
+
+    Artisan::call('tool:env', ['--tool' => 'n8n', '--domain' => 'flow.example.com', '--json' => true]);
+    $settings = collect(json_decode(Artisan::output(), true)['settings'])->keyBy('key');
+
+    expect($settings['N8N_RUNNERS_TASK_TIMEOUT'])->toMatchArray(['type' => 'number', 'unit' => 'seconds', 'default' => '300', 'value' => '600', 'overridden' => true])
+        ->and($settings['N8N_UNVERIFIED_PACKAGES_ENABLED'])->toMatchArray(['type' => 'boolean', 'default' => 'true', 'value' => 'true', 'overridden' => false]);
+});
+
+test('tool:env --json reports no settings for a tool that offers none', function (): void {
+    toolEnvRegistry();
+
+    Process::fake([
+        '*get configmap/*' => Process::result(output: ''),
+        '*get secret/*' => Process::result(output: ''),
+    ]);
+
+    Artisan::call('tool:env', ['--tool' => 'pocketbase', '--json' => true]);
+
+    expect(json_decode(Artisan::output(), true)['settings'])->toBe([]);
+});

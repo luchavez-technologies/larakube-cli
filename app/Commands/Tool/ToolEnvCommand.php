@@ -3,6 +3,7 @@
 namespace App\Commands\Tool;
 
 use App\Data\ToolInstance;
+use App\Data\ToolSetting;
 use App\Enums\ClusterTool;
 use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
@@ -92,6 +93,11 @@ class ToolEnvCommand extends Command
                 'namespace' => $names->namespace(),
                 'vaulted' => $vaulted,
                 'items' => $rows,
+                // Settings offered in a form, each with its saved value or default.
+                'settings' => array_map(
+                    fn (ToolSetting $setting): array => $setting->withValue($configMap[$setting->key] ?? $secret[$setting->key] ?? null),
+                    $tool->settings((string) ($entry['engine'] ?? '') ?: null),
+                ),
             ]);
 
             return 0;

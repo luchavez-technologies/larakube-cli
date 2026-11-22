@@ -16,6 +16,7 @@ use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
+use App\Contracts\HasToolSettings;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWhiteLabel;
 use App\Contracts\HasWorkloadComponents;
@@ -23,6 +24,7 @@ use App\Contracts\UsesCliOidc;
 use App\Contracts\UsesForwardAuth;
 use App\Data\ClusterToolComponentData;
 use App\Data\ToolInstance;
+use App\Data\ToolSetting;
 use App\Services\K8s\ToolFootprint;
 use App\Services\Tools\ToolInitSpec;
 use App\Tools\N8n;
@@ -63,6 +65,19 @@ enum ClusterTool: string implements HasWorkloadComponents
      * app/Tools for FLOW, a plain class instance for a single-vendor one.
      * Every category has exactly one vendor.
      */
+    /**
+     * The settings this tool offers in a form (Desktop's Settings card), each
+     * stored as a custom environment variable. Empty for a tool with none.
+     *
+     * @return list<ToolSetting>
+     */
+    public function settings(?string $engine = null): array
+    {
+        $vendor = $this->vendor($engine);
+
+        return $vendor instanceof HasToolSettings ? $vendor->settings() : [];
+    }
+
     public function vendor(?string $engine = null): ClusterToolVendor
     {
         if ($this->isLegacy()) {

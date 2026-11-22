@@ -7,8 +7,10 @@ use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDeploymentBaseName;
 use App\Contracts\HasImages;
 use App\Contracts\HasSmtpWiring;
+use App\Contracts\HasToolSettings;
 use App\Contracts\HasVpnWiring;
 use App\Data\ToolInstance;
+use App\Data\ToolSetting;
 use App\Enums\ClusterTool;
 use App\Enums\SecretKind;
 use App\Tools\Concerns\PinsImages;
@@ -17,7 +19,7 @@ use App\Tools\Concerns\PinsImages;
  * n8n, one of the FLOW engines. SSO is an n8n Enterprise feature, so it has
  * no oidcEnv(); owners sign in with n8n's own accounts.
  */
-final class N8n implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasImages, HasSmtpWiring, HasVpnWiring
+final class N8n implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasImages, HasSmtpWiring, HasToolSettings, HasVpnWiring
 {
     use PinsImages;
 
@@ -34,6 +36,37 @@ final class N8n implements ClusterToolVendor, HasCommonsDatabases, HasDeployment
         return [
             'n8n' => 'docker.n8n.io/n8nio/n8n:2.47.7',
             'runners' => 'docker.io/n8nio/runners:2.47.7',
+        ];
+    }
+
+    public function settings(): array
+    {
+        return [
+            new ToolSetting(
+                key: 'N8N_UNVERIFIED_PACKAGES_ENABLED',
+                label: 'Allow unverified community nodes',
+                help: 'Lets n8n install and load community nodes n8n has not reviewed. n8n 3.0 turns this off by default; nodes already installed stop loading when it is off.',
+                type: 'boolean',
+                default: 'true',
+            ),
+            new ToolSetting(
+                key: 'N8N_RUNNERS_TASK_TIMEOUT',
+                label: 'Code node time limit',
+                help: 'How long one Code node may run before n8n stops it. n8n 3.0 lowers the default to 60 seconds.',
+                type: 'number',
+                default: '300',
+                unit: 'seconds',
+            ),
+        ];
+    }
+
+    public function defaultEnv(): array
+    {
+        return [
+            ...array_column(array_map(fn (ToolSetting $setting): array => [$setting->key, $setting->default], $this->settings()), 1, 0),
+            // n8n 3.0's smaller unzip limits for the Compression node, taken early.
+            'N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES' => '268435456',
+            'N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES' => '1000',
         ];
     }
 

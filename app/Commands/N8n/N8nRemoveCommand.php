@@ -57,6 +57,7 @@ class N8nRemoveCommand extends AbstractToolRemoveCommand
             new ResourceRef('Ingress', $deployment, $ns),
             new ResourceRef('Secret', $names->secret(SecretKind::SMTP), $ns),
             new ResourceRef('ConfigMap', $this->customEnvConfigMapName($names), $ns),
+            new ResourceRef('ConfigMap', $names->name('defaults'), $ns),
             new ResourceRef('Secret', $this->customEnvSecretName($names), $ns),
         ];
 

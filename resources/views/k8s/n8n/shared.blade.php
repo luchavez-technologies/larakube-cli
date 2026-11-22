@@ -4,7 +4,24 @@
     $dbName ??= $names->database();
     $deployment = $names->deployment();
     $labels = $names->labels();
+    $defaultsConfigMap = $names->name('defaults');
 @endphp
+{{-- n8n's defaults, applied before the custom variables so a saved setting or
+     custom variable always overrides them. --}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $defaultsConfigMap }}
+  namespace: {{ $names->namespace() }}
+  labels:
+@foreach($labels as $key => $value)
+    {{ $key }}: {{ $value }}
+@endforeach
+data:
+@foreach($tool->defaultEnv() as $key => $value)
+  {{ $key }}: "{{ $value }}"
+@endforeach
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -64,6 +81,8 @@ spec:
                `--env-secret=` at install), even empty. --}}
           envFrom:
             - configMapRef:
+                name: {{ $defaultsConfigMap }}
+            - configMapRef:
                 name: {{ $customEnvConfigMap }}
             - secretRef:
                 name: {{ $customEnvSecret }}
@@ -94,18 +113,6 @@ spec:
                 secretKeyRef:
                   name: {{ $names->secret() }}
                   key: runners-auth-token
-            {{-- Pinned where a future n8n release changes the default:
-                 a Code node keeps its 5 minutes instead of dropping to 1,
-                 community nodes must be verified, and the Compression node
-                 takes the new, smaller unzip limits now. --}}
-            - name: N8N_RUNNERS_TASK_TIMEOUT
-              value: "300"
-            - name: N8N_UNVERIFIED_PACKAGES_ENABLED
-              value: "false"
-            - name: N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES
-              value: "268435456"
-            - name: N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES
-              value: "1000"
 @if($noPlex)
             - name: DB_TYPE
               value: sqlite

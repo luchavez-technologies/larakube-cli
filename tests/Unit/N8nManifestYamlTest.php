@@ -36,10 +36,19 @@ test('n8n deployment wires the custom env overlay via envFrom, ahead of its own 
     $deployment = collect($documents)->firstWhere('kind', 'Deployment');
     $container = $deployment['spec']['template']['spec']['containers'][0];
 
-    expect($container['envFrom'])->toBe([
-        ['configMapRef' => ['name' => 'flow-n8n-custom']],
-        ['secretRef' => ['name' => 'flow-n8n-custom']],
-    ]);
+    // n8n's defaults come first, so a saved setting or custom variable wins.
+    $defaults = $container['envFrom'][0]['configMapRef']['name'];
+    expect($defaults)->toStartWith('n8n-defaults-')
+        ->and(array_slice($container['envFrom'], 1))->toBe([
+            ['configMapRef' => ['name' => 'flow-n8n-custom']],
+            ['secretRef' => ['name' => 'flow-n8n-custom']],
+        ])
+        ->and(collect($documents)->firstWhere('metadata.name', $defaults)['data'])->toBe([
+            'N8N_UNVERIFIED_PACKAGES_ENABLED' => 'true',
+            'N8N_RUNNERS_TASK_TIMEOUT' => '300',
+            'N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES' => '268435456',
+            'N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES' => '1000',
+        ]);
 
     $rendered = n8nManifest();
     expect(strpos($rendered, 'envFrom:'))->toBeLessThan(strpos($rendered, 'env:'));
@@ -62,6 +71,7 @@ test('n8n runs Code nodes in an external runners sidecar on the same version, sh
         ->and($version($containers['runners']['image']))->toBe($version($containers['n8n']['image']))
         // The broker stays on its default loopback address, unexposed.
         ->and($n8nEnv->has('N8N_RUNNERS_BROKER_LISTEN_ADDRESS'))->toBeFalse()
-        ->and($n8nEnv['N8N_RUNNERS_TASK_TIMEOUT']['value'])->toBe('300')
-        ->and($n8nEnv['N8N_UNVERIFIED_PACKAGES_ENABLED']['value'])->toBe('false');
+        // Settings live in the defaults ConfigMap, never as fixed env a user can't override.
+        ->and($n8nEnv->has('N8N_RUNNERS_TASK_TIMEOUT'))->toBeFalse()
+        ->and($n8nEnv->has('N8N_UNVERIFIED_PACKAGES_ENABLED'))->toBeFalse();
 });
