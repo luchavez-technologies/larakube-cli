@@ -143,7 +143,10 @@ test('runner config mounts the Podman socket into jobs and maps every label to t
         ->and($runnerConfig['container']['docker_host'])->toBe('unix:///run/podman/podman.sock')
         ->and($runnerConfig['container']['network'])->toBe('host')
         ->and($forgejo['metadata']['labels']['luchtech.dev/tool'])->toBe('forgejo')
-        ->and($images->all())->toContain('quay.io/podman/stable:v5.8.4', 'code.forgejo.org/forgejo/runner:13.1.0');
+        ->and($images->all())->toContain('quay.io/podman/stable:v5.8.4', 'code.forgejo.org/forgejo/runner:13.1.0')
+        // Podman and the runner each run as PID 1 and never reap their
+        // children; the pause container does once the namespace is shared.
+        ->and($runner['spec']['template']['spec']['shareProcessNamespace'] ?? false)->toBeTrue();
 });
 
 test('changing the runner config changes the runner pod checksum, so the pod restarts to read it', function (): void {

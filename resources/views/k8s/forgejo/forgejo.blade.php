@@ -407,6 +407,12 @@ spec:
       annotations:
         {{ \App\Support\Labels::CONFIG_CHECKSUM }}: "{{ substr(hash('sha256', $runnerConfig), 0, 16) }}"
     spec:
+      {{-- Neither `podman system service` nor `forgejo-runner` reaps the
+           children it leaves behind (conmon after each job container, git after
+           each checkout), and each runs as its container's PID 1, so they piled
+           up as zombies. Sharing the pod's process namespace makes the pause
+           container PID 1 for both, and it reaps them. --}}
+      shareProcessNamespace: true
       initContainers:
         {{-- Offline registration: turn the shared secret into /data/.runner
              before the daemon starts. Fails loudly (pod never starts) rather
