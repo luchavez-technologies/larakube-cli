@@ -318,7 +318,7 @@ trait DeploysClusterTool
         // creating the Ingress is what triggers Traefik's ACME HTTP-01
         // challenge. The local CA stands in for Let's Encrypt.
         if ($registered && $host !== null) {
-            $this->issueLocalCertForHost($host);
+            $this->issueLocalCertForHost($host, $kubectl);
         }
 
         return $registered;
@@ -421,7 +421,7 @@ trait DeploysClusterTool
      * would let a host work in dev that could never get a certificate in
      * production — hiding the failure exactly where it is cheapest to catch.
      */
-    protected function issueLocalCertForHost(string $host): void
+    protected function issueLocalCertForHost(string $host, string $kubectl): void
     {
         if (! $this->isLocalCertHost($host)) {
             return;
@@ -438,7 +438,8 @@ trait DeploysClusterTool
         // One cert, one SAN, for this host alone — the same shape ACME
         // produces in production when the Ingress appears.
         $this->ensureHostCertExists($host);
-        $this->applyTraefikCertResources('traefik');
+        // The cluster this tool was installed on, never whichever one is selected.
+        $this->applyTraefikCertResources('traefik', Kubectl::fromPrefix($kubectl));
     }
 
     /**

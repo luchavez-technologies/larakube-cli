@@ -425,16 +425,30 @@ trait InteractsWithTraefik
     /**
      * Rebuild traefik-config ConfigMap and traefik-certificates Secret from all
      * locally-generated certs, then restart Traefik to pick up changes.
+     *
+     * Local clusters only. These resources replace Traefik's whole certificate
+     * setup, so applied to a cloud cluster they swap its Let's Encrypt
+     * certificates for the local CA's and every real domain breaks. The
+     * selected kube context is whatever was used last, which can be a cloud
+     * cluster, so a non-local target is refused rather than trusted.
      */
-    protected function applyTraefikCertResources(string $namespace): void
+    protected function applyTraefikCertResources(string $namespace, ?Kubectl $cluster = null): void
     {
+        $cluster ??= Kubectl::current();
+        $context = $cluster->context ?? trim($cluster->raw(['config', 'current-context'])->output);
+        if (! Kubectl::isLocalContextName($context)) {
+            $this->laraKubeWarn("Skipped the local certificates: '{$context}' is not a local cluster.");
+
+            return;
+        }
+
         // 1. ConfigMap — dynamic YAML listing all cert pairs
         $temporaryDirectory = TemporaryDirectory::make();
         $tmpCertsYml = $temporaryDirectory->path('traefik-certs.yml');
         file_put_contents($tmpCertsYml, $this->buildTraefikCertsYml());
         // Server-side apply avoids storing base64 cert blobs in the
         // last-applied-configuration annotation (256 KB limit overflows with multiple certs).
-        $local = Kubectl::current();
+        $local = $cluster;
         $local->putConfigMap($namespace, 'traefik-config', ['traefik-certs.yml' => (string) file_get_contents($tmpCertsYml)], serverSide: true);
         $temporaryDirectory->delete();
 

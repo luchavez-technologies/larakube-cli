@@ -154,7 +154,7 @@ class ToolRebindCommand extends Command
             return 1;
         }
 
-        $this->issueLocalCertForHost($newHost);
+        $this->issueLocalCertForHost($newHost, $kubectl);
 
         $this->laraKubeInfo("✅ {$tool->getLabel()}{$suffix} now serves https://{$newHost}.");
         $this->line("  <fg=gray>Resource names (Deployment/PVC/Secret/DB) are unchanged — instance:</> <fg=blue>{$instance}</>");

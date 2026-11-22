@@ -53,3 +53,44 @@ test('isTraefikInstalled is false when every detection strategy comes up empty',
 
     expect(traefikDetector()->installed())->toBeFalse();
 });
+
+/** The trait's local-certificate step, with its warning captured instead of printed. */
+function traefikCertApplier(): object
+{
+    return new class
+    {
+        use InteractsWithTraefik;
+
+        /** @var list<string> */
+        public array $warnings = [];
+
+        public function laraKubeWarn(string $message): void
+        {
+            $this->warnings[] = $message;
+        }
+
+        public function apply(?App\Services\Kubectl $cluster): void
+        {
+            $this->applyTraefikCertResources('traefik', $cluster);
+        }
+    };
+}
+
+test('local certificates are never applied to a cloud cluster, named or merely selected', function (?string $context): void {
+    Process::fake([
+        '*config current-context*' => Process::result(output: "larakube-203.0.113.10\n"),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $applier = traefikCertApplier();
+    $applier->apply($context === null ? null : App\Services\Kubectl::forContext($context));
+
+    Process::assertNotRan(fn ($process) => str_contains((string) $process->command, 'traefik-config')
+        || str_contains((string) $process->command, 'traefik-certificates')
+        || str_contains((string) $process->command, 'rollout'));
+    expect($applier->warnings)->toHaveCount(1)
+        ->and($applier->warnings[0])->toContain('larakube-203.0.113.10');
+})->with([
+    'the install named the cloud cluster' => ['larakube-203.0.113.10'],
+    'the cloud cluster was only the selected context' => [null],
+]);
