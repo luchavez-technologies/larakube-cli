@@ -128,8 +128,8 @@ class PlexInitCommand extends Command
         }
 
         // 6b. Garage needs a one-time layout assignment + shared admin key
-        // creation before it can accept bucket operations — unlike MinIO's
-        // env-injected root creds, Garage generates its key server-side.
+        // creation before it can accept bucket operations —
+        // Garage generates its key server-side.
         // Idempotent: skipped once already done, so re-running plex:init
         // never re-assigns the layout or rotates the key.
         if (in_array('garage', $enabled, true)) {
@@ -308,16 +308,14 @@ class PlexInitCommand extends Command
                 }
             }
 
-            // Some backends have a second, local-only management host — MinIO's
-            // web console (port 9001) and SeaweedFS's master admin UI (port
-            // 9333). Both give full cross-tenant visibility (MinIO via its
-            // shared root creds, SeaweedFS with no auth at all — see
-            // commons.blade.php), so — unlike the S3 host above — these are
-            // ONLY ever auto-derived for a local dev cluster, never prompted
-            // for or set on a real cluster. Runs even when 'host' was already
-            // set (reconcile), so an existing Commons picks it up too.
+            // SeaweedFS has a second, local-only management host — its
+            // master admin UI (port 9333). It gives full cross-tenant
+            // visibility (with no auth at all — see commons.blade.php),
+            // so — unlike the S3 host above — this is ONLY ever auto-derived
+            // for a local dev cluster, never prompted for or set on a real
+            // cluster. Runs even when 'host' was already set (reconcile),
+            // so an existing Commons picks it up too.
             $managementHosts = [
-                'minio' => ['field' => 'console_host', 'label' => 'console'],
                 'seaweedfs' => ['field' => 'admin_host', 'label' => 'admin'],
             ];
 
@@ -337,10 +335,9 @@ class PlexInitCommand extends Command
     /**
      * One-time Garage bootstrap: assign + apply a single-node layout (required
      * before ANY bucket/key operation works), then create the one shared
-     * "commons-admin" key every tenant bucket gets granted to (mirrors MinIO's
-     * shared root-credential model — but Garage generates its key server-side;
-     * there's no way to pre-set it the way MinIO's env-injected root user/pass
-     * can be). Both steps are idempotent: layout readiness is checked via exit
+     * "commons-admin" key every tenant bucket gets granted to (Garage generates
+     * its key server-side; there's no way to pre-set it via env-injected
+     * credentials). Both steps are idempotent: layout readiness is checked via exit
      * code (a real bucket operation either works or it doesn't — far more
      * reliable than matching `garage status`'s exact wording, which varies
      * across versions), and the key is looked up by name before creating one.
@@ -420,7 +417,7 @@ class PlexInitCommand extends Command
         }
 
         // Same "add if missing, never rotate" pattern ensureCommonsSecret() uses.
-        // If MinIO already claimed these fields first, Garage's tenants would
+        // If another backend already claimed these fields first, Garage's tenants would
         // get the wrong credentials — enabling more than one credentialed S3
         // backend in the same Commons at once isn't fully supported yet.
         $existing = trim(Process::run(
@@ -429,7 +426,7 @@ class PlexInitCommand extends Command
 
         if ($existing !== '') {
             $this->laraKubeWarn('Garage\'s admin key was created, but plex-admin already has S3 credentials from another backend.');
-            $this->laraKubeLine('  Only one shared credential pair is supported today — Garage tenants would get the wrong ones. Enabling more than one credentialed object-storage backend (e.g. MinIO + Garage) in the same Commons at once isn\'t fully supported yet.');
+            $this->laraKubeLine('  Only one shared credential pair is supported today — Garage tenants would get the wrong ones. Enabling more than one credentialed object-storage backend (e.g. SeaweedFS + Garage) in the same Commons at once isn\'t fully supported yet.');
 
             return;
         }
@@ -507,10 +504,6 @@ class PlexInitCommand extends Command
             if (! empty($cfg['host'])) {
                 $this->line("      <fg=gray>public:</> <fg=cyan>https://{$cfg['host']}</>");
                 $publicHosts[] = (string) $cfg['host'];
-            }
-            if (! empty($cfg['console_host'])) {
-                $this->line("      <fg=gray>console:</> <fg=cyan>https://{$cfg['console_host']}</>");
-                $publicHosts[] = (string) $cfg['console_host'];
             }
             if (! empty($cfg['admin_host'])) {
                 $this->line("      <fg=gray>admin:</> <fg=cyan>https://{$cfg['admin_host']}</>");

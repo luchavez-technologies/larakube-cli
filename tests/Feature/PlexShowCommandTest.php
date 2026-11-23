@@ -236,7 +236,6 @@ test('plex:show --json reports the service catalog grouped by category, with onl
         ->and($catalog['storage']['active'])->toBeNull()
         ->and($catalog['storage']['options'])->toEqual([
             'seaweedfs' => ['label' => 'SeaweedFS', 'enabled' => false, 'ready' => true],
-            'minio' => ['label' => 'MinIO', 'enabled' => false, 'ready' => true],
             'garage' => ['label' => 'Garage', 'enabled' => false, 'ready' => true],
         ])
         ->and($catalog['search']['active'])->toBeNull()
@@ -244,7 +243,7 @@ test('plex:show --json reports the service catalog grouped by category, with onl
             'meilisearch' => ['label' => 'Meilisearch', 'enabled' => false, 'ready' => true],
             'typesense' => ['label' => 'Typesense', 'enabled' => false, 'ready' => false],
         ])
-        // The verbose qualifier in a few enums' own getLabel() ("MinIO (Legacy / AGPL)")
+        // The verbose qualifier in a few enums' own getLabel() ("SeaweedFS (High Performance)")
         // is stripped for the compact pill UI — proven here, not just assumed.
         ->and($catalog['render']['options'])->toHaveKey('headless-shell');
 });

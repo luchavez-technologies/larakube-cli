@@ -44,10 +44,10 @@ test('Gin CacheDriver matrix: Redis, Memcached are valid', function (): void {
     expect($supported)->toHaveCount(2);
 });
 
-test('Gin StorageDriver: MinIO, SeaweedFS, Garage are valid', function (): void {
-    $supported = [StorageDriver::MINIO, StorageDriver::SEAWEEDFS, StorageDriver::GARAGE];
+test('Gin StorageDriver: SeaweedFS, Garage are valid', function (): void {
+    $supported = [StorageDriver::SEAWEEDFS, StorageDriver::GARAGE];
 
-    expect($supported)->toHaveCount(3);
+    expect($supported)->toHaveCount(2);
 });
 
 // ── Gin ConfigData Integration ────────────────────────────────────────────────

@@ -522,7 +522,7 @@ class UpCommand extends Command
                     }
                 }
 
-                // Driver-managed services (Postgres, MySQL, MariaDB, MinIO,
+                // Driver-managed services (Postgres, MySQL, MariaDB,
                 // SeaweedFS, Garage, Meilisearch, Typesense) each get their own
                 // static hostPath PV named {appName}-{driver}-pv, at
                 // .infrastructure/volume_data/{driver}. Redis has none — a

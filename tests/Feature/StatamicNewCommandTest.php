@@ -279,7 +279,7 @@ test('content lives in the database by default, and --content only accepts datab
 test('every wizard question of statamic:new has a flag, so a headless run asks nothing', function (): void {
     $definition = Artisan::all()['statamic:new']->getDefinition();
 
-    foreach (['8.4', 'postgres', 'mariadb', 'redis', 'memcached', 'minio', 'meilisearch', 'horizon', 'scout'] as $flag) {
+    foreach (['8.4', 'postgres', 'mariadb', 'redis', 'memcached', 'seaweedfs', 'meilisearch', 'horizon', 'scout'] as $flag) {
         expect($definition->hasOption($flag))->toBeTrue("--{$flag} is missing");
     }
 });

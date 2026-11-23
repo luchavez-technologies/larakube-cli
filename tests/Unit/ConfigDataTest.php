@@ -293,14 +293,14 @@ test('get manageable services lists all externalizable backing services', functi
         'database' => 'postgres',
         'cacheDriver' => 'redis',
         'scoutDriver' => 'meilisearch',
-        'objectStorage' => 'minio',
+        'objectStorage' => 'seaweedfs',
     ]);
 
     $services = $config->getManageableServices();
 
     // DB, cache, search, and object storage are all offload-able.
     expect($services)->toHaveKey('postgres');
-    expect($services)->toHaveKeys(['redis', 'meilisearch', 'minio']);
+    expect($services)->toHaveKeys(['redis', 'meilisearch', 'seaweedfs']);
 });
 
 test('get manageable services excludes drivers with no network service', function (): void {
@@ -460,9 +460,6 @@ test('build wait for command', function (): void {
     expect($config->buildWaitForCommand([SearchDriver::DATABASE]))->toBeNull();
 
     // 13. Storage drivers return command on correct ports
-    $command = $config->buildWaitForCommand([StorageDriver::MINIO]);
-    expect($command)->toContain('minio 9000');
-
     $command = $config->buildWaitForCommand([StorageDriver::SEAWEEDFS]);
     expect($command)->toContain('seaweedfs 8333');
 

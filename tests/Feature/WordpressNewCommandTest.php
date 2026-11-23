@@ -114,9 +114,9 @@ test('WordPress CacheDriver matrix: database driver is hidden', function (): voi
 });
 
 test('WordPress StorageDriver: all S3-compatible drivers are valid (mandatory)', function (): void {
-    $mandatory = [StorageDriver::MINIO, StorageDriver::SEAWEEDFS, StorageDriver::GARAGE];
+    $mandatory = [StorageDriver::SEAWEEDFS, StorageDriver::GARAGE];
 
-    expect($mandatory)->toHaveCount(3)->toContainOnlyInstancesOf(StorageDriver::class);
+    expect($mandatory)->toHaveCount(2)->toContainOnlyInstancesOf(StorageDriver::class);
 });
 
 // ── WordPress ConfigData Integration ─────────────────────────────────────────
@@ -151,7 +151,7 @@ test('WordPress config pins the Nginx server variation so the Dockerfile renders
     $config->setName('wp');
     $config->setDatabase(DatabaseDriver::MYSQL);
     $config->setCacheDriver(CacheDriver::REDIS);
-    $config->setObjectStorage(StorageDriver::MINIO);
+    $config->setObjectStorage(StorageDriver::SEAWEEDFS);
 
     $rendered = view('docker.php', ['config' => $config])->render();
 
@@ -168,7 +168,7 @@ function wordpressManifestConfig(AppFramework $framework): ConfigData
     $config->setName('wp');
     $config->setDatabase(DatabaseDriver::MYSQL);
     $config->setCacheDriver(CacheDriver::REDIS);
-    $config->setObjectStorage(StorageDriver::MINIO);
+    $config->setObjectStorage(StorageDriver::SEAWEEDFS);
 
     return $config;
 }

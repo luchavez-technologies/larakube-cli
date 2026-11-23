@@ -152,7 +152,7 @@ class PlexLeaveCommand extends Command
             ? $redisIndex
             : null;
 
-        $leaveS3 = in_array('seaweedfs', $targetServices, true) || in_array('minio', $targetServices, true) || in_array('storage', $targetServices, true) || in_array('s3', $targetServices, true)
+        $leaveS3 = in_array('seaweedfs', $targetServices, true) || in_array('storage', $targetServices, true) || in_array('s3', $targetServices, true)
             ? $s3Bucket
             : null;
 

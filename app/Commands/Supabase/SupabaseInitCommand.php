@@ -159,15 +159,10 @@ abstract class SupabaseInitCommand extends AbstractToolInitCommand
         return $this->resolveToolEnvironment(ClusterTool::SUPABASE);
     }
 
-    /** The object store the Commons already runs (SeaweedFS or MinIO), or SeaweedFS for a new one. */
+    /** The object store the Commons runs. */
     private function commonsObjectStorage(): StorageDriver
     {
-        $spec = $this->getCommonsSpec();
-        $enabled = $spec !== null ? $this->enabledCommonsServices($spec) : [];
-
-        return in_array('seaweedfs', $enabled, true) || ! in_array('minio', $enabled, true)
-            ? StorageDriver::SEAWEEDFS
-            : StorageDriver::MINIO;
+        return StorageDriver::SEAWEEDFS;
     }
 
     /** @return array{bool, bool, bool, bool} */

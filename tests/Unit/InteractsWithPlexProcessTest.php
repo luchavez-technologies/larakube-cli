@@ -146,11 +146,11 @@ test('resolveCommonsS3Endpoints falls back to the internal endpoint and warns wh
 });
 
 test('resolveCommonsS3Endpoints uses the right port per storage driver', function (): void {
-    $spec = ['services' => ['minio' => ['enabled' => true, 'host' => 'files.example.com']]];
+    $spec = ['services' => ['seaweedfs' => ['enabled' => true, 'host' => 'files.example.com']]];
     Process::fake([plexProcessKubectl()." get configmap plex-commons -n larakube-plex -o jsonpath='{.data.commons\\.json}'" => json_encode($spec)]);
 
-    $endpoints = plexProcessHelper()->endpoints(StorageDriver::MINIO, 'TestTool');
+    $endpoints = plexProcessHelper()->endpoints(StorageDriver::SEAWEEDFS, 'TestTool');
 
-    expect($endpoints['internal'])->toBe('http://minio.larakube-plex.svc.cluster.local:'.StorageDriver::MINIO->port())
+    expect($endpoints['internal'])->toBe('http://seaweedfs.larakube-plex.svc.cluster.local:'.StorageDriver::SEAWEEDFS->port())
         ->and($endpoints['public'])->toBe('https://files.example.com');
 });

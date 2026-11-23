@@ -16,7 +16,7 @@ test('bundleImages derives the app image + every declared dependency, enum-drive
         'name' => 'shop',
         'database' => 'postgres',
         'cacheDriver' => 'redis',
-        'objectStorage' => 'minio',
+        'objectStorage' => 'seaweedfs',
     ]);
 
     $images = bundleAssembler()->bundleImages($config);
@@ -25,7 +25,7 @@ test('bundleImages derives the app image + every declared dependency, enum-drive
         ->and($images['dependencies'])->toContain(ConfigData::TRAEFIK_IMAGE)
         ->and(collect($images['dependencies'])->contains(fn ($i) => str_contains($i, 'postgres')))->toBeTrue()
         ->and(collect($images['dependencies'])->contains(fn ($i) => str_contains($i, 'valkey') || str_contains($i, 'redis')))->toBeTrue()
-        ->and(collect($images['dependencies'])->contains(fn ($i) => str_contains($i, 'minio')))->toBeTrue();
+        ->and(collect($images['dependencies'])->contains(fn ($i) => str_contains($i, 'seaweedfs')))->toBeTrue();
 });
 
 test('a SQLite + database-cache project adds only the system image (no DB/cache service)', function (): void {
@@ -39,7 +39,7 @@ test('imageTarName produces filesystem-safe tarball names', function (): void {
 
     expect($r->imageTarName('redis:7.4'))->toBe('redis-7.4.tar')
         ->and($r->imageTarName('shop:latest'))->toBe('shop-latest.tar')
-        ->and($r->imageTarName('minio/minio:RELEASE.2025-09-07T16-13-09Z'))->toBe('minio-minio-RELEASE.2025-09-07T16-13-09Z.tar');
+        ->and($r->imageTarName('chrislusf/seaweedfs:4.20'))->toBe('chrislusf-seaweedfs-4.20.tar');
 });
 
 test('bundle build app image tag follows {name}:{env}-latest, not :latest', function (): void {

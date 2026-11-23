@@ -67,24 +67,10 @@ abstract class TwentyInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        // The Commons S3 backend is whatever the operator chose at
-        // `plex:init` — never assume SeaweedFS (see OutlineInitCommand/
-        // DocumensoInitCommand for the same detection).
-        $spec = $this->getCommonsSpec();
-        $s3Service = null;
-        if ($spec !== null) {
-            $enabled = $this->enabledCommonsServices($spec);
-            if (in_array('seaweedfs', $enabled, true)) {
-                $s3Service = 'seaweedfs';
-            } elseif (in_array('minio', $enabled, true)) {
-                $s3Service = 'minio';
-            }
-        }
-        $s3Service ??= 'seaweedfs';
-        if (! $this->ensureCommons([$s3Service])) {
+        $s3Driver = StorageDriver::SEAWEEDFS;
+        if (! $this->ensureCommons([$s3Driver->value])) {
             return 1;
         }
-        $s3Driver = StorageDriver::from($s3Service);
 
         // Every name comes from ToolInstance (ADR 0021).
         $names = ToolInstance::forInstance(ClusterTool::TWENTY, $instance);

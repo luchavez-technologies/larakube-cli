@@ -55,24 +55,14 @@ abstract class DocumensoInitCommand extends AbstractToolInitCommand
         }
 
         // Documenso stores signed PDFs in object storage. Default it onto the
-        // Commons SeaweedFS (MinIO fallback) instead of its `database` upload
+        // Commons SeaweedFS instead of its `database` upload
         // transport, which would otherwise bloat Commons Postgres with blobs.
-        $spec = $this->getCommonsSpec();
-        $s3Service = null;
-        if ($spec !== null) {
-            $enabled = $this->enabledCommonsServices($spec);
-            if (in_array('seaweedfs', $enabled, true)) {
-                $s3Service = 'seaweedfs';
-            } elseif (in_array('minio', $enabled, true)) {
-                $s3Service = 'minio';
-            }
-        }
-        $s3Service ??= 'seaweedfs';
+        $s3Driver = StorageDriver::SEAWEEDFS;
 
         // Headless Chrome renders each document's certificate page when it's
         // sealed. The Documenso image ships no browser, so without it every
         // document stays pending forever.
-        if (! $this->ensureCommons(['postgres', $s3Service, RenderDriver::HEADLESS_CHROME->value])) {
+        if (! $this->ensureCommons(['postgres', $s3Driver->value, RenderDriver::HEADLESS_CHROME->value])) {
             return 1;
         }
 
@@ -89,7 +79,6 @@ abstract class DocumensoInitCommand extends AbstractToolInitCommand
 
             return 1;
         }
-        $s3Driver = StorageDriver::from($s3Service);
         $s3Bucket = $names->bucket();
         if (! $this->allocateStorageBucket($s3Driver, $s3Bucket)) {
             return 1;

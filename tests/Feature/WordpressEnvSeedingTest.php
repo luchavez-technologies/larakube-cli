@@ -69,7 +69,7 @@ function wordpressEnvSeedingConfig(TemporaryDirectory $dir, AppFramework $framew
     $config->setEnvironments($environments);
     $config->setDatabase(DatabaseDriver::MYSQL);
     $config->setCacheDriver(CacheDriver::REDIS);
-    $config->setObjectStorage(StorageDriver::MINIO);
+    $config->setObjectStorage(StorageDriver::SEAWEEDFS);
 
     return $config;
 }

@@ -20,7 +20,7 @@ class StorageListCommand extends Command
         {environment=local : Environment whose bucket files to list}
         {--bucket=  : Name of the S3 bucket to list}
         {--path=    : Optional subpath inside the bucket}
-        {--driver=  : Specific storage driver (seaweedfs, minio, garage)}
+        {--driver=  : Specific storage driver (seaweedfs, garage)}
         {--context= : Target a specific kube-context}';
 
     protected $description = 'List objects and files inside an S3 bucket';

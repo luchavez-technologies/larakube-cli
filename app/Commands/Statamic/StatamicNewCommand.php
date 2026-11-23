@@ -234,11 +234,11 @@ class StatamicNewCommand extends Command
             ->all();
 
         $storageValue = $this->answeredStorage(StorageDriver::cases()) ?? ($this->option('fast')
-            ? StorageDriver::MINIO->value
+            ? StorageDriver::SEAWEEDFS->value
             : select(
                 label: 'Which S3-compatible object storage would you like to use for Statamic assets?',
                 options: array_merge(['none' => 'None (local filesystem)'], $allowedStorages),
-                default: StorageDriver::MINIO->value,
+                default: StorageDriver::SEAWEEDFS->value,
             ));
         $objectStorage = StorageDriver::tryFrom($storageValue);
 
@@ -357,7 +357,7 @@ class StatamicNewCommand extends Command
         };
     }
 
-    /** Every wizard question has a flag (--postgres, --redis, --minio, --8.4, --scout...), so a headless run asks nothing. */
+    /** Every wizard question has a flag (--postgres, --redis, --seaweedfs, --8.4, --scout...), so a headless run asks nothing. */
     protected function configure(): void
     {
         parent::configure();

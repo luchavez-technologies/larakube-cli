@@ -147,19 +147,8 @@ abstract class TeableInitCommand extends AbstractToolInitCommand
      */
     protected function resolveSheetStorage(ToolInstance $names): ?array
     {
-        $spec = $this->getCommonsSpec();
-        $s3Service = null;
-        if ($spec !== null) {
-            $enabled = $this->enabledCommonsServices($spec);
-            if (in_array('seaweedfs', $enabled, true)) {
-                $s3Service = 'seaweedfs';
-            } elseif (in_array('minio', $enabled, true)) {
-                $s3Service = 'minio';
-            }
-        }
-
-        $s3Service ??= 'seaweedfs';
-        if (! $this->ensureCommons([$s3Service])) {
+        $driver = StorageDriver::SEAWEEDFS;
+        if (! $this->ensureCommons([$driver->value])) {
             return null;
         }
 
@@ -170,8 +159,7 @@ abstract class TeableInitCommand extends AbstractToolInitCommand
             return null;
         }
 
-        $driver = StorageDriver::from($s3Service);
-        $internalEndpoint = "http://{$s3Service}.{$this->plexNamespace()}.svc.cluster.local:{$driver->port()}";
+        $internalEndpoint = "http://{$driver->value}.{$this->plexNamespace()}.svc.cluster.local:{$driver->port()}";
 
         $publicBucket = $names->bucket('teable-public');
         $privateBucket = $names->bucket('teable-private');
@@ -187,14 +175,14 @@ abstract class TeableInitCommand extends AbstractToolInitCommand
         // say so plainly rather than shipping a half-working install.
         // Re-read: ensureCommons() may have just created or extended the spec.
         $liveSpec = $this->getCommonsSpec() ?? [];
-        $publicHost = $liveSpec['services'][$s3Service]['host'] ?? null;
+        $publicHost = $liveSpec['services'][$driver->value]['host'] ?? null;
         $publicEndpoint = $publicHost !== null && $publicHost !== ''
             ? 'https://'.$publicHost
             : $internalEndpoint;
 
         if (! $publicHost) {
             $this->laraKubeWarn(
-                "The Commons '{$s3Service}' has no public host, so Teable's attachment links will not "
+                "The Commons '{$driver->value}' has no public host, so Teable's attachment links will not "
                 .'resolve from a browser. Set one with `larakube plex:init --s3-host=files.example.com`.',
             );
         }

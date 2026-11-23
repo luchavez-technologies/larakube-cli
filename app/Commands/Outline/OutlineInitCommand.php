@@ -73,20 +73,9 @@ abstract class OutlineInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        // S3 for file uploads — detect which backend the Commons provides.
-        $spec = $this->getCommonsSpec();
-        $s3Service = null;
-        if ($spec !== null) {
-            $enabled = $this->enabledCommonsServices($spec);
-            if (in_array('seaweedfs', $enabled, true)) {
-                $s3Service = 'seaweedfs';
-            } elseif (in_array('minio', $enabled, true)) {
-                $s3Service = 'minio';
-            }
-        }
-
-        $s3Service ??= 'seaweedfs';
-        if (! $this->ensureCommons([$s3Service])) {
+        // S3 for file uploads.
+        $driver = StorageDriver::SEAWEEDFS;
+        if (! $this->ensureCommons([$driver->value])) {
             return 1;
         }
 
@@ -114,8 +103,6 @@ abstract class OutlineInitCommand extends AbstractToolInitCommand
         $dbName = ClusterTool::OUTLINE->commonsDatabases($instance)[0];
         $s3Bucket = "notes-storage-{$instance}";
         $aliasHosts = $this->resolveToolAliasHosts($kubectl, ClusterTool::OUTLINE, $instance);
-
-        $driver = StorageDriver::from($s3Service);
 
         if (! $this->allocateStorageBucket($driver, $s3Bucket)) {
             return 1;

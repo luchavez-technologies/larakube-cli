@@ -101,7 +101,6 @@ trait SupportedDriversTrait
             return match ($subject) {
                 AppFramework::LARAVEL, AppFramework::STATAMIC => [
                     StorageDriver::SEAWEEDFS,
-                    StorageDriver::MINIO,
                     StorageDriver::GARAGE,
                 ],
                 default => StorageDriver::cases(),
@@ -111,7 +110,6 @@ trait SupportedDriversTrait
         return match ($subject) {
             ClusterTool::OCIS, ClusterTool::DOCUMENSO, ClusterTool::OUTLINE => [
                 StorageDriver::SEAWEEDFS,
-                StorageDriver::MINIO,
                 StorageDriver::GARAGE,
             ],
             default => StorageDriver::cases(),
@@ -275,7 +273,7 @@ trait SupportedDriversTrait
         $active = [];
         foreach ($supported as $driver) {
             $name = $driver->value;
-            if (in_array($name, ['seaweedfs', 'minio', 'garage'], true)) {
+            if (in_array($name, ['seaweedfs', 'garage'], true)) {
                 if (Kubectl::fromPrefix($kubectl)->hasDeployment($plexNamespace, $name)) {
                     $active[] = $driver;
                 }

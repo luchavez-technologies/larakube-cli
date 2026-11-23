@@ -139,7 +139,7 @@ trait GuardsSharedStorage
 
         $risky = [];
         $disk = $vars['FILESYSTEM_DISK'] ?? 'local';
-        if (! in_array(strtolower($disk), ['s3', 'minio', 'spaces'], true)) {
+        if (! in_array(strtolower($disk), ['s3', 'spaces'], true)) {
             $risky[] = "FILESYSTEM_DISK={$disk} (uploads not on object storage)";
         }
         if (($vars['SESSION_DRIVER'] ?? 'database') === 'file') {

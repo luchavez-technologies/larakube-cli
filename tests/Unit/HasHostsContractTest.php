@@ -17,8 +17,8 @@ test('every host-publishing component declares its overrideable services', funct
         ->and(SearchDriver::MEILISEARCH->getHostServices())->toHaveKey('meilisearch')
         ->and(SearchDriver::TYPESENSE->getHostServices())
         ->toHaveKeys(['typesense', 'typesense-dashboard'])
-        ->and(StorageDriver::MINIO->getHostServices())
-        ->toHaveKeys(['s3', 's3-console']);
+        ->and(StorageDriver::SEAWEEDFS->getHostServices())
+        ->toHaveKeys(['s3', 's3-admin']);
 });
 
 test('local-console components opt out of host overrides via empty getHostServices', function (): void {
@@ -85,41 +85,41 @@ test('DerivesHostsFromServices trait falls back to prefix pattern when no overri
     expect($hosts)->toHaveKey('reverb-example.com', 'Reverb WebSocket');
 });
 
-test('storage driver exposes both s3 and console as overrideable services', function (): void {
+test('storage driver exposes both s3 and admin as overrideable services', function (): void {
     $config = ConfigData::from([
         'name' => 'demo',
-        'objectStorage' => 'minio',
+        'objectStorage' => 'seaweedfs',
         'environments' => [
             'production' => [
                 'hosts' => [
                     'web' => 'example.com',
                     's3' => 'cdn.example.com',
-                    // s3-console intentionally omitted — falls back to prefix.
+                    // s3-admin intentionally omitted — falls back to prefix.
                 ],
             ],
         ],
     ]);
 
-    $hosts = StorageDriver::MINIO->getHosts($config, 'production');
+    $hosts = StorageDriver::SEAWEEDFS->getHosts($config, 'production');
 
     expect($hosts)
-        ->toHaveKey('cdn.example.com', 'MinIO S3 API')
-        ->toHaveKey('s3-console-example.com', 'MinIO Console');
+        ->toHaveKey('cdn.example.com', 'SeaweedFS S3 API')
+        ->toHaveKey('s3-admin-example.com', 'SeaweedFS Filer UI');
 });
 
 test('storage driver skips its manifests in envs where it is externally managed', function (): void {
     $config = ConfigData::from([
         'name' => 'demo',
-        'objectStorage' => 'minio',
+        'objectStorage' => 'seaweedfs',
         'environments' => [
             'local' => [],
-            'production' => ['managed' => ['minio']],
+            'production' => ['managed' => ['seaweedfs']],
         ],
     ]);
 
-    $files = StorageDriver::MINIO->getManifestFiles($config);
+    $files = StorageDriver::SEAWEEDFS->getManifestFiles($config);
 
-    // Local still deploys MinIO; production is skipped (managed via S3/Spaces).
+    // Local still deploys SeaweedFS; production is skipped (managed via S3/Spaces).
     expect($files)->toHaveKey('local')
         ->and($files)->not->toHaveKey('production');
 });
@@ -160,11 +160,11 @@ test('only client-facing endpoints are promptable for custom hosts', function ()
     // Reverb (ws) and S3 are worth a vanity subdomain prompt...
     expect(LaravelFeature::REVERB)->toBeInstanceOf(HasPromptableHosts::class)
         ->and(LaravelFeature::REVERB->getPromptableHostServices())->toHaveKey('reverb')
-        ->and(StorageDriver::MINIO)->toBeInstanceOf(HasPromptableHosts::class)
-        ->and(StorageDriver::MINIO->getPromptableHostServices())->toHaveKey('s3');
+        ->and(StorageDriver::SEAWEEDFS)->toBeInstanceOf(HasPromptableHosts::class)
+        ->and(StorageDriver::SEAWEEDFS->getPromptableHostServices())->toHaveKey('s3');
 
-    // The MinIO admin console is not promptable; only the S3 API is.
-    expect(StorageDriver::MINIO->getPromptableHostServices())->not->toHaveKey('s3-console');
+    // The SeaweedFS admin UI is not promptable; only the S3 API is.
+    expect(StorageDriver::SEAWEEDFS->getPromptableHostServices())->not->toHaveKey('s3-admin');
 
     // Search drivers do NOT implement HasPromptableHosts at all, so the env
     // wizard never prompts for a Meilisearch/Typesense console host (they

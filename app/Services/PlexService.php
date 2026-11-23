@@ -91,7 +91,6 @@ final class PlexService
             'redis' => ['image' => CacheDriver::REDIS->getDockerImage(),          'port' => CacheDriver::REDIS->dbPort(),                               'memory' => '128Mi', 'cpu' => '250m', 'maxclients' => 10000, 'maxmemory_policy' => 'allkeys-lru', 'timeout' => 300],
             'meilisearch' => ['image' => SearchDriver::MEILISEARCH->getDockerImage(),    'port' => SearchDriver::MEILISEARCH->port(),      'storage' => '5Gi',  'memory' => '512Mi', 'cpu' => '500m'],
             'seaweedfs' => ['image' => StorageDriver::SEAWEEDFS->getDockerImage(),    'port' => StorageDriver::SEAWEEDFS->port(),      'storage' => '10Gi', 'memory' => '512Mi', 'cpu' => '500m'],
-            'minio' => ['image' => StorageDriver::MINIO->getDockerImage(),        'port' => StorageDriver::MINIO->port(),          'storage' => '10Gi', 'memory' => '512Mi', 'cpu' => '500m'],
             'garage' => ['image' => StorageDriver::GARAGE->getDockerImage(),       'port' => StorageDriver::GARAGE->port(),         'storage' => '10Gi', 'memory' => '512Mi', 'cpu' => '500m'],
             // Stateless, like Redis: no storage key.
             'headless-shell' => ['image' => RenderDriver::HEADLESS_CHROME->getDockerImage(), 'port' => RenderDriver::HEADLESS_CHROME->port(), 'memory' => '1Gi', 'cpu' => '500m'],
@@ -333,10 +332,10 @@ final class PlexService
 
         // Object storage. The caller passes the tenant's chosen backend in $s3
         // (service name + port + creds + optional public host), so this stays
-        // generic across S3 backends — SeaweedFS, MinIO, Garage — with no
+        // generic across S3 backends — SeaweedFS, Garage — with no
         // hardcoded service. The AWS_* keys are the standard Laravel S3 contract.
         if ($s3 !== null) {
-            // DNS-safe bucket name (S3/MinIO reject the underscores a tenant id
+            // DNS-safe bucket name (S3 rejects the underscores a tenant id
             // can carry); SeaweedFS tolerates either, so one rule fits all backends.
             $bucket = $this->plexBucketName($tenant);
             $values['FILESYSTEM_DISK'] = 's3';
@@ -839,7 +838,7 @@ final class PlexService
 
     /**
      * Turn a tenant identifier into a DNS-safe S3 bucket name (lowercase, hyphens,
-     * 3–63 chars) — MinIO/S3 reject the underscores plexTenantIdentifier produces,
+     * 3–63 chars) — S3 rejects the underscores plexTenantIdentifier produces,
      * and SeaweedFS tolerates either, so this one rule serves every backend
      * (e.g. "app_five" → "app-five"). Pure.
      */

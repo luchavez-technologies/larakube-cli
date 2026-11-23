@@ -44,6 +44,18 @@ class CloudAccessConnectCommand extends Command
         ['create', 'serviceaccounts/token', false],
     ];
 
+    public const SELF_REMOVAL = 'larakube-cloud-self-removal';
+
+    /** Each entry is [resource/name, namespace, whether the identity must be allowed to delete it]. */
+    public const SELF_REMOVAL_CHECKS = [
+        ['clusterrole/larakube-cloud-observer', null, true],
+        ['serviceaccount/larakube-cloud', 'larakube-access', true],
+        ['clusterrole/admin', null, false],
+        ['clusterrolebinding/larakube-cluster-user-larakube-cloud', null, false],
+        ['serviceaccount/default', 'larakube-access', false],
+        ['role/larakube-cloud-self-removal', 'larakube-access', false],
+    ];
+
     protected $signature = 'cloud:access:connect
         {--context= : The kube-context to connect}
         {--json : Emit one machine-readable JSON result on stdout}';
@@ -75,10 +87,9 @@ class CloudAccessConnectCommand extends Command
         return $exit;
     }
 
-    public static function observerManifest(): string
+    public static function observerRoleManifest(): string
     {
         $observer = self::OBSERVER;
-        $identity = self::IDENTITY;
 
         return <<<YAML
 apiVersion: rbac.authorization.k8s.io/v1
@@ -94,13 +105,31 @@ rules:
 - apiGroups: ["metrics.k8s.io"]
   resources: ["nodes", "pods"]
   verbs: ["get", "list"]
----
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["clusterroles"]
+  resourceNames: ["{$observer}"]
+  verbs: ["delete"]
+YAML;
+    }
+
+    /** Owned by the role, so Kubernetes removes the binding when the role is deleted. */
+    public static function observerBindingManifest(string $roleUid): string
+    {
+        $observer = self::OBSERVER;
+        $identity = self::IDENTITY;
+
+        return <<<YAML
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: {$observer}
   labels:
     app.kubernetes.io/managed-by: larakube
+  ownerReferences:
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    name: {$observer}
+    uid: {$roleUid}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -110,6 +139,78 @@ subjects:
   name: {$identity}
   namespace: larakube-access
 YAML;
+    }
+
+    /** Lets the identity delete only itself. Owned by it, so both vanish with it. */
+    public static function selfRemovalManifest(string $accountUid): string
+    {
+        $name = self::SELF_REMOVAL;
+        $identity = self::IDENTITY;
+        $owner = <<<YAML
+  ownerReferences:
+  - apiVersion: v1
+    kind: ServiceAccount
+    name: {$identity}
+    uid: {$accountUid}
+YAML;
+
+        return <<<YAML
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {$name}
+  namespace: larakube-access
+  labels:
+    app.kubernetes.io/managed-by: larakube
+{$owner}
+rules:
+- apiGroups: [""]
+  resources: ["serviceaccounts"]
+  resourceNames: ["{$identity}"]
+  verbs: ["delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {$name}
+  namespace: larakube-access
+  labels:
+    app.kubernetes.io/managed-by: larakube
+{$owner}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {$name}
+subjects:
+- kind: ServiceAccount
+  name: {$identity}
+  namespace: larakube-access
+YAML;
+    }
+
+    private function applyAccessRules(Kubectl $cluster): bool
+    {
+        if (! $cluster->apply(self::observerRoleManifest())->ok) {
+            return false;
+        }
+
+        $roleUid = trim($cluster->raw(['get', 'clusterrole', self::OBSERVER, '-o', 'jsonpath={.metadata.uid}'])->output);
+        $accountUid = trim($cluster->raw(['get', 'serviceaccount', self::IDENTITY, '-n', 'larakube-access', '-o', 'jsonpath={.metadata.uid}'])->output);
+
+        if ($roleUid === '' || $accountUid === '') {
+            return false;
+        }
+
+        $owner = (string) json_encode(['metadata' => ['ownerReferences' => [[
+            'apiVersion' => 'rbac.authorization.k8s.io/v1',
+            'kind' => 'ClusterRole',
+            'name' => self::OBSERVER,
+            'uid' => $roleUid,
+        ]]]]);
+
+        return $cluster->apply(self::observerBindingManifest($roleUid))->ok
+            && $cluster->raw(['patch', 'clusterrolebinding', 'larakube-cluster-user-'.self::IDENTITY, '--type=merge', '-p', $owner])->ok
+            && $cluster->apply(self::selfRemovalManifest($accountUid))->ok;
     }
 
     private function connect(): int
@@ -144,7 +245,7 @@ YAML;
 
         $cluster = Kubectl::forContext($context);
 
-        if (! $cluster->apply(self::observerManifest())->ok) {
+        if (! $this->applyAccessRules($cluster)) {
             $this->rollBack($context);
             State::setLastError('Could not add the node and metrics read role, so access was removed.');
 
@@ -166,6 +267,14 @@ YAML;
             }
         }
 
+        foreach (self::SELF_REMOVAL_CHECKS as [$target, $namespace, $allowed]) {
+            $scope = $namespace !== null ? ['-n', $namespace] : [];
+            $answer = trim($cluster->raw(['auth', 'can-i', 'delete', $target, ...$scope, '--as='.self::SERVICE_ACCOUNT])->output);
+            if (($answer === 'yes') !== $allowed) {
+                $wrong[] = "delete {$target}";
+            }
+        }
+
         if ($wrong !== []) {
             $this->rollBack($context);
             State::setLastError('Read access did not match what Cloud promises ('.implode(', ', $wrong).'), so it was removed.');
@@ -178,6 +287,7 @@ YAML;
             'identity' => $grant['identity'] ?? null,
             'metrics' => $hasMetrics,
             'kubeconfig' => $grant['kubeconfig'],
+            'canRemoveItself' => true,
             'can' => array_values(array_map(fn (array $p): string => "{$p[0]} {$p[1]}", array_filter(self::PERMISSIONS, fn (array $p): bool => $p[2]))),
             'cannot' => array_values(array_map(fn (array $p): string => "{$p[0]} {$p[1]}", array_filter(self::PERMISSIONS, fn (array $p): bool => ! $p[2]))),
         ];

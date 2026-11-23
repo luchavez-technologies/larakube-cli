@@ -95,8 +95,8 @@ test('commonsEnvValues wires S3 generically from the tenant backend + per-tenant
         ->and($s3)->not->toHaveKey('AWS_URL');                                                      // no public host → no public URL
 
     // A different backend lands on its OWN endpoint — generic, not collapsed onto seaweedfs.
-    $minio = $p->commonsEnvValues('app_four', 'pw', null, ['minio'], ['service' => 'minio', 'port' => 9000, 'access' => 'k', 'secret' => 's']);
-    expect($minio['AWS_ENDPOINT'])->toBe('http://minio.larakube-plex.svc.cluster.local:9000');
+    $garage = $p->commonsEnvValues('app_four', 'pw', null, ['garage'], ['service' => 'garage', 'port' => 3900, 'access' => 'k', 'secret' => 's']);
+    expect($garage['AWS_ENDPOINT'])->toBe('http://garage.larakube-plex.svc.cluster.local:3900');
 
     // A configured public host → AWS_URL (path-style host/bucket, DNS-safe bucket).
     $withHost = $p->commonsEnvValues('app_four', 'pw', null, ['seaweedfs'], ['service' => 'seaweedfs', 'port' => 8333, 'access' => 'k', 'secret' => 's', 'host' => 's3.example.com']);
@@ -177,7 +177,7 @@ test('commonsServiceTenants reports who uses a service (the plex:remove guard)',
 
     expect($p->commonsServiceTenants($registry, 'redis'))->toBe(['app_four'])            // only the one with an index
         ->and($p->commonsServiceTenants($registry, 'seaweedfs'))->toBe(['app_five'])     // by recorded s3_service
-        ->and($p->commonsServiceTenants($registry, 'minio'))->toBe([])                   // no minio tenant → safe to remove
+        ->and($p->commonsServiceTenants($registry, 'garage'))->toBe([])                  // no garage tenant → safe to remove
         ->and($p->commonsServiceTenants($registry, 'mysql'))->toBe(['app_six'])          // only the explicit MySQL tenant
         ->and($p->commonsServiceTenants($registry, 'postgres'))->toBe(['app_one', 'app_four', 'app_five']); // legacy rows = Postgres, NOT app_six
 });
@@ -216,24 +216,22 @@ test('MySQL/MariaDB Commons tenant SQL scopes a db + user and escapes the passwo
 test('plexBucketName makes a DNS-safe bucket from a tenant id', function (): void {
     $p = plexJoin();
 
-    expect($p->plexBucketName('app_five'))->toBe('app-five')          // underscores → hyphens (S3/MinIO reject _)
+    expect($p->plexBucketName('app_five'))->toBe('app-five')          // underscores → hyphens (S3 rejects _)
         ->and($p->plexBucketName('My_App__1'))->toBe('my-app-1')      // collapse + lowercase
         ->and($p->plexBucketName('_edge_'))->toBe('edge')             // trim leading/trailing hyphens
         ->and($p->plexBucketName('ab'))->toBe('lk-ab');              // pad to the 3-char S3 minimum
 });
 
-test('Commons bucket commands are per-backend (SeaweedFS weed shell, MinIO mc)', function (): void {
+test('Commons bucket commands are per-backend (SeaweedFS weed shell, Garage CLI)', function (): void {
     expect(StorageDriver::SEAWEEDFS->commonsBucketCreateCommand('app-five'))
         ->toContain('s3.bucket.create -name app-five')
-        ->toContain('weed shell');
-
-    $mc = StorageDriver::MINIO->commonsBucketCreateCommand('app-five');
-    expect($mc)
-        ->toContain('mc alias set local http://127.0.0.1:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"')  // pod expands creds
-        ->toContain('mc mb --ignore-existing local/app-five')
-        ->toContain('MC_CONFIG_DIR=/tmp/mc')
-        ->and(StorageDriver::MINIO->commonsBucketDeleteCommand('app-five'))->toContain('mc rb --force local/app-five')
-        ->and(StorageDriver::SEAWEEDFS->commonsBucketDeleteCommand('app-five'))->toContain('s3.bucket.delete -name app-five');
+        ->toContain('weed shell')
+        ->and(StorageDriver::SEAWEEDFS->commonsBucketDeleteCommand('app-five'))
+        ->toContain('s3.bucket.delete -name app-five')
+        ->and(StorageDriver::GARAGE->commonsBucketCreateCommand('app-five'))
+        ->toContain('/garage bucket create app-five')
+        ->and(StorageDriver::GARAGE->commonsBucketDeleteCommand('app-five'))
+        ->toContain('/garage bucket delete --yes app-five');
 });
 
 test('a Laravel AI tenant gets pgvector turned on in its database by the Commons admin', function (): void {

@@ -121,7 +121,7 @@ test('backup:init --json takes its keys from the environment and never prints th
 
 test('aws invocations disable the checksum that R2 and B2 reject', function (): void {
     // From aws-cli 2.23 the client sends x-amz-checksum-crc32 by default, which
-    // Cloudflare R2, Backblaze B2 and MinIO reject. It surfaces as an opaque
+    // Cloudflare R2 and Backblaze B2 reject. It surfaces as an opaque
     // signature error at the exact moment you need the backup to work.
     $cmd = new class
     {

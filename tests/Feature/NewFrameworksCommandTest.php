@@ -176,9 +176,9 @@ test('the server stack questions are answered by flags, then by --fast, and neve
 
     expect(trim(Artisan::output()))->toBe($expected);
 })->with([
-    '--fast defaults' => [['--fast' => true], 'postgres,redis,minio,none'],
+    '--fast defaults' => [['--fast' => true], 'postgres,redis,seaweedfs,none'],
     'flags win' => [['--fast' => true, '--mysql' => true, '--memcached' => true, '--no-storage' => true, '--typesense' => true], 'mysql,memcached,none,typesense'],
-    'a database cache for Django' => [['--fast' => true, '--database' => true], 'postgres,database,minio,none'],
+    'a database cache for Django' => [['--fast' => true, '--database' => true], 'postgres,database,seaweedfs,none'],
 ]);
 
 test('apps that join the Commons by default offer an opt-out and say which choices are shared', function (): void {

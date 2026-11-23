@@ -34,7 +34,7 @@ function engineInstallConfig(TemporaryDirectory $dir, ?AppFramework $framework):
     $config->setPath($dir->path());
     $config->framework = $framework;
     $config->setDatabase(DatabaseDriver::POSTGRESQL);
-    $config->setObjectStorage(StorageDriver::MINIO);
+    $config->setObjectStorage(StorageDriver::SEAWEEDFS);
 
     return $config;
 }
@@ -44,7 +44,7 @@ test('a non-PHP app gets no composer, artisan or Laravel JS step', function (App
     $host = engineInstallHost();
 
     $host->installComponents(engineInstallConfig($dir, $framework));
-    $host->installComponent(engineInstallConfig($dir, $framework), StorageDriver::MINIO);
+    $host->installComponent(engineInstallConfig($dir, $framework), StorageDriver::SEAWEEDFS);
 
     expect($host->ran)->toBe([]);
 

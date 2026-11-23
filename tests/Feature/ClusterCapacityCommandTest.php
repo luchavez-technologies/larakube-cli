@@ -147,6 +147,5 @@ test('an app with buckets on a cluster with no Commons object store also counts 
     'no Commons yet' => [null, [], true],
     'Commons without an object store' => [['services' => ['postgres' => ['enabled' => true]]], [], true],
     'Commons already runs SeaweedFS' => [['services' => ['seaweedfs' => ['enabled' => true]]], [], false],
-    'Commons already runs MinIO' => [['services' => ['minio' => ['enabled' => true]]], [], false],
     '--no-plex keeps files on a volume' => [null, ['no-plex' => true], false],
 ]);

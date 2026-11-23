@@ -1389,7 +1389,7 @@ trait GeneratesProjectInfrastructure
         // Multi-node: app pods can't share a ReadWriteOnce volume across nodes, so
         // swap the shared storage PVC for a per-pod emptyDir (state externalizes —
         // see GuardsSharedStorage). Targeted by pod NAME so service pods
-        // (postgres/redis/minio) keep their own data PVCs untouched.
+        // (postgres/redis/seaweedfs) keep their own data PVCs untouched.
         foreach ($cloudEnvs as $env) {
             // Only the default multi-node path (no sharedStorage) swaps to emptyDir;
             // sharedStorage envs keep the shared RWX PVC instead.

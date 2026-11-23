@@ -205,7 +205,7 @@ class CloudExternalizeCommand extends Command
     /**
      * What this env already has a working backend for — checked against its Plex
      * Commons membership AND the project's own declared services (a self-hosted
-     * MinIO, or a declared Redis cache, works multi-node too). Database cache always
+     * SeaweedFS, or a declared Redis cache, works multi-node too). Database cache always
      * counts (it reuses the primary DB). So a driver is accepted because a backend
      * exists, never blindly.
      *
@@ -323,11 +323,10 @@ class CloudExternalizeCommand extends Command
                 $items[] = select(
                     label: 'Which object storage should this project self-host?',
                     options: [
-                        StorageDriver::MINIO->value => StorageDriver::MINIO->getLabel(),
                         StorageDriver::SEAWEEDFS->value => StorageDriver::SEAWEEDFS->getLabel(),
                         StorageDriver::GARAGE->value => StorageDriver::GARAGE->getLabel(),
                     ],
-                    default: StorageDriver::MINIO->value,
+                    default: StorageDriver::SEAWEEDFS->value,
                 );
             }
             if (! $cacheReady && $cache->commonsServiceName() !== null) {
@@ -345,7 +344,7 @@ class CloudExternalizeCommand extends Command
         return [$config, true, true, true];
     }
 
-    /** The S3 service this env shares on its Plex Commons (e.g. 'minio'), or null. */
+    /** The S3 service this env shares on its Plex Commons (e.g. 'seaweedfs'), or null. */
     protected function plexS3Service(ConfigData $config, string $env): ?string
     {
         $s3Services = array_map(fn (StorageDriver $d) => $d->value, StorageDriver::cases());

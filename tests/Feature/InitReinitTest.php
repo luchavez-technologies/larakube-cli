@@ -152,7 +152,7 @@ test('forcePrompts re-opens PHP version, OS, strategy, and GitHub Actions prompt
         ->setFrontend(FrontendStack::REACT)
         ->setDatabase(DatabaseDriver::SQLITE)
         ->setCacheDriver(CacheDriver::DATABASE)
-        ->setObjectStorage(StorageDriver::MINIO) // its "None" option is null → give a valid default
+        ->setObjectStorage(StorageDriver::SEAWEEDFS) // its "None" option is null → give a valid default
         ->setStrategy(DeploymentStrategy::MULTI_NODE_HA)
         ->setGithubActions(false)
         ->setAdditionalExtensions(['gd']);
@@ -195,7 +195,7 @@ function reinitWizardConfig(): ConfigData
         ->setFrontend(FrontendStack::REACT)
         ->setDatabase(DatabaseDriver::SQLITE)
         ->setCacheDriver(CacheDriver::REDIS)
-        ->setObjectStorage(StorageDriver::MINIO)
+        ->setObjectStorage(StorageDriver::SEAWEEDFS)
         ->setStrategy(DeploymentStrategy::SINGLE_NODE)
         ->setGithubActions(true)
         ->setAdditionalExtensions(['gd']);
@@ -222,14 +222,14 @@ function runReinitWizard(ConfigData $config): ConfigData
 }
 
 test('picking "None" for storage in the wizard clears a previously-configured driver', function (): void {
-    // Options are ['' => None, 'seaweedfs', 'minio', 'garage'] (StorageDriver::cases()
-    // order) with default 'minio' pre-highlighted at index 2 — two UPs reach "None".
+    // Options are ['' => None, 'seaweedfs', 'garage'] (StorageDriver::cases()
+    // order) with default 'seaweedfs' pre-highlighted at index 1 — one UP reaches "None".
     Prompt::fake([
         Key::ENTER,          // blueprints multiselect — leave unchanged
         Key::ENTER,          // server variation — leave unchanged
         Key::ENTER,          // features multiselect — leave unchanged
         Key::ENTER,          // package manager — leave unchanged
-        Key::UP, Key::UP, Key::ENTER, // storage — move off "minio" onto "None" and submit
+        Key::UP, Key::ENTER, // storage — move off "seaweedfs" onto "None" and submit
         Key::ENTER,          // database — leave unchanged
         Key::ENTER,          // cache — leave unchanged (stays redis)
     ]);
@@ -248,7 +248,7 @@ test('picking "None" for cache in the wizard clears a previously-configured driv
         Key::ENTER,          // server variation — leave unchanged
         Key::ENTER,          // features multiselect — leave unchanged
         Key::ENTER,          // package manager — leave unchanged
-        Key::ENTER,          // storage — leave unchanged (stays minio)
+        Key::ENTER,          // storage — leave unchanged (stays seaweedfs)
         Key::ENTER,          // database — leave unchanged
         Key::UP, Key::ENTER, // cache — move off "redis" onto "None" and submit
     ]);
@@ -256,5 +256,5 @@ test('picking "None" for cache in the wizard clears a previously-configured driv
     $result = runReinitWizard(reinitWizardConfig());
 
     expect($result->cacheDriver)->toBeNull()
-        ->and($result->getObjectStorage())->toBe(StorageDriver::MINIO);
+        ->and($result->getObjectStorage())->toBe(StorageDriver::SEAWEEDFS);
 });

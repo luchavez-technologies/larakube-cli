@@ -62,7 +62,7 @@ test('it generates reverb keys when enabled', function (): void {
 
 test('it generates storage secrets when enabled', function (): void {
     $generator = new SecretsGenerator;
-    $config = new ConfigData(name: 'test', objectStorage: StorageDriver::MINIO);
+    $config = new ConfigData(name: 'test', objectStorage: StorageDriver::SEAWEEDFS);
 
     $secrets = $generator->generateInstallSecrets($config, 'production');
 

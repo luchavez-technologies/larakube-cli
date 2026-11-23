@@ -35,7 +35,6 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     public function getLabel(): string
     {
         return match ($this) {
-            self::MINIO => 'MinIO (Legacy / AGPL)',
             self::SEAWEEDFS => 'SeaweedFS (High Performance)',
             self::GARAGE => 'Garage (Modern/Rust)',
         };
@@ -58,7 +57,6 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     public function port(): int
     {
         return match ($this) {
-            self::MINIO => 9000,
             self::SEAWEEDFS => 8333,
             self::GARAGE => 3900,
         };
@@ -67,7 +65,6 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     public function consolePort(): int
     {
         return match ($this) {
-            self::MINIO => 9001,
             self::SEAWEEDFS => 8888,
             self::GARAGE => 3902,
         };
@@ -76,7 +73,6 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     public function getDockerImage(?ConfigData $config = null): string
     {
         return match ($this) {
-            self::MINIO => 'minio/minio:RELEASE.2025-09-07T16-13-09Z',
             self::SEAWEEDFS => 'chrislusf/seaweedfs:4.20',
             self::GARAGE => 'dxflrs/garage:v2.1.0',
         };
@@ -123,7 +119,6 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     public function getWorkloadViewName(): ?string
     {
         return match ($this) {
-            self::MINIO => 'k8s.minio.deployment',
             self::SEAWEEDFS => 'k8s.seaweedfs.deployment',
             self::GARAGE => 'k8s.garage.deployment',
         };
@@ -132,7 +127,6 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     public function getWorkloadYamlDestination(): ?string
     {
         return match ($this) {
-            self::MINIO => 'base/minio-deployment.yaml',
             self::SEAWEEDFS => 'base/seaweedfs-deployment.yaml',
             self::GARAGE => 'base/garage-deployment.yaml',
         };
@@ -141,7 +135,6 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     public function getNetworkViewName(): ?string
     {
         return match ($this) {
-            self::MINIO => 'k8s.minio.ingress',
             self::SEAWEEDFS => 'k8s.seaweedfs.ingress',
             self::GARAGE => 'k8s.garage.ingress',
         };
@@ -150,7 +143,6 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     public function getNetworkYamlDestination(): ?string
     {
         return match ($this) {
-            self::MINIO => 'overlays/local/minio-ingress.yaml',
             self::SEAWEEDFS => 'overlays/local/seaweedfs-ingress.yaml',
             self::GARAGE => 'overlays/local/garage-ingress.yaml',
         };
@@ -159,7 +151,6 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     public function getStorageViewName(): ?string
     {
         return match ($this) {
-            self::MINIO => 'k8s.minio.volumes',
             self::SEAWEEDFS => 'k8s.seaweedfs.volumes',
             self::GARAGE => 'k8s.garage.volumes',
         };
@@ -168,7 +159,6 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     public function getStorageYamlDestination(): ?string
     {
         return match ($this) {
-            self::MINIO => 'minio-volumes.yaml',
             self::SEAWEEDFS => 'seaweedfs-volumes.yaml',
             self::GARAGE => 'garage-volumes.yaml',
         };
@@ -187,7 +177,6 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     public function getK8sDeploymentArgs(): string
     {
         return match ($this) {
-            self::MINIO => '["server", "/data", "--console-address", ":9001"]',
             self::SEAWEEDFS => '["server", "-dir=/data", "-s3"]',
             self::GARAGE => '["server"]',
         };
@@ -242,7 +231,6 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
         $host = $config ? $config->getInternalFqdn($this, $environment) : $this->getPodName();
         $endpoint = match ($this) {
             self::SEAWEEDFS => "http://{$host}:8333",
-            self::MINIO => "http://{$host}:9000",
             self::GARAGE => "http://{$host}:3900",
         };
 
@@ -264,10 +252,6 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     public function getHostServices(): array
     {
         return match ($this) {
-            self::MINIO => [
-                's3' => 'MinIO S3 API',
-                's3-console' => 'MinIO Console',
-            ],
             self::SEAWEEDFS => [
                 's3' => 'SeaweedFS S3 API',
                 's3-admin' => 'SeaweedFS Filer UI',
@@ -288,7 +272,6 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     public function getPromptableHostServices(): array
     {
         return match ($this) {
-            self::MINIO => ['s3' => 'MinIO S3 API'],
             self::SEAWEEDFS => ['s3' => 'SeaweedFS S3 API'],
             self::GARAGE => ['s3' => 'Garage S3 API'],
         };
@@ -302,19 +285,6 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     public function getPostInstallInstructions(?ConfigData $config = null): array
     {
         return match ($this) {
-            self::MINIO => [
-                'MinIO requires a one-time bucket creation:',
-                '1. Visit the Console: https://'.$config->getServiceHost('s3-console'),
-                '2. Login with: larakube / larakubesecretpassword',
-                '3. Create a bucket named "laravel"',
-                '4. To make it (or just a folder in it) public, open a shell in the pod:',
-                '     larakube shell minio',
-                '   then, inside it:',
-                '     mc alias set local http://127.0.0.1:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"',
-                '     mc anonymous set download local/laravel',
-                '   (append a path for just a folder, e.g. local/laravel/public; use "public" instead of "download" to also allow public uploads)',
-                $this->temporaryUrlTip(),
-            ],
             self::SEAWEEDFS => [
                 'SeaweedFS requires a one-time bucket creation after "larakube up":',
                 '1. Open a shell in the SeaweedFS pod:',
@@ -322,7 +292,7 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
                 '2. Create Bucket: inside the shell, run:',
                 '     echo "s3.bucket.create -name laravel" | weed shell',
                 'You can monitor your storage at: https://'.$config->getServiceHost('s3-admin'),
-                'To make it public, SeaweedFS has no single-command bucket ACL like MinIO — check the exact',
+                'To make it public, SeaweedFS has no single-command bucket ACL — check the exact',
                 'subcommand for your version inside `larakube shell seaweedfs` by running:',
                 '     echo "help" | weed shell',
                 '(look for an s3.bucket.policy / s3.configure entry), or configure anonymous access via the Filer UI above.',
@@ -393,9 +363,9 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
         // Wired Commons S3 backends (deployment + per-tenant bucket provisioning
         // via commonsBucketCreateCommand). Garage uses a shared "commons-admin"
         // key created once at Commons bootstrap (see PlexInitCommand) instead of
-        // a single root credential like MinIO/SeaweedFS.
+        // a single root credential like SeaweedFS.
         return match ($this) {
-            self::SEAWEEDFS, self::MINIO, self::GARAGE => true,
+            self::SEAWEEDFS, self::GARAGE => true,
             default => false,
         };
     }
@@ -408,30 +378,17 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
      */
     public function isMigratable(): bool
     {
-        return match ($this) {
-            self::MINIO => true,
-            default => false,
-        };
+        return false;
     }
 
     /**
      * Shell command — run via `kubectl exec` INSIDE the SELF-HOSTED pod —
      * that mirrors this driver's self-hosted "laravel" bucket into a Commons
-     * tenant bucket. Both the self-hosted server (reachable at 127.0.0.1
-     * inside its own pod, using its own root creds) and the Commons server
-     * (reachable cross-namespace via cluster DNS) are S3 endpoints the pod's
-     * own `mc` binary can talk to directly, so this is a single hop with no
-     * local staging file. Null for engines without a migrate path yet.
+     * tenant bucket. Null for engines without a migrate path yet.
      */
     public function selfHostedMirrorCommand(string $targetBucket, string $commonsHost, string $accessKey, string $secretKey): ?string
     {
-        return match ($this) {
-            self::MINIO => 'export MC_CONFIG_DIR=/tmp/mc; '.
-                'mc alias set src http://127.0.0.1:'.$this->port().' "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 && '.
-                'mc alias set dst http://'.$commonsHost.' '.escapeshellarg($accessKey).' '.escapeshellarg($secretKey).' >/dev/null 2>&1 && '.
-                'mc mirror --overwrite src/laravel dst/'.$targetBucket,
-            default => null,
-        };
+        return null;
     }
 
     /**
@@ -442,24 +399,16 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
      */
     public function commonsToSelfHostedMirrorCommand(string $sourceBucket, string $commonsHost, string $accessKey, string $secretKey): ?string
     {
-        return match ($this) {
-            self::MINIO => 'export MC_CONFIG_DIR=/tmp/mc; '.
-                'mc alias set dst http://127.0.0.1:'.$this->port().' "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 && '.
-                'mc alias set src http://'.$commonsHost.' '.escapeshellarg($accessKey).' '.escapeshellarg($secretKey).' >/dev/null 2>&1 && '.
-                'mc mirror --overwrite src/'.$sourceBucket.' dst/laravel',
-            default => null,
-        };
+        return null;
     }
 
     /**
      * Shell command — run via `kubectl exec deploy/<value> -- sh -c '<this>'` —
      * that idempotently creates a tenant's bucket on this Commons S3 backend.
-     * Bucket-per-tenant isolation under the shared admin key. The pod's shell
-     * expands the credential env vars (MinIO's root user/pass), so they stay out
-     * of the local process. Garage has no single root credential like MinIO's —
-     * instead every tenant bucket is explicitly granted to the one shared
-     * "commons-admin" key created at bootstrap (see PlexInitCommand), referenced
-     * by NAME (Garage resolves an unambiguous key name to its id) so this
+     * Bucket-per-tenant isolation under the shared admin key. Garage has no
+     * single root credential — instead every tenant bucket is explicitly granted
+     * to the one shared "commons-admin" key created at bootstrap (see PlexInitCommand),
+     * referenced by NAME (Garage resolves an unambiguous key name to its id) so this
      * command never needs to know the generated key id/secret itself. `;`
      * (not `&&`) between steps: a bucket that already exists makes `create`
      * exit non-zero, but `allow` must still run so re-provisioning stays
@@ -469,7 +418,6 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     {
         return match ($this) {
             self::SEAWEEDFS => "echo 's3.bucket.create -name {$bucket}' | weed shell",
-            self::MINIO => $this->minioMcCommand('mb --ignore-existing local/'.$bucket),
             self::GARAGE => "/garage bucket create {$bucket} 2>/dev/null; ".
                 "/garage bucket allow --read --write {$bucket} --key commons-admin",
         };
@@ -483,7 +431,6 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     {
         return match ($this) {
             self::SEAWEEDFS => "echo 's3.bucket.delete -name {$bucket}' | weed shell",
-            self::MINIO => $this->minioMcCommand('rb --force local/'.$bucket),
             self::GARAGE => "/garage bucket deny --read --write {$bucket} --key commons-admin 2>/dev/null; ".
                 "/garage bucket delete --yes {$bucket}",
         };
@@ -493,7 +440,6 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
     {
         return match ($this) {
             self::SEAWEEDFS => "echo 's3.bucket.list' | weed shell",
-            self::MINIO => $this->minioMcCommand('ls local/'),
             self::GARAGE => '/garage bucket list',
         };
     }
@@ -504,7 +450,6 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
 
         return match ($this) {
             self::SEAWEEDFS => "echo 'fs.ls /buckets/'.$bucket.$sub | weed shell",
-            self::MINIO => $this->minioMcCommand('ls local/'.$bucket.$sub),
             self::GARAGE => "/garage bucket info {$bucket}",
         };
     }
@@ -530,20 +475,6 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
         return 'Tip: Storage::temporaryUrl() needs a small config change to work outside the cluster — see https://docs.larakube.app/docs/storage/overview#temporary-urls-need-a-separate-disk';
     }
 
-    /**
-     * A `mc` invocation against the in-pod MinIO. Configures a throwaway alias
-     * first (the server image ships `mc` at /usr/bin/mc but unconfigured), using
-     * the root creds the Commons deployment injects from the plex-admin Secret.
-     * MC_CONFIG_DIR keeps the alias out of an unwritable $HOME.
-     */
-    private function minioMcCommand(string $mc): string
-    {
-        return 'export MC_CONFIG_DIR=/tmp/mc; '.
-            'mc alias set local http://127.0.0.1:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 && '.
-            'mc '.$mc;
-    }
-
     case SEAWEEDFS = 'seaweedfs';
-    case MINIO = 'minio';
     case GARAGE = 'garage';
 }

@@ -202,7 +202,7 @@ class StalwartShowCommand extends Command
 
         $backend = 'seaweedfs';
         $endpoint = (string) ($blob['region']['customEndpoint'] ?? '');
-        foreach (['seaweedfs', 'minio', 'garage'] as $candidate) {
+        foreach (['seaweedfs', 'garage'] as $candidate) {
             if (str_contains($endpoint, "{$candidate}.")) {
                 $backend = $candidate;
                 break;

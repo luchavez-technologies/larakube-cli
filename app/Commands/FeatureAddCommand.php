@@ -188,7 +188,7 @@ class FeatureAddCommand extends Command
 
             $options['database'] = 'Database Engine (MySQL, Postgres, etc.)';
             $options['cache'] = 'Cache Driver (Redis, Memcached)';
-            $options['storage'] = 'Object Storage (MinIO, Garage)';
+            $options['storage'] = 'Object Storage (SeaweedFS, Garage)';
 
             if ($config->isPhp()) {
                 $options['php_version'] = 'PHP Version (8.4, 8.5, etc.)';

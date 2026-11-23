@@ -42,7 +42,7 @@ final class ServerStack
     /** @return list<StorageDriver> the first is the default */
     public static function storages(): array
     {
-        return [StorageDriver::MINIO, StorageDriver::SEAWEEDFS, StorageDriver::GARAGE];
+        return [StorageDriver::SEAWEEDFS, StorageDriver::GARAGE];
     }
 
     /** WordPress offloads media to S3, so it has no "none". */

@@ -60,10 +60,10 @@ test('the Database cache option is offered only when the primary DB is networked
 });
 
 test('backendsPresent detects a backend from Plex membership OR a self-hosted/declared service', function (): void {
-    // Self-hosted: declares MinIO + a Redis cache, not on a Commons.
+    // Self-hosted: declares SeaweedFS + a Redis cache, not on a Commons.
     $selfHosted = ConfigData::from([
         'name' => 'ext-test',
-        'objectStorage' => 'minio',
+        'objectStorage' => 'seaweedfs',
         'cacheDriver' => 'redis',
         'database' => 'mysql',
         'environments' => ['production' => ['plex' => []]],
@@ -72,11 +72,11 @@ test('backendsPresent detects a backend from Plex membership OR a self-hosted/de
     // Memcached is neither declared nor on a Commons → not ready (would prompt).
     expect(externalizer()->backendsPresent($selfHosted, 'production', CacheDriver::MEMCACHED))->toBe([true, false]);
 
-    // Plex member: redis + minio supplied by the Commons (no local declaration).
+    // Plex member: redis + seaweedfs supplied by the Commons (no local declaration).
     $plexMember = ConfigData::from([
         'name' => 'ext-test',
         'database' => 'mysql',
-        'environments' => ['production' => ['plex' => ['redis', 'minio']]],
+        'environments' => ['production' => ['plex' => ['redis', 'seaweedfs']]],
     ]);
     expect(externalizer()->backendsPresent($plexMember, 'production', CacheDriver::REDIS))->toBe([true, true]);
 

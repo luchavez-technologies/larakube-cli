@@ -316,7 +316,7 @@ test('a service managed for local is removed from the local overlay too, indepen
     // Regression guard: `managed` used to have NO effect on the local
     // overlay at all — a service marked managed for `local` (e.g. by
     // plex:join/plex:migrate after joining a Commons) kept deploying its own
-    // Postgres/MinIO pods locally forever, regardless of managed status.
+    // Postgres/SeaweedFS pods locally forever, regardless of managed status.
     $config = ConfigData::from([
         'name' => 'mgdlocal',
         'serverVariation' => 'fpm-nginx',

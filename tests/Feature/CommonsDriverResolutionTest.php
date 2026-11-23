@@ -56,13 +56,13 @@ test('SupportedDriversTrait resolves cache driver for tool', function (): void {
 
 test('SupportedDriversTrait resolves storage driver for tool', function (): void {
     Process::fake([
-        '*get deployment minio*' => Process::result(output: 'minio'),
+        '*get deployment seaweedfs*' => Process::result(output: 'seaweedfs'),
         '*' => Process::result(),
     ]);
 
     $tester = new CommonsDriverResolutionTest;
     $driver = $tester->resolveToolStorageDriver('kubectl', ClusterTool::DOCUMENSO);
-    expect($driver)->toBe(StorageDriver::MINIO);
+    expect($driver)->toBe(StorageDriver::SEAWEEDFS);
 });
 
 test('SupportedDriversTrait resolves search driver for app framework', function (): void {

@@ -349,7 +349,7 @@ jobs:
         if: steps.wsl_token.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
-        run: gh workflow run release.yml --repo luchavez-technologies/larakube-ubuntu -f channel=stable
+        run: gh workflow run release.yml --repo luchavez-technologies/larakube-linux -f channel=stable
 
   wsl-image-canary:
     name: Rebuild larakube-ubuntu WSL image (Canary)
@@ -373,7 +373,7 @@ jobs:
         if: steps.wsl_token.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
-        run: gh workflow run release.yml --repo luchavez-technologies/larakube-ubuntu -f channel=canary
+        run: gh workflow run release.yml --repo luchavez-technologies/larakube-linux -f channel=canary
 
   ubuntu-26-compatibility:
     name: Ubuntu 26 Compatibility Verification

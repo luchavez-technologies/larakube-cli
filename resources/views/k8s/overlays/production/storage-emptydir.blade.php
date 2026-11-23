@@ -4,7 +4,7 @@
      volume's source. The `test` op makes kustomize fail loudly if `storage` ever
      stops being volumes[0], rather than silently replacing the wrong volume.
      Targeted by name (Deployment) in the overlay kustomization — never the
-     service pods (postgres/redis/minio), whose data volumes must stay PVCs. --}}
+     service pods (postgres/redis/seaweedfs), whose data volumes must stay PVCs. --}}
 - op: test
   path: /spec/template/spec/volumes/0/name
   value: storage

@@ -9,7 +9,7 @@ use Symfony\Component\Console\Input\InputOption;
 
 /**
  * Lets a scaffolding command's wizard questions be answered by flags, the way
- * `larakube new` already does (`--postgres`, `--redis`, `--minio`, `--8.4`).
+ * `larakube new` already does (`--postgres`, `--redis`, `--seaweedfs`, `--8.4`).
  * Each answer is one on/off flag per enum case, so a headless run (LaraKube
  * Desktop, CI) never has to prompt. A question with no flag is asked as before.
  */

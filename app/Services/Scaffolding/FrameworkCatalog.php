@@ -407,7 +407,7 @@ class FrameworkCatalog
     {
         return [
             $this->select('database', 'Database', $this->options([DatabaseDriver::POSTGRESQL, DatabaseDriver::MYSQL, DatabaseDriver::MARIADB], recommended: DatabaseDriver::POSTGRESQL), default: DatabaseDriver::POSTGRESQL->value),
-            $this->storage([StorageDriver::MINIO, StorageDriver::SEAWEEDFS, StorageDriver::GARAGE]),
+            $this->storage([StorageDriver::SEAWEEDFS, StorageDriver::GARAGE]),
             $this->search([SearchDriver::MEILISEARCH, SearchDriver::TYPESENSE]),
         ];
     }
@@ -470,8 +470,8 @@ class FrameworkCatalog
     {
         $field = $this->select('storage', 'Object storage', [
             ...($optional ? [['value' => 'none', 'label' => 'None', 'flag' => '--no-storage', 'recommended' => false]] : []),
-            ...$this->options($only ?? StorageDriver::cases(), recommended: StorageDriver::MINIO),
-        ], default: StorageDriver::MINIO->value);
+            ...$this->options($only ?? StorageDriver::cases(), recommended: StorageDriver::SEAWEEDFS),
+        ], default: StorageDriver::SEAWEEDFS->value);
 
         return $field;
     }

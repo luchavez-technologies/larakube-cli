@@ -236,8 +236,8 @@ trait InteractsWithBackup
      * Environment for every `aws` invocation against the destination.
      *
      * The two checksum settings are not optional. From aws-cli 2.23 the client
-     * sends `x-amz-checksum-crc32` on uploads by default, which Cloudflare R2,
-     * Backblaze B2 and MinIO reject — the failure surfaces as an opaque
+     * sends `x-amz-checksum-crc32` on uploads by default, which Cloudflare R2
+     * and Backblaze B2 reject — the failure surfaces as an opaque
      * signature or "not implemented" error at the moment you most want the
      * backup to work. `when_required` restores the pre-2.23 behaviour.
      *

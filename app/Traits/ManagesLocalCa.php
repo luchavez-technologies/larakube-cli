@@ -134,7 +134,7 @@ trait ManagesLocalCa
      * Ensure the system cert exists covering console.{tld}, traefik.{tld},
      * mailpit.{tld}, grafana.{tld}, the global companion hosts, and any
      * $additionalHosts the caller needs covered too (e.g. a Plex Commons'
-     * current public hosts — minio.test, minio-console.test, …). Regenerates
+     * current public hosts — seaweedfs.test, seaweedfs-admin.test, …). Regenerates
      * if missing, expiring, covering the wrong TLD, or missing one of
      * $additionalHosts (so a newly-added Commons host triggers a refresh, not
      * just the initial cert creation) — mirrors ensureAppCertExists()'s

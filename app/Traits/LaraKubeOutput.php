@@ -243,7 +243,7 @@ trait LaraKubeOutput
     }
 
     /**
-     * Render each installed component's one-time post-install steps (e.g. MinIO's
+     * Render each installed component's one-time post-install steps (e.g. SeaweedFS's
      * bucket-creation walkthrough) — the same instructions `new`/`init`/`add` print
      * once and then can easily get lost (scrolled past, or the user comes back to
      * the project days later). Surfacing them again here — at the end of `up` and

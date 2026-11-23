@@ -31,7 +31,7 @@ final class ClusterCapacityAssessor
     ];
 
     /** The object stores a Commons can run; an app with buckets needs one of them. */
-    private const array COMMONS_OBJECT_STORES = ['seaweedfs', 'minio', 'garage'];
+    private const array COMMONS_OBJECT_STORES = ['seaweedfs', 'garage'];
 
     /**
      * @param  array<string, mixed>  $options

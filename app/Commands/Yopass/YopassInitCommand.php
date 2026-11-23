@@ -28,7 +28,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  * Redis is a hard requirement (Yopass has no SQL backend at all, and the
  * only other option is bundling a dedicated Memcached, which would defeat
  * the whole point of reusing the Commons); the optional S3 file-storage
- * feature is wired to Commons SeaweedFS/MinIO/Garage only when one is
+ * feature is wired to Commons SeaweedFS/Garage only when one is
  * enabled, mirroring StalwartInitCommand's own conditional store wiring.
  */
 abstract class YopassInitCommand extends AbstractToolInitCommand
@@ -133,7 +133,7 @@ abstract class YopassInitCommand extends AbstractToolInitCommand
     }
 
     /**
-     * Wire Yopass's S3 file-storage feature to Commons SeaweedFS/MinIO/Garage
+     * Wire Yopass's S3 file-storage feature to Commons SeaweedFS/Garage
      * when Commons offers one — this is separate from (and does not require)
      * the Redis secret store, purely for letting a sender attach a larger
      * file alongside a short secret. Returns null (Redis-only, still fully
@@ -151,7 +151,7 @@ abstract class YopassInitCommand extends AbstractToolInitCommand
         $services = $this->enabledCommonsServices($spec);
         $bucket = ClusterTool::YOPASS->commonsBuckets($instance)[0];
 
-        foreach (['seaweedfs', 'minio', 'garage'] as $candidate) {
+        foreach (['seaweedfs', 'garage'] as $candidate) {
             if (! in_array($candidate, $services, true)) {
                 continue;
             }
@@ -168,7 +168,7 @@ abstract class YopassInitCommand extends AbstractToolInitCommand
 
             return [
                 'bucket' => $bucket,
-                'endpoint' => "http://{$candidate}.{$plexNs}.svc.cluster.local:8333",
+                'endpoint' => "http://{$candidate}.{$plexNs}.svc.cluster.local:{$driver->port()}",
                 'region' => 'us-east-1',
             ];
         }

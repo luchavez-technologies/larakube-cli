@@ -23,7 +23,7 @@ interface PlexProvisionable
      * The Commons service key this driver maps to. This is just the driver's own
      * enum value (e.g. 'postgres', 'redis', 'meilisearch', 'seaweedfs') — no
      * remapping — so distinct backends stay distinct services and can coexist
-     * (a SeaweedFS tenant and a MinIO tenant get different Commons services).
+     * (a SeaweedFS tenant and a Garage tenant get different Commons services).
      * Returns null when the driver is never a shareable service (SQLite is a
      * local file; the database-backed cache/scout drivers run in the app's own DB).
      */

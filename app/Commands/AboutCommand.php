@@ -207,7 +207,7 @@ class AboutCommand extends Command
         // .env file). Only shown when the project is a tenant for this env.
         $this->showPlexCredentials($config, $environment);
 
-        // 8. One-time architectural steps (e.g. MinIO's bucket-creation walkthrough)
+        // 8. One-time architectural steps (e.g. SeaweedFS's bucket-creation walkthrough)
         // — the same ones `new`/`up` print, resurfaced here so they're not lost.
         $this->showArchitecturalInstructions($config, $environment);
 

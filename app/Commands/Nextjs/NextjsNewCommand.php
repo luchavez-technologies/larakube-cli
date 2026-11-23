@@ -162,7 +162,7 @@ class NextjsNewCommand extends Command
     /**
      * The console command description.
      */
-    /** Database, storage and search answers are flags (--postgres, --minio, --no-storage, --meilisearch). */
+    /** Database, storage and search answers are flags (--postgres, --seaweedfs, --no-storage, --meilisearch). */
     protected function configure(): void
     {
         parent::configure();

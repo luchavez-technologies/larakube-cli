@@ -408,7 +408,7 @@ abstract class AbstractToolRemoveCommand extends Command
 
     /**
      * Drop one Commons S3 bucket (and its contents — irreversible). The
-     * backend (SeaweedFS/MinIO/Garage) it lives on is read from the tenant
+     * backend (SeaweedFS/Garage) it lives on is read from the tenant
      * registry the same allocateStorageBucket() wrote it to; a pre-registry
      * install falls back to whichever S3 service the live Commons spec has
      * enabled, the same discovery order every {tool}:init uses to pick one
@@ -422,7 +422,7 @@ abstract class AbstractToolRemoveCommand extends Command
 
         if ($service === null) {
             $spec = $this->getCommonsSpec() ?? ['services' => []];
-            foreach (['seaweedfs', 'minio', 'garage'] as $candidate) {
+            foreach (['seaweedfs', 'garage'] as $candidate) {
                 if (in_array($candidate, $this->enabledCommonsServices($spec), true)) {
                     $service = $candidate;
                     break;

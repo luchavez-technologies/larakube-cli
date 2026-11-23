@@ -27,7 +27,7 @@ test('a Commons service name is just the driver value (no remapping)', function 
         ->and(CacheDriver::REDIS->commonsServiceName())->toBe('redis')
         ->and(SearchDriver::MEILISEARCH->commonsServiceName())->toBe('meilisearch')   // the enum value, not a shortened 'meili'
         ->and(StorageDriver::SEAWEEDFS->commonsServiceName())->toBe('seaweedfs')
-        ->and(StorageDriver::MINIO->commonsServiceName())->toBe('minio');            // distinct from seaweedfs → can coexist
+        ->and(StorageDriver::GARAGE->commonsServiceName())->toBe('garage');            // distinct from seaweedfs → can coexist
 });
 
 test('non-shareable drivers have no Commons service', function (): void {
@@ -45,25 +45,23 @@ test('plex-readiness reflects what is actually wired today', function (): void {
         ->and(SearchDriver::MEILISEARCH->isPlexReady())->toBeTrue()
         ->and(SearchDriver::TYPESENSE->isPlexReady())->toBeFalse()
         ->and(StorageDriver::SEAWEEDFS->isPlexReady())->toBeTrue()   // wired: Commons S3 backend
-        ->and(StorageDriver::MINIO->isPlexReady())->toBeTrue()       // wired: SeaweedFS alternative
         ->and(StorageDriver::GARAGE->isPlexReady())->toBeTrue();     // wired: shared "commons-admin" key, not a root credential
 });
 
 test('the catalog lists every shareable service, including coexisting S3 backends', function (): void {
     $catalog = plexCatalog()->commonsServiceCatalog();
 
-    // ready (wired today) services — both db engines + all three S3 backends
+    // ready (wired today) services — both db engines + S3 backends
     expect($catalog['postgres']['ready'])->toBeTrue()
         ->and($catalog['mysql']['ready'])->toBeTrue()
         ->and($catalog['mariadb']['ready'])->toBeTrue()
         ->and($catalog['redis']['ready'])->toBeTrue()
         ->and($catalog['meilisearch']['ready'])->toBeTrue()
         ->and($catalog['seaweedfs']['ready'])->toBeTrue()
-        ->and($catalog['minio']['ready'])->toBeTrue()
         ->and($catalog['garage']['ready'])->toBeTrue();
 
     // each S3 backend is its OWN entry (so they coexist), not collapsed into one.
-    expect($catalog)->toHaveKeys(['seaweedfs', 'minio', 'garage']);
+    expect($catalog)->toHaveKeys(['seaweedfs', 'garage']);
 
     // mapped-but-not-ready services are still listed
     expect($catalog['mongodb']['ready'])->toBeFalse()

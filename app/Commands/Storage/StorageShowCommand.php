@@ -15,7 +15,7 @@ class StorageShowCommand extends Command
 
     protected $signature = 'storage:show
         {environment=local : Environment whose storage service to show}
-        {--driver=  : Specific storage driver (seaweedfs, minio, garage)}
+        {--driver=  : Specific storage driver (seaweedfs, garage)}
         {--context= : Target a specific kube-context}';
 
     protected $description = 'Show Commons S3 storage status, endpoints, and credentials';

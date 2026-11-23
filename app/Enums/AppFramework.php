@@ -181,7 +181,6 @@ enum AppFramework: string implements HasLabel, RequiresPhpExtensions
     {
         return [
             StorageDriver::SEAWEEDFS,
-            StorageDriver::MINIO,
             StorageDriver::GARAGE,
         ];
     }

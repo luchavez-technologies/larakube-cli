@@ -60,18 +60,8 @@ abstract class PenpotInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $spec = $this->getCommonsSpec();
-        $s3Service = null;
-        if ($spec !== null) {
-            $enabled = $this->enabledCommonsServices($spec);
-            if (in_array('seaweedfs', $enabled, true)) {
-                $s3Service = 'seaweedfs';
-            } elseif (in_array('minio', $enabled, true)) {
-                $s3Service = 'minio';
-            }
-        }
-        $s3Service ??= 'seaweedfs';
-        if (! $this->ensureCommons([$s3Service])) {
+        $s3Driver = StorageDriver::SEAWEEDFS;
+        if (! $this->ensureCommons([$s3Driver->value])) {
             return 1;
         }
 
@@ -82,7 +72,6 @@ abstract class PenpotInitCommand extends AbstractToolInitCommand
             return 1;
         }
 
-        $s3Driver = StorageDriver::from($s3Service);
         $s3Bucket = ClusterTool::PENPOT->commonsBuckets($instance)[0];
         if (! $this->allocateStorageBucket($s3Driver, $s3Bucket)) {
             return 1;

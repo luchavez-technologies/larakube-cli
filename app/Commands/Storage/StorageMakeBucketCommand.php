@@ -19,7 +19,7 @@ class StorageMakeBucketCommand extends Command
     protected $signature = 'storage:make-bucket
         {environment=local : Environment whose storage engine to create the bucket in}
         {--bucket=  : Name of the S3 bucket to create}
-        {--driver=  : Specific storage driver (seaweedfs, minio, garage)}
+        {--driver=  : Specific storage driver (seaweedfs, garage)}
         {--context= : Target a specific kube-context}';
 
     protected $description = 'Create an S3 bucket on the cluster storage engine';

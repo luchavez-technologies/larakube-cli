@@ -46,10 +46,10 @@ test('NestJS CacheDriver matrix: Redis, Memcached are valid', function (): void 
     expect($supported)->toHaveCount(2);
 });
 
-test('NestJS StorageDriver: MinIO, SeaweedFS, Garage are valid', function (): void {
-    $supported = [StorageDriver::MINIO, StorageDriver::SEAWEEDFS, StorageDriver::GARAGE];
+test('NestJS StorageDriver: SeaweedFS, Garage are valid', function (): void {
+    $supported = [StorageDriver::SEAWEEDFS, StorageDriver::GARAGE];
 
-    expect($supported)->toHaveCount(3);
+    expect($supported)->toHaveCount(2);
 });
 
 // ── NestJS ConfigData Integration ─────────────────────────────────────────────

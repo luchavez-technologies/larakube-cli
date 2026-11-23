@@ -22,14 +22,6 @@ test('Services: Typesense', function (): void {
     expect(generateManifests($config))->toMatchSnapshot();
 });
 
-test('Services: MinIO', function (): void {
-    $config = new ConfigData(name: 'minio-test');
-    $config->setServerVariation(ServerVariation::FPM_NGINX);
-    $config->setDatabase(DatabaseDriver::SQLITE);
-    $config->addObjectStorage(StorageDriver::MINIO);
-    expect(generateManifests($config))->toMatchSnapshot();
-});
-
 test('Services: SeaweedFS', function (): void {
     $config = new ConfigData(name: 'seaweed-test');
     $config->setServerVariation(ServerVariation::FPM_NGINX);

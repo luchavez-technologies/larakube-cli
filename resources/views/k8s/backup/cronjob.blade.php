@@ -304,7 +304,7 @@ spec:
                   valueFrom:
                     secretKeyRef: { name: larakube-backup-config, key: region }
                 # From aws-cli 2.23 the client sends x-amz-checksum-crc32 by
-                # default, which R2, B2 and MinIO reject with an opaque error.
+                # default, which R2 and B2 reject with an opaque error.
                 - name: AWS_REQUEST_CHECKSUM_CALCULATION
                   value: "when_required"
                 - name: AWS_RESPONSE_CHECKSUM_VALIDATION

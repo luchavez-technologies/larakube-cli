@@ -32,7 +32,6 @@ test('the default spec enables only Postgres + Redis', function (): void {
         ->and($spec['services']['redis']['port'])->toBe(6379)
         ->and($spec['services']['meilisearch']['enabled'])->toBeFalse()  // opt-in, off by default
         ->and($spec['services']['seaweedfs']['enabled'])->toBeFalse()
-        ->and($spec['services']['minio']['enabled'])->toBeFalse()        // MinIO is an opt-in S3 backend (SeaweedFS alternative)
         ->and($spec['services']['mysql']['enabled'])->toBeFalse()        // MySQL/MariaDB are opt-in db backends
         ->and($spec['services']['mariadb']['enabled'])->toBeFalse();
 });
@@ -53,9 +52,7 @@ test('Commons service images/ports derive from the driver enums (no drift)', fun
         ->and($spec['meilisearch']['image'])->toBe(SearchDriver::MEILISEARCH->getDockerImage())  // stays in lockstep, no stale literal
         ->and($spec['meilisearch']['port'])->toBe(SearchDriver::MEILISEARCH->port())
         ->and($spec['seaweedfs']['image'])->toBe(StorageDriver::SEAWEEDFS->getDockerImage())
-        ->and($spec['seaweedfs']['port'])->toBe(StorageDriver::SEAWEEDFS->port())
-        ->and($spec['minio']['image'])->toBe(StorageDriver::MINIO->getDockerImage())
-        ->and($spec['minio']['port'])->toBe(StorageDriver::MINIO->port());
+        ->and($spec['seaweedfs']['port'])->toBe(StorageDriver::SEAWEEDFS->port());
 });
 
 test('enabling Meilisearch in the spec turns it on', function (): void {
@@ -110,7 +107,6 @@ test('the pooler sub-key defaults off for Postgres and is absent from non-poolin
         ->and($spec['redis'])->not->toHaveKey('pooler')
         ->and($spec['meilisearch'])->not->toHaveKey('pooler')
         ->and($spec['seaweedfs'])->not->toHaveKey('pooler')
-        ->and($spec['minio'])->not->toHaveKey('pooler')
         ->and($spec['garage'])->not->toHaveKey('pooler');
 });
 

@@ -84,32 +84,15 @@ abstract class ForgejoInitCommand extends AbstractToolInitCommand
         $deployment = ClusterTool::FORGEJO->deploymentName($instance);
         $buckets = ClusterTool::FORGEJO->commonsBuckets($instance);
 
-        $s3Service = null;
         $s3Endpoint = '';
         $s3AccessKey = '';
         $s3SecretKey = '';
 
         if (! $noPlex) {
-            $spec = $this->getCommonsSpec();
-            if ($spec !== null) {
-                $enabled = $this->enabledCommonsServices($spec);
-                if (in_array('seaweedfs', $enabled, true)) {
-                    $s3Service = 'seaweedfs';
-                } elseif (in_array('minio', $enabled, true)) {
-                    $s3Service = 'minio';
-                }
-            }
+            $driver = StorageDriver::SEAWEEDFS;
 
-            if ($s3Service === null) {
-                // Default to SeaweedFS (Apache-licensed)
-                if (! $this->ensureCommons(['seaweedfs'])) {
-                    return 1;
-                }
-                $s3Service = 'seaweedfs';
-            } else {
-                if (! $this->ensureCommons([$s3Service])) {
-                    return 1;
-                }
+            if (! $this->ensureCommons([$driver->value])) {
+                return 1;
             }
 
             // Read credentials and endpoints
@@ -122,8 +105,7 @@ abstract class ForgejoInitCommand extends AbstractToolInitCommand
 
             $s3AccessKey = $creds['access'];
             $s3SecretKey = $creds['secret'];
-            $driver = StorageDriver::from($s3Service);
-            $s3Endpoint = "http://{$s3Service}.{$this->plexNamespace()}.svc.cluster.local:{$driver->port()}";
+            $s3Endpoint = "http://{$driver->value}.{$this->plexNamespace()}.svc.cluster.local:{$driver->port()}";
 
             // Allocate S3 buckets
             if (! $this->allocateStorageBucket($driver, $buckets[0]) ||

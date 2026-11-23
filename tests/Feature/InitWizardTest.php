@@ -36,7 +36,7 @@ test('the init wizard runs every prompt step without a missing-symbol crash', fu
         ->setFrontend(FrontendStack::REACT)
         ->setDatabase(DatabaseDriver::SQLITE)
         ->setCacheDriver(CacheDriver::DATABASE)
-        ->setObjectStorage(StorageDriver::MINIO)
+        ->setObjectStorage(StorageDriver::SEAWEEDFS)
         ->setStrategy(DeploymentStrategy::SINGLE_NODE)
         ->setAdditionalExtensions(['gd']);
     $config->setEmail('wizard@example.test');

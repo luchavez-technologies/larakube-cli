@@ -22,7 +22,7 @@ trait InteractsWithStorage
             $driver = StorageDriver::tryFrom($explicitDriver);
             if ($driver === null) {
                 $this->laraKubeError("Unknown storage driver '{$explicitDriver}'.");
-                $this->line('  <fg=gray>Supported drivers:</> seaweedfs, minio, garage');
+                $this->line('  <fg=gray>Supported drivers:</> seaweedfs, garage');
 
                 return null;
             }
@@ -40,7 +40,7 @@ trait InteractsWithStorage
 
         $services = $this->enabledCommonsServices($spec);
         $active = [];
-        foreach (['seaweedfs', 'minio', 'garage'] as $candidate) {
+        foreach (['seaweedfs', 'garage'] as $candidate) {
             if (in_array($candidate, $services, true)) {
                 $driver = StorageDriver::tryFrom($candidate);
                 if ($driver !== null) {
@@ -50,7 +50,7 @@ trait InteractsWithStorage
         }
 
         if (empty($active)) {
-            $this->laraKubeError("No S3 storage service (SeaweedFS, MinIO, Garage) is enabled in the Plex Commons for '{$env}'.");
+            $this->laraKubeError("No S3 storage service (SeaweedFS, Garage) is enabled in the Plex Commons for '{$env}'.");
             $this->line('  <fg=gray>Enable one with</> <fg=blue>larakube plex:init</><fg=gray>.</>');
 
             return null;

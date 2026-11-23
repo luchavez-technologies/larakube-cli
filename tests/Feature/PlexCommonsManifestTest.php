@@ -64,39 +64,8 @@ test('enabling object storage adds the SeaweedFS S3 service to the manifest', fu
         ->toContain('"-s3"');  // the S3 gateway is enabled
 });
 
-test('MinIO exposes its console port and gets a separate console Ingress when console_host is set', function (): void {
-    // Regression guard: the S3 Ingress (minio-s3) only ever routed port 9000
-    // (the S3 API) — visiting it in a browser expecting the web console
-    // showed nothing useful, since the Service didn't even expose 9001 and
-    // no Ingress routed to it.
-    $spec = plexHelper()->normalizeCommonsSpec(['services' => [
-        'minio' => ['enabled' => true, 'host' => 'minio.test', 'console_host' => 'minio-console.test'],
-    ]]);
-    $yaml = plexManifest($spec);
-
-    expect($yaml)
-        ->toContain('name: minio-console')
-        ->toContain('host: minio-console.test')
-        ->toContain('number: 9001');
-
-    // The Service itself must expose 9001, not just 9000, for either Ingress
-    // to be able to route to it.
-    $serviceDoc = collect(explode("\n---\n", $yaml))
-        ->first(fn ($doc) => str_contains($doc, 'kind: Service') && str_contains($doc, 'name: minio'));
-    expect($serviceDoc)->toContain('port: 9001');
-});
-
-test('MinIO console_host is absent by default — no console Ingress without it', function (): void {
-    $spec = plexHelper()->normalizeCommonsSpec(['services' => [
-        'minio' => ['enabled' => true, 'host' => 'minio.test'],
-    ]]);
-    $yaml = plexManifest($spec);
-
-    expect($yaml)->not->toContain('name: minio-console');
-});
-
 test('SeaweedFS exposes its master port and gets a separate admin Ingress when admin_host is set', function (): void {
-    // Same gap as MinIO: the S3 Ingress only ever routed the S3 gateway port —
+    // The S3 Ingress only ever routed the S3 gateway port —
     // the master's own admin UI (always running, since `weed server` binds it
     // by default) was never exposed via Service or Ingress.
     $spec = plexHelper()->normalizeCommonsSpec(['services' => [

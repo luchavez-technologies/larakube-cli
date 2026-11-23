@@ -15,7 +15,7 @@ class StorageBucketsCommand extends Command
 
     protected $signature = 'storage:buckets
         {environment=local : Environment whose S3 buckets to list}
-        {--driver=  : Specific storage driver (seaweedfs, minio, garage)}
+        {--driver=  : Specific storage driver (seaweedfs, garage)}
         {--context= : Target a specific kube-context}';
 
     protected $description = 'List all S3 buckets provisioned on the storage engine';

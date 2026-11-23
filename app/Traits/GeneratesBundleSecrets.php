@@ -41,7 +41,7 @@ trait GeneratesBundleSecrets
             $secrets['REVERB_APP_SECRET'] = $existing['REVERB_APP_SECRET'] ?? Str::random(32);
         }
 
-        // 4. Object Storage (MinIO / SeaweedFS / Garage)
+        // 4. Object Storage (SeaweedFS / Garage)
         $storage = $config->getObjectStorage();
         if ($storage) {
             $secrets['AWS_SECRET_ACCESS_KEY'] = $existing['AWS_SECRET_ACCESS_KEY'] ?? Str::random(40);

@@ -219,8 +219,8 @@ test('s3Endpoints signs against the public host, and says when there is none', f
 });
 
 test('s3Endpoints falls back to the internal endpoint without a public host', function (): void {
-    Process::fake(['*' => Process::result(output: '{"services":{"minio":{"enabled":true}}}')]);
-    $endpoints = (new PlexService('orbstack'))->s3Endpoints(StorageDriver::MINIO);
+    Process::fake(['*' => Process::result(output: '{"services":{"seaweedfs":{"enabled":true}}}')]);
+    $endpoints = (new PlexService('orbstack'))->s3Endpoints(StorageDriver::SEAWEEDFS);
 
     expect($endpoints['public'])->toBe($endpoints['internal'])
         ->and($endpoints['publicHost'])->toBeNull();

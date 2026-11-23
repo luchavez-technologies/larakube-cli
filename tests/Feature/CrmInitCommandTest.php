@@ -33,40 +33,6 @@ test('tool:init --tool=twenty deploys Twenty CRM using commons postgres and redi
         ->expectsOutputToContain('Twenty CRM stack is live.');
 });
 
-test('tool:init --tool=twenty detects MinIO rather than assuming SeaweedFS when that\'s what plex:init actually provisioned', function (): void {
-    // Regression: the Commons S3 backend is an operator choice at plex:init
-    // (StorageDriver has 3 options), not a fixed SeaweedFS install — an
-    // earlier version of this wiring hardcoded StorageDriver::SEAWEEDFS.
-    Process::fake([
-        '*plex-commons*' => json_encode([
-            'version' => 1,
-            'services' => [
-                'postgres' => ['enabled' => true],
-                'redis' => ['enabled' => true],
-                'minio' => ['enabled' => true],
-            ],
-        ]),
-        '*plex-registry*' => json_encode(['tenants' => []]),
-        '*larakube-tools-registry*' => Process::result(output: ''),
-        '*exec*' => Process::result(output: 'CREATE DATABASE'),
-        '*create namespace*' => Process::result(output: 'namespace created'),
-        '*create secret*' => Process::result(output: 'secret created'),
-        '*apply -f *' => Process::result(output: 'applied'),
-        '*rollout status*' => Process::result(output: 'rollout success'),
-        '*get secret*' => Process::result(output: '', exitCode: 1),
-    ]);
-
-    $this->artisan('tool:init', ['--tool' => 'twenty',
-        'environment' => 'local',
-        '--no-interaction' => true,
-    ])
-        ->assertExitCode(0)
-        ->expectsOutputToContain('Commons MinIO');
-
-    Process::assertRan(fn ($process) => str_contains($process->command, 'deploy/minio'));
-    Process::assertNotRan(fn ($process) => str_contains($process->command, 'deploy/seaweedfs'));
-});
-
 test('twenty:show displays status table for Twenty CRM', function (): void {
     Process::fake([
         '*get deployment *' => Process::result(output: 'twenty-crm-dev-test   1/1   1   1   10d'),

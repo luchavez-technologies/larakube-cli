@@ -202,7 +202,7 @@ trait InteractsWithPlex
 
     /**
      * Turn a tenant identifier into a DNS-safe S3 bucket name (lowercase, hyphens,
-     * 3–63 chars) — MinIO/S3 reject the underscores plexTenantIdentifier produces,
+     * 3–63 chars) — S3 rejects the underscores plexTenantIdentifier produces,
      * and SeaweedFS tolerates either, so this one rule serves every backend
      * (e.g. "app_five" → "app-five"). Pure.
      */
@@ -878,7 +878,7 @@ trait InteractsWithPlex
 
     /**
      * Print Stalwart store configuration hints for enabled Plex services —
-     * main store (PostgreSQL), blob store (SeaweedFS / MinIO / Garage),
+     * main store (PostgreSQL), blob store (SeaweedFS / Garage),
      * cache (Valkey), and search (PostgreSQL).
      */
     protected function printPlexHint(string $kubectl, string $host, ?array $storeBootstrap = null): void
@@ -908,7 +908,7 @@ trait InteractsWithPlex
         $s3Secret = $cluster->secretValue($ns, 'plex-admin', 'S3_SECRET_KEY') ?? '(unknown)';
 
         $s3Backend = null;
-        foreach (['seaweedfs', 'minio', 'garage'] as $candidate) {
+        foreach (['seaweedfs', 'garage'] as $candidate) {
             if (in_array($candidate, $services, true)) {
                 $s3Backend = $candidate;
                 break;
@@ -990,7 +990,6 @@ trait InteractsWithPlex
         if ($storeAlreadyBootstrapped && $storeBootstrap['blob'] !== null) {
             $blobLabel = match ($storeBootstrap['blob']['backend']) {
                 'seaweedfs' => 'SeaweedFS',
-                'minio' => 'MinIO',
                 'garage' => 'Garage',
                 default => ucfirst($storeBootstrap['blob']['backend']),
             };
@@ -999,7 +998,6 @@ trait InteractsWithPlex
         } elseif ($s3Backend !== null) {
             $s3Label = match ($s3Backend) {
                 'seaweedfs' => 'SeaweedFS',
-                'minio' => 'MinIO',
                 'garage' => 'Garage',
             };
             $s3Host = $s3Backend === 'seaweedfs' ? 'seaweedfs' : $s3Backend;

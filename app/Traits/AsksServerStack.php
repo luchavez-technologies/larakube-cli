@@ -13,7 +13,7 @@ use function Laravel\Prompts\select;
 
 /**
  * The database, cache, storage and search questions the server frameworks ask.
- * Each is answered by a flag (`--postgres`, `--redis`, `--minio` or
+ * Each is answered by a flag (`--postgres`, `--redis`, `--seaweedfs` or
  * `--no-storage`, `--meilisearch`), else by `--fast`'s default, else asked.
  */
 trait AsksServerStack

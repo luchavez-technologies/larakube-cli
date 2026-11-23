@@ -272,7 +272,7 @@ trait ConfiguresCloudEnvironment
     /**
      * Prompt to join a shared Commons when the project's drivers map to a
      * plex-ready Commons service (a Postgres/MySQL/MariaDB database, Redis,
-     * Meilisearch, or S3 via SeaweedFS/MinIO). plex:join rewrites .env and
+     * Meilisearch, or S3 via SeaweedFS/Garage). plex:join rewrites .env and
      * regenerates manifests, so it must run before the CI secret upload reads
      * the .env.
      */

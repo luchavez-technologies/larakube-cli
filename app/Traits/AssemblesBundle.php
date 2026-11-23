@@ -51,7 +51,7 @@ trait AssemblesBundle
         ];
     }
 
-    /** A filesystem-safe `.tar` name for an image ref (`minio/minio:RELEASE.x` → `minio-minio-RELEASE.x.tar`). */
+    /** A filesystem-safe `.tar` name for an image ref (`chrislusf/seaweedfs:4.20` → `chrislusf-seaweedfs-4.20.tar`). */
     public function imageTarName(string $image): string
     {
         return trim((string) preg_replace('/[^A-Za-z0-9._-]+/', '-', $image), '-').'.tar';

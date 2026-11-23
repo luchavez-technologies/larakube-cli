@@ -389,7 +389,7 @@ abstract class StalwartInitCommand extends AbstractToolInitCommand
         }
 
         $blob = null;
-        foreach (['seaweedfs', 'minio', 'garage'] as $candidate) {
+        foreach (['seaweedfs', 'garage'] as $candidate) {
             if (! in_array($candidate, $services, true)) {
                 continue;
             }
@@ -398,7 +398,7 @@ abstract class StalwartInitCommand extends AbstractToolInitCommand
             if ($storageDriver !== null && $s3Creds !== null && $this->allocateStorageBucket($storageDriver, $names->bucket())) {
                 $blob = [
                     'backend' => $candidate,
-                    'endpoint' => "http://{$candidate}.{$ns}.svc.cluster.local:8333",
+                    'endpoint' => "http://{$candidate}.{$ns}.svc.cluster.local:{$storageDriver->port()}",
                     'bucket' => $names->bucket(),
                     'accessKey' => $s3Creds['access'],
                     'secretKey' => $s3Creds['secret'],
@@ -436,7 +436,7 @@ abstract class StalwartInitCommand extends AbstractToolInitCommand
             // nothing to configure" vs "offered but this run couldn't wire
             // it" (e.g. allocateStorageBucket()/S3 creds failed), the one
             // case still worth printing the manual fallback for.
-            'commonsOffersBlob' => array_intersect(['seaweedfs', 'minio', 'garage'], $services) !== [],
+            'commonsOffersBlob' => array_intersect(['seaweedfs', 'garage'], $services) !== [],
             'commonsOffersRedis' => in_array('redis', $services, true),
         ];
     }
@@ -560,7 +560,7 @@ abstract class StalwartInitCommand extends AbstractToolInitCommand
         }
 
         // Auto-allocate the S3 bucket if an S3 backend is enabled
-        foreach (['seaweedfs', 'minio', 'garage'] as $candidate) {
+        foreach (['seaweedfs', 'garage'] as $candidate) {
             if (in_array($candidate, $services, true)) {
                 $storageDriver = StorageDriver::tryFrom($candidate);
                 if ($storageDriver !== null) {

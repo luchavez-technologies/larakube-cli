@@ -44,10 +44,10 @@ test('Axum CacheDriver matrix: Redis, Memcached are valid', function (): void {
     expect($supported)->toHaveCount(2);
 });
 
-test('Axum StorageDriver: MinIO, SeaweedFS, Garage are valid', function (): void {
-    $supported = [StorageDriver::MINIO, StorageDriver::SEAWEEDFS, StorageDriver::GARAGE];
+test('Axum StorageDriver: SeaweedFS, Garage are valid', function (): void {
+    $supported = [StorageDriver::SEAWEEDFS, StorageDriver::GARAGE];
 
-    expect($supported)->toHaveCount(3);
+    expect($supported)->toHaveCount(2);
 });
 
 // ── Axum ConfigData Integration ───────────────────────────────────────────────

@@ -48,17 +48,16 @@ trait PreparesNextjsProject
         // 3. StorageDriver — S3-compatible pre-signed URL uploads (plan §2d)
         $allowedStorages = [
             'none' => 'None',
-            StorageDriver::MINIO->value => StorageDriver::MINIO->getLabel().' (Recommended)',
-            StorageDriver::SEAWEEDFS->value => StorageDriver::SEAWEEDFS->getLabel(),
+            StorageDriver::SEAWEEDFS->value => StorageDriver::SEAWEEDFS->getLabel().' (Recommended)',
             StorageDriver::GARAGE->value => StorageDriver::GARAGE->getLabel(),
         ];
 
-        $storageValue = $this->answeredStorage([StorageDriver::MINIO, StorageDriver::SEAWEEDFS, StorageDriver::GARAGE]) ?? ($fast
-            ? StorageDriver::MINIO->value
+        $storageValue = $this->answeredStorage([StorageDriver::SEAWEEDFS, StorageDriver::GARAGE]) ?? ($fast
+            ? StorageDriver::SEAWEEDFS->value
             : select(
                 label: 'Which S3-compatible object storage would you like to use?',
                 options: $allowedStorages,
-                default: StorageDriver::MINIO->value,
+                default: StorageDriver::SEAWEEDFS->value,
             ));
         $objectStorage = StorageDriver::tryFrom($storageValue);
 
