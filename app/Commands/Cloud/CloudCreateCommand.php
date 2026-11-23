@@ -777,7 +777,9 @@ class CloudCreateCommand extends Command
         $hcl = view('tofu.gcp.vps', array_merge($templateData, ['sshAuthorizedKeys' => $authorizedKeys]))->render();
         $this->writeTofuFiles($stackName, ['main.tf' => $hcl]);
 
-        if (! $this->tofuApply($bin, $stackName)) {
+        // Google's project-service refresh needs an API many projects don't enable, and nothing but
+        // this VM's metadata is changing.
+        if (! $this->tofuApply($bin, $stackName, refresh: false)) {
             $this->laraKubeError('Could not update the VM metadata. The server exists and still uses the provisioning key.');
 
             return false;

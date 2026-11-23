@@ -141,6 +141,18 @@ test('GCP VPS tofu template renders required compute resources and metadata', fu
         ->and($rendered)->not->toContain('::/0');
 });
 
+test('GCP VPS firewall rules target only their own server', function (): void {
+    $render = fn (string $name): string => view('tofu.gcp.vps', ['region' => 'us-central1', 'size' => 'e2-small', 'dropletName' => $name, 'sshSources' => '"0.0.0.0/0"', 'sshPubKey' => 'ssh-ed25519 AAAA'])->render();
+    $tag = fn (string $hcl): string => preg_match_all('/target_tags\s+= \["([^"]+)"\]/', $hcl, $m) === 2 && $m[1][0] === $m[1][1] ? $m[1][0] : '';
+
+    $first = $render('server-one');
+    $second = $render('server-two');
+
+    expect($tag($first))->toStartWith('larakube-')
+        ->and($tag($first))->not->toBe($tag($second))
+        ->and($first)->toContain('"'.$tag($first).'", "http-server"');
+});
+
 test('GCP GKE managed tofu template renders cluster with deletion_protection disabled', function (): void {
     $rendered = view('tofu.gcp.managed', [
         'region' => 'us-central1',

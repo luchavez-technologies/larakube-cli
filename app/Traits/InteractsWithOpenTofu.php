@@ -684,23 +684,32 @@ HCL;
         return $this->runTofu($bin, $stack, 'init', $args)['code'] === 0;
     }
 
-    /** `tofu apply` — creates/updates infra. Auto-approve by default (we confirm in the command). */
-    protected function tofuApply(array $bin, string $stack, bool $autoApprove = true): bool
+    /**
+     * `tofu apply` — creates/updates infra. Auto-approve by default (we confirm in the command).
+     * $refresh = false plans from saved state, so it needs no provider read access beyond the change.
+     */
+    protected function tofuApply(array $bin, string $stack, bool $autoApprove = true, bool $refresh = true): bool
     {
         $args = ['-input=false'];
         if ($autoApprove) {
             $args[] = '-auto-approve';
         }
+        if (! $refresh) {
+            $args[] = '-refresh=false';
+        }
 
         return $this->runTofu($bin, $stack, 'apply', $args)['code'] === 0;
     }
 
-    /** `tofu destroy` — tears the stack down. */
-    protected function tofuDestroy(array $bin, string $stack, bool $autoApprove = true): bool
+    /** `tofu destroy` — tears the stack down. $refresh = false works from saved state alone. */
+    protected function tofuDestroy(array $bin, string $stack, bool $autoApprove = true, bool $refresh = true): bool
     {
         $args = ['-input=false'];
         if ($autoApprove) {
             $args[] = '-auto-approve';
+        }
+        if (! $refresh) {
+            $args[] = '-refresh=false';
         }
 
         return $this->runTofu($bin, $stack, 'destroy', $args)['code'] === 0;

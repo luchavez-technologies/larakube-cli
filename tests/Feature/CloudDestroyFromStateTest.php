@@ -63,7 +63,7 @@ test('destroys from remote state with no registry entry, keyed by the state ID',
 
         expect((string) file_get_contents($home->path().'/.larakube/tofu/cloud-server/backend.tf'))
             ->toContain('tofu-state/01jexamplestateid000000000/terraform.tfstate');
-        Process::assertRan(fn ($process): bool => str_contains($process->command, ' destroy '));
+        Process::assertRan(fn ($process): bool => str_contains($process->command, ' destroy ') && str_contains($process->command, '-refresh=false'));
     } finally {
         $restore();
     }

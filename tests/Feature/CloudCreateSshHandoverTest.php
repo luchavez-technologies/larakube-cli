@@ -96,7 +96,7 @@ test('handover updates metadata before touching the server and proves the old ke
 
     expect(sshHandoverRun(sshHandoverCommand(), $home->path()))->toBeTrue();
 
-    $apply = array_key_first(array_filter($commands, fn (string $c): bool => str_contains($c, ' apply ')));
+    $apply = array_key_first(array_filter($commands, fn (string $c): bool => str_contains($c, ' apply ') && str_contains($c, '-refresh=false')));
     $install = array_key_first(array_filter($commands, fn (string $c): bool => str_contains($c, 'authorized_keys')));
     expect($apply)->not->toBeNull()->and($install)->not->toBeNull()
         ->and($apply)->toBeLessThan($install);

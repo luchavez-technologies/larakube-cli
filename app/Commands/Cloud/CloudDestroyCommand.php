@@ -116,7 +116,7 @@ class CloudDestroyCommand extends Command
             return 1;
         }
 
-        if ($before !== 0 && ! $this->tofuDestroy($bin, $stack)) {
+        if ($before !== 0 && ! $this->tofuDestroy($bin, $stack, refresh: false)) {
             $this->laraKubeError('tofu destroy failed. Its state is kept, so this can be retried.');
 
             return 1;

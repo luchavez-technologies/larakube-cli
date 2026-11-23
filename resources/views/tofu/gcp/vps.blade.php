@@ -1,6 +1,10 @@
 {{-- Google Cloud Platform VPS stack: Compute Engine VM + VPC Ingress Firewall.
      Rendered by cloud:create into ~/.larakube/tofu/<stack>/main.tf.
      Credentials are passed via environment variables (never written directly into HCL). --}}
+@php
+    // Firewall rules match by tag, so a shared tag would open one server's ports on every other.
+    $firewallTag = 'larakube-'.substr(md5($dropletName), 0, 16);
+@endphp
 terraform {
   required_providers {
     google = {
@@ -50,7 +54,7 @@ resource "google_compute_instance" "larakube" {
 
   allow_stopping_for_update = true
 
-  tags = ["larakube", "larakube-vps", "http-server", "https-server"]
+  tags = ["larakube", "larakube-vps", "{{ $firewallTag }}", "http-server", "https-server"]
 
   boot_disk {
     auto_delete = true
@@ -103,7 +107,7 @@ resource "google_compute_firewall" "larakube_ingress" {
   }
 
   source_ranges = [{!! trim(str_replace([', "::/0"', '"::/0",', '"::/0"', '[', ']'], '', $sshSources)) !!}]
-  target_tags   = ["larakube"]
+  target_tags   = ["{{ $firewallTag }}"]
 
   depends_on = [google_project_service.compute]
 }
@@ -119,7 +123,7 @@ resource "google_compute_firewall" "larakube_http" {
   }
 
   source_ranges = ["0.0.0.0/0"]
-  target_tags   = ["larakube"]
+  target_tags   = ["{{ $firewallTag }}"]
 
   depends_on = [google_project_service.compute]
 }
