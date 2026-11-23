@@ -11,6 +11,7 @@ use App\Facades\State;
 use App\Services\Cloud\LiveProviderCatalog;
 use App\Services\Cloud\UbuntuImageResolver;
 use App\Services\Kubectl;
+use App\Support\SshPublicKey;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\EnsuresKubectl;
 use App\Traits\InteractsWithAws;
@@ -62,6 +63,7 @@ class CloudCreateCommand extends Command
         {--zone= : GCP Compute zone (defaults to <region>-a)}
         {--size= : Droplet/node size slug}
         {--key= : Path to the SSH private key (VPS)}
+        {--authorized-key=* : Public SSH key that keeps access after the build, repeatable; the --key login is removed (Google Cloud VPS, outside a project)}
         {--ssh-port=22 : SSH port to configure on the VPS (default: 22; e.g. 8443 if port 22 is blocked)}
         {--admin-cidr= : Restrict SSH + the k3s API to this CIDR (VPS); omit = open}
         {--node-count= : Managed cluster node count (min 1)}
@@ -592,6 +594,11 @@ class CloudCreateCommand extends Command
     /** Provision a new droplet/VM, then run the k3s + hardening pipeline. */
     protected function createVps(array $bin, string $provider, ?ConfigData $config, ?string $projectPath, ?string $environment, ?string $nameBase): int
     {
+        $authorizedKeys = $this->resolveAuthorizedKeys($provider, $config);
+        if ($authorizedKeys === false) {
+            return 1;
+        }
+
         $this->laraKubeWarn('Recommended: 1GB RAM minimum for stable K3s deployments.');
         $this->newLine();
 
@@ -634,7 +641,7 @@ class CloudCreateCommand extends Command
 
         $imageConfig = UbuntuImageResolver::resolve($provider);
 
-        $hcl = view("tofu.{$provider}.vps", array_merge([
+        $templateData = array_merge([
             'region' => $region,
             'zone' => $zone,
             'size' => $size,
@@ -646,7 +653,8 @@ class CloudCreateCommand extends Command
             'apiSources' => $sources,
             'adminCidr' => $adminCidr,
             'sshPort' => $sshPort,
-        ], $imageConfig))->render();
+        ], $imageConfig);
+        $hcl = view("tofu.{$provider}.vps", $templateData)->render();
         $this->writeTofuFiles($stackName, ['main.tf' => $hcl]);
 
         $serverLabel = match ($provider) {
@@ -687,6 +695,17 @@ class CloudCreateCommand extends Command
             return 1;
         }
 
+        if ($authorizedKeys !== []) {
+            if (! $this->handOverSshAccess($bin, $stackName, $templateData, $ip, $sshPort, $keyPath, $authorizedKeys)) {
+                return 1;
+            }
+
+            $this->updateStackContext($stackName, $context === '' ? null : $context);
+            $this->result['sshUser'] = 'larakube';
+
+            return $this->finishVps($stackName, $ip, $keyPath, $context, $config, $projectPath, $environment, $sshPort);
+        }
+
         // Record the resolved context (none for a dev box) and the key on the stack.
         $this->updateStackContext($stackName, $context === '' ? null : $context, $keyPath);
 
@@ -694,6 +713,91 @@ class CloudCreateCommand extends Command
         $this->upsertSshConfigHost($stackName, $ip, 'larakube', (string) $sshPort, $keyPath);
 
         return $this->finishVps($stackName, $ip, $keyPath, $context, $config, $projectPath, $environment, $sshPort);
+    }
+
+    /**
+     * The validated --authorized-key values as "type base64", empty when none were given, false
+     * when any is unusable. Comments are dropped because keys are written into HCL and a script.
+     *
+     * @return list<string>|false
+     */
+    protected function resolveAuthorizedKeys(string $provider, ?ConfigData $config): array|false
+    {
+        $given = array_values(array_filter(array_map(trim(...), (array) $this->flag('authorized-key')), fn (string $key): bool => $key !== ''));
+
+        if ($given === []) {
+            return [];
+        }
+
+        if ($provider !== 'gcp' || $config !== null) {
+            $this->laraKubeError('--authorized-key is only supported for a Google Cloud VPS created outside a project.');
+
+            return false;
+        }
+
+        $keys = [];
+        foreach ($given as $raw) {
+            $key = $this->normalizeAuthorizedKey($raw);
+            if ($key === null) {
+                $this->laraKubeError('--authorized-key must be a single OpenSSH public key (ed25519, ECDSA or RSA). Private keys are rejected.');
+
+                return false;
+            }
+            $keys[$key] = $key;
+        }
+
+        return array_values($keys);
+    }
+
+    protected function normalizeAuthorizedKey(string $raw): ?string
+    {
+        return SshPublicKey::normalize($raw);
+    }
+
+    /**
+     * Give the server to the approved keys and prove the provisioning key is gone. The keys live in
+     * VM metadata so Google's guest agent owns them: removing one from metadata later revokes it.
+     *
+     * @param  array<string, mixed>  $templateData
+     * @param  list<string>  $authorizedKeys
+     */
+    protected function handOverSshAccess(array $bin, string $stackName, array $templateData, string $ip, int $sshPort, string $keyPath, array $authorizedKeys): bool
+    {
+        $this->laraKubeInfo('Handing SSH access to the approved public keys...');
+
+        $provisioningBlob = explode(' ', trim((string) $templateData['sshPubKey']))[1] ?? '';
+        $blobs = array_map(fn (string $key): string => explode(' ', $key)[1], $authorizedKeys);
+
+        if ($provisioningBlob === '' || in_array($provisioningBlob, $blobs, true)) {
+            $this->laraKubeError('The provisioning key cannot also be an approved key, because it is removed after the build.');
+
+            return false;
+        }
+
+        $hcl = view('tofu.gcp.vps', array_merge($templateData, ['sshAuthorizedKeys' => $authorizedKeys]))->render();
+        $this->writeTofuFiles($stackName, ['main.tf' => $hcl]);
+
+        if (! $this->tofuApply($bin, $stackName)) {
+            $this->laraKubeError('Could not update the VM metadata. The server exists and still uses the provisioning key.');
+
+            return false;
+        }
+
+        if (! $this->runRemoteCommand('larakube', $ip, (string) $sshPort, $keyPath, $this->handOverSshAccessScript($blobs, $provisioningBlob))) {
+            $this->laraKubeError('The approved keys did not reach the server. It still uses the provisioning key.');
+
+            return false;
+        }
+
+        if ($this->testSsh('larakube', $ip, $sshPort, $keyPath) || $this->testSsh('root', $ip, $sshPort, $keyPath)) {
+            $this->laraKubeError('The provisioning key can still log in, so the server was not handed over cleanly.');
+
+            return false;
+        }
+
+        $this->laraKubeInfo('✅ The approved keys now own SSH access. The provisioning key no longer works.');
+
+        return true;
     }
 
     /** What happens once the host is provisioned: bind the environment, report, connect Cloudflare. */

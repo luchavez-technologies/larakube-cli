@@ -70,7 +70,11 @@ resource "google_compute_instance" "larakube" {
   metadata = {
     # Disable OS Login to permit direct root SSH key authentication for K3s automation
     enable-oslogin = "FALSE"
+@if(! empty($sshAuthorizedKeys))
+    ssh-keys       = join("\n", [@foreach($sshAuthorizedKeys as $authorizedKey)"larakube:{{ $authorizedKey }}", @endforeach])
+@else
     ssh-keys       = "root:{{ $sshPubKey }}"
+@endif
 @if(isset($sshPort) && (int) $sshPort !== 22)
     "startup-script" = <<-EOF
 #!/bin/bash

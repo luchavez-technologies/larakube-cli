@@ -189,6 +189,46 @@ BASH;
     }
 
     /**
+     * Wait for the guest agent to install the approved keys, then remove only the provisioning key.
+     * If they never arrive it exits with the old key in place, so the server can't be locked out. Pure.
+     *
+     * @param  list<string>  $approvedBlobs  base64 key bodies
+     */
+    public function handOverSshAccessScript(array $approvedBlobs, string $provisioningBlob): string
+    {
+        $approved = implode(' ', array_map(escapeshellarg(...), $approvedBlobs));
+        $provisioning = escapeshellarg($provisioningBlob);
+
+        return <<<BASH
+set -e
+file=/home/larakube/.ssh/authorized_keys
+missing=1
+for attempt in \$(seq 1 60); do
+  missing=0
+  for blob in {$approved}; do
+    grep -qF -- "\$blob" "\$file" 2>/dev/null || missing=1
+  done
+  [ "\$missing" -eq 0 ] && break
+  sleep 2
+done
+if [ "\$missing" -ne 0 ]; then
+  echo "The guest agent did not install the approved keys in time." >&2
+  exit 1
+fi
+staged=\$(mktemp /home/larakube/.ssh/authorized_keys.XXXXXX)
+trap 'rm -f "\$staged"' EXIT
+grep -vF -- {$provisioning} "\$file" > "\$staged" || true
+for blob in {$approved}; do
+  grep -qF -- "\$blob" "\$staged"
+done
+chown larakube:larakube "\$staged"
+chmod 600 "\$staged"
+mv -f "\$staged" "\$file"
+if [ -f /root/.ssh/authorized_keys ]; then : > /root/.ssh/authorized_keys; fi
+BASH;
+    }
+
+    /**
      * Script to configure k3s TLS Subject Alternative Names (SAN) for $ip.
      * Essential for cloud providers (like GCP and AWS) where instances sit behind NAT
      * and only know their internal private IP on eth0/ens4.

@@ -215,13 +215,33 @@ trait InteractsWithOpenTofu
         }
 
         if ($remote = $this->remoteStateConfig($stack)) {
-            file_put_contents($dir.'/backend.tf', view('tofu.backend-s3', $remote + ['stack' => $stack])->render());
+            file_put_contents($dir.'/backend.tf', view('tofu.backend-s3', $remote + ['stack' => $stack, 'stateId' => $this->tofuStateId($stack)])->render());
         } elseif (file_exists($dir.'/backend.tf')) {
             // Env/config removed since the last run — don't leave a stale backend behind.
             @unlink($dir.'/backend.tf');
         }
 
         return $dir;
+    }
+
+    /**
+     * The folder a stack's state lives under in the remote bucket. An orchestrator sets
+     * LARAKUBE_TOFU_STATE_ID to a server's unique ID, so two servers with the same name
+     * can never share state.
+     */
+    protected function tofuStateId(string $stack): string
+    {
+        $id = getenv('LARAKUBE_TOFU_STATE_ID');
+
+        if ($id === false || $id === '') {
+            return $stack;
+        }
+
+        if (preg_match('/^[A-Za-z0-9][A-Za-z0-9-]{7,63}$/', $id) !== 1) {
+            throw new RuntimeException('LARAKUBE_TOFU_STATE_ID must be 8 to 64 letters, digits or hyphens.');
+        }
+
+        return $id;
     }
 
     /**

@@ -8,7 +8,7 @@
 terraform {
   backend "s3" {
     bucket = "{{ $bucket }}"
-    key    = "tofu-state/{{ $stack }}/terraform.tfstate"
+    key    = "tofu-state/{{ $stateId ?? $stack }}/terraform.tfstate"
     region = "{{ $region }}"
 
     endpoints = {

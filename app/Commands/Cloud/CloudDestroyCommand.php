@@ -4,11 +4,13 @@ namespace App\Commands\Cloud;
 
 use App\Facades\State;
 use App\Traits\DiscoversUnfinishedStacks;
+use App\Traits\EmitsJsonOutput;
 use App\Traits\ForgetsStacks;
 use App\Traits\InteractsWithOpenTofu;
 use App\Traits\InteractsWithRemoteSsh;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ManagesDevBoxTunnel;
+use App\Traits\ReadsCommandOptions;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
@@ -23,11 +25,13 @@ use LaravelZero\Framework\Commands\Command;
  */
 class CloudDestroyCommand extends Command
 {
-    use DiscoversUnfinishedStacks, ForgetsStacks, InteractsWithOpenTofu, InteractsWithRemoteSsh, LaraKubeOutput, ManagesDevBoxTunnel;
+    use DiscoversUnfinishedStacks, EmitsJsonOutput, ForgetsStacks, InteractsWithOpenTofu, InteractsWithRemoteSsh, LaraKubeOutput, ManagesDevBoxTunnel, ReadsCommandOptions;
 
     protected $signature = 'cloud:destroy
         {stack? : The stack name to destroy. Omit to pick from the registry.}
         {--force : Skip the confirmation prompt}
+        {--provider= : Provider of a stack destroyed from remote state (gcp)}
+        {--json : Emit one machine-readable JSON result on stdout}
         {--do-token= : DigitalOcean API token for this run only}
         {--hetzner-token= : Hetzner Cloud API token}
         {--aws-profile= : AWS CLI profile name}
@@ -40,7 +44,108 @@ class CloudDestroyCommand extends Command
 
     protected $description = 'Destroy an OpenTofu-provisioned stack (droplet or DOKS cluster) and remove it from the registry';
 
+    /** @var array<string, mixed> */
+    private array $result = [];
+
     public function handle(): int
+    {
+        if ($this->flag('json')) {
+            $this->enableJsonMode();
+        }
+
+        $exit = getenv('LARAKUBE_TOFU_STATE_ID') ? $this->destroyFromState() : $this->destroyRegistered();
+
+        if (State::isJsonMode()) {
+            $this->jsonOutput($exit === 0
+                ? array_merge(['success' => true], $this->result, ['error' => null])
+                : ['success' => false, 'error' => State::lastError() ?? 'Destroy did not complete.']);
+        }
+
+        return $exit;
+    }
+
+    /**
+     * Destroy from remote state alone, for a fresh job container with no local registry or
+     * main.tf. Reports how many resources state held: zero means an earlier run already finished,
+     * or the state ID is wrong, so the caller must not read it as proof of a deletion.
+     */
+    private function destroyFromState(): int
+    {
+        $this->renderHeader();
+
+        $stack = (string) $this->argument('stack');
+        $missing = match (true) {
+            preg_match('/^[a-z0-9][a-z0-9-]*$/', $stack) !== 1 => 'a valid stack name',
+            $this->option('provider') !== 'gcp' => '--provider=gcp',
+            ! $this->option('force') => '--force',
+            ! $this->option('gcp-project') => '--gcp-project',
+            ! $this->option('gcp-credentials') || ! is_file((string) $this->option('gcp-credentials')) => '--gcp-credentials pointing at a key file',
+            ! getenv('LARAKUBE_TOFU_STATE_BUCKET') || ! getenv('LARAKUBE_TOFU_STATE_ENDPOINT') => 'LARAKUBE_TOFU_STATE_BUCKET and LARAKUBE_TOFU_STATE_ENDPOINT',
+            ! getenv('LARAKUBE_TOFU_PASSPHRASE') => 'LARAKUBE_TOFU_PASSPHRASE',
+            default => null,
+        };
+
+        if ($missing !== null) {
+            $this->laraKubeError("Destroying from remote state needs {$missing}.");
+
+            return 1;
+        }
+
+        $bin = $this->resolveTofuBinary();
+        if ($bin === null || ! $bin['isOpenTofu']) {
+            $this->laraKubeError('Destroying from remote state needs OpenTofu, because the state is encrypted.');
+
+            return 1;
+        }
+
+        State::setTransientGcpProject((string) $this->option('gcp-project'));
+        State::setTransientGcpCredentials((string) $this->option('gcp-credentials'));
+
+        $this->writeTofuFiles($stack, ['main.tf' => view('tofu.gcp.destroy-from-state')->render()]);
+
+        if (! $this->tofuInit($bin, $stack)) {
+            $this->laraKubeError('tofu init failed, so nothing was destroyed.');
+
+            return 1;
+        }
+
+        $before = $this->tofuStateResources($bin, $stack);
+        if ($before === null) {
+            $this->laraKubeError('Could not read the remote state, so nothing was destroyed.');
+
+            return 1;
+        }
+
+        if ($before !== 0 && ! $this->tofuDestroy($bin, $stack)) {
+            $this->laraKubeError('tofu destroy failed. Its state is kept, so this can be retried.');
+
+            return 1;
+        }
+
+        if ($this->tofuStateResources($bin, $stack) !== 0) {
+            $this->laraKubeError('tofu destroy finished, but resources are still recorded in state.');
+
+            return 1;
+        }
+
+        $this->result = ['stackName' => $stack, 'resourcesDestroyed' => $before];
+        $this->laraKubeInfo("✅ Destroyed '{$stack}' from remote state ({$before} resources).");
+
+        return 0;
+    }
+
+    private function tofuStateResources(array $bin, string $stack): ?int
+    {
+        $listed = $this->runTofu($bin, $stack, 'state', ['list'], [], capture: true);
+
+        if ($listed['code'] !== 0) {
+            return null;
+        }
+
+        return count(array_filter(preg_split('/\R/', $listed['output']) ?: [], fn (string $line): bool => trim($line) !== '' && ! str_starts_with(trim($line), 'data.')));
+    }
+
+    private function destroyRegistered(): int
     {
         $this->renderHeader();
 
