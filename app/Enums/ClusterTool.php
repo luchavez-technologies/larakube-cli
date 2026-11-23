@@ -1029,10 +1029,11 @@ enum ClusterTool: string implements HasWorkloadComponents
                 'auth' => ['oidc'],
                 'mail' => [],
             ],
+            // Commons Postgres credentials live in OpenBao, so it must never depend on Commons itself.
             self::OPENBAO => [
                 'databases' => [],
                 'cache' => [],
-                'storage' => ['s3'],
+                'storage' => [],
                 'auth' => ['oidc'],
                 'mail' => [],
             ],
