@@ -26,7 +26,7 @@ test('the default spec enables only Postgres + Redis', function (): void {
     $spec = $p->defaultCommonsSpec();
 
     expect($p->enabledCommonsServices($spec))->toBe(['postgres', 'redis'])
-        ->and($spec['services']['postgres']['image'])->toBe('postgres:17.9')
+        ->and($spec['services']['postgres']['image'])->toBe(DatabaseDriver::PGVECTOR_IMAGE)
         ->and($spec['services']['postgres']['storage'])->toBe('10Gi')
         ->and($spec['services']['postgres']['memory'])->toBe('1Gi')   // shared-DB ceiling, configurable
         ->and($spec['services']['redis']['port'])->toBe(6379)
@@ -42,7 +42,7 @@ test('Commons service images/ports derive from the driver enums (no drift)', fun
     // is assertable regardless of the default.
     $spec = plexSpec()->defaultCommonsSpec()['services'];
 
-    expect($spec['postgres']['image'])->toBe(DatabaseDriver::POSTGRESQL->getDockerImage())
+    expect($spec['postgres']['image'])->toBe(DatabaseDriver::PGVECTOR_IMAGE)
         ->and($spec['postgres']['port'])->toBe(DatabaseDriver::POSTGRESQL->dbPort())
         ->and($spec['mysql']['image'])->toBe(DatabaseDriver::MYSQL->getDockerImage())
         ->and($spec['mysql']['port'])->toBe(DatabaseDriver::MYSQL->dbPort())
@@ -210,3 +210,18 @@ test('Redis Commons manifest uses tcpSocket probes with generous timeout instead
         ->toContain('timeoutSeconds: 3')
         ->toContain('failureThreshold: 6');
 });
+
+test('a Commons Postgres on plain Postgres 17 moves to the pgvector image, and nothing else does', function (string $saved, string $expected): void {
+    $spec = plexSpec()->normalizeCommonsSpec(['services' => ['postgres' => ['enabled' => true, 'image' => $saved]]]);
+
+    expect($spec['services']['postgres']['image'])->toBe($expected);
+})->with([
+    'the old pin' => ['postgres:17.9', DatabaseDriver::PGVECTOR_IMAGE],
+    'the bare major' => ['postgres:17', DatabaseDriver::PGVECTOR_IMAGE],
+    'trixie explicitly' => ['docker.io/library/postgres:17.12-trixie', DatabaseDriver::PGVECTOR_IMAGE],
+    'Alpine: a different C library' => ['postgres:17-alpine', 'postgres:17-alpine'],
+    'Bookworm: an older C library' => ['postgres:17-bookworm', 'postgres:17-bookworm'],
+    'another major' => ['postgres:16.4', 'postgres:16.4'],
+    'a custom image' => ['registry.example.com/team/postgres:17', 'registry.example.com/team/postgres:17'],
+    'already pgvector' => ['pgvector/pgvector:0.8.0-pg17', 'pgvector/pgvector:0.8.0-pg17'],
+]);

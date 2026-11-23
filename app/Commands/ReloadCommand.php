@@ -2,22 +2,18 @@
 
 namespace App\Commands;
 
-use App\Contracts\HasReloadCommand;
-use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
-use App\Traits\ResolvesEnvironmentContext;
-use App\Traits\StreamsProcessOutput;
-use Illuminate\Support\Facades\Process;
+use App\Traits\ReloadsLongRunningPods;
 use LaravelZero\Framework\Commands\Command;
 
 class ReloadCommand extends Command
 {
-    use InteractsWithEnvironments, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext, StreamsProcessOutput;
+    use InteractsWithProjectConfig, LaraKubeOutput, ReloadsLongRunningPods;
 
     protected $signature = 'reload {--environment=local : The environment to target}';
 
-    protected $description = 'Reload PHP code in long-running pods (Octane workers, Horizon, queues)';
+    protected $description = 'Reload PHP code in long-running pods (Octane workers, Horizon, queues, Reverb)';
 
     public function handle(): int
     {
@@ -34,72 +30,14 @@ class ReloadCommand extends Command
             return 1;
         }
 
-        $environment = $this->option('environment');
-        $namespace = $this->getNamespace($environment);
-        // Reload pods on the env's OWN context (local → current context, unchanged).
-        $kubectl = $this->environmentKubectl($config, $environment);
+        if (self::reloadTargets($config) === []) {
+            $this->laraKubeInfo('Nothing to reload — no Octane/Horizon/queues/Reverb in this project.');
 
-        $candidates = array_merge([$config->getServerVariation()], $config->getFeatures());
-
-        $ran = 0;
-        foreach ($candidates as $candidate) {
-            if (! $candidate instanceof HasReloadCommand) {
-                continue;
-            }
-
-            $command = $candidate->getReloadCommand();
-            if ($command === null) {
-                continue;
-            }
-
-            $this->reloadInPod($candidate->getPodName($config), $command, $namespace, $kubectl);
-            $ran++;
+            return 0;
         }
 
-        if ($ran === 0) {
-            $this->laraKubeInfo('Nothing to reload — no Octane/Horizon/queues in this project.');
-        }
+        $this->reloadLongRunningPods($config, (string) $this->option('environment'));
 
         return 0;
-    }
-
-    protected function reloadInPod(string $service, string $command, string $namespace, string $kubectl): void
-    {
-        $labels = ["app={$service}", "app=laravel-{$service}"];
-
-        if ($service === 'queues') {
-            $labels[] = 'app=queue';
-            $labels[] = 'app=laravel-queue';
-        }
-
-        $podNames = [];
-        foreach ($labels as $label) {
-            $output = trim(Process::run("{$kubectl} get pods -n {$namespace} -l {$label} --field-selector=status.phase=Running -o jsonpath='{.items[*].metadata.name}'")->output());
-            if ($output !== '') {
-                $podNames = array_values(array_filter(explode(' ', $output)));
-                break;
-            }
-        }
-
-        if (empty($podNames)) {
-            foreach ($labels as $label) {
-                $output = trim(Process::run("{$kubectl} get pods -n {$namespace} -l {$label} -o jsonpath='{.items[*].metadata.name}'")->output());
-                if ($output !== '') {
-                    $podNames = array_values(array_filter(explode(' ', $output)));
-                    break;
-                }
-            }
-        }
-
-        if (empty($podNames)) {
-            $this->laraKubeWarn("Pod for '{$service}' not found in '{$namespace}'. Skipping.");
-
-            return;
-        }
-
-        foreach ($podNames as $podName) {
-            $this->laraKubeInfo("↻ {$service} ({$podName}): {$command}");
-            $this->runStreaming("{$kubectl} exec -n {$namespace} -c php {$podName} -- {$command}");
-        }
     }
 }

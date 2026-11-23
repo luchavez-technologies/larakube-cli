@@ -365,6 +365,32 @@ CNF;
         return $this->parseCert($crtPath)['validTo_time_t'] ?? null;
     }
 
+    /**
+     * The hosts a local certificate is for: its common name and DNS names,
+     * wildcards left out.
+     *
+     * @return list<string>
+     */
+    protected function certHosts(string $crtPath): array
+    {
+        $parsed = $this->parseCert($crtPath);
+        if ($parsed === null) {
+            return [];
+        }
+
+        $hosts = [];
+        if (is_string($parsed['subject']['CN'] ?? null)) {
+            $hosts[] = $parsed['subject']['CN'];
+        }
+
+        preg_match_all('/DNS:([^,\s]+)/', (string) ($parsed['extensions']['subjectAltName'] ?? ''), $matches);
+        foreach ($matches[1] as $name) {
+            $hosts[] = $name;
+        }
+
+        return array_values(array_unique(array_filter($hosts, fn (string $host): bool => ! str_starts_with($host, '*.'))));
+    }
+
     protected function certCoversHost(string $crtPath, string $host): bool
     {
         $parsed = $this->parseCert($crtPath);

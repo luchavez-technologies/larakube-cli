@@ -38,7 +38,7 @@ test('from pod name mapping', function (): void {
 test('laravel feature reload commands', function (): void {
     expect(LaravelFeature::HORIZON->getReloadCommand())->toBe('php artisan horizon:terminate')
         ->and(LaravelFeature::QUEUES->getReloadCommand())->toBe('php artisan queue:restart')
-        ->and(LaravelFeature::REVERB->getReloadCommand())->toBeNull()
+        ->and(LaravelFeature::REVERB->getReloadCommand())->toBe('php artisan reverb:restart')
         ->and(LaravelFeature::TASK_SCHEDULING->getReloadCommand())->toBeNull()
         ->and(LaravelFeature::SCOUT->getReloadCommand())->toBeNull()
         ->and(LaravelFeature::OCTANE->getReloadCommand())->toBeNull()
@@ -62,4 +62,17 @@ test('ssr feature injects Inertia env vars in production only', function (): voi
     // Local must NOT inject SSR env vars — local dev should not call SSR by default.
     $localEnv = LaravelFeature::SSR->getPublicEnvironmentVariables($config, 'local');
     expect($localEnv)->toBeEmpty();
+});
+
+test('locally, reloadable processes run in a loop that restarts them after a graceful exit', function (): void {
+    $args = json_decode((string) LaravelFeature::HORIZON->getLocalK8sDeploymentArgs(), true);
+
+    expect($args[0])->toBe('sh')
+        ->and($args[1])->toBe('-c')
+        ->and($args[2])->toContain('while true; do php artisan horizon & child=$!')
+        ->and($args[2])->toContain("trap 'kill -TERM")
+        ->and(LaravelFeature::QUEUES->getLocalK8sDeploymentArgs())->toContain('php artisan queue:work')
+        ->and(LaravelFeature::REVERB->getLocalK8sDeploymentArgs())->toContain('php artisan reverb:start --host=0.0.0.0 --port=8081')
+        ->and(LaravelFeature::TASK_SCHEDULING->getLocalK8sDeploymentArgs())->toBeNull()
+        ->and(LaravelFeature::SCOUT->getLocalK8sDeploymentArgs())->toBeNull();
 });

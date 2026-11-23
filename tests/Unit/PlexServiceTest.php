@@ -271,3 +271,41 @@ test('commonsEnvValues points a tenant at the Commons services', function (): vo
         ->and($values['DB_DATABASE'])->toBe('shop')
         ->and($values['REDIS_DB'])->toBe(2);
 });
+
+test('allocating an AI tenant sends the vector extension to the Commons Postgres as its admin', function (): void {
+    $sent = null;
+    Process::fake(['*exec -i*deploy/postgres*' => function (Illuminate\Process\PendingProcess $process) use (&$sent) {
+        preg_match("/< '([^']+)'$/", $process->command, $matches);
+        $sent = file_get_contents($matches[1]);
+
+        return Process::result(output: 'CREATE EXTENSION');
+    }]);
+
+    expect((new PlexService)->runTenantDatabaseSql(DatabaseDriver::POSTGRESQL, 'shop', 'secret', withVector: true)?->successful())->toBeTrue()
+        ->and($sent)->toContain('\connect "shop"')
+        ->and($sent)->toContain('CREATE EXTENSION IF NOT EXISTS vector;');
+});
+
+test('a Commons Postgres without pgvector still allocates the tenant, with a warning instead of a failure', function (): void {
+    Process::fake([
+        '*exec -i*deploy/postgres*' => Process::result(errorOutput: 'NOTICE:  '.DatabaseDriver::PGVECTOR_MISSING),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $plex = new class
+    {
+        use App\Traits\InteractsWithPlex, App\Traits\LaraKubeOutput;
+
+        public function allocate(): bool
+        {
+            return $this->allocateDatabase(DatabaseDriver::POSTGRESQL, 'shop', 'secret', withVector: true);
+        }
+
+        protected function withSpin(string $message, callable $callback): bool
+        {
+            return (bool) $callback();
+        }
+    };
+
+    expect($plex->allocate())->toBeTrue();
+});

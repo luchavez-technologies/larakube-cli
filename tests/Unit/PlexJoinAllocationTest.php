@@ -235,3 +235,23 @@ test('Commons bucket commands are per-backend (SeaweedFS weed shell, MinIO mc)',
         ->and(StorageDriver::MINIO->commonsBucketDeleteCommand('app-five'))->toContain('mc rb --force local/app-five')
         ->and(StorageDriver::SEAWEEDFS->commonsBucketDeleteCommand('app-five'))->toContain('s3.bucket.delete -name app-five');
 });
+
+test('a Laravel AI tenant gets pgvector turned on in its database by the Commons admin', function (): void {
+    $plain = (string) DatabaseDriver::POSTGRESQL->commonsTenantSql('shop', 'shop', 'secret');
+    $withVector = (string) DatabaseDriver::POSTGRESQL->commonsTenantSql('shop', 'shop', 'secret', withVector: true);
+
+    expect($plain)->not->toContain('vector')
+        ->and($withVector)->toContain("ALTER SCHEMA public OWNER TO \"shop\";\nDO \$\$ BEGIN IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'vector') THEN CREATE EXTENSION IF NOT EXISTS vector;")
+        ->and($withVector)->toContain(DatabaseDriver::PGVECTOR_MISSING)
+        ->and(DatabaseDriver::MYSQL->commonsTenantSql('shop', 'shop', 'secret', withVector: true))->not->toContain('vector');
+});
+
+test('the per-project Postgres uses pgvector only with Laravel AI, both pinned to the same release', function (): void {
+    $config = new App\Data\ConfigData(name: 'shop');
+
+    expect(DatabaseDriver::POSTGRESQL->getDockerImage($config))->toBe('postgres:17.12');
+
+    $config->addFeature(App\Enums\LaravelFeature::AI);
+
+    expect(DatabaseDriver::POSTGRESQL->getDockerImage($config))->toBe('pgvector/pgvector:0.8.7-pg17-trixie');
+});

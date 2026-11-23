@@ -55,7 +55,7 @@ trait ScaffoldsInNode
         string $scripted,
     ): bool {
         $this->laraKubeInfo('Pulling the Node builder image...');
-        Process::forever()->run($this->pullImageCommand(self::NODE_IMAGE));
+        $this->pullImage(self::NODE_IMAGE);
 
         $canPrompt = $this->scaffolderCanPrompt();
 

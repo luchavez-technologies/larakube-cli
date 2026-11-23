@@ -69,6 +69,7 @@ class CompanionListCommand extends Command
      * companion credentials panel) that can't read a rendered Prompts table.
      * Empty outside a LaraKube project rather than erroring: a caller scoped to
      * a project path that turns out not to be one yet just sees nothing to show.
+     * `catalog` (every companion and its image) is there either way.
      */
     private function handleJson(): int
     {
@@ -79,7 +80,16 @@ class CompanionListCommand extends Command
             $companions = $this->companionAccessJson($config, $appName, 'local');
         }
 
-        $this->jsonOutput(['success' => true, 'companions' => $companions]);
+        $this->jsonOutput([
+            'success' => true,
+            'companions' => $companions,
+            // The image each companion installs with this CLI build, so a
+            // caller can show it before install and spot an outdated one after.
+            'catalog' => array_map(fn (CompanionDriver $companion): array => [
+                'slug' => $companion->value,
+                'image' => $companion->getImage(),
+            ], CompanionDriver::cases()),
+        ]);
 
         return 0;
     }

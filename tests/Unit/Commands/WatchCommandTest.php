@@ -78,3 +78,51 @@ test('computeHash ignores dotfiles and editor swap files', function (): void {
 
     expect($before)->toBe($after);
 });
+
+test('snapshot keys files by their path relative to the project', function (): void {
+    expect(array_keys(WatchCommand::snapshot(['app', '.env'], $this->tmp)))->toBe(['.env', 'app/User.php']);
+});
+
+test('changedFiles lists added, removed and modified files', function (): void {
+    $before = ['app/A.php' => 1, 'app/B.php' => 1, 'app/C.php' => 1];
+    $after = ['app/A.php' => 1, 'app/B.php' => 2, 'app/D.php' => 1];
+
+    expect(WatchCommand::changedFiles($before, $after))->toBe(['app/B.php', 'app/C.php', 'app/D.php']);
+});
+
+test('describeChange names one file, or the first and a count', function (): void {
+    expect(WatchCommand::describeChange(['app/A.php']))->toBe('app/A.php')
+        ->and(WatchCommand::describeChange(['app/A.php', 'app/B.php', 'app/C.php']))->toBe('app/A.php and 2 more');
+});
+
+test('settle waits for a burst of saves to finish and reports every file in it', function (): void {
+    $previous = ['app/A.php' => 1, 'app/B.php' => 1];
+    $sequence = [
+        ['app/A.php' => 2, 'app/B.php' => 1],
+        ['app/A.php' => 2, 'app/B.php' => 2],
+        ['app/A.php' => 2, 'app/B.php' => 2],
+    ];
+    $polls = 0;
+    $snapshot = function () use (&$polls, $sequence): array {
+        return $sequence[min($polls++, count($sequence) - 1)];
+    };
+
+    [$files, $settled] = WatchCommand::settle($snapshot, $previous, $snapshot(), 500_000, 1000);
+
+    expect($files)->toBe(['app/A.php', 'app/B.php'])
+        ->and($settled)->toBe(['app/A.php' => 2, 'app/B.php' => 2])
+        ->and($polls)->toBeGreaterThan(3);
+});
+
+test('settle with no quiet period returns straight away', function (): void {
+    $polls = 0;
+    $snapshot = function () use (&$polls): array {
+        $polls++;
+
+        return ['app/A.php' => 2];
+    };
+
+    [$files] = WatchCommand::settle($snapshot, ['app/A.php' => 1], ['app/A.php' => 2], 500_000, 0);
+
+    expect($files)->toBe(['app/A.php'])->and($polls)->toBe(0);
+});

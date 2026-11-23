@@ -183,7 +183,7 @@ class WordpressNewCommand extends Command
         $image = $config->getPhpImage(true); // CLI image
 
         $this->laraKubeInfo("Pulling builder image: $image...");
-        Process::forever()->run($this->pullImageCommand($image));
+        $this->pullImage($image);
 
         $runtime = $this->containerRuntime();
 

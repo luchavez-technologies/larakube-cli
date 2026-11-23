@@ -132,4 +132,28 @@ trait StreamsProcessOutput
 
         $this->runInteractive('sudo -v');
     }
+
+    /**
+     * Whether `sudo` can run right now without stalling: it is already passwordless (or recently unlocked), or a
+     * terminal is attached to type the password into. A run Desktop drives has its stdin on a pipe, so it gets
+     * false here instead of a password prompt nobody can answer, and the caller skips that step with a note.
+     */
+    protected function sudoReady(): bool
+    {
+        if (Process::run('sudo -n true')->successful()) {
+            return true;
+        }
+
+        if (State::isJsonMode() || ! $this->stdinIsTerminal()) {
+            return false;
+        }
+
+        return $this->runInteractive('sudo -v') === 0;
+    }
+
+    /** Whether someone can answer a prompt: our stdin is a terminal, not a pipe. */
+    protected function stdinIsTerminal(): bool
+    {
+        return defined('STDIN') && stream_isatty(STDIN);
+    }
 }

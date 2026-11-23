@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Data\ConfigData;
 use App\Support\Os;
 use App\Traits\ConfiguresWslNetworking;
+use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Support\Facades\Process;
 
 class WslBridge
@@ -14,6 +15,9 @@ class WslBridge
     public const string DEFAULT_DISTRO = 'larakube-ubuntu';
 
     public const string DEFAULT_USER = 'larakube';
+
+    /** How long a person gets to find and answer the UAC prompt, which can open behind other windows. */
+    private const int WINDOWS_HOSTS_PROMPT_SECONDS = 300;
 
     /**
      * Commands that ALWAYS need the local k3s cluster or the distro's Linux
@@ -32,7 +36,7 @@ class WslBridge
     private const WSL_LOCAL_COMMANDS = [
         // Local k3s cluster & the Local CA
         'cluster:setup', 'cluster:start', 'cluster:stop', 'cluster:destroy',
-        'trust', 'trust:check', 'trust:remove', 'trust:reset',
+        'trust', 'trust:check', 'trust:prune', 'trust:remove', 'trust:reset',
         // Local container execution & dev workflows
         'art', 'exec', 'php', 'node', 'composer', 'npm', 'yarn', 'pnpm', 'bun',
         'shell', 'test', 'logs', 'tunnel',
@@ -42,7 +46,7 @@ class WslBridge
         'gin:new', 'nestjs:new', 'nextjs:new', 'next:new', 'springboot:new', 'statamic:new', 'vite:new', 'wordpress:new', 'wp:new',
         'clone', 'init', 'purge', 'build', 'static:build', 'smoke',
         // Local companions, features & shares
-        'companion:add', 'companion:remove', 'companion:start', 'companion:stop', 'companion:list',
+        'companion:add', 'companion:remove', 'companion:start', 'companion:stop', 'companion:update', 'companion:list',
         'feature:add', 'feature:remove',
         'share:show', 'share:domains', 'share:remove',
     ];
@@ -93,6 +97,8 @@ class WslBridge
     private $customDispatcher = null;
 
     private ?string $pendingWindowsHostsPathOverride = null;
+
+    private ?string $windowsHostsPathOverride = null;
 
     private ?string $cachedLinuxBinaryPathOverride = null;
 
@@ -390,6 +396,12 @@ class WslBridge
         $this->pendingWindowsHostsPathOverride = $path;
     }
 
+    /** Test seam: overrides the Windows hosts file checked after the elevated sync. */
+    public function setWindowsHostsPathForTesting(?string $path): void
+    {
+        $this->windowsHostsPathOverride = $path;
+    }
+
     /** Test seam: overrides the host-side cached Linux binary path. */
     public function setCachedLinuxBinaryPathForTesting(?string $path): void
     {
@@ -621,10 +633,23 @@ class WslBridge
         $startProcess = 'Start-Process -FilePath powershell -Verb RunAs -Wait '
             ."-ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{$scriptPath}'";
 
-        Process::run(['powershell.exe', '-NoProfile', '-Command', $startProcess]);
+        // The app is already up by now, so nothing here may fail the command:
+        // a prompt left unanswered or declined ends in the warning below.
+        try {
+            Process::timeout(self::WINDOWS_HOSTS_PROMPT_SECONDS)->run(['powershell.exe', '-NoProfile', '-Command', $startProcess]);
+        } catch (ProcessTimedOutException) {
+            fwrite(STDERR, 'The Windows security prompt was not answered in time.'.PHP_EOL);
+        } finally {
+            @unlink($contentPath);
+            @unlink($scriptPath);
+        }
 
-        @unlink($contentPath);
-        @unlink($scriptPath);
+        $missing = $this->linesMissingFromWindowsHosts($content);
+
+        if ($missing !== []) {
+            fwrite(STDERR, 'The Windows hosts file was not updated, so these addresses may not open in your Windows browser. Add these lines to C:\\Windows\\System32\\drivers\\etc\\hosts (open Notepad as Administrator):'.PHP_EOL);
+            fwrite(STDERR, implode(PHP_EOL, $missing).PHP_EOL);
+        }
     }
 
     /**
@@ -701,6 +726,24 @@ class WslBridge
                 self::linkToHost($hostPath, $distroPath);
             }
         }
+    }
+
+    /**
+     * The lines of $wanted the real Windows hosts file does not contain.
+     * Comments are left out: they change nothing about what resolves.
+     *
+     * @return list<string>
+     */
+    private function linesMissingFromWindowsHosts(string $wanted): array
+    {
+        $lines = fn (string $text): array => array_values(array_filter(
+            array_map(trim(...), preg_split('/\r\n|\r|\n/', $text) ?: []),
+            fn (string $line): bool => $line !== '' && ! str_starts_with($line, '#'),
+        ));
+
+        $current = (string) @file_get_contents($this->windowsHostsPathOverride ?? 'C:\\Windows\\System32\\drivers\\etc\\hosts');
+
+        return array_values(array_diff($lines($wanted), $lines($current)));
     }
 
     private function isHostCommand(string $command): bool

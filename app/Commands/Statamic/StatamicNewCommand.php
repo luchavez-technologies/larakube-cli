@@ -382,7 +382,7 @@ class StatamicNewCommand extends Command
 
         if ($builder !== null) {
             $this->laraKubeInfo("Pulling builder image: $builder...");
-            $pull = Process::forever()->run($this->pullImageCommand($builder));
+            $pull = $this->pullImage($builder);
             $prebuilt = $pull->successful();
 
             if (! $prebuilt) {
@@ -394,7 +394,7 @@ class StatamicNewCommand extends Command
             $image = $builder;
         } else {
             $this->laraKubeInfo("Pulling builder image: $image...");
-            Process::forever()->run($this->pullImageCommand($image));
+            $this->pullImage($image);
         }
 
         // `statamic new` ends by booting the app, and Intervention's GD driver

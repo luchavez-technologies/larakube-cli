@@ -71,3 +71,11 @@ test('companion:list --json returns Mailpit unconditionally and pgAdmin once ins
     expect($mailpit['url'])->toBe('https://mailpit.test')
         ->and($mailpit['url'])->not->toContain('<fg=');
 });
+
+test('companion:list --json lists every companion with the image this build installs, even outside a project', function (): void {
+    Artisan::call('companion:list --json');
+    $catalog = json_decode(Artisan::output(), true)['catalog'];
+
+    expect(array_column($catalog, 'slug'))->toBe(array_map(fn ($case) => $case->value, App\Enums\CompanionDriver::cases()))
+        ->and(collect($catalog)->firstWhere('slug', 'pgadmin')['image'])->toBe(App\Enums\CompanionDriver::PGADMIN->getImage());
+});

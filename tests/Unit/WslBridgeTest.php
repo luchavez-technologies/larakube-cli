@@ -690,3 +690,59 @@ test('a command run from inside a project folder goes to the distro, whatever en
     $project->delete();
     $elsewhere->delete();
 });
+
+function wslBridgeHostsSyncFixture(TemporaryDirectory $dir): array
+{
+    $pending = $dir->path().'/pending-windows-hosts';
+    $hosts = $dir->path().'/hosts';
+    file_put_contents($pending, "# LaraKube: shop\n10.0.0.2 shop.test\n");
+    file_put_contents($hosts, "127.0.0.1 localhost\n");
+
+    $bridge = new WslBridge;
+    $bridge->setPendingWindowsHostsPathForTesting($pending);
+    $bridge->setWindowsHostsPathForTesting($hosts);
+
+    return [$bridge, $hosts];
+}
+
+test('the Windows hosts sync gives the UAC prompt five minutes', function (): void {
+    $dir = TemporaryDirectory::make();
+    [$bridge] = wslBridgeHostsSyncFixture($dir);
+    Process::fake(['*' => Process::result()]);
+
+    $bridge->applyPendingWindowsHostsSync();
+
+    Process::assertRan(fn ($process): bool => $process->timeout === 300);
+});
+
+test('an unanswered UAC prompt never fails the command and leaves no staged files', function (): void {
+    $dir = TemporaryDirectory::make();
+    [$bridge] = wslBridgeHostsSyncFixture($dir);
+    $before = glob(sys_get_temp_dir().'/larakube-win-hosts-*') ?: [];
+
+    Process::fake(function (): never {
+        throw new Illuminate\Process\Exceptions\ProcessTimedOutException(
+            new Symfony\Component\Process\Exception\ProcessTimedOutException(
+                new Symfony\Component\Process\Process(['powershell.exe']),
+                Symfony\Component\Process\Exception\ProcessTimedOutException::TYPE_GENERAL,
+            ),
+            new Illuminate\Process\FakeProcessResult(exitCode: 1),
+        );
+    });
+
+    $bridge->applyPendingWindowsHostsSync();
+
+    expect(array_diff(glob(sys_get_temp_dir().'/larakube-win-hosts-*') ?: [], $before))->toBeEmpty();
+});
+
+test('hosts lines the elevated sync did not write are reported, and written ones are not', function (): void {
+    $dir = TemporaryDirectory::make();
+    [$bridge, $hosts] = wslBridgeHostsSyncFixture($dir);
+    $missing = new ReflectionMethod($bridge, 'linesMissingFromWindowsHosts');
+
+    expect($missing->invoke($bridge, "# LaraKube: shop\n10.0.0.2 shop.test\n"))->toBe(['10.0.0.2 shop.test']);
+
+    file_put_contents($hosts, "127.0.0.1 localhost\r\n# LaraKube: shop\r\n10.0.0.2 shop.test\r\n");
+
+    expect($missing->invoke($bridge, "# LaraKube: shop\n10.0.0.2 shop.test\n"))->toBe([]);
+});

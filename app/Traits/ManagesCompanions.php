@@ -26,7 +26,7 @@ trait ManagesCompanions
      * to remember it (a standalone `companion:add` on a cluster that has never
      * had a companion before is exactly the case that was silently failing).
      */
-    protected function deployCompanion(CompanionDriver $companion): KubectlResult
+    protected function deployCompanion(CompanionDriver $companion, int $replicas = 1): KubectlResult
     {
         $this->ensureCompanionNamespace();
 
@@ -40,6 +40,8 @@ trait ManagesCompanions
         $manifest = view('k8s.companion.global', [
             'companion' => $companion,
             'localTld' => GlobalConfigData::load()->getLocalTld(),
+            // companion:update re-applies a paused one with 0, so it stays paused.
+            'replicas' => $replicas,
         ])->render();
 
         return Kubectl::current()->apply($manifest);
@@ -368,6 +370,17 @@ trait ManagesCompanions
         }
 
         $appName = $config->getName();
+
+        // dnsmasq already wildcards this TLD to 127.0.0.1 on macOS/Linux, so a
+        // static entry is redundant, and pins these hosts to an ingress IP that
+        // goes stale. Desktop relies on this: it grants no sudo for a local `up`
+        // when dnsmasq covers the TLD, so writing /etc/hosts here would wait on
+        // a password prompt nobody can answer. Same as syncClusterServiceHosts().
+        if (! $this->isWsl() && $this->dnsmasqCoversKube($tld)) {
+            $this->removeHostsBlock("{$appName}-companions");
+
+            return;
+        }
 
         // Skip only once dnsmasq fully covers this TLD (on WSL that also
         // means the Windows NRPT rule is in place, not just the Linux-side

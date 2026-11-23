@@ -616,6 +616,7 @@ spec:
       containers:
         - name: php
           imagePullPolicy: IfNotPresent
+          args: ["sh","-c","trap 'kill -TERM \"$child\" 2>/dev/null; wait \"$child\"; exit 0' TERM INT; while true; do php artisan queue:work & child=$!; wait \"$child\"; sleep 1; done"]
           # Local dev: service connection vars (DB_*, REDIS_*, etc.) come from
           # ConfigMap/Secret via envFrom; everything else reads from .env
           # mounted on the hostPath. .env edits are live without larakube up.
@@ -703,6 +704,7 @@ spec:
       containers:
         - name: php
           imagePullPolicy: IfNotPresent
+          args: ["sh","-c","trap 'kill -TERM \"$child\" 2>/dev/null; wait \"$child\"; exit 0' TERM INT; while true; do php artisan reverb:start --host=0.0.0.0 --port=8081 & child=$!; wait \"$child\"; sleep 1; done"]
           # Local dev: service connection vars (DB_*, REDIS_*, etc.) come from
           # ConfigMap/Secret via envFrom; everything else reads from .env
           # mounted on the hostPath. .env edits are live without larakube up.

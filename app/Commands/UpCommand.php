@@ -616,6 +616,13 @@ class UpCommand extends Command
             Process::run(Kubectl::current()->prefix().' scale deployment/larakube-share --replicas=1 -n '.escapeshellarg($namespace));
         }
 
+        $reloadable = array_keys(WatchCommand::reloadTargets($config));
+        if ($environment === 'local' && $reloadable !== []) {
+            $this->newLine();
+            $this->laraKubeInfo(ucfirst(implode(', ', $reloadable)).' keep your code in memory and won\'t see edits on their own. '
+                .'Run `larakube watch` to reload them gracefully whenever you save (LaraKube Desktop does this for you).');
+        }
+
         $this->renderReminders();
 
         if ($config->id) {

@@ -6,6 +6,7 @@ use App\Contracts\PlexProvisionable;
 use App\Enums\AppFramework;
 use App\Enums\CacheDriver;
 use App\Enums\DatabaseDriver;
+use App\Enums\FrontendStack;
 use App\Enums\LaravelFeature;
 use App\Enums\PhpVersion;
 use App\Enums\SearchDriver;
@@ -18,7 +19,8 @@ use BackedEnum;
  * A field is one question: `key`, `type` (text, select, multiselect, confirm),
  * `label`, `required`, and how its answer reaches the command: `arg` for the
  * positional name, `flag` on the field (`--email=` takes the value), or `flag`
- * on each option (`--react` is on or off). `visibleWhen`, `forcedWhen`,
+ * on each option (`--react` is on or off). `visibleWhen` (a value, or a list
+ * meaning any of them), `forcedWhen`,
  * `defaultWhen` and an option's `implies` carry the rules the wizard applies in code.
  * LaraKube Desktop and LaraKube Cloud render this instead of keeping their own copy.
  */
@@ -139,7 +141,7 @@ class FrameworkCatalog
     private function group(AppFramework $framework, string $key): string
     {
         $essential = match ($framework) {
-            AppFramework::LARAVEL => ['name', 'email', 'frontend', 'database'],
+            AppFramework::LARAVEL => ['name', 'email', 'frontend', 'teams', 'database'],
             AppFramework::STATAMIC => ['name', 'email', 'database'],
             default => ['name', 'email', 'template', 'database', 'typescript'],
         };
@@ -282,9 +284,37 @@ class FrameworkCatalog
             }
 
             $fields[] = $field + $this->laravelRules($question['key']) + $this->laravelSuggestion($question['key']);
+
+            if ($question['key'] === 'frontend') {
+                $fields[] = $this->teamsField();
+            }
         }
 
         return $fields;
+    }
+
+    /**
+     * `laravel new --teams`: the starter kit's teams variant (create teams,
+     * invite members, switch between them). Only Laravel's own starter kits
+     * have one, so it is offered only with one of them; the installer ignores
+     * it otherwise. `larakube new` forwards the flag as is.
+     *
+     * @return array<string, mixed>
+     */
+    private function teamsField(): array
+    {
+        return [
+            'key' => 'teams',
+            'type' => 'confirm',
+            'label' => 'Teams',
+            'description' => 'Let users create teams, invite members and switch between teams (the starter kit\'s teams variant).',
+            'flag' => '--teams',
+            'default' => false,
+            'visibleWhen' => ['frontend' => array_map(
+                fn (FrontendStack $stack): string => $stack->value,
+                [FrontendStack::REACT, FrontendStack::VUE, FrontendStack::SVELTE, FrontendStack::LIVEWIRE],
+            )],
+        ];
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Commands\Plex;
 
 use App\Enums\DatabaseDriver;
+use App\Enums\LaravelFeature;
 use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
@@ -210,7 +211,7 @@ class PlexMigrateCommand extends Command
             // Storage: the bucket, under the shared Commons S3 credentials.
 
             $tempDbPassword = bin2hex(random_bytes(16));
-            if ($driver !== null && ! $skipDbCopy && ! $this->allocateDatabase($driver, $tenant, $tempDbPassword)) {
+            if ($driver !== null && ! $skipDbCopy && ! $this->allocateDatabase($driver, $tenant, $tempDbPassword, withVector: (bool) $config?->hasFeature(LaravelFeature::AI))) {
                 return 1;
             }
 

@@ -37,7 +37,7 @@ metadata:
     {{ \App\Support\Labels::MANAGED_BY }}: larakube
     {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
-  replicas: 1
+  replicas: {{ in_array('postgres', $paused ?? [], true) ? 0 : 1 }}
   strategy:
     type: Recreate
   selector:
@@ -186,7 +186,7 @@ metadata:
     {{ \App\Support\Labels::MANAGED_BY }}: larakube
     {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
-  replicas: 1
+  replicas: {{ in_array('pgbouncer', $paused ?? [], true) ? 0 : 1 }}
   strategy:
     type: Recreate
   selector:
@@ -295,7 +295,7 @@ metadata:
     {{ \App\Support\Labels::MANAGED_BY }}: larakube
     {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
-  replicas: 1
+  replicas: {{ in_array($engine, $paused ?? [], true) ? 0 : 1 }}
   strategy:
     type: Recreate
   selector:
@@ -399,7 +399,7 @@ metadata:
     {{ \App\Support\Labels::MANAGED_BY }}: larakube
     {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
-  replicas: 1
+  replicas: {{ in_array('redis', $paused ?? [], true) ? 0 : 1 }}
   selector:
     matchLabels:
       app: redis
@@ -509,7 +509,7 @@ metadata:
     {{ \App\Support\Labels::MANAGED_BY }}: larakube
     {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
-  replicas: 1
+  replicas: {{ in_array('meilisearch', $paused ?? [], true) ? 0 : 1 }}
   strategy:
     type: Recreate
   selector:
@@ -590,7 +590,7 @@ metadata:
     {{ \App\Support\Labels::MANAGED_BY }}: larakube
     {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
-  replicas: 1
+  replicas: {{ in_array('seaweedfs', $paused ?? [], true) ? 0 : 1 }}
   strategy:
     type: Recreate
   selector:
@@ -788,7 +788,7 @@ metadata:
     {{ \App\Support\Labels::MANAGED_BY }}: larakube
     {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
-  replicas: 1
+  replicas: {{ in_array('minio', $paused ?? [], true) ? 0 : 1 }}
   strategy:
     type: Recreate
   selector:
@@ -976,7 +976,7 @@ metadata:
     {{ \App\Support\Labels::MANAGED_BY }}: larakube
     {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
-  replicas: 1
+  replicas: {{ in_array('garage', $paused ?? [], true) ? 0 : 1 }}
   strategy:
     type: Recreate
   selector:
@@ -1077,7 +1077,7 @@ metadata:
     {{ \App\Support\Labels::MANAGED_BY }}: larakube
     {{ \App\Support\Labels::COMPONENT }}: plex
 spec:
-  replicas: 1
+  replicas: {{ in_array('headless-shell', $paused ?? [], true) ? 0 : 1 }}
   selector:
     matchLabels:
       app: headless-shell

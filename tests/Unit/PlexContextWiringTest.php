@@ -57,10 +57,12 @@ test('every command that reads the Plex Commons also sets plexContext', function
         // Either the command sets it directly, builds its own PlexService from
         // the resolved context and hands it to the Commons helpers, or it
         // inherits a base class that does (AbstractToolRemoveCommand sets it
-        // for all 24 remove commands).
+        // for all 24 remove commands), or resolves it through
+        // TargetsExistingCommons::targetCommons() (plex:outdated, plex:update).
         $setsContext = str_contains($src, 'plexContext = ')
             || str_contains($src, 'new PlexService(')
-            || str_contains($src, 'extends AbstractToolRemoveCommand');
+            || str_contains($src, 'extends AbstractToolRemoveCommand')
+            || str_contains($src, '$this->targetCommons()');
 
         if (! $setsContext) {
             $offenders[] = str_replace(base_path().'/', '', $path);

@@ -94,3 +94,64 @@ test('the companions namespace is applied as a manifest, on the pinned cluster',
 
     expect($cluster->has(new App\Data\ResourceRef('Namespace', 'larakube-companions', 'default')))->toBeTrue();
 });
+
+function companionHostsHelper(bool $dnsmasqCovers): object
+{
+    return new class($dnsmasqCovers)
+    {
+        use ManagesCompanions;
+
+        /** @var list<string> */
+        public array $calls = [];
+
+        public function __construct(private bool $dnsmasqCovers) {}
+
+        public function sync(App\Data\ConfigData $config): void
+        {
+            $this->syncCompanionHosts($config);
+        }
+
+        protected function isWsl(): bool
+        {
+            return false;
+        }
+
+        protected function dnsmasqCoversKube(?string $tld = null): bool
+        {
+            return $this->dnsmasqCovers;
+        }
+
+        protected function isCompanionInstalled(CompanionDriver $companion): bool
+        {
+            return true;
+        }
+
+        protected function syncHostsEntries(array $hosts, string $appName): void
+        {
+            $this->calls[] = "sync {$appName}: ".implode(' ', $hosts);
+        }
+
+        protected function removeHostsBlock(string $appName): void
+        {
+            $this->calls[] = "remove {$appName}";
+        }
+    };
+}
+
+test('companion hosts stay out of /etc/hosts when dnsmasq covers the TLD, so up never waits on sudo', function (): void {
+    $helper = companionHostsHelper(dnsmasqCovers: true);
+
+    $helper->sync(App\Data\ConfigData::from(['name' => 'shop', 'database' => 'postgres']));
+
+    expect($helper->calls)->toBe(['remove shop-companions']);
+});
+
+test('companion hosts are written to /etc/hosts when dnsmasq does not cover the TLD', function (): void {
+    $helper = companionHostsHelper(dnsmasqCovers: false);
+
+    $helper->sync(App\Data\ConfigData::from(['name' => 'shop', 'database' => 'postgres']));
+
+    expect($helper->calls)->toHaveCount(1)
+        ->and($helper->calls[0])->toStartWith('sync shop-companions: ')
+        ->and($helper->calls[0])->toContain('pgadmin.');
+});

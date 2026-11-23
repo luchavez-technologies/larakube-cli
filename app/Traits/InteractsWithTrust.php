@@ -547,9 +547,14 @@ trait InteractsWithTrust
             $items[] = ['ok' => true, 'section' => $sysSection, 'label' => "Valid until {$this->certExpiryDate($sysCrt)}", 'fix' => null];
         }
 
-        // App certs
+        // App certs: a project's (`{name}-dev`, for `{name}.{tld}` and its
+        // subdomains) and a host's (`host-{host}-dev`, for exactly that host,
+        // issued per Ingress). A host cert's name is no host, so it is only
+        // checked for expiry; checking `{name}.{tld}` flagged every one.
         foreach ($this->getAllLocalAppCerts() as $appName => $paths) {
             $crt = $paths['crt'];
+            $isHostCert = str_starts_with($appName, 'host-');
+            $label = $isHostCert ? ($this->certHosts($crt)[0] ?? $appName) : $appName;
             // Each app's own pinned TLD (sidecar written alongside its cert), not
             // the global $tld — a project with a `config:tld --project` override
             // legitimately uses a different TLD than this machine's default.
@@ -559,21 +564,23 @@ trait InteractsWithTrust
                 $items[] = [
                     'ok' => false,
                     'section' => 'App certs',
-                    'label' => sprintf('  %-18s expired or expiring — run: larakube up', $appName),
-                    'fix' => 'larakube up',
+                    'label' => sprintf('  %-18s expired or expiring — run: larakube up, or larakube trust:prune if unused', $label),
+                    'fix' => 'larakube trust:prune',
                 ];
-            } elseif (! $this->certCoversHost($crt, "{$appName}.{$appTld}")) {
+            } elseif (! $isHostCert && ! $this->certCoversHost($crt, "{$appName}.{$appTld}")) {
                 $items[] = [
                     'ok' => false,
                     'section' => 'App certs',
-                    'label' => sprintf('  %-18s wrong TLD — run: larakube up (in that project)', $appName),
-                    'fix' => 'larakube up (in that project)',
+                    'label' => sprintf('  %-18s wrong TLD — run: larakube up in that project, or larakube trust:prune if unused', $label),
+                    'fix' => 'larakube trust:prune',
                 ];
             } else {
                 $items[] = [
                     'ok' => true,
                     'section' => 'App certs',
-                    'label' => sprintf('  %-18s valid until %s (.%s)', $appName, $this->certExpiryDate($crt), $appTld),
+                    'label' => $isHostCert
+                        ? sprintf('  %-18s valid until %s', $label, $this->certExpiryDate($crt))
+                        : sprintf('  %-18s valid until %s (.%s)', $label, $this->certExpiryDate($crt), $appTld),
                     'fix' => null,
                 ];
             }

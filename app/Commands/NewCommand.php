@@ -30,7 +30,6 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\StreamsProcessOutput;
 use Illuminate\Console\Scheduling\Schedule;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\confirm;
@@ -333,7 +332,7 @@ class NewCommand extends Command
 
         if ($builder !== null) {
             $this->laraKubeInfo("Pulling builder image: $builder...");
-            $pull = Process::forever()->run($this->pullImageCommand($builder));
+            $pull = $this->pullImage($builder);
             $prebuilt = $pull->successful();
 
             if (! $prebuilt) {
@@ -345,7 +344,7 @@ class NewCommand extends Command
             $image = $builder;
         } else {
             $this->laraKubeInfo("Pulling builder image: $image...");
-            Process::forever()->run($this->pullImageCommand($image));
+            $this->pullImage($image);
         }
 
         $runtime = $this->containerRuntime();

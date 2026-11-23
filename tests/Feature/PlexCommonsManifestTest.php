@@ -37,7 +37,7 @@ test('the default Commons manifest has Postgres + Redis, embeds the spec, and om
         ->toContain('name: plex-commons')
         ->toContain('commons.json: |')          // spec is embedded (self-describing)
         ->toContain('name: postgres')
-        ->toContain('image: postgres:17.9')
+        ->toContain('image: '.DatabaseDriver::PGVECTOR_IMAGE)
         ->toContain('claimName: postgres-data')
         ->toContain('name: redis')
         ->toContain('image: valkey/valkey:8.0-alpine')
@@ -195,7 +195,7 @@ test('enabling the pooler adds PgBouncer and a direct postgres-primary route, an
     // The Postgres Deployment itself is untouched by pooling — kubectl
     // exec-based admin paths (commonsAdminClient() et al.) target it by
     // Deployment name, not the Service, so it must never be renamed.
-    expect($yaml)->toContain('name: postgres'."\n")->toContain('image: postgres:17.9');
+    expect($yaml)->toContain('name: postgres'."\n")->toContain('image: '.DatabaseDriver::PGVECTOR_IMAGE);
 });
 
 test('the pooler config comes from the spec, not the target env, and the DB password is never inlined in plaintext', function (): void {
@@ -312,4 +312,22 @@ test('SeaweedFS manifest renders custom CPU and memory limits', function (): voi
         ->toContain('name: seaweedfs')
         ->toContain('cpu: "2000m"')
         ->toContain('memory: "2Gi"');
+});
+
+test('a paused service renders with zero replicas, so no apply starts it again', function (): void {
+    Process::fake([
+        '*get deployments -n larakube-plex -o json*' => Process::result(output: (string) json_encode([
+            'items' => [
+                ['metadata' => ['name' => 'redis'], 'spec' => ['replicas' => 0]],
+                ['metadata' => ['name' => 'postgres'], 'spec' => ['replicas' => 1]],
+            ],
+        ])),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $yaml = (new App\Services\PlexService('ctx'))->renderCommonsManifest(plexHelper()->defaultCommonsSpec(), false);
+
+    expect($yaml)->toContain("name: redis\n  labels:")
+        ->and(App\Services\PlexService::manifestForService($yaml, 'redis'))->toContain('replicas: 0')
+        ->and(App\Services\PlexService::manifestForService($yaml, 'postgres'))->toContain('replicas: 1');
 });

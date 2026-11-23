@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/managed-by: larakube
     app.kubernetes.io/component: companion
 spec:
-  replicas: 1
+  replicas: {{ $replicas ?? 1 }}
   selector:
     matchLabels:
       app: {{ $companion->value }}

@@ -27,6 +27,20 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
 {
     use GeneratesProjectInfrastructure, ProvidesCommandOptions, ProvidesSelectOptions;
 
+    /** What a tenant allocation prints when the Commons Postgres has no pgvector to turn on. */
+    public const PGVECTOR_MISSING = 'larakube: pgvector is not available on this Postgres';
+
+    /** Plain Postgres. Debian trixie, like the pgvector image below. */
+    public const POSTGRES_IMAGE = 'postgres:17.12';
+
+    /**
+     * Postgres with the pgvector extension's files added (built FROM
+     * postgres:17-trixie). Pinned to the same major and Debian release as
+     * POSTGRES_IMAGE, so a data folder moves between the two with no dump and
+     * no reindex. The extension does nothing until `CREATE EXTENSION vector`.
+     */
+    public const PGVECTOR_IMAGE = 'pgvector/pgvector:0.8.7-pg17-trixie';
+
     public function getPodName(?ConfigData $config = null): string
     {
         return $this->value;
@@ -248,7 +262,7 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
         return match ($this) {
             self::MYSQL => 'mysql:8.4',
             self::MARIADB => 'mariadb:11.8',
-            self::POSTGRESQL => ($config?->hasFeature(LaravelFeature::AI)) ? 'pgvector/pgvector:pg17' : 'postgres:17.9',
+            self::POSTGRESQL => ($config?->hasFeature(LaravelFeature::AI)) ? self::PGVECTOR_IMAGE : self::POSTGRES_IMAGE,
             self::MONGODB => 'mongo:7.0',
             self::SQLITE => '',
         };
@@ -497,12 +511,14 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
      * Commons, piped to this engine's admin client (commonsAdminClient). $db/$user
      * are pre-sanitized identifiers; the password is engine-escaped. Null for
      * engines that aren't a relational Commons backend (SQLite is a local file;
-     * MongoDB auto-creates and isn't wired). Pure.
+     * MongoDB auto-creates and isn't wired). `$withVector` also turns on
+     * pgvector in a Postgres tenant's database (Laravel AI): the extension is not
+     * trusted, so the tenant cannot create it and the admin does it here. Pure.
      */
-    public function commonsTenantSql(string $db, string $user, string $password): ?string
+    public function commonsTenantSql(string $db, string $user, string $password, bool $withVector = false): ?string
     {
         return match ($this) {
-            self::POSTGRESQL => $this->postgresCommonsCreateSql($db, $user, $password),
+            self::POSTGRESQL => $this->postgresCommonsCreateSql($db, $user, $password, $withVector),
             self::MYSQL, self::MARIADB => $this->mysqlCommonsCreateSql($db, $user, $password),
             default => null,
         };
@@ -808,11 +824,11 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
      * database + the public schema so migrations can create tables (PG 15+ locks
      * `public` down for non-owners) — full per-tenant isolation, no shared grants.
      */
-    private function postgresCommonsCreateSql(string $db, string $role, string $password): string
+    private function postgresCommonsCreateSql(string $db, string $role, string $password, bool $withVector = false): string
     {
         $pw = str_replace("'", "''", $password);
 
-        return implode("\n", [
+        return implode("\n", array_filter([
             "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{$role}') THEN CREATE ROLE \"{$role}\" LOGIN PASSWORD '{$pw}'; END IF; END \$\$;",
             "ALTER ROLE \"{$role}\" PASSWORD '{$pw}';",
             "SELECT 'CREATE DATABASE \"{$db}\" OWNER \"{$role}\"' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{$db}')\\gexec",
@@ -820,7 +836,13 @@ enum DatabaseDriver: string implements AsDependency, HasArtisanCommands, HasComm
             "GRANT ALL PRIVILEGES ON DATABASE \"{$db}\" TO \"{$role}\";",
             "\\connect \"{$db}\"",
             "ALTER SCHEMA public OWNER TO \"{$role}\";",
-        ]);
+            // Only when this Postgres ships pgvector: a Commons still on the
+            // plain image would otherwise fail the whole allocation. The
+            // notice tells the caller to update the Commons.
+            $withVector
+                ? "DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'vector') THEN CREATE EXTENSION IF NOT EXISTS vector; ELSE RAISE NOTICE '".self::PGVECTOR_MISSING."'; END IF; END \$\$;"
+                : null,
+        ]));
     }
 
     /**

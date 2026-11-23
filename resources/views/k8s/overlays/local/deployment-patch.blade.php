@@ -16,6 +16,9 @@ spec:
       containers:
         - name: {{ $name === 'node' ? 'node' : 'php' }}
           imagePullPolicy: IfNotPresent
+@if($feature && $feature->getLocalK8sDeploymentArgs() !== null)
+          args: {!! $feature->getLocalK8sDeploymentArgs() !!}
+@endif
 @if($name !== 'node')
           # Local dev: service connection vars (DB_*, REDIS_*, etc.) come from
           # ConfigMap/Secret via envFrom; everything else reads from .env

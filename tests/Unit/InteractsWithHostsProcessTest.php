@@ -237,3 +237,40 @@ test('readCurrentWindowsHostsContent returns pending-windows-hosts when already 
         putenv('LARAKUBE_NATIVE_DISPATCH');
     }
 });
+
+function hostsSudoHelper(bool $terminal): object
+{
+    return new class($terminal)
+    {
+        use InteractsWithHosts;
+
+        public function __construct(private bool $terminal) {}
+
+        public function ready(): bool
+        {
+            return $this->sudoReady();
+        }
+
+        protected function stdinIsTerminal(): bool
+        {
+            return $this->terminal;
+        }
+    };
+}
+
+test('sudoReady is true without asking when sudo is already passwordless', function (): void {
+    Process::fake(['sudo -n true' => Process::result(exitCode: 0)]);
+
+    expect(hostsSudoHelper(terminal: false)->ready())->toBeTrue();
+    Process::assertNotRan('sudo -v');
+});
+
+test('sudoReady never prompts for a password when no terminal is attached (a Desktop run)', function (): void {
+    Process::fake([
+        'sudo -n true' => Process::result(exitCode: 1),
+        'sudo -v' => Process::result(exitCode: 0),
+    ]);
+
+    expect(hostsSudoHelper(terminal: false)->ready())->toBeFalse();
+    Process::assertNotRan('sudo -v');
+});

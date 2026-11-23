@@ -233,6 +233,8 @@ class PlexShowCommand extends Command
             'initialized' => true,
             'context' => $context,
             'services' => $spec['services'] ?? [],
+            // Scaled to zero by plex:stop; Desktop shows these as Paused.
+            'paused' => $this->plex()->pausedServices(),
             'serviceCatalog' => $this->buildServiceCatalog($spec),
             'tenants' => $buckets,
         ];

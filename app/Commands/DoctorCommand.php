@@ -6,6 +6,7 @@ use App\Data\ConfigData;
 use App\Services\Kubectl;
 use App\Traits\CheckPrerequisites;
 use App\Traits\DetectsWsl;
+use App\Traits\EmitsJsonOutput;
 use App\Traits\HasConsoleInteraction;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithProjectConfig;
@@ -18,14 +19,16 @@ use LaravelZero\Framework\Commands\Command;
 
 class DoctorCommand extends Command
 {
-    use CheckPrerequisites, DetectsWsl, HasConsoleInteraction, InteractsWithEnvironments, InteractsWithProjectConfig, InteractsWithTraefik, InteractsWithTrust, LaraKubeOutput, ResolvesContainerRuntime;
+    use CheckPrerequisites, DetectsWsl, EmitsJsonOutput, HasConsoleInteraction, InteractsWithEnvironments, InteractsWithProjectConfig, InteractsWithTraefik, InteractsWithTrust, LaraKubeOutput, ResolvesContainerRuntime;
 
     /**
      * The name and signature of the console command.
      *
      * @var string
      */
-    protected $signature = 'doctor {--environment=local : The environment to diagnose}';
+    protected $signature = 'doctor
+        {--environment=local : The environment to diagnose}
+        {--json : Emit the issues as one machine-readable JSON result on stdout}';
 
     /**
      * The console command description.
@@ -39,6 +42,10 @@ class DoctorCommand extends Command
      */
     public function handle(): int
     {
+        if ($this->option('json')) {
+            $this->enableJsonMode();
+        }
+
         $this->renderHeader();
 
         $environment = $this->option('environment');
@@ -48,6 +55,20 @@ class DoctorCommand extends Command
         $this->laraKubeInfo("Diagnosing LaraKube environment: {$environment}...");
 
         $issues = $this->runDiagnostics($namespace, $environment, $config);
+
+        if ($this->option('json')) {
+            $this->jsonOutput([
+                'success' => true,
+                'environment' => $environment,
+                'issues' => array_values(array_map(fn (array $issue): array => [
+                    'title' => (string) $issue['title'],
+                    'description' => (string) $issue['description'],
+                    'fix' => isset($issue['fix']) ? (string) $issue['fix'] : null,
+                ], $issues)),
+            ]);
+
+            return 0;
+        }
 
         if (empty($issues)) {
             $this->laraKubeInfo('✅ No critical issues detected! Your cluster health is looking like a masterpiece.');
@@ -80,8 +101,9 @@ class DoctorCommand extends Command
     {
         $issues = [];
 
-        // 1. Check for .larakube.json
-        if (! $config) {
+        // 1. Check for .larakube.json. Not under --json: a caller asking about
+        // the machine (Desktop's Local page) runs outside any project.
+        if (! $config && ! $this->option('json')) {
             $issues[] = [
                 'title' => 'Missing Configuration',
                 'description' => 'No .larakube.json file found in the current directory.',

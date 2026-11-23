@@ -17,16 +17,23 @@ spec:
           image: {{ $driver->getDockerImage($config) }}
           ports:
             - containerPort: {{ $driver->dbPort() }}
+          # A TCP check, not `redis-cli ping`: an exec probe starts a process on
+          # every check, and on a busy node it can miss the timeout and get a
+          # healthy Redis restarted. Nothing is persisted, so there is no
+          # loading phase for a TCP check to miss.
           readinessProbe:
-            exec:
-              command: ["redis-cli", "ping"]
+            tcpSocket:
+              port: {{ $driver->dbPort() }}
             initialDelaySeconds: 2
             periodSeconds: 5
+            timeoutSeconds: 3
           livenessProbe:
-            exec:
-              command: ["redis-cli", "ping"]
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            tcpSocket:
+              port: {{ $driver->dbPort() }}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 6
 ---
 apiVersion: v1
 kind: Service

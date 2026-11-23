@@ -13,7 +13,6 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\text;
@@ -126,7 +125,7 @@ class AdonisjsNewCommand extends Command
     protected function runCreateAdonisjs(string $appName, string $baseDir): void
     {
         $this->laraKubeInfo('Pulling Node.js 22 Alpine builder image...');
-        Process::forever()->run($this->pullImageCommand('docker.io/library/node:22-alpine'));
+        $this->pullImage('docker.io/library/node:22-alpine');
 
         $runtime = $this->containerRuntime();
 

@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Process;
 
 trait InteractsWithDocker
 {
-    use InteractsWithProjectConfig, ResolvesContainerRuntime, StreamsProcessOutput;
+    use InteractsWithProjectConfig, PullsContainerImages, ResolvesContainerRuntime, StreamsProcessOutput;
 
     /**
      * Whether a freshly built image must be sideloaded into a local cluster's

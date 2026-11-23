@@ -18,7 +18,6 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\text;
@@ -138,7 +137,7 @@ class DjangoNewCommand extends Command
 
         if ($builder !== null) {
             $this->laraKubeInfo("Pulling builder image: $builder...");
-            $pull = Process::forever()->run($this->pullImageCommand($builder));
+            $pull = $this->pullImage($builder);
             $prebuilt = $pull->successful();
 
             if (! $prebuilt) {
@@ -151,7 +150,7 @@ class DjangoNewCommand extends Command
             $install = '';
         } else {
             $this->laraKubeInfo('Pulling Python 3.12 slim builder image...');
-            Process::forever()->run($this->pullImageCommand('docker.io/library/python:3.12-slim'));
+            $this->pullImage('docker.io/library/python:3.12-slim');
             $image = 'docker.io/library/python:3.12-slim';
             $install = 'pip install --no-cache-dir django && ';
         }

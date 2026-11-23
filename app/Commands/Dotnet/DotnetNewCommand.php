@@ -13,7 +13,6 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\StreamsProcessOutput;
 use App\Traits\SyncsClusterSecrets;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
 use function Laravel\Prompts\text;
@@ -128,7 +127,7 @@ class DotnetNewCommand extends Command
     protected function runDotnetNewWebapi(string $appName, string $baseDir): void
     {
         $this->laraKubeInfo('Pulling .NET 10 SDK builder image...');
-        Process::forever()->run($this->pullImageCommand('mcr.microsoft.com/dotnet/sdk:10.0'));
+        $this->pullImage('mcr.microsoft.com/dotnet/sdk:10.0');
 
         $runtime = $this->containerRuntime();
 

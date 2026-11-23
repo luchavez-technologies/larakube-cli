@@ -154,7 +154,7 @@ trait InteractsWithPlex
 
     public function ensurePlexServiceRunning(string $service, string $kubectl, string $namespace = 'larakube-plex'): bool
     {
-        $deployName = "plex-{$service}";
+        $deployName = $service; // Commons Deployments are named after their service (postgres, redis, …).
         $cluster = Kubectl::fromPrefix($kubectl);
         $replicas = trim($cluster->raw(['get', "deployment/{$deployName}", '-n', $namespace, '-o', 'jsonpath={.spec.replicas}'])->output);
 
@@ -439,12 +439,15 @@ trait InteractsWithPlex
      *
      * @param  array<string, mixed>  $spec
      */
-    protected function applyCommons(array $spec, string $label): bool
+    protected function applyCommons(array $spec, string $label, ?string $onlyService = null): bool
     {
         $plex = $this->plex();
         $temporaryDirectory = TemporaryDirectory::make();
         $tmp = $temporaryDirectory->path('larakube-plex-commons.yaml');
-        file_put_contents($tmp, $plex->renderCommonsManifest($spec, $this->targetsLocalCluster()));
+        $manifest = $plex->renderCommonsManifest($spec, $this->targetsLocalCluster());
+        // One service's Deployment only (plex:update --service): the rest of
+        // the Commons, its spec ConfigMap included, stays as it runs.
+        file_put_contents($tmp, $onlyService !== null ? PlexService::manifestForService($manifest, $onlyService) : $manifest);
 
         $restarts = $plex->restartsCausedBy($tmp);
         if ($restarts !== [] && ! $this->confirmCommonsRestarts($restarts)) {
@@ -567,7 +570,7 @@ trait InteractsWithPlex
      * `kubectl exec`. The engine-specific SQL and admin client come from the
      * DatabaseDriver enum, so this single path serves Postgres, MySQL, and MariaDB.
      */
-    protected function allocateDatabase(DatabaseDriver $driver, string $tenant, string $password, ?PlexService $plex = null): bool
+    protected function allocateDatabase(DatabaseDriver $driver, string $tenant, string $password, ?PlexService $plex = null, bool $withVector = false): bool
     {
         $plex ??= $this->plex();
 
@@ -576,8 +579,8 @@ trait InteractsWithPlex
         }
 
         $result = null;
-        $this->withSpin("Allocating database '{$tenant}' in the Commons...", function () use ($plex, $driver, $tenant, $password, &$result) {
-            $result = $plex->runTenantDatabaseSql($driver, $tenant, $password);
+        $this->withSpin("Allocating database '{$tenant}' in the Commons...", function () use ($plex, $driver, $tenant, $password, $withVector, &$result) {
+            $result = $plex->runTenantDatabaseSql($driver, $tenant, $password, $withVector);
 
             return $result === null || $result->successful();
         });
@@ -590,6 +593,11 @@ trait InteractsWithPlex
             }
 
             return false;
+        }
+
+        if ($withVector && $result !== null && str_contains($result->output().$result->errorOutput(), DatabaseDriver::PGVECTOR_MISSING)) {
+            $this->laraKubeWarn("The Commons Postgres has no pgvector yet, so '{$tenant}' was set up without vector support (Laravel AI's embeddings need it).");
+            $this->laraKubeLine('    Update the Commons (larakube plex:update, or Update on the Plex Commons page), then run larakube plex:join again from this project.');
         }
 
         $plex->registerTenantDatabase($tenant, $driver);

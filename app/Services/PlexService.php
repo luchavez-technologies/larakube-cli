@@ -14,6 +14,7 @@ use App\Enums\StorageDriver;
 use Illuminate\Contracts\Process\ProcessResult;
 use Illuminate\Support\Facades\Process;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * The Plex Commons domain: tenant and Commons lifecycle. `InteractsWithPlex`
@@ -84,7 +85,7 @@ final class PlexService
         // uses, so the Commons never drifts from the project defaults (e.g. Meili's
         // version stays in lockstep with SearchDriver instead of a stale literal).
         $defaults = [
-            'postgres' => ['image' => DatabaseDriver::POSTGRESQL->getDockerImage(), 'port' => DatabaseDriver::POSTGRESQL->dbPort(), 'storage' => '10Gi', 'memory' => '1Gi', 'cpu' => '500m', 'max_connections' => 200, 'shared_buffers' => '128MB'],
+            'postgres' => ['image' => DatabaseDriver::PGVECTOR_IMAGE, 'port' => DatabaseDriver::POSTGRESQL->dbPort(), 'storage' => '10Gi', 'memory' => '1Gi', 'cpu' => '500m', 'max_connections' => 200, 'shared_buffers' => '128MB'],
             'mysql' => ['image' => DatabaseDriver::MYSQL->getDockerImage(),       'port' => DatabaseDriver::MYSQL->dbPort(),       'storage' => '10Gi', 'memory' => '1Gi', 'cpu' => '500m', 'max_connections' => 200],
             'mariadb' => ['image' => DatabaseDriver::MARIADB->getDockerImage(),     'port' => DatabaseDriver::MARIADB->dbPort(),     'storage' => '10Gi', 'memory' => '1Gi', 'cpu' => '500m', 'max_connections' => 200],
             'redis' => ['image' => CacheDriver::REDIS->getDockerImage(),          'port' => CacheDriver::REDIS->dbPort(),                               'memory' => '128Mi', 'cpu' => '250m', 'maxclients' => 10000, 'maxmemory_policy' => 'allkeys-lru', 'timeout' => 300],
@@ -122,6 +123,14 @@ final class PlexService
                 $resolved[$name]['pooler'] = array_merge($poolerDefault, $givenPooler);
                 $resolved[$name]['pooler']['enabled'] = (bool) ($givenPooler['enabled'] ?? false);
             }
+        }
+
+        // The Commons Postgres runs the pgvector image so a Laravel AI tenant can
+        // turn the extension on. One saved on the plain Postgres 17 image moves
+        // to it: same major and Debian release, so the data folder carries over.
+        // Alpine, another major or a custom image is left as it is.
+        if (preg_match('/^(docker\.io\/(library\/)?)?postgres:17(\.\d+)?(-trixie)?$/', (string) $resolved['postgres']['image']) === 1) {
+            $resolved['postgres']['image'] = DatabaseDriver::PGVECTOR_IMAGE;
         }
 
         return [
@@ -580,9 +589,9 @@ final class PlexService
      * DatabaseDriver enum, so this one path serves Postgres, MySQL and MariaDB.
      * Null when the engine has no tenant SQL, so there is nothing to run.
      */
-    public function runTenantDatabaseSql(DatabaseDriver $driver, string $tenant, string $password): ?ProcessResult
+    public function runTenantDatabaseSql(DatabaseDriver $driver, string $tenant, string $password, bool $withVector = false): ?ProcessResult
     {
-        $sql = $driver->commonsTenantSql($tenant, $tenant, $password);
+        $sql = $driver->commonsTenantSql($tenant, $tenant, $password, $withVector);
 
         if ($sql === null) {
             return null;
@@ -634,17 +643,78 @@ final class PlexService
             // Rendering without the exporters while monitoring IS installed
             // removes them from the live Postgres/Redis, restarting both.
             'withMonitoring' => ToolInstance::componentDeployed($this->kubectl(), ClusterTool::GRAFANA, 'prometheus'),
+            // A paused service stays paused (ADR 0030): rendering it with one
+            // replica would start it again on every plex:init or plex:update.
+            'paused' => $this->pausedServices(),
         ])->render();
     }
 
     /**
+     * Commons services scaled to zero by plex:stop. Only an explicit
+     * plex:start brings one back.
+     *
+     * @return list<string>
+     */
+    public function pausedServices(): array
+    {
+        $items = json_decode(Process::run($this->kubectl().' get deployments -n '.self::NAMESPACE.' -o json')->output(), true)['items'] ?? [];
+        $paused = [];
+
+        foreach (is_array($items) ? $items : [] as $item) {
+            $name = $item['metadata']['name'] ?? null;
+
+            if (is_string($name) && ($item['spec']['replicas'] ?? 1) === 0) {
+                $paused[] = $name;
+            }
+        }
+
+        return $paused;
+    }
+
+    /**
+     * Only the Deployment of one Commons service from a rendered manifest, so
+     * an update can change that service and leave the others as they run.
+     */
+    public static function manifestForService(string $manifest, string $service): string
+    {
+        $documents = preg_split('/^---\s*$/m', $manifest) ?: [];
+
+        foreach ($documents as $document) {
+            $parsed = Yaml::parse($document);
+
+            if (is_array($parsed) && ($parsed['kind'] ?? null) === 'Deployment' && ($parsed['metadata']['name'] ?? null) === $service) {
+                return trim($document)."\n";
+            }
+        }
+
+        return '';
+    }
+
+    /**
      * Stateful Commons services whose running pod applying $manifestPath would
-     * replace, found by a server-side dry run against what's live. Services
-     * not yet deployed never count: creating one restarts nothing.
+     * replace. Services not yet deployed never count: creating one restarts
+     * nothing.
      *
      * @return list<string>
      */
     public function restartsCausedBy(string $manifestPath): array
+    {
+        return array_values(array_map(
+            fn (array $change): string => $change['service'],
+            array_filter($this->pendingChanges($manifestPath), fn (array $change): bool => $change['stateful'] && ! $change['paused']),
+        ));
+    }
+
+    /**
+     * Running Commons services that applying $manifestPath would change, found
+     * by a server-side dry run compared against what is live. A change to the
+     * pod template (image, probes, settings) replaces the pod; anything else
+     * (the spec ConfigMap, a Service) does not, so it is not listed. Services
+     * not yet deployed are not listed either.
+     *
+     * @return list<array{service: string, stateful: bool, from: string|null, to: string|null, paused: bool}>
+     */
+    public function pendingChanges(string $manifestPath): array
     {
         $kubectl = $this->kubectl();
         $dryRun = Process::run("{$kubectl} apply --dry-run=server -o json -n ".self::NAMESPACE.' -f '.escapeshellarg($manifestPath));
@@ -653,15 +723,12 @@ final class PlexService
             return [];
         }
 
-        $stateful = array_keys(array_filter(
-            $this->commonsServiceCatalog(),
-            fn (array $entry) => ! $entry['driver'] instanceof RenderDriver,
-        ));
+        $catalog = $this->commonsServiceCatalog();
+        $changes = [];
 
-        $restarts = [];
         foreach ($rendered['items'] ?? [$rendered] as $object) {
             $name = $object['metadata']['name'] ?? '';
-            if (($object['kind'] ?? '') !== 'Deployment' || ! in_array($name, $stateful, true)) {
+            if (($object['kind'] ?? '') !== 'Deployment' || ! isset($catalog[$name])) {
                 continue;
             }
 
@@ -669,12 +736,44 @@ final class PlexService
                 "{$kubectl} get deployment {$name} -n ".self::NAMESPACE.' -o json --ignore-not-found',
             )->output(), true);
 
-            if (is_array($live) && ($live['spec']['template'] ?? null) != ($object['spec']['template'] ?? null)) {
-                $restarts[] = $name;
+            if (! is_array($live) || ($live['spec']['template'] ?? null) == ($object['spec']['template'] ?? null)) {
+                continue;
             }
+
+            $from = $live['spec']['template']['spec']['containers'][0]['image'] ?? null;
+            $to = $object['spec']['template']['spec']['containers'][0]['image'] ?? null;
+
+            $changes[] = [
+                'service' => $name,
+                'stateful' => ! $catalog[$name]['driver'] instanceof RenderDriver,
+                'from' => is_string($from) ? $from : null,
+                'to' => is_string($to) ? $to : null,
+                // Nothing restarts now: the change applies when it is resumed.
+                'paused' => ($live['spec']['replicas'] ?? 1) === 0,
+            ];
         }
 
-        return $restarts;
+        return $changes;
+    }
+
+    /**
+     * The changes applying $spec would make to the running Commons: renders it
+     * the way an apply would, then dry-runs it.
+     *
+     * @param  array<string, mixed>  $spec
+     * @return list<array{service: string, stateful: bool, from: string|null, to: string|null, paused: bool}>
+     */
+    public function pendingChangesFor(array $spec, bool $isLocal): array
+    {
+        $temporaryDirectory = TemporaryDirectory::make();
+        $path = $temporaryDirectory->path('larakube-plex-commons.yaml');
+        file_put_contents($path, $this->renderCommonsManifest($spec, $isLocal));
+
+        try {
+            return $this->pendingChanges($path);
+        } finally {
+            $temporaryDirectory->delete();
+        }
     }
 
     // ── Pure naming and SQL ──────────────────────────────────────────────────

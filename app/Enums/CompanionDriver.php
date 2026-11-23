@@ -29,14 +29,19 @@ enum CompanionDriver: string
         };
     }
 
+    /**
+     * Pinned, never `latest`: a pin says what runs, lets `companion:update`
+     * tell an outdated companion from a current one, and keeps a restart from
+     * jumping a major version. Check each project's releases before bumping.
+     */
     public function getImage(): string
     {
         return match ($this) {
-            self::ADMINER => 'adminer:latest',
-            self::PHPMYADMIN => 'phpmyadmin:latest',
-            self::PGADMIN => 'dpage/pgadmin4:latest',
-            self::REDISINSIGHT => 'redis/redisinsight:latest',
-            self::MONGO_EXPRESS => 'mongo-express:latest',
+            self::ADMINER => 'adminer:6.3.0',
+            self::PHPMYADMIN => 'phpmyadmin:5.2.3',
+            self::PGADMIN => 'dpage/pgadmin4:9.19.0',
+            self::REDISINSIGHT => 'redis/redisinsight:3.10.1',
+            self::MONGO_EXPRESS => 'mongo-express:1.0.2',
         };
     }
 

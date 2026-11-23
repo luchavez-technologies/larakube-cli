@@ -98,8 +98,8 @@ test('handover updates metadata before touching the server and proves the old ke
 
     $apply = array_key_first(array_filter($commands, fn (string $c): bool => str_contains($c, ' apply ')));
     $install = array_key_first(array_filter($commands, fn (string $c): bool => str_contains($c, 'authorized_keys')));
-    expect($apply)->not->toBeNull()->and($install)->not->toBeNull();
-    expect($apply)->toBeLessThan($install);
+    expect($apply)->not->toBeNull()->and($install)->not->toBeNull()
+        ->and($apply)->toBeLessThan($install);
 });
 
 test('handover fails when the provisioning key still logs in', function (): void {

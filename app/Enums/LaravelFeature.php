@@ -61,6 +61,7 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
         return match ($this) {
             self::HORIZON => 'php artisan horizon:terminate',
             self::QUEUES => 'php artisan queue:restart',
+            self::REVERB => 'php artisan reverb:restart',
             default => null,
         };
     }
@@ -534,6 +535,27 @@ enum LaravelFeature: string implements HasArtisanCommands, HasAutoUsedComponents
             self::REVERB => '["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8081"]',
             default => '[]',
         };
+    }
+
+    /**
+     * Local dev: a reloadable process (Horizon, queue worker, Reverb) runs in a
+     * loop that starts it again a second after it exits. Reloading works by
+     * asking it to exit gracefully; without the loop each reload ends the
+     * container, Kubernetes counts it as a crash, and after a few saves the pod
+     * waits in CrashLoopBackOff for minutes. The trap passes SIGTERM on, so a
+     * stop or down still shuts it down at once. Null when there is no loop.
+     */
+    public function getLocalK8sDeploymentArgs(): ?string
+    {
+        if ($this->getReloadCommand() === null) {
+            return null;
+        }
+
+        $command = implode(' ', json_decode($this->getK8sDeploymentArgs(), true));
+        $script = 'trap \'kill -TERM "$child" 2>/dev/null; wait "$child"; exit 0\' TERM INT; '
+            ."while true; do {$command} & child=\$!; wait \"\$child\"; sleep 1; done";
+
+        return (string) json_encode(['sh', '-c', $script], JSON_UNESCAPED_SLASHES);
     }
 
     public function getManifestFiles(?ConfigData $config = null): array

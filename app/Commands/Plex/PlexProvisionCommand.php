@@ -3,6 +3,7 @@
 namespace App\Commands\Plex;
 
 use App\Enums\DatabaseDriver;
+use App\Enums\LaravelFeature;
 use App\Enums\StorageDriver;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithPlex;
@@ -132,7 +133,7 @@ class PlexProvisionCommand extends Command
             } else {
                 $password = bin2hex(random_bytes(16));
 
-                if (! $this->allocateDatabase($dbDriver, $tenant, $password)) {
+                if (! $this->allocateDatabase($dbDriver, $tenant, $password, withVector: (bool) $config?->hasFeature(LaravelFeature::AI))) {
                     return 1;
                 }
 

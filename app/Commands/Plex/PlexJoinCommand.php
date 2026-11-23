@@ -4,6 +4,7 @@ namespace App\Commands\Plex;
 
 use App\Contracts\PlexProvisionable;
 use App\Data\ConfigData;
+use App\Enums\LaravelFeature;
 use App\Services\Kubectl;
 use App\Services\PlexService;
 use App\Traits\InteractsWithPlex;
@@ -299,7 +300,7 @@ class PlexJoinCommand extends Command
             // ALTERs regardless. See resolveManagedDbPassword()'s docblock.
             $password = $this->resolveManagedDbPassword($plex->kubectl(), "tenant-{$tenant}", $password);
 
-            if (! $this->allocateDatabase($dbDriver, $tenant, $password, $plex)) {
+            if (! $this->allocateDatabase($dbDriver, $tenant, $password, $plex, withVector: $config->hasFeature(LaravelFeature::AI))) {
                 return 1;
             }
         }

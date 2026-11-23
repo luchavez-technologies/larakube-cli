@@ -201,3 +201,18 @@ test('apps that join the Commons by default offer an opt-out and say which choic
         expect(collect($catalog[$slug]['fields'])->firstWhere('role', 'commons-opt-out'))->toBeNull();
     }
 });
+
+test('Laravel offers Teams right after the frontend, only for the starter kits that have a teams variant', function (): void {
+    $fields = collect(collect(newFrameworksCatalog())->firstWhere('slug', 'laravel')['fields']);
+    $keys = $fields->pluck('key')->all();
+    $teams = $fields->firstWhere('key', 'teams');
+
+    expect($keys[array_search('frontend', $keys, true) + 1])->toBe('teams')
+        ->and($teams)->toMatchArray([
+            'type' => 'confirm',
+            'flag' => '--teams',
+            'default' => false,
+            'group' => 'essential',
+            'visibleWhen' => ['frontend' => ['react', 'vue', 'svelte', 'livewire']],
+        ]);
+});
