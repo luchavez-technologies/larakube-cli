@@ -54,7 +54,7 @@ resource "google_compute_instance" "larakube" {
 
   allow_stopping_for_update = true
 
-  tags = ["larakube", "larakube-vps", "{{ $firewallTag }}", "http-server", "https-server"]
+  tags = ["larakube-vps", "{{ $firewallTag }}", "http-server", "https-server"]
 
   boot_disk {
     auto_delete = true

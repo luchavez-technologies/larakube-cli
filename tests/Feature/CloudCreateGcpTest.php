@@ -150,7 +150,7 @@ test('GCP VPS firewall rules target only their own server', function (): void {
 
     expect($tag($first))->toStartWith('larakube-')
         ->and($tag($first))->not->toBe($tag($second))
-        ->and($first)->toContain('"'.$tag($first).'", "http-server"');
+        ->and($first)->toContain('tags = ["larakube-vps", "'.$tag($first).'", "http-server", "https-server"]');
 });
 
 test('GCP GKE managed tofu template renders cluster with deletion_protection disabled', function (): void {
