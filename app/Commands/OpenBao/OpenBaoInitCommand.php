@@ -255,10 +255,19 @@ abstract class OpenBaoInitCommand extends AbstractToolInitCommand
         } elseif ($userpassAdmin[2]) {
             [$adminUsername, $adminPassword] = $userpassAdmin;
             $this->newLine();
-            $this->line('  <fg=yellow>⚠ OpenBao admin login created — save this now, it will not be shown again:</>');
-            $this->line("    <fg=gray>Username:</> <fg=blue>{$adminUsername}</>");
-            $this->line("    <fg=gray>Password:</> <fg=blue>{$adminPassword}</>");
-            $this->line('  <fg=gray>Also stored in the {$this->secretsNames($kubectl)?->secret()} Secret (admin-username / admin-password) if you lose this.</>');
+            $credentialsSecret = (string) $this->secretsNames($kubectl)?->secret();
+
+            // A piped run is saved as a log (Desktop keeps it in its run history), so only a real
+            // terminal ever sees the password.
+            if (stream_isatty(STDOUT)) {
+                $this->line('  <fg=yellow>⚠ OpenBao admin login created — save this now, it will not be shown again:</>');
+                $this->line("    <fg=gray>Username:</> <fg=blue>{$adminUsername}</>");
+                $this->line("    <fg=gray>Password:</> <fg=blue>{$adminPassword}</>");
+                $this->line("  <fg=gray>Also stored in the {$credentialsSecret} Secret (admin-username / admin-password) if you lose this.</>");
+            } else {
+                $this->line("  <fg=yellow>⚠ OpenBao admin login created for '{$adminUsername}'.</> <fg=gray>Its password is stored in the {$credentialsSecret} Secret. To read it:</>");
+                $this->line("    <fg=cyan>{$kubectl} get secret {$credentialsSecret} -n {$ns} -o jsonpath='{.data.admin-password}' | base64 -d</>");
+            }
             $this->newLine();
         }
 

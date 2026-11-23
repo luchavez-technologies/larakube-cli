@@ -123,7 +123,7 @@ test('tool:init --tool=openbao bootstraps a genuinely fresh, never-initialized O
     Process::assertRan(fn ($process) => str_contains($process->command, 'apply -f'));
 });
 
-test('tool:init --tool=openbao creates a new userpass admin and prints the credentials once', function (): void {
+test('tool:init --tool=openbao creates a new userpass admin and keeps its password out of piped output', function (): void {
     openBaoRegistered();
     Process::fake([
         '*get secret*root-token*' => Process::result(output: base64_encode('hvs.existing')),
@@ -155,9 +155,10 @@ test('tool:init --tool=openbao creates a new userpass admin and prints the crede
 
     $this->artisan('tool:init --tool=openbao local --no-interaction')
         ->assertExitCode(0)
-        ->expectsOutputToContain('OpenBao admin login created — save this now')
-        ->expectsOutputToContain('Username:')
-        ->expectsOutputToContain('admin');
+        ->expectsOutputToContain('OpenBao admin login created for')
+        ->expectsOutputToContain("jsonpath='{.data.admin-password}'")
+        ->doesntExpectOutputToContain('Password:')
+        ->doesntExpectOutputToContain('{$this->');
 
     Process::assertRan(fn ($process) => str_contains($process->command, 'patch secret openbao-secrets-secrets-')
         && str_contains((string) $process->input, '"admin-username"')
