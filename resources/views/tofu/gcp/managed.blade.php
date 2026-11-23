@@ -58,7 +58,7 @@ resource "google_container_cluster" "larakube" {
     oauth_scopes = [
       "https://www.googleapis.com/auth/cloud-platform",
     ]
-    tags = ["larakube", "larakube-managed"]
+    tags = ["larakube-managed"]
   }
 
   depends_on = [
