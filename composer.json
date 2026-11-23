@@ -9,7 +9,7 @@
         "orchestrator"
     ],
     "type": "project",
-    "license": "MIT",
+    "license": "FSL-1.1-MIT",
     "authors": [
         {
             "name": "LuchTech Web Development Services",

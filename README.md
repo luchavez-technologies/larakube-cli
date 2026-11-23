@@ -33,4 +33,6 @@ Detailed architectural guides, blueprints, and command references are available 
 
 ## 📄 License
 
-LaraKube is open-sourced software licensed under the [MIT license](LICENSE.md).
+LaraKube is source-available under the [Functional Source License, Version 1.1, MIT Future License](LICENSE) (`FSL-1.1-MIT`).
+
+**Free to use, modify and self-host, including at work.** You can't offer LaraKube, or a substitute built from it, as a competing commercial product. Each version becomes MIT two years after release. Earlier releases keep the license they were published under.

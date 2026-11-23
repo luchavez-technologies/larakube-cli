@@ -71,3 +71,7 @@ Hybrid tools are compatible with both the native **AI SDK** (`larakube chat`) an
 
 ## 🧪 Deployment Testing
 When adding a feature, please test it in a real cluster or using **OrbStack / Docker Desktop** to ensure the Kubernetes manifests are valid.
+
+## Contributor License Agreement
+
+Contributions require the [LaraKube Contributor License Agreement](CLA.md). You keep the copyright in your work, and tick the checkbox in your pull request to accept it. Disclose any third-party or AI-generated material in the pull request.

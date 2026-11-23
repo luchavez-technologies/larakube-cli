@@ -1,0 +1,24 @@
+name: cla
+
+# Runs from the base branch and never checks out pull request code.
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  accepted:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require the CLA checkbox
+        run: |
+          association="$(jq -r '.pull_request.author_association' "$GITHUB_EVENT_PATH")"
+          type="$(jq -r '.pull_request.user.type' "$GITHUB_EVENT_PATH")"
+          case "$association" in OWNER | MEMBER) exit 0 ;; esac
+          [ "$type" != Bot ] || exit 0
+          if jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" | grep -Eqi '^- \[x\] I have read and agree to the LaraKube Contributor License Agreement, version 1\.0'; then
+            exit 0
+          fi
+          echo "::error::Please tick the Contributor License Agreement checkbox in the pull request description."
+          exit 1
