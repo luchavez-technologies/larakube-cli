@@ -86,9 +86,9 @@ final class SupabaseKeys
         $kid = (string) \Illuminate\Support\Str::uuid();
         $public = [
             'kty' => 'EC', 'kid' => $kid, 'use' => 'sig', 'key_ops' => ['verify'], 'alg' => 'ES256', 'ext' => true,
-            'crv' => 'P-256', 'x' => self::base64UrlEncode((string) $ec['x']), 'y' => self::base64UrlEncode((string) $ec['y']),
+            'crv' => 'P-256', 'x' => self::ecCoordinate($ec['x']), 'y' => self::ecCoordinate($ec['y']),
         ];
-        $private = [...$public, 'key_ops' => ['sign', 'verify'], 'd' => self::base64UrlEncode((string) $ec['d'])];
+        $private = [...$public, 'key_ops' => ['sign', 'verify'], 'd' => self::ecCoordinate($ec['d'])];
         $symmetric = ['kty' => 'oct', 'k' => self::base64UrlEncode($jwtSecret), 'alg' => 'HS256'];
 
         $iat = $issuedAt ?? time();
@@ -142,6 +142,12 @@ final class SupabaseKeys
         $checksum = substr(self::base64UrlEncode(hash('sha256', 'supabase-self-hosted|'.$intermediate, true)), 0, 8);
 
         return "{$intermediate}_{$checksum}";
+    }
+
+    /** A P-256 JWK value is always 32 bytes, but OpenSSL drops leading zero bytes. */
+    private static function ecCoordinate(mixed $value): string
+    {
+        return self::base64UrlEncode(str_pad((string) $value, 32, "\x00", STR_PAD_LEFT));
     }
 
     private static function base64UrlEncode(string $bytes): string

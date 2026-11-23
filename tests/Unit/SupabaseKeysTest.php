@@ -75,6 +75,16 @@ test('SupabaseKeys makes the sb_ key pair: ES256 tokens the public JWKS verifies
     }
 });
 
+test('SupabaseKeys always writes full 32-byte P-256 JWK coordinates', function (): void {
+    $bytes = fn (string $value): int => strlen((string) base64_decode(strtr($value, '-_', '+/').str_repeat('=', (4 - strlen($value) % 4) % 4), true));
+
+    for ($attempt = 0; $attempt < 500; $attempt++) {
+        $private = json_decode(SupabaseKeys::asymmetricKeys('the-jwt-secret', 1_700_000_000)['jwt-keys'], true)[0];
+
+        expect([$bytes($private['x']), $bytes($private['y']), $bytes($private['d'])])->toBe([32, 32, 32]);
+    }
+});
+
 test('SupabaseKeys makes sb_ keys in upstream\'s shape, checksum included', function (): void {
     $keys = SupabaseKeys::generate();
 
