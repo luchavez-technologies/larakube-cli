@@ -9,6 +9,8 @@ spec:
     spec:
       template:
         spec:
+          # A Service named reverb would otherwise inject REVERB_PORT=tcp://... over the app's port.
+          enableServiceLinks: false
           # fsGroup so www-data can write the mounted PVC on block storage (DOKS
           # etc.); harmless on k3s local-path. See base/deployment.blade.php.
           securityContext:

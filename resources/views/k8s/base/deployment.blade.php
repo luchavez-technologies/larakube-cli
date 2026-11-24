@@ -14,6 +14,8 @@ spec:
       labels:
         app: {{ $config->getServerVariation()->getPodName($config) }}
     spec:
+      # A Service named reverb would otherwise inject REVERB_PORT=tcp://... over the app's port.
+      enableServiceLinks: false
       # The app runs as www-data; mounted PVCs (storage/, bootstrap/cache) come up
       # root-owned on real block storage (e.g. DOKS do-block-storage), so without
       # this they'd be read-only to the app. fsGroup makes the kubelet chown the

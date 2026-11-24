@@ -138,8 +138,9 @@ class CloudDestroyCommand extends Command
     {
         $listed = $this->runTofu($bin, $stack, 'state', ['list'], [], capture: true);
 
+        // A create that failed before its first write leaves no state, which tofu reports as an error.
         if ($listed['code'] !== 0) {
-            return null;
+            return str_contains($listed['error'] ?? '', 'No state file was found') ? 0 : null;
         }
 
         return count(array_filter(preg_split('/\R/', $listed['output']) ?: [], fn (string $line): bool => trim($line) !== '' && ! str_starts_with(trim($line), 'data.')));

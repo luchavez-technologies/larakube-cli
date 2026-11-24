@@ -32,6 +32,8 @@ spec:
       labels:
         app: web
     spec:
+      # A Service named reverb would otherwise inject REVERB_PORT=tcp://... over the app's port.
+      enableServiceLinks: false
       # The app runs as www-data; mounted PVCs (storage/, bootstrap/cache) come up
       # root-owned on real block storage (e.g. DOKS do-block-storage), so without
       # this they'd be read-only to the app. fsGroup makes the kubelet chown the
@@ -174,6 +176,8 @@ spec:
       labels:
         app: queues
     spec:
+      # A Service named reverb would otherwise inject REVERB_PORT=tcp://... over the app's port.
+      enableServiceLinks: false
       # fsGroup so www-data can write the mounted PVC on block storage (DOKS etc.);
       # harmless on k3s local-path. See base/deployment.blade.php for the rationale.
       securityContext:
@@ -263,6 +267,8 @@ spec:
       labels:
         app: reverb
     spec:
+      # A Service named reverb would otherwise inject REVERB_PORT=tcp://... over the app's port.
+      enableServiceLinks: false
       # fsGroup so www-data can write the mounted PVC on block storage (DOKS etc.);
       # harmless on k3s local-path. See base/deployment.blade.php for the rationale.
       securityContext:
@@ -358,6 +364,8 @@ spec:
     spec:
       template:
         spec:
+          # A Service named reverb would otherwise inject REVERB_PORT=tcp://... over the app's port.
+          enableServiceLinks: false
           # fsGroup so www-data can write the mounted PVC on block storage (DOKS
           # etc.); harmless on k3s local-path. See base/deployment.blade.php.
           securityContext:

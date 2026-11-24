@@ -85,6 +85,44 @@ test('reports failure when resources remain in state after destroy', function ()
     }
 });
 
+test('treats a stack that never wrote state as already destroyed', function (): void {
+    [$home, $tofu, $credentials, $restore] = destroyFromStateFixture();
+
+    Process::fake([
+        'command -v tofu' => Process::result($tofu),
+        '*tofu* version*' => Process::result('OpenTofu v1.13.9'),
+        '*state list*' => Process::result(errorOutput: 'No state file was found!', exitCode: 1),
+        '*' => Process::result(),
+    ]);
+
+    try {
+        $this->artisan('cloud:destroy', destroyFromStateArgs($credentials))->assertExitCode(0);
+
+        Process::assertDidntRun(fn ($process): bool => str_contains($process->command, ' destroy '));
+    } finally {
+        $restore();
+    }
+});
+
+test('still refuses when the remote state cannot be read', function (): void {
+    [$home, $tofu, $credentials, $restore] = destroyFromStateFixture();
+
+    Process::fake([
+        'command -v tofu' => Process::result($tofu),
+        '*tofu* version*' => Process::result('OpenTofu v1.13.9'),
+        '*state list*' => Process::result(errorOutput: 'Error loading state: AccessDenied', exitCode: 1),
+        '*' => Process::result(),
+    ]);
+
+    try {
+        $this->artisan('cloud:destroy', destroyFromStateArgs($credentials))->assertExitCode(1);
+
+        Process::assertDidntRun(fn ($process): bool => str_contains($process->command, ' destroy '));
+    } finally {
+        $restore();
+    }
+});
+
 test('refuses without the state passphrase and never runs tofu', function (): void {
     [$home, $tofu, $credentials, $restore] = destroyFromStateFixture();
     $restorePassphrase = destroyFromStateEnv(['LARAKUBE_TOFU_PASSPHRASE' => '']);

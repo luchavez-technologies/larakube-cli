@@ -584,7 +584,7 @@ HCL;
         if ($capture) {
             $result = Process::env($envVars)->run($cmd);
 
-            return ['code' => $result->exitCode(), 'output' => trim($result->output())];
+            return ['code' => $result->exitCode(), 'output' => trim($result->output()), 'error' => trim($result->errorOutput())];
         }
 
         return ['code' => $this->runTofuSurvivingInterrupts($cmd, $envVars), 'output' => ''];
