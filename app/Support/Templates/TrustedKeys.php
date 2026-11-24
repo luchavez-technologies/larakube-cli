@@ -15,6 +15,14 @@ use Phar;
  * the CLI at a self-signed template payload and achieve arbitrary code execution.
  * The dev key is therefore restricted strictly to source checkouts
  * (\Phar::running(false) === '') and ignored inside a compiled PHAR binary.
+ *
+ * Why a stable binary must never trust the staging key:
+ * The staging environment and its signing key are less protected than production
+ * so pre-release template changes can be exercised in CI and canary builds. If a
+ * stable release binary trusted the staging key, a compromise of staging would
+ * allow an attacker to serve validly signed malicious templates to every stable
+ * user's machine. Stable builds (where app.version is a semver tag /^v?\d+\.\d+\.\d+$/)
+ * therefore trust ONLY production keys.
  */
 class TrustedKeys
 {
@@ -26,6 +34,13 @@ class TrustedKeys
     public static ?Closure $runningInPharResolver = null;
 
     /**
+     * Injectable stable-release detection callback for testing stable and non-stable channels.
+     *
+     * @var (Closure(): bool)|null
+     */
+    public static ?Closure $stableReleaseResolver = null;
+
+    /**
      * Override how PHAR execution is detected (pass null to restore default).
      *
      * @param  (Closure(): bool)|null  $resolver
@@ -33,6 +48,16 @@ class TrustedKeys
     public static function resolveRunningInPharUsing(?Closure $resolver): void
     {
         self::$runningInPharResolver = $resolver;
+    }
+
+    /**
+     * Override how stable release execution is detected (pass null to restore default).
+     *
+     * @param  (Closure(): bool)|null  $resolver
+     */
+    public static function resolveStableReleaseUsing(?Closure $resolver): void
+    {
+        self::$stableReleaseResolver = $resolver;
     }
 
     public static function isRunningInPhar(): bool
@@ -45,11 +70,30 @@ class TrustedKeys
     }
 
     /**
+     * Determine whether this CLI build is a stable semver release (/^v?\d+\.\d+\.\d+$/).
+     *
+     * CI builds stable binaries with a semver tag and canary binaries with a commit SHA;
+     * source checkouts report a git describe string.
+     */
+    public static function isStableRelease(): bool
+    {
+        if (self::$stableReleaseResolver !== null) {
+            return (self::$stableReleaseResolver)();
+        }
+
+        $version = trim((string) config('app.version', ''));
+
+        return preg_match('/^v?\d+\.\d+\.\d+$/', $version) === 1;
+    }
+
+    /**
      * Return all trusted signing keys as [key_id => base64_public_key].
      *
-     * Always includes `templates.trusted_keys`; includes `templates.dev_key`
-     * (formatted as "key_id:base64publickey") ONLY when running from a source
-     * checkout (\Phar::running(false) === ''), never from a packaged binary.
+     * Always includes `templates.trusted_keys` (production); includes
+     * `templates.staging_keys` ONLY when not a stable release; includes
+     * `templates.dev_key` (formatted as "key_id:base64publickey") ONLY when
+     * running from a source checkout (\Phar::running(false) === ''), never from
+     * a packaged binary.
      *
      * @return array<string, string>
      */
@@ -62,6 +106,17 @@ class TrustedKeys
             foreach ($configured as $keyId => $publicKey) {
                 if (is_string($keyId) && $keyId !== '' && is_string($publicKey) && $publicKey !== '') {
                     $keys[$keyId] = $publicKey;
+                }
+            }
+        }
+
+        if (! self::isStableRelease()) {
+            $staging = config('templates.staging_keys', []);
+            if (is_array($staging)) {
+                foreach ($staging as $keyId => $publicKey) {
+                    if (is_string($keyId) && $keyId !== '' && is_string($publicKey) && $publicKey !== '') {
+                        $keys[$keyId] = $publicKey;
+                    }
                 }
             }
         }

@@ -2,12 +2,16 @@
 
 return [
 
-    'cloud_url' => env('LARAKUBE_CLOUD_URL', 'https://cloud.larakube.app'),
+    'cloud_url' => env('LARAKUBE_CLOUD_URL'),
 
     'ca_bundle' => env('LARAKUBE_CLOUD_CA'),
 
     'trusted_keys' => [
-        // key_id => base64 Ed25519 public key (added by release engineering)
+        'production-2026-11' => 'g7nQmcMiT3Gas/+VWnJR2PU6nrU5gtPYGJUUm5VG4JE=',
+    ],
+
+    'staging_keys' => [
+        'staging-2026-11' => 'KWbj/BrMS5Uk3heeUeZxpRsk5O5dc6xRkKtOYmk382g=',
     ],
 
     'dev_key' => env('LARAKUBE_TEMPLATE_DEV_KEY'),

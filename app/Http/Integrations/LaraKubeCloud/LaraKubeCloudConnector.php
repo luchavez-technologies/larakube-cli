@@ -2,6 +2,7 @@
 
 namespace App\Http\Integrations\LaraKubeCloud;
 
+use App\Support\Templates\CloudEndpoint;
 use Saloon\Http\Connector;
 use Saloon\Traits\Plugins\AcceptsJson;
 use Saloon\Traits\Plugins\HasTimeout;
@@ -21,7 +22,7 @@ class LaraKubeCloudConnector extends Connector
 
     public function resolveBaseUrl(): string
     {
-        $url = $this->baseUrl ?? (string) config('templates.cloud_url', 'https://cloud.larakube.app');
+        $url = $this->baseUrl ?? CloudEndpoint::url();
 
         return rtrim($url, '/');
     }

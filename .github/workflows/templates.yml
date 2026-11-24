@@ -1,0 +1,88 @@
+name: Publish App Templates
+
+on:
+  workflow_dispatch:
+    inputs:
+      apps:
+        description: 'Space-separated app slugs (e.g. openbao external-dns)'
+        required: true
+        type: string
+      environment:
+        description: 'Target LaraKube Cloud environment'
+        required: true
+        type: choice
+        default: staging
+        options:
+          - staging
+          - production
+      release_version:
+        description: 'Explicit semver for every app in this run (optional; defaults to next patch or 1.0.0)'
+        required: false
+        type: string
+      security:
+        description: 'Mark these releases as security fixes'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  publish:
+    name: Build, Sign & Publish Templates
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.5'
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, bcmath, zip, pcntl, posix, openssl, curl, phar, opcache, sodium
+          ini-values: phar.readonly=0, opcache.enable_cli=1, opcache.memory_consumption=256, opcache.max_accelerated_files=20000
+          coverage: none
+
+      - name: Install Dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Publish Template Releases
+        env:
+          LARAKUBE_TEMPLATE_SIGNING_KEY: ${{ secrets.LARAKUBE_TEMPLATE_SIGNING_KEY }}
+          LARAKUBE_TEMPLATE_SIGNING_KEY_ID: ${{ vars.LARAKUBE_TEMPLATE_SIGNING_KEY_ID }}
+          LARAKUBE_RELEASE_UPLOAD_TOKEN: ${{ secrets.LARAKUBE_RELEASE_UPLOAD_TOKEN }}
+          LARAKUBE_CLOUD_URL: ${{ vars.LARAKUBE_CLOUD_URL }}
+          INPUT_APPS: ${{ inputs.apps }}
+          INPUT_RELEASE_VERSION: ${{ inputs.release_version }}
+          INPUT_SECURITY: ${{ inputs.security }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$INPUT_APPS" =~ ^[a-z0-9\ -]+$ ]]; then
+            echo "::error::Invalid apps input. Must match ^[a-z0-9 -]+$." >&2
+            exit 1
+          fi
+
+          if [[ -n "$INPUT_RELEASE_VERSION" && ! "$INPUT_RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid release_version input. Must match ^[0-9]+\.[0-9]+\.[0-9]+$ or be empty." >&2
+            exit 1
+          fi
+
+          read -r -a APPS <<< "$INPUT_APPS"
+          if [[ "${#APPS[@]}" -eq 0 ]]; then
+            echo "::error::At least one app slug is required." >&2
+            exit 1
+          fi
+
+          CMD_ARGS=("${APPS[@]}")
+          if [[ -n "$INPUT_RELEASE_VERSION" ]]; then
+            CMD_ARGS+=("--release-version=$INPUT_RELEASE_VERSION")
+          fi
+          if [[ "$INPUT_SECURITY" == "true" ]]; then
+            CMD_ARGS+=("--security")
+          fi
+          CMD_ARGS+=("--json")
+
+          php larakube templates:publish "${CMD_ARGS[@]}"

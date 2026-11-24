@@ -2,26 +2,17 @@
 
 namespace App\Commands\Tool;
 
-use App\Contracts\ClusterToolVendor;
-use App\Contracts\HasCommonsBuckets;
-use App\Contracts\HasCommonsDatabases;
-use App\Contracts\HasCommonsRedisKeys;
-use App\Contracts\HasImages;
-use App\Contracts\HasOidcWiring;
-use App\Contracts\HasOpenbaoSync;
-use App\Contracts\HasSmtpWiring;
-use App\Contracts\HasVpnWiring;
-use App\Data\ClusterToolComponentData;
 use App\Enums\ClusterTool;
+use App\Support\Templates\ReleaseManifestBuilder;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\FailsWithJson;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ReadsCommandOptions;
-use Illuminate\Support\Facades\File;
 
 use function Laravel\Prompts\table;
 
 use LaravelZero\Framework\Commands\Command;
+use RuntimeException;
 
 /**
  * Describe one Cluster Tool's template release as JSON so LaraKube Cloud can import it.
@@ -37,7 +28,7 @@ class ToolReleaseManifestCommand extends Command
 
     protected $description = "Describe a Cluster Tool's template release as JSON for LaraKube Cloud import";
 
-    public function handle(): int
+    public function handle(ReleaseManifestBuilder $builder): int
     {
         if ($this->flag('json')) {
             $this->enableJsonMode();
@@ -62,61 +53,16 @@ class ToolReleaseManifestCommand extends Command
                 return $this->failed("Unknown engine '{$engineOption}' for tool '{$tool->value}'.");
             }
 
-            $engine = $engineOption === 'default' ? null : $engineOption;
-            $engineSlug = $engineOption;
+            $engine = $engineOption;
         } else {
             $engine = $tool->defaultEngine();
-            $engineSlug = $engine ?? 'default';
         }
 
-        $templateDir = base_path('resources/views/k8s/'.$tool->templateFolder());
-
-        if (! File::isDirectory($templateDir)) {
-            return $this->failed("Template folder 'resources/views/k8s/{$tool->templateFolder()}' not found for tool '{$tool->value}'.");
+        try {
+            $payload = $builder->describe($tool, $engine);
+        } catch (RuntimeException $e) {
+            return $this->failed($e->getMessage());
         }
-
-        $files = [];
-        foreach (File::allFiles($templateDir) as $file) {
-            $relativePath = str_replace('\\', '/', $file->getRelativePathname());
-            if (! str_ends_with($relativePath, '.blade.php')) {
-                continue;
-            }
-
-            $files[] = [
-                'path' => $relativePath,
-                'sha256' => (string) hash_file('sha256', $file->getPathname()),
-            ];
-        }
-
-        usort($files, fn (array $a, array $b): int => $a['path'] <=> $b['path']);
-
-        $services = array_map(
-            fn (ClusterToolComponentData $component): array => [
-                'key' => $component->key,
-                'role' => $component->role->value,
-                'optional' => false,
-                'toggle_flag' => null,
-                'bundled_only' => $component->bundledOnly,
-                'shares_primary_secret' => $component->sharesPrimarySecret,
-                'backup_paths' => $component->backupPaths,
-            ],
-            $tool->components(null, $engine),
-        );
-
-        $vendor = $tool->vendor($engine);
-        $images = $vendor instanceof HasImages ? $vendor->images() : [];
-        $requirements = $this->buildRequirements($vendor);
-
-        $payload = [
-            'tool' => $tool->value,
-            'engine' => $engineSlug,
-            'contracts' => $tool->templateContracts($engine),
-            'cli_version' => (string) config('app.version'),
-            'services' => $services,
-            'images' => (object) $images,
-            'requirements' => $requirements,
-            'files' => $files,
-        ];
 
         if ($this->flag('json')) {
             $this->jsonOutput($payload);
@@ -129,91 +75,19 @@ class ToolReleaseManifestCommand extends Command
         table(
             headers: ['Service', 'Role'],
             rows: array_map(
-                fn (array $service): array => [$service['key'], $service['role']],
-                $services,
+                static fn (array $service): array => [$service['key'], $service['role']],
+                $payload['services'],
             ),
         );
 
         $this->line(sprintf(
             '  %d service(s), %d image(s), %d requirement(s), %d file(s)',
-            count($services),
-            count($images),
-            count($requirements),
-            count($files),
+            count($payload['services']),
+            count((array) $payload['images']),
+            count($payload['requirements']),
+            count($payload['files']),
         ));
 
         return self::SUCCESS;
-    }
-
-    /**
-     * @return list<array{kind: string, name: string, optional: bool}>
-     */
-    private function buildRequirements(ClusterToolVendor $vendor): array
-    {
-        $requirements = [];
-
-        if ($vendor instanceof HasCommonsDatabases) {
-            foreach ($vendor->canonicalDatabaseList() as $name) {
-                $requirements[] = [
-                    'kind' => 'commons_postgres',
-                    'name' => $name,
-                    'optional' => false,
-                ];
-            }
-        }
-
-        if ($vendor instanceof HasCommonsBuckets) {
-            foreach ($vendor->canonicalBucketList() as $name) {
-                $requirements[] = [
-                    'kind' => 'commons_s3',
-                    'name' => $name,
-                    'optional' => false,
-                ];
-            }
-        }
-
-        if ($vendor instanceof HasCommonsRedisKeys) {
-            foreach ($vendor->commonsRedisKeys() as $name) {
-                $requirements[] = [
-                    'kind' => 'commons_redis',
-                    'name' => $name,
-                    'optional' => false,
-                ];
-            }
-        }
-
-        if ($vendor instanceof HasOidcWiring) {
-            $requirements[] = [
-                'kind' => 'oidc',
-                'name' => 'oidc',
-                'optional' => true,
-            ];
-        }
-
-        if ($vendor instanceof HasSmtpWiring) {
-            $requirements[] = [
-                'kind' => 'smtp',
-                'name' => 'smtp',
-                'optional' => true,
-            ];
-        }
-
-        if ($vendor instanceof HasVpnWiring) {
-            $requirements[] = [
-                'kind' => 'vpn',
-                'name' => 'vpn',
-                'optional' => true,
-            ];
-        }
-
-        if ($vendor instanceof HasOpenbaoSync) {
-            $requirements[] = [
-                'kind' => 'openbao_sync',
-                'name' => 'openbao_sync',
-                'optional' => false,
-            ];
-        }
-
-        return $requirements;
     }
 }
