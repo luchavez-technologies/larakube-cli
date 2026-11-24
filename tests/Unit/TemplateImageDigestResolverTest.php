@@ -27,61 +27,48 @@ test('parse normalizes docker.io single-name, multi-segment, and explicit allowe
         'host' => 'registry-1.docker.io',
         'repo' => 'library/redis',
         'tag' => 'latest',
-    ]);
-
-    expect($resolver->parse('redis:7.4-alpine'))->toBe([
-        'registry' => 'docker.io',
-        'host' => 'registry-1.docker.io',
-        'repo' => 'library/redis',
-        'tag' => '7.4-alpine',
-    ]);
-
-    expect($resolver->parse('openbao/openbao:2.6.1'))->toBe([
-        'registry' => 'docker.io',
-        'host' => 'registry-1.docker.io',
-        'repo' => 'openbao/openbao',
-        'tag' => '2.6.1',
-    ]);
-
-    expect($resolver->parse('ghcr.io/stakater/reloader:v1.0.69'))->toBe([
-        'registry' => 'ghcr.io',
-        'host' => 'ghcr.io',
-        'repo' => 'stakater/reloader',
-        'tag' => 'v1.0.69',
-    ]);
-
-    expect($resolver->parse('oci.external-secrets.io/external-secrets/external-secrets:v2.11.0'))->toBe([
-        'registry' => 'oci.external-secrets.io',
-        'host' => 'oci.external-secrets.io',
-        'repo' => 'external-secrets/external-secrets',
-        'tag' => 'v2.11.0',
-    ]);
-
-    expect($resolver->parse('registry.k8s.io/external-dns/external-dns:v0.24.0'))->toBe([
-        'registry' => 'registry.k8s.io',
-        'host' => 'registry.k8s.io',
-        'repo' => 'external-dns/external-dns',
-        'tag' => 'v0.24.0',
-    ]);
+    ])
+        ->and($resolver->parse('redis:7.4-alpine'))->toBe([
+            'registry' => 'docker.io',
+            'host' => 'registry-1.docker.io',
+            'repo' => 'library/redis',
+            'tag' => '7.4-alpine',
+        ])
+        ->and($resolver->parse('openbao/openbao:2.6.1'))->toBe([
+            'registry' => 'docker.io',
+            'host' => 'registry-1.docker.io',
+            'repo' => 'openbao/openbao',
+            'tag' => '2.6.1',
+        ])
+        ->and($resolver->parse('ghcr.io/stakater/reloader:v1.0.69'))->toBe([
+            'registry' => 'ghcr.io',
+            'host' => 'ghcr.io',
+            'repo' => 'stakater/reloader',
+            'tag' => 'v1.0.69',
+        ])
+        ->and($resolver->parse('oci.external-secrets.io/external-secrets/external-secrets:v2.11.0'))->toBe([
+            'registry' => 'oci.external-secrets.io',
+            'host' => 'oci.external-secrets.io',
+            'repo' => 'external-secrets/external-secrets',
+            'tag' => 'v2.11.0',
+        ])
+        ->and($resolver->parse('registry.k8s.io/external-dns/external-dns:v0.24.0'))->toBe([
+            'registry' => 'registry.k8s.io',
+            'host' => 'registry.k8s.io',
+            'repo' => 'external-dns/external-dns',
+            'tag' => 'v0.24.0',
+        ]);
 });
 
 test('parse rejects digest references, invalid repo or tag characters, and unknown registries', function (): void {
     $resolver = new ImageDigestResolver;
 
     expect(fn () => $resolver->parse('openbao/openbao:2.6.1@sha256:'.str_repeat('a', 64)))
-        ->toThrow(RuntimeException::class, '@');
-
-    expect(fn () => $resolver->parse('evil.example.com/org/app:1.0.0'))
-        ->toThrow(RuntimeException::class, 'evil.example.com');
-
-    expect(fn () => $resolver->parse('localhost:5000/org/app:1.0.0'))
-        ->toThrow(RuntimeException::class, 'localhost:5000');
-
-    expect(fn () => $resolver->parse('ghcr.io/UpperCase/Repo:1.0.0'))
-        ->toThrow(RuntimeException::class, 'Invalid image repository');
-
-    expect(fn () => $resolver->parse('openbao/openbao:'))
-        ->toThrow(RuntimeException::class, 'Invalid image tag');
+        ->toThrow(RuntimeException::class, '@')
+        ->and(fn () => $resolver->parse('evil.example.com/org/app:1.0.0'))->toThrow(RuntimeException::class, 'evil.example.com')
+        ->and(fn () => $resolver->parse('localhost:5000/org/app:1.0.0'))->toThrow(RuntimeException::class, 'localhost:5000')
+        ->and(fn () => $resolver->parse('ghcr.io/UpperCase/Repo:1.0.0'))->toThrow(RuntimeException::class, 'Invalid image repository')
+        ->and(fn () => $resolver->parse('openbao/openbao:'))->toThrow(RuntimeException::class, 'Invalid image tag');
 });
 
 test('resolve completes 401 Bearer token flow and returns verified sha256 digest', function (): void {
