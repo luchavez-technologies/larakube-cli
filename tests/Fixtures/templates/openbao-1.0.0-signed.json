@@ -1,0 +1,54 @@
+{
+  "manifest": {
+    "app": "openbao",
+    "files": {
+      "eso.blade.php": "sha256:ac9a1d2cfe3c512ece883938c11fd4aad898e8f79aa7fbcfc2e07590ee783171",
+      "ingress.blade.php": "sha256:5a5b685f171503a2b25669c986d91f83ff541e7f7e64d3826923fbe51de9fefd",
+      "openbao.blade.php": "sha256:ce0d4efe3454c43dfcd143d6bc90c6ae7bf777c12cc08a98c559ebd07e7579d8",
+      "tool-es.blade.php": "sha256:67d151e278a0b0ca3b28d71d2442533a4a31e6be6dfa9a92147fee220b8890cb",
+      "eso-crds.blade.php": "sha256:e2def15759ea723ddd1865705baa225696074a39f7e479c8823bd96891f6d65f",
+      "eso-sync.blade.php": "sha256:27c9ed277530eb985bed6596e81978fa6a5db1aa9e1f30b761b3bf2a1ee8fc46",
+      "reloader.blade.php": "sha256:3e5bdff22894851745514849ee1b467d848386e18a64b407f9c2be299b03c14b",
+      "cluster-store.blade.php": "sha256:daabaa9a9ba8357f2a21fdfb47461118b9f549bf2ff0de57d05566e947ec1f02",
+      "eso-db-static.blade.php": "sha256:1348ed7e022c2f1294d13d6c6fbb6c1d091ae475c65c419594e0a1b174419386",
+      "eso-crds-generators.blade.php": "sha256:f01bae220fb727130eec0ce0f6ad4847b00e9b352dbcce805382e9aa6a6ee409"
+    },
+    "engine": "default",
+    "images": {
+      "openbao": "openbao/openbao:2.6.1@sha256:5b2486ab0fb90bbc788cc345b0a08616dfb375873ee8be5df3a2fd4d378a67e0",
+      "reloader": "ghcr.io/stakater/reloader:v1.0.69@sha256:dacc5ff21845d83ee84717261d3d8e3a0a2f6ded23b270ffef4340dc8d2f7500",
+      "external-secrets": "oci.external-secrets.io/external-secrets/external-secrets:v2.11.0@sha256:66fb710878cbf3eba4a927e35c5d75e29a202c9bab238aad64bfb23b786b962b"
+    },
+    "version": "1.0.0",
+    "contract": 1,
+    "security": false,
+    "services": [
+      {
+        "key": "app",
+        "role": "primary",
+        "optional": false,
+        "toggle_flag": null,
+        "backup_paths": [
+          "/openbao"
+        ],
+        "bundled_only": false,
+        "shares_primary_secret": false
+      }
+    ],
+    "requirements": [
+      {
+        "kind": "oidc",
+        "name": "oidc",
+        "optional": true
+      },
+      {
+        "kind": "vpn",
+        "name": "vpn",
+        "optional": true
+      }
+    ]
+  },
+  "signature": "zjenFB3j34Q1/QbL67XSHYaic63xaJEWNVzcJ3xtT9Dk/geWAAuKxrzcwvbPju65Rg/y/QICN6AGJKlWEJyqAw==",
+  "key_id": "dev-local",
+  "public_key": "SrlBfws1G209Ospdz1zcCHG1TP4bnD06O07X5dpnioU="
+}

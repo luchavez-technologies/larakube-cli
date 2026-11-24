@@ -4,6 +4,7 @@ namespace App\Vendors;
 
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsDatabases;
+use App\Contracts\HasImages;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasPresenceProbe;
 use App\Contracts\HasToolAccessDetails;
@@ -13,14 +14,28 @@ use App\Data\ClusterToolComponentData;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
+use App\Enums\SecretsBackend;
+use App\Tools\Concerns\PinsImages;
 use Illuminate\Support\Facades\Process;
 
 /** The single vendor backing the SECRETS category — 'Secrets Manager'. Only OpenBao. */
-final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasOidcWiring, HasPresenceProbe, HasToolAccessDetails, HasVpnWiring, HasWorkloadComponents
+final class SecretTool implements ClusterToolVendor, HasCommonsDatabases, HasImages, HasOidcWiring, HasPresenceProbe, HasToolAccessDetails, HasVpnWiring, HasWorkloadComponents
 {
+    use PinsImages;
+
     public function getLabel(): string
     {
         return 'OpenBao';
+    }
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return [
+            'openbao' => SecretsBackend::OPENBAO->getDockerImage(),
+            'external-secrets' => 'oci.external-secrets.io/external-secrets/external-secrets:v2.11.0',
+            'reloader' => 'ghcr.io/stakater/reloader:v1.0.69',
+        ];
     }
 
     public function vpnMiddlewareTarget(?string $instance = null): ?array

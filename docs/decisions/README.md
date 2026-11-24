@@ -51,3 +51,4 @@ Consequences**. Statuses: `Accepted`, `Superseded by NNNN`, `Proposed`.
 | [0033](0033-ubuntu-26-04-only.md) | Ubuntu 26.04 LTS is the only supported server OS; `--ubuntu-version` removed | Superseded by 0034 |
 | [0034](0034-ubuntu-24-04-until-containerd-fix.md) | Servers boot Ubuntu 24.04 LTS until k3s ships the containerd AppArmor fix | Accepted |
 | [0035](0035-commons-postgres-ships-pgvector.md) | The Commons Postgres ships pgvector; Laravel AI tenants get the extension at allocation | Accepted |
+| [0036](0036-apps-and-projects-vocabulary.md) | "Apps" and "Projects" replace "Cluster Tools" and "Your apps" in what users see | Accepted |

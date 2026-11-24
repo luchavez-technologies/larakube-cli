@@ -596,6 +596,28 @@ enum ClusterTool: string implements HasWorkloadComponents
     }
 
     /**
+     * The template-input contract numbers this LaraKube CLI supports for this
+     * tool's downloadable templates; bump when the values a command passes into
+     * the tool's templates, or the helpers they call, change.
+     *
+     * @return list<int>
+     */
+    public function templateContracts(?string $engine = null): array
+    {
+        return match ($this) {
+            default => [1],
+        };
+    }
+
+    /**
+     * The folder under resources/views/k8s that holds this tool's templates.
+     */
+    public function templateFolder(): string
+    {
+        return $this->value;
+    }
+
+    /**
      * True when `{tool}:init --no-plex` is meaningful — i.e. the tool can
      * bundle its own storage instead of leasing a Plex Commons tenant. Used to
      * reject `--no-plex` on tools that never supported it, which previously

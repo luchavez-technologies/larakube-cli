@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Services\CliTools\ToolPaths;
+use App\Services\TemplateStore;
+use App\Support\Templates\TemplateViewFinder;
 use Illuminate\Console\Application as Artisan;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -11,6 +13,7 @@ use Spatie\LaravelData\LaravelDataServiceProvider;
 use Symfony\Component\Console\Command\Command as SymfonyCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Throwable;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -38,6 +41,12 @@ class AppServiceProvider extends ServiceProvider
                 $view->with('volumeSize', fn (string $claim, string $default, bool $growth = false): string => $default);
             }
         });
+
+        try {
+            $this->app->make(TemplateStore::class)->activate();
+        } catch (Throwable) {
+            // A broken lock must never break unrelated commands.
+        }
 
         // Ensure view cache directory exists
         $viewCachePath = config('view.compiled');
@@ -114,6 +123,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->register(LaravelDataServiceProvider::class);
         $this->app->singleton(\App\Services\RuntimeContext::class);
         $this->app->singleton(ToolPaths::class);
+        $this->app->singleton(TemplateStore::class);
+        $this->app->extend('view.finder', fn ($finder, $app) => new TemplateViewFinder($app['files'], $finder->getPaths(), $finder->getExtensions()));
 
         // Bound (not hardcoded `new LoopbackHttpServer`) specifically so OAuth
         // connect-flow commands/tests can swap in FakeLoopbackHttpServer — a
