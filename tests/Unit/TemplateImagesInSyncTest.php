@@ -1,5 +1,6 @@
 <?php
 
+use App\Vendors\DnsTool;
 use App\Vendors\SecretTool;
 
 /**
@@ -63,4 +64,11 @@ test('openbao template literal image references stay in sync with SecretTool::im
     }
 
     expect($templateImages)->toEqualCanonicalizing($expectedImages);
+});
+
+test('external-dns template literal image references stay in sync with DnsTool::images()', function (): void {
+    $templateImages = extractOpenbaoTemplateImages(base_path('resources/views/k8s/external-dns'));
+
+    expect($templateImages)->not->toBeEmpty()
+        ->toEqualCanonicalizing(array_values((new DnsTool)->images()));
 });

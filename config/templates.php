@@ -14,6 +14,6 @@ return [
 
     // Apps whose templates come from LaraKube Cloud instead of this binary. Only these may be
     // downloaded when a template is missing; every other app stays fully offline.
-    'downloadable' => ['openbao'],
+    'downloadable' => ['openbao', 'external-dns'],
 
 ];
