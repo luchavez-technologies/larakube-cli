@@ -435,11 +435,26 @@ abstract class AbstractToolRemoveCommand extends Command
             return true;
         }
 
-        $cmd = $driver->commonsBucketDeleteCommand($bucket);
-        $ok = $this->removeResources(
-            "Dropping object-storage bucket '{$bucket}' from Plex Commons (if exists)...",
-            "{$kubectl} exec -n {$plexNs} deploy/{$service} -- sh -c ".escapeshellarg($cmd),
-        );
+        if ($driver->requiresShell()) {
+            $cmd = $driver->commonsBucketDeleteCommand($bucket);
+            $ok = $this->removeResources(
+                "Dropping object-storage bucket '{$bucket}' from Plex Commons (if exists)...",
+                "{$kubectl} exec -n {$plexNs} deploy/{$service} -- sh -c ".escapeshellarg($cmd),
+            );
+        } else {
+            $ok = $this->kubectlStep(
+                "Dropping object-storage bucket '{$bucket}' from Plex Commons (if exists)...",
+                function () use ($kubectl, $plexNs, $service, $driver, $bucket) {
+                    $kube = Kubectl::fromPrefix($kubectl);
+                    $last = null;
+                    foreach ($driver->commonsBucketDeleteSteps($bucket) as $args) {
+                        $last = $kube->exec($plexNs, "deploy/{$service}", $args);
+                    }
+
+                    return $last ?? new \App\Data\KubectlResult(true, '');
+                },
+            );
+        }
 
         if ($ok) {
             $this->unregisterTenant($bucket);

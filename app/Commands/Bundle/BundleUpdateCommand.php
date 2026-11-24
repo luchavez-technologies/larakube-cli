@@ -2,6 +2,7 @@
 
 namespace App\Commands\Bundle;
 
+use App\Enums\StorageDriver;
 use App\Services\Kubectl;
 use App\Traits\GeneratesBundleSecrets;
 use App\Traits\GeneratesOfflineCertificates;
@@ -202,6 +203,7 @@ class BundleUpdateCommand extends Command
         }
 
         $this->putLaravelEnv(Kubectl::current(), $namespace, $public, $secret);
+        StorageDriver::ensureStandaloneGarageSecret(Kubectl::current(), $config, $namespace, $env);
 
         // 8. Apply manifests
         $this->laraKubeInfo('Applying Kubernetes manifests...');

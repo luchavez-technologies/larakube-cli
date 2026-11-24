@@ -160,6 +160,87 @@ abstract class TestCase extends BaseTestCase
     }
 
     /**
+     * Temporarily restore the un-stubbed host PATH for real-binary integration tests,
+     * always re-pinning stubs in a finally block.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $callback
+     * @return T
+     */
+    protected function withoutHostBinaryStubs(callable $callback): mixed
+    {
+        if (self::$originalPath !== null) {
+            putenv('PATH='.self::$originalPath);
+        }
+
+        try {
+            return $callback();
+        } finally {
+            $this->pinTestHostBinaries();
+        }
+    }
+
+    /**
+     * Locate a real host executable from the pre-stub PATH.
+     */
+    protected function realHostBinary(string $name): ?string
+    {
+        $searchPath = self::$originalPath ?? (getenv('PATH') ?: '');
+
+        foreach (explode(PATH_SEPARATOR, $searchPath) as $dir) {
+            if ($dir === '' || $dir === self::$stubBinDir) {
+                continue;
+            }
+
+            $candidate = rtrim($dir, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.$name;
+
+            if (is_file($candidate) && is_executable($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Require a working Docker daemon for integration tests.
+     * Fails loudly when LARAKUBE_REQUIRE_DOCKER=1; otherwise skips cleanly.
+     */
+    protected function requireDocker(): string
+    {
+        $requireDocker = getenv('LARAKUBE_REQUIRE_DOCKER') === '1';
+        $docker = $this->realHostBinary('docker');
+
+        if ($docker === null) {
+            if ($requireDocker) {
+                $this->fail('Docker binary not found on host PATH while LARAKUBE_REQUIRE_DOCKER=1.');
+            }
+
+            $this->markTestSkipped('Docker binary not available.');
+        }
+
+        $ok = $this->withoutHostBinaryStubs(function () use ($docker, &$output): bool {
+            $process = new \Symfony\Component\Process\Process([$docker, 'info', '--format', '{{.ServerVersion}}']);
+            $process->setTimeout(15);
+            $process->run();
+            $output = trim($process->getOutput().' '.$process->getErrorOutput());
+
+            return $process->isSuccessful();
+        });
+
+        if (! $ok) {
+            if ($requireDocker) {
+                $this->fail("Docker daemon unavailable while LARAKUBE_REQUIRE_DOCKER=1: {$output}");
+            }
+
+            $this->markTestSkipped("Docker daemon unavailable: {$output}");
+        }
+
+        return $docker;
+    }
+
+    /**
      * Prepend a directory of no-op stubs for the host/cluster binaries onto PATH
      * so the suite is HERMETIC on every machine — CI (no kubectl), a laptop, or
      * a dev box that ran `larakube setup` and now has a live k3s + Podman.

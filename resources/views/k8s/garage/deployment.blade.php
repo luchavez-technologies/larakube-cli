@@ -20,7 +20,10 @@ spec:
           args: ["/garage", "server"]
           env:
             - name: GARAGE_RPC_SECRET
-              value: "3e8d49cdaecefd63e56dc6d2f791cb60f856cd7471555b038bde1ac0751682a8"
+              valueFrom:
+                secretKeyRef:
+                  name: garage-rpc-secret
+                  key: GARAGE_RPC_SECRET
           ports:
             - name: s3
               containerPort: 3900
@@ -51,7 +54,6 @@ data:
     metadata_dir = "/data/meta"
     data_dir = "/data/data"
     rpc_bind_addr = "[::]:3901"
-    rpc_secret = "3e8d49cdaecefd63e56dc6d2f791cb60f856cd7471555b038bde1ac0751682a8"
 
     # Replication settings for v2.x (1 = single node local dev)
     replication_factor = 1

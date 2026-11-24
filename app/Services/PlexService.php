@@ -612,15 +612,40 @@ final class PlexService
     }
 
     /**
-     * Create a bucket on its Commons S3 backend (idempotent). The per-backend
-     * command comes from the StorageDriver enum, run through `sh -c` so the pod
-     * expands its own credentials.
+     * Create a bucket on its Commons S3 backend (idempotent). SeaweedFS runs via
+     * `sh -c` (`weed shell`), while Garage runs direct-argv `/garage` commands
+     * because the official Garage image has no `/bin/sh`.
      */
     public function createBucket(StorageDriver $driver, string $bucket): ProcessResult
     {
-        return Process::run(
-            $this->kubectl().' exec -n '.escapeshellarg(self::NAMESPACE).' deploy/'.$driver->value.' -- sh -c '.escapeshellarg($driver->commonsBucketCreateCommand($bucket)),
-        );
+        if ($driver->requiresShell()) {
+            return Process::run(
+                $this->kubectl().' exec -n '.escapeshellarg(self::NAMESPACE).' deploy/'.$driver->value.' -- sh -c '.escapeshellarg($driver->commonsBucketCreateCommand($bucket)),
+            );
+        }
+
+        $info = $this->execDirect('deploy/'.$driver->value, ['/garage', 'bucket', 'info', $bucket]);
+        if (! $info->successful()) {
+            $create = $this->execDirect('deploy/'.$driver->value, ['/garage', 'bucket', 'create', $bucket]);
+            if (! $create->successful()) {
+                return $create;
+            }
+        }
+
+        $allow = $this->execDirect('deploy/'.$driver->value, ['/garage', 'bucket', 'allow', '--read', '--write', $bucket, '--key', 'commons-admin']);
+        if (! $allow->successful()) {
+            return $allow;
+        }
+
+        $keyList = $this->execDirect('deploy/'.$driver->value, ['/garage', 'key', 'list']);
+        if ($keyList->successful() && str_contains($keyList->output(), 'backup-reader')) {
+            $readerAllow = $this->execDirect('deploy/'.$driver->value, ['/garage', 'bucket', 'allow', '--read', $bucket, '--key', 'backup-reader']);
+            if (! $readerAllow->successful()) {
+                return $readerAllow;
+            }
+        }
+
+        return $allow;
     }
 
     // ── Commons lifecycle ────────────────────────────────────────────────────
@@ -876,6 +901,22 @@ final class PlexService
     public function buildDropTenantSql(string $db, string $role): string
     {
         return (string) DatabaseDriver::POSTGRESQL->commonsDropSql($db, $role);
+    }
+
+    /**
+     * Execute a direct-argv command inside a Commons pod (no shell wrapper).
+     *
+     * @param  list<string>  $args
+     */
+    private function execDirect(string $target, array $args): ProcessResult
+    {
+        $kubectl = Kubectl::fromPrefix($this->kubectl());
+        $cmd = $kubectl->prefix().' '.implode(' ', array_map(
+            Kubectl::arg(...),
+            ['exec', '-n', self::NAMESPACE, $target, '--', ...$args],
+        ));
+
+        return Process::timeout(120)->run($cmd);
     }
 
     /** Pipe SQL to an engine's admin client inside its Commons pod. */

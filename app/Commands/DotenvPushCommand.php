@@ -2,6 +2,7 @@
 
 namespace App\Commands;
 
+use App\Enums\StorageDriver;
 use App\Services\Kubectl;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithProjectConfig;
@@ -139,6 +140,8 @@ class DotenvPushCommand extends Command
         $context = $this->option('context') ?: $this->environmentContextOrCurrent($config, $env);
         $kubectl = Kubectl::forContext($context)->prefix();
         $app = (string) ($this->option('app') ?: $config->getName());
+
+        StorageDriver::ensureStandaloneGarageSecret(Kubectl::fromPrefix($kubectl), $config, $namespace, $env);
 
         if (! $this->option('json')) {
             $this->line('  <fg=gray>Environment:</> <fg=cyan>'.$env.'</>  <fg=gray>·</> <fg=cyan>'.$namespace.'</>  <fg=gray>·</> <fg=cyan>app='.$app.'</>');

@@ -28,7 +28,7 @@ require_once __DIR__.'/Support/KubectlExecMock.php';
 // across every test that exercises the OpenBao-backed secrets manager.
 require_once __DIR__.'/Support/OpenBaoFakes.php';
 
-pest()->extend(TestCase::class)->in('Feature', 'Unit');
+pest()->extend(TestCase::class)->in('Feature', 'Unit', 'Integration');
 
 // Prompt::interactive(false) and Sleep::fake() both live in
 // Tests\TestCase::setUp(), not here — a standalone top-level beforeEach()

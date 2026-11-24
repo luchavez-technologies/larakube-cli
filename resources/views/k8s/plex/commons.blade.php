@@ -798,7 +798,6 @@ data:
     metadata_dir = "/data/meta"
     data_dir = "/data/data"
     rpc_bind_addr = "[::]:3901"
-    rpc_secret = "3e8d49cdaecefd63e56dc6d2f791cb60f856cd7471555b038bde1ac0751682a8"
     replication_factor = 1
 
     [s3_api]
@@ -831,6 +830,12 @@ spec:
         - name: garage
           image: {{ $spec['services']['garage']['image'] }}
           args: ["/garage", "server"]
+          env:
+            - name: GARAGE_RPC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: plex-admin
+                  key: GARAGE_RPC_SECRET
           ports:
             - name: s3
               containerPort: {{ $spec['services']['garage']['port'] }}

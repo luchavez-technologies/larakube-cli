@@ -110,6 +110,16 @@ test('enabling Garage adds its Commons service (deployment, config, S3 Ingress) 
     // Path-style only for the Commons — no root_domain/virtual-host config,
     // unlike the per-project Garage ingress.
     expect($yaml)->not->toContain('root_domain =');
+
+    // V1: RPC secret comes from secretKeyRef (plex-admin/GARAGE_RPC_SECRET),
+    // never hardcoded in garage.toml and never mounted as a 0644 file.
+    expect($yaml)
+        ->toContain('name: GARAGE_RPC_SECRET')
+        ->toContain('secretKeyRef:')
+        ->toContain('name: plex-admin')
+        ->toContain('key: GARAGE_RPC_SECRET')
+        ->not->toContain('rpc_secret =')
+        ->not->toContain('GARAGE_ALLOW_WORLD_READABLE_SECRETS');
 });
 
 test('Garage is disabled by default — no manifest at all without enabling it', function (): void {

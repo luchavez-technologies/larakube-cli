@@ -571,6 +571,8 @@ class UpCommand extends Command
             Process::run(Kubectl::current()->prefix().' scale deployment --replicas=0 -l '.Kubectl::arg(\App\Support\Labels::PREVIEW.'!=true,'.\App\Support\Labels::ROLE.'!=share')." -n $namespace");
         });
 
+        StorageDriver::ensureStandaloneGarageSecret(Kubectl::current(), $config, $namespace, $environment);
+
         $this->runStreaming($this->kustomizeApplyCommand($path));
 
         // 5a. If monitoring is active, deploy service-level exporters into this namespace

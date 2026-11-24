@@ -6,6 +6,7 @@ use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\DatabaseDriver;
 use App\Enums\StorageDriver;
+use App\Services\Kubectl;
 use Illuminate\Support\Facades\Process;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
 
@@ -146,10 +147,15 @@ trait RemovesPlexTenants
             return;
         }
 
-        $cmd = $driver->commonsBucketDeleteCommand($bucket);
-        $this->withSpin("Deleting object-storage bucket '{$bucket}'...", fn () => Process::run(
-            $this->plexKubectl().' exec -n '.escapeshellarg($ns).' deploy/'.$s3Service.' -- sh -c '.escapeshellarg($cmd),
-        ));
+        $kube = Kubectl::fromPrefix($this->plexKubectl());
+        $this->withSpin("Deleting object-storage bucket '{$bucket}'...", function () use ($kube, $ns, $s3Service, $driver, $bucket) {
+            $last = null;
+            foreach ($driver->commonsBucketDeleteSteps($bucket) as $args) {
+                $last = $kube->exec($ns, 'deploy/'.$s3Service, $args);
+            }
+
+            return $last?->ok ?? true;
+        });
     }
 
     /**

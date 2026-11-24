@@ -106,7 +106,7 @@ class PlexInitCommand extends Command
         ));
 
         // 3. Admin credentials — generated once, reused on re-run (never rotated).
-        $this->ensureCommonsSecret();
+        $this->ensureCommonsSecret($enabled);
 
         // 4. Render + apply the Commons manifest (spec ConfigMap + services).
         if (! $this->applyCommons($spec, 'Applying Commons manifests...')) {
@@ -334,31 +334,29 @@ class PlexInitCommand extends Command
 
     /**
      * One-time Garage bootstrap: assign + apply a single-node layout (required
-     * before ANY bucket/key operation works), then create the one shared
-     * "commons-admin" key every tenant bucket gets granted to (Garage generates
-     * its key server-side; there's no way to pre-set it via env-injected
-     * credentials). Both steps are idempotent: layout readiness is checked via exit
-     * code (a real bucket operation either works or it doesn't — far more
-     * reliable than matching `garage status`'s exact wording, which varies
-     * across versions), and the key is looked up by name before creating one.
+     * before ANY bucket/key operation works), optionally pre-import an existing
+     * `commons-admin` key (for Garage -> Garage restores before checking `key list`),
+     * crash-repair missing `plex-admin` keys from Garage, or create the one shared
+     * "commons-admin" key. Runs direct-argv `/garage` commands (no `sh -c`).
+     *
+     * @param  array{access: string, secret: string}|null  $preImportGarageKey
      */
-    protected function ensureGarageBootstrap(string $ns, string $kubectl): void
+    protected function ensureGarageBootstrap(string $ns, string $kubectl, ?array $preImportGarageKey = null): void
     {
-        $lastExit = 0;
-        $exec = function (string $cmd) use ($kubectl, $ns, &$lastExit): string {
-            $result = Process::run(
-                "{$kubectl} exec -n {$ns} deploy/garage -- sh -c ".escapeshellarg($cmd),
-            );
-            $lastExit = $result->exitCode();
+        $kube = Kubectl::fromPrefix($kubectl);
+        $lastOk = true;
+        $exec = function (array $args) use ($kube, $ns, &$lastOk): string {
+            $result = $kube->exec($ns, 'deploy/garage', $args);
+            $lastOk = $result->ok;
 
-            return trim($result->output().$result->errorOutput());
+            return trim($result->output.$result->error);
         };
 
-        $exec('/garage bucket list');
-        $layoutReady = $lastExit === 0;
+        $exec(['/garage', 'bucket', 'list']);
+        $layoutReady = $lastOk;
 
         if (! $layoutReady) {
-            $status = $exec('/garage status');
+            $status = $exec(['/garage', 'status']);
             // The node ID is the long hex string starting each data row under
             // "==== HEALTHY NODES ====".
             preg_match('/^([0-9a-f]{16,})\s/m', $status, $m);
@@ -371,11 +369,14 @@ class PlexInitCommand extends Command
                 return;
             }
 
-            $applied = $this->withSpin('Assigning Garage single-node layout...', function () use ($exec, $nodeId, &$lastExit) {
-                $exec("/garage layout assign {$nodeId} --capacity 1GB --zone commons --tag commons");
-                $exec('/garage layout apply --version 1');
+            $applied = $this->withSpin('Assigning Garage single-node layout...', function () use ($exec, $nodeId, &$lastOk) {
+                $exec(['/garage', 'layout', 'assign', $nodeId, '--capacity', '1GB', '--zone', 'commons', '--tag', 'commons']);
+                if (! $lastOk) {
+                    return false;
+                }
+                $exec(['/garage', 'layout', 'apply', '--version', '1']);
 
-                return $lastExit === 0;
+                return $lastOk;
             });
 
             if (! $applied) {
@@ -385,16 +386,92 @@ class PlexInitCommand extends Command
             }
         }
 
-        $keyList = $exec('/garage key list');
+        $keyList = $exec(['/garage', 'key', 'list']);
+
+        // T1: Pre-import original commons-admin key BEFORE checking key list so
+        // restored clusters keep a single `commons-admin` key with original credentials.
+        if (
+            $preImportGarageKey !== null
+            && ($preImportGarageKey['access'] ?? '') !== ''
+            && ($preImportGarageKey['secret'] ?? '') !== ''
+            && ! str_contains($keyList, 'commons-admin')
+        ) {
+            $importOutput = $exec([
+                '/garage',
+                'key',
+                'import',
+                '--yes',
+                $preImportGarageKey['access'],
+                $preImportGarageKey['secret'],
+                '-n',
+                'commons-admin',
+            ]);
+
+            if (! $lastOk) {
+                $this->laraKubeWarn('Could not import the Garage admin key — bucket operations will fail until this is resolved.');
+                $this->laraKubeLine('  '.$importOutput);
+
+                return;
+            }
+
+            $existingAccess = trim((string) ($kube->secretValue($ns, 'plex-admin', 'S3_ACCESS_KEY') ?? ''));
+            $existingSecret = trim((string) ($kube->secretValue($ns, 'plex-admin', 'S3_SECRET_KEY') ?? ''));
+            if ($existingAccess === '' || $existingSecret === '') {
+                $kube->patchSecret($ns, 'plex-admin', [
+                    'S3_ACCESS_KEY' => $preImportGarageKey['access'],
+                    'S3_SECRET_KEY' => $preImportGarageKey['secret'],
+                ]);
+            }
+
+            return;
+        }
+
+        // U4: If commons-admin already exists in Garage, verify plex-admin actually
+        // holds valid S3 credentials; if either is missing/empty (crash between key
+        // creation and Secret patch), recover via `key info commons-admin --show-secret`.
         if (str_contains($keyList, 'commons-admin')) {
-            return; // Already created — never rotate.
+            $existingAccess = trim((string) ($kube->secretValue($ns, 'plex-admin', 'S3_ACCESS_KEY') ?? ''));
+            $existingSecret = trim((string) ($kube->secretValue($ns, 'plex-admin', 'S3_SECRET_KEY') ?? ''));
+
+            if ($existingAccess !== '' && $existingSecret !== '') {
+                return;
+            }
+
+            $infoOutput = $exec(['/garage', 'key', 'info', 'commons-admin', '--show-secret']);
+            if (! $lastOk) {
+                $this->laraKubeWarn('Garage `commons-admin` key exists, but `plex-admin` is missing S3 credentials and key recovery failed.');
+                $this->laraKubeLine('  '.$infoOutput);
+
+                return;
+            }
+
+            preg_match('/Key ID:\s*(\S+)/i', $infoOutput, $accessMatch);
+            preg_match('/Secret key:\s*(\S+)/i', $infoOutput, $secretMatch);
+            $access = $accessMatch[1] ?? null;
+            $secret = $secretMatch[1] ?? null;
+
+            if ($access === null || $secret === null) {
+                $this->laraKubeWarn('Garage `commons-admin` key exists, but could not parse credentials from `garage key info --show-secret`.');
+
+                return;
+            }
+
+            if ($existingAccess !== '' && $existingAccess !== $access) {
+                $this->laraKubeWarn('Garage `commons-admin` key exists, but plex-admin already has S3 credentials from another backend.');
+
+                return;
+            }
+
+            $kube->patchSecret($ns, 'plex-admin', ['S3_ACCESS_KEY' => $access, 'S3_SECRET_KEY' => $secret]);
+
+            return;
         }
 
         $keyOutput = '';
-        $created = $this->withSpin('Creating the shared Garage admin key...', function () use ($exec, &$keyOutput, &$lastExit) {
-            $keyOutput = $exec('/garage key create commons-admin');
+        $created = $this->withSpin('Creating the shared Garage admin key...', function () use ($exec, &$keyOutput, &$lastOk) {
+            $keyOutput = $exec(['/garage', 'key', 'create', 'commons-admin']);
 
-            return $lastExit === 0;
+            return $lastOk;
         });
 
         if (! $created) {
@@ -420,9 +497,7 @@ class PlexInitCommand extends Command
         // If another backend already claimed these fields first, Garage's tenants would
         // get the wrong credentials — enabling more than one credentialed S3
         // backend in the same Commons at once isn't fully supported yet.
-        $existing = trim(Process::run(
-            "{$kubectl} get secret plex-admin -n {$ns} -o jsonpath=".escapeshellarg('{.data.S3_ACCESS_KEY}'),
-        )->output());
+        $existing = trim((string) ($kube->secretValue($ns, 'plex-admin', 'S3_ACCESS_KEY') ?? ''));
 
         if ($existing !== '') {
             $this->laraKubeWarn('Garage\'s admin key was created, but plex-admin already has S3 credentials from another backend.');
@@ -431,28 +506,35 @@ class PlexInitCommand extends Command
             return;
         }
 
-        Kubectl::fromPrefix($kubectl)->patchSecret($ns, 'plex-admin', ['S3_ACCESS_KEY' => $access, 'S3_SECRET_KEY' => $secret]);
+        $kube->patchSecret($ns, 'plex-admin', ['S3_ACCESS_KEY' => $access, 'S3_SECRET_KEY' => $secret]);
     }
 
     /**
-     * Ensure the Commons admin Secret (Postgres password + Meili master key)
-     * exists. Generated once; left untouched on re-run so the password is stable.
+     * Ensure the Commons admin Secret (Postgres password + Meili master key +
+     * Garage RPC secret, plus SeaweedFS placeholder S3 keys only when enabled)
+     * exists. Generated once; left untouched on re-run so secrets stay stable.
+     *
+     * @param  array<int, string>  $enabled
      */
-    protected function ensureCommonsSecret(): void
+    protected function ensureCommonsSecret(array $enabled = []): void
     {
         $ns = $this->plexNamespace();
         $kubectl = $this->plexKubectl();
 
-        // Generators for every admin credential. S3_ACCESS_KEY is a stable id; the
-        // rest are random. (S3 creds were added later, so older Commons secrets
-        // are missing them — see the additive patch below.)
+        // Generators for every admin credential. Garage creates its own S3 keys
+        // server-side in ensureGarageBootstrap(), so S3_ACCESS_KEY='larakube'
+        // must ONLY be generated when SeaweedFS is enabled.
         $generators = [
             'POSTGRES_PASSWORD' => fn () => bin2hex(random_bytes(16)),
             'MYSQL_ROOT_PASSWORD' => fn () => bin2hex(random_bytes(16)),
             'MEILI_MASTER_KEY' => fn () => bin2hex(random_bytes(16)),
-            'S3_ACCESS_KEY' => fn () => 'larakube',
-            'S3_SECRET_KEY' => fn () => bin2hex(random_bytes(16)),
+            'GARAGE_RPC_SECRET' => fn () => bin2hex(random_bytes(32)),
         ];
+
+        if (in_array('seaweedfs', $enabled, true)) {
+            $generators['S3_ACCESS_KEY'] = fn () => 'larakube';
+            $generators['S3_SECRET_KEY'] = fn () => bin2hex(random_bytes(16));
+        }
 
         $exists = trim(Process::run(
             "{$kubectl} get secret plex-admin -n {$ns} -o name",

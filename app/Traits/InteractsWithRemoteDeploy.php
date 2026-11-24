@@ -7,6 +7,7 @@ use App\Data\ConfigData;
 use App\Enums\AppFramework;
 use App\Enums\LaravelFeature;
 use App\Enums\RegistryProvider;
+use App\Enums\StorageDriver;
 use App\Services\Kubectl;
 use App\Support\SshKeyPath;
 use Illuminate\Support\Facades\Process;
@@ -986,6 +987,7 @@ trait InteractsWithRemoteDeploy
 
             // 5. env ConfigMap/Secret — THROUGH the scoped credential.
             $this->syncRemoteEnv($config, $environment, null, $namespace, $kubeconfigPath);
+            StorageDriver::ensureStandaloneGarageSecret(Kubectl::forKubeconfig($kubeconfigPath), $config, $namespace, $environment);
 
             // 6. Apply the overlay via the scoped credential, retrying briefly for
             //    RBAC propagation lag right after the RoleBinding was created.

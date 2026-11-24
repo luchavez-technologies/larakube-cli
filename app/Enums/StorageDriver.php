@@ -18,6 +18,7 @@ use App\Contracts\PlexProvisionable;
 use App\Contracts\RemovableWhenManaged;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
+use App\Services\Kubectl;
 use App\Traits\DerivesHostsFromServices;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\ProvidesCommandOptions;
@@ -402,37 +403,84 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
         return null;
     }
 
+    public function requiresShell(): bool
+    {
+        return match ($this) {
+            self::SEAWEEDFS => true,
+            self::GARAGE => false,
+        };
+    }
+
+    /**
+     * Idempotently ensure the standalone Garage RPC Secret (`garage-rpc-secret`)
+     * exists in the project namespace before manifests referencing it are applied.
+     */
+    public static function ensureStandaloneGarageSecret(
+        Kubectl $kubectl,
+        ConfigData $config,
+        string $namespace,
+        string $environment,
+    ): void {
+        if (! in_array(self::GARAGE, $config->getObjectStorages(), true)) {
+            return;
+        }
+        if ($config->isPlexBacked(self::GARAGE, $environment) || in_array(self::GARAGE->value, $config->getExternallyHosted($environment), true)) {
+            return;
+        }
+
+        $existing = $kubectl->secretValue($namespace, 'garage-rpc-secret', 'GARAGE_RPC_SECRET');
+        if ($existing !== null && $existing !== '') {
+            return;
+        }
+
+        $kubectl->putSecret($namespace, 'garage-rpc-secret', [
+            'GARAGE_RPC_SECRET' => bin2hex(random_bytes(32)),
+        ]);
+    }
+
     /**
      * Shell command — run via `kubectl exec deploy/<value> -- sh -c '<this>'` —
      * that idempotently creates a tenant's bucket on this Commons S3 backend.
-     * Bucket-per-tenant isolation under the shared admin key. Garage has no
-     * single root credential — instead every tenant bucket is explicitly granted
-     * to the one shared "commons-admin" key created at bootstrap (see PlexInitCommand),
-     * referenced by NAME (Garage resolves an unambiguous key name to its id) so this
-     * command never needs to know the generated key id/secret itself. `;`
-     * (not `&&`) between steps: a bucket that already exists makes `create`
-     * exit non-zero, but `allow` must still run so re-provisioning stays
-     * idempotent — the final exit code reflects `allow`, the real outcome.
+     * For Garage (which lacks `/bin/sh` in its official container image), callers
+     * MUST invoke direct-argv steps via `PlexService::createBucket()` rather than
+     * wrapping in `sh -c`.
      */
     public function commonsBucketCreateCommand(string $bucket): string
     {
         return match ($this) {
             self::SEAWEEDFS => "echo 's3.bucket.create -name {$bucket}' | weed shell",
-            self::GARAGE => "/garage bucket create {$bucket} 2>/dev/null; ".
+            self::GARAGE => "/garage bucket create {$bucket}; ".
                 "/garage bucket allow --read --write {$bucket} --key commons-admin",
         };
     }
 
     /**
      * Inverse of commonsBucketCreateCommand — drops a tenant's bucket (the
-     * plex:leave/remove teardown). Same sh -c invocation contract.
+     * plex:leave/remove teardown). Callers on Garage MUST execute
+     * `commonsBucketDeleteSteps()` directly without `sh -c`.
      */
     public function commonsBucketDeleteCommand(string $bucket): string
     {
         return match ($this) {
             self::SEAWEEDFS => "echo 's3.bucket.delete -name {$bucket}' | weed shell",
-            self::GARAGE => "/garage bucket deny --read --write {$bucket} --key commons-admin 2>/dev/null; ".
+            self::GARAGE => "/garage bucket deny --read --write {$bucket} --key commons-admin; ".
                 "/garage bucket delete --yes {$bucket}",
+        };
+    }
+
+    /**
+     * Direct-argv steps to drop a bucket on this backend.
+     *
+     * @return list<list<string>>
+     */
+    public function commonsBucketDeleteSteps(string $bucket): array
+    {
+        return match ($this) {
+            self::SEAWEEDFS => [['sh', '-c', $this->commonsBucketDeleteCommand($bucket)]],
+            self::GARAGE => [
+                ['/garage', 'bucket', 'deny', '--read', '--write', $bucket, '--key', 'commons-admin'],
+                ['/garage', 'bucket', 'delete', '--yes', $bucket],
+            ],
         };
     }
 
@@ -444,6 +492,15 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
         };
     }
 
+    /** @return list<string> */
+    public function commonsBucketListArgs(): array
+    {
+        return match ($this) {
+            self::SEAWEEDFS => ['sh', '-c', $this->commonsBucketListCommand()],
+            self::GARAGE => ['/garage', 'bucket', 'list'],
+        };
+    }
+
     public function commonsObjectListCommand(string $bucket, ?string $path = null): string
     {
         $sub = $path !== null && $path !== '' ? '/'.ltrim($path, '/') : '';
@@ -451,6 +508,15 @@ enum StorageDriver: string implements AsDependency, HasCommandOptions, HasCompos
         return match ($this) {
             self::SEAWEEDFS => "echo 'fs.ls /buckets/'.$bucket.$sub | weed shell",
             self::GARAGE => "/garage bucket info {$bucket}",
+        };
+    }
+
+    /** @return list<string> */
+    public function commonsObjectListArgs(string $bucket, ?string $path = null): array
+    {
+        return match ($this) {
+            self::SEAWEEDFS => ['sh', '-c', $this->commonsObjectListCommand($bucket, $path)],
+            self::GARAGE => ['/garage', 'bucket', 'info', $bucket],
         };
     }
 

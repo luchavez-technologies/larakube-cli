@@ -3,7 +3,7 @@
 namespace App\Traits;
 
 use App\Enums\StorageDriver;
-use Illuminate\Support\Facades\Process;
+use App\Services\Kubectl;
 
 use function Laravel\Prompts\select;
 
@@ -83,17 +83,13 @@ trait InteractsWithStorage
     {
         $ns = $this->plexNamespace();
         $service = $driver->value;
-        $cmd = $driver->commonsBucketListCommand();
+        $res = Kubectl::fromPrefix($kubectl)->exec($ns, 'deploy/'.$service, $driver->commonsBucketListArgs());
 
-        $res = Process::run(
-            $kubectl.' exec -n '.escapeshellarg($ns).' deploy/'.$service.' -- sh -c '.escapeshellarg($cmd),
-        );
-
-        if (! $res->successful()) {
+        if (! $res->ok) {
             return [];
         }
 
-        $lines = array_map('trim', explode("\n", trim($res->output())));
+        $lines = array_map('trim', explode("\n", trim($res->output)));
         $buckets = [];
 
         foreach ($lines as $line) {
@@ -137,17 +133,13 @@ trait InteractsWithStorage
     {
         $ns = $this->plexNamespace();
         $service = $driver->value;
-        $cmd = $driver->commonsObjectListCommand($bucket, $path);
+        $res = Kubectl::fromPrefix($kubectl)->exec($ns, 'deploy/'.$service, $driver->commonsObjectListArgs($bucket, $path));
 
-        $res = Process::run(
-            $kubectl.' exec -n '.escapeshellarg($ns).' deploy/'.$service.' -- sh -c '.escapeshellarg($cmd),
-        );
-
-        if (! $res->successful()) {
+        if (! $res->ok) {
             return [];
         }
 
-        $lines = array_map('trim', explode("\n", trim($res->output())));
+        $lines = array_map('trim', explode("\n", trim($res->output)));
 
         return array_values(array_filter($lines, fn ($l) => $l !== ''));
     }
