@@ -20,9 +20,13 @@ function cloudflareProbe(array $input): object
         /** @var array<string, int> exit code per command; 0 when unset */
         public array $exitCodes = [];
 
+        /** @var list<string> the Cloudflare token each call saw */
+        public array $tokensSeen = [];
+
         public function call($command, array $arguments = []): int
         {
             $this->called[] = [(string) $command, $arguments];
+            $this->tokensSeen[] = (string) getenv('LARAKUBE_CLOUDFLARE_TOKEN');
 
             if ($this->failWith !== null) {
                 throw $this->failWith;
@@ -55,6 +59,7 @@ function cloudflareProbe(array $input): object
 
 afterEach(function (): void {
     putenv('LARAKUBE_CLOUDFLARE_TOKEN');
+    putenv('LARAKUBE_DNS_GROUPS');
 });
 
 test('a scripted run sets up Cloudflare DNS and SSL only when it opts in', function (): void {
@@ -167,4 +172,42 @@ test('a run that never asked for DNS reports nothing about it', function (): voi
     $probe->finish();
 
     expect($probe->dnsOutcome())->toBeNull();
+});
+
+test('several Cloudflare accounts each get their own ExternalDNS group, and SSL uses the chosen one', function (): void {
+    putenv('LARAKUBE_DNS_GROUPS='.json_encode([['group' => 'dns-acme', 'token' => 'token-acme'], ['group' => 'dns-beta', 'token' => 'token-beta']]));
+
+    $probe = cloudflareProbe(['--no-interaction' => true, '--dns-provider' => 'cloudflare', '--dns-tls-group' => 'dns-beta']);
+    $probe->exitCodes = ['tls:init' => 0];
+    $probe->finish('production', 'larakube-1.2.3.4');
+
+    expect(array_map(fn (array $call): string => $call[0].' '.($call[1]['--group'] ?? ''), $probe->called))
+        ->toBe(['tool:init dns-acme', 'tool:init dns-beta', 'tls:init dns-beta'])
+        ->and($probe->tokensSeen)->toBe(['token-acme', 'token-beta', 'token-beta'])
+        ->and($probe->dnsOutcome())->toMatchArray(['tls' => true, 'tls_group' => 'dns-beta', 'error' => null])
+        ->and(array_column($probe->dnsOutcome()['groups'], 'records'))->toBe([true, true])
+        ->and(getenv('LARAKUBE_CLOUDFLARE_TOKEN'))->toBeFalse();
+});
+
+test('a failing group is reported without stopping the others', function (): void {
+    putenv('LARAKUBE_DNS_GROUPS='.json_encode([['group' => 'BAD NAME', 'token' => 'x'], ['group' => 'dns-ok', 'token' => 'token-ok']]));
+
+    $probe = cloudflareProbe(['--no-interaction' => true, '--dns-provider' => 'cloudflare']);
+    $probe->finish();
+
+    expect(array_column($probe->called, 0))->toBe(['tool:init'])
+        ->and($probe->dnsOutcome()['groups'][0]['records'])->toBeFalse()
+        ->and($probe->dnsOutcome()['groups'][1])->toMatchArray(['group' => 'dns-ok', 'records' => true])
+        ->and($probe->dnsOutcome()['tls'])->toBeNull()
+        ->and($probe->dnsOutcome()['error'])->not->toBeNull();
+});
+
+test('an SSL group that is not one of the DNS groups is refused', function (): void {
+    putenv('LARAKUBE_DNS_GROUPS='.json_encode([['group' => 'dns-acme', 'token' => 'token-acme']]));
+
+    $probe = cloudflareProbe(['--no-interaction' => true, '--dns-provider' => 'cloudflare', '--dns-tls-group' => 'dns-other']);
+    $probe->finish();
+
+    expect(array_column($probe->called, 0))->toBe(['tool:init'])
+        ->and($probe->dnsOutcome()['tls'])->toBeFalse();
 });

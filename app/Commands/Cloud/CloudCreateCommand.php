@@ -83,6 +83,7 @@ class CloudCreateCommand extends Command
         {--cloudflare : After a VPS is ready, set up Cloudflare DNS records and SSL with the token in LARAKUBE_CLOUDFLARE_TOKEN (deprecated alias for --dns-provider=cloudflare)}
         {--dns-provider= : Automatically configure DNS & TLS using this provider (cloudflare, route53, or google)}
         {--without-dns : Skip automating external-dns records during cluster creation}
+        {--dns-tls-group= : With LARAKUBE_DNS_GROUPS, the group whose token also issues SSL certificates through the DNS challenge}
         {--without-tls : Skip automating Let\'s Encrypt DNS-01 TLS challenge during cluster creation}
         {--email= : Let\'s Encrypt email, forwarded to cloud:init:doks / cloud:init:gke / cloud:init:eks (managed)}
         {--json : Emit one machine-readable JSON result on stdout}
@@ -386,6 +387,12 @@ class CloudCreateCommand extends Command
             return;
         }
 
+        if (! $interactive && $provider === DnsProvider::CLOUDFLARE && getenv('LARAKUBE_DNS_GROUPS') !== false) {
+            $this->connectDnsGroups($environment, $context);
+
+            return;
+        }
+
         if (! $interactive && $provider === DnsProvider::CLOUDFLARE) {
             $token = trim((string) (getenv('LARAKUBE_CLOUDFLARE_TOKEN') ?: ''));
             if ($token === '') {
@@ -460,6 +467,79 @@ class CloudCreateCommand extends Command
             }
         }
 
+        $this->result['dns'] = $outcome;
+    }
+
+    /**
+     * Several Cloudflare accounts on one server: one ExternalDNS group per account, from
+     * LARAKUBE_DNS_GROUPS ([{"group": "...", "token": "..."}]). DNS-01 SSL can use only one of them,
+     * because Traefik takes one set of credentials per DNS provider; --dns-tls-group picks it.
+     * Like the single-token path, nothing here can fail the server, which already exists.
+     */
+    protected function connectDnsGroups(string $environment, string $context): void
+    {
+        $groups = json_decode((string) getenv('LARAKUBE_DNS_GROUPS'), true);
+        $tlsGroup = (string) ($this->option('dns-tls-group') ?? '');
+        $outcome = ['provider' => DnsProvider::CLOUDFLARE->value, 'groups' => [], 'tls' => null, 'tls_group' => $tlsGroup !== '' ? $tlsGroup : null, 'error' => null];
+
+        if (! is_array($groups) || $groups === []) {
+            $outcome['error'] = 'LARAKUBE_DNS_GROUPS is not a list of groups.';
+            $this->result['dns'] = $outcome;
+            $this->laraKubeWarn($outcome['error']);
+
+            return;
+        }
+
+        $tokens = [];
+        foreach ($groups as $entry) {
+            $group = is_array($entry) ? (string) ($entry['group'] ?? '') : '';
+            $token = is_array($entry) ? trim((string) ($entry['token'] ?? '')) : '';
+
+            if (preg_match('/^[a-z0-9][a-z0-9-]{0,40}$/', $group) !== 1 || $token === '' || isset($tokens[$group])) {
+                $outcome['groups'][] = ['group' => $group, 'records' => false, 'error' => 'Each group needs a unique lowercase name and a token.'];
+                $outcome['error'] ??= 'A DNS group was invalid.';
+
+                continue;
+            }
+
+            $tokens[$group] = $token;
+            putenv("LARAKUBE_CLOUDFLARE_TOKEN={$token}");
+
+            try {
+                $succeeded = $this->call('tool:init', ['--tool' => 'external-dns', 'environment' => $environment, '--context' => $context, '--provider' => 'cloudflare', '--group' => $group, '--force' => true]) === 0;
+                $outcome['groups'][] = ['group' => $group, 'records' => $succeeded, 'error' => $succeeded ? null : 'ExternalDNS did not finish.'];
+            } catch (Throwable $e) {
+                $outcome['groups'][] = ['group' => $group, 'records' => false, 'error' => $e->getMessage()];
+            }
+
+            if (! end($outcome['groups'])['records']) {
+                $outcome['error'] ??= "DNS records for {$group} did not finish.";
+                $this->laraKubeWarn("DNS records for {$group} did not finish. The server is ready; finish it later with larakube tool:init --tool=external-dns --group={$group} --context={$context}.");
+            }
+        }
+
+        if ($tlsGroup !== '' && ! $this->flag('without-tls')) {
+            if (! isset($tokens[$tlsGroup])) {
+                $outcome['tls'] = false;
+                $outcome['error'] ??= "The SSL group {$tlsGroup} is not one of the DNS groups.";
+            } else {
+                putenv("LARAKUBE_CLOUDFLARE_TOKEN={$tokens[$tlsGroup]}");
+
+                try {
+                    $outcome['tls'] = $this->call('tls:init', ['environment' => $environment, '--context' => $context, '--provider' => 'cloudflare', '--group' => $tlsGroup, '--force' => true]) === 0;
+                } catch (Throwable $e) {
+                    $outcome['tls'] = false;
+                    $outcome['error'] ??= "SSL through the DNS challenge could not be set up: {$e->getMessage()}";
+                }
+
+                if ($outcome['tls'] === false) {
+                    $outcome['error'] ??= 'SSL through the DNS challenge did not finish.';
+                    $this->laraKubeWarn("SSL through the DNS challenge did not finish. Finish it later with larakube tls:init --group={$tlsGroup} --context={$context}.");
+                }
+            }
+        }
+
+        putenv('LARAKUBE_CLOUDFLARE_TOKEN');
         $this->result['dns'] = $outcome;
     }
 
