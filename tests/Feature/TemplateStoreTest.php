@@ -111,11 +111,11 @@ test('download happy path verifies release and writes layout and lock.json', fun
             ->and($entry['trusted_hash'])->toBeNull();
 
         $releaseDir = "{$home}/.larakube/templates/openbao/default/1.0.0";
-        expect(is_file("{$releaseDir}/manifest.json"))->toBeTrue()
-            ->and(is_file("{$releaseDir}/manifest.sig"))->toBeTrue()
+        expect("{$releaseDir}/manifest.json")->toBeFile()
+            ->and("{$releaseDir}/manifest.sig")->toBeFile()
             ->and(trim((string) file_get_contents("{$releaseDir}/key_id")))->toBe('dev-local')
-            ->and(is_file("{$releaseDir}/views/k8s/openbao/openbao.blade.php"))->toBeTrue()
-            ->and(is_file("{$releaseDir}/views/k8s/openbao/eso-db-static.blade.php"))->toBeTrue();
+            ->and("{$releaseDir}/views/k8s/openbao/openbao.blade.php")->toBeFile()
+            ->and("{$releaseDir}/views/k8s/openbao/eso-db-static.blade.php")->toBeFile();
 
         $installed = $store->installed();
         expect($installed)->toHaveKey('openbao/default')
@@ -131,10 +131,9 @@ test('download refuses an untrusted key_id and writes nothing', function (): voi
         ]);
 
         expect(fn (): array => $store->download(ClusterTool::OPENBAO))
-            ->toThrow(RuntimeException::class, 'Untrusted signing key');
-
-        expect(is_dir("{$home}/.larakube/templates/openbao"))->toBeFalse()
-            ->and(is_file("{$home}/.larakube/templates/lock.json"))->toBeFalse();
+            ->toThrow(RuntimeException::class, 'Untrusted signing key')
+            ->and("{$home}/.larakube/templates/openbao")->not->toBeDirectory()
+            ->and("{$home}/.larakube/templates/lock.json")->not->toBeFile();
     });
 });
 
@@ -150,9 +149,8 @@ test('download refuses a revoked signing key and writes nothing', function (): v
         ]);
 
         expect(fn (): array => $store->download(ClusterTool::OPENBAO))
-            ->toThrow(RuntimeException::class, 'revoked');
-
-        expect(is_file("{$home}/.larakube/templates/lock.json"))->toBeFalse();
+            ->toThrow(RuntimeException::class, 'revoked')
+            ->and("{$home}/.larakube/templates/lock.json")->not->toBeFile();
     });
 });
 
@@ -166,9 +164,8 @@ test('download refuses a dev key when running inside a phar', function (): void 
         ]);
 
         expect(fn (): array => $store->download(ClusterTool::OPENBAO))
-            ->toThrow(RuntimeException::class, 'Untrusted signing key');
-
-        expect(is_file("{$home}/.larakube/templates/lock.json"))->toBeFalse();
+            ->toThrow(RuntimeException::class, 'Untrusted signing key')
+            ->and("{$home}/.larakube/templates/lock.json")->not->toBeFile();
     });
 });
 
@@ -182,9 +179,8 @@ test('download refuses a bad signature and writes nothing', function (): void {
         ]);
 
         expect(fn (): array => $store->download(ClusterTool::OPENBAO))
-            ->toThrow(RuntimeException::class, 'signature verification failed');
-
-        expect(is_file("{$home}/.larakube/templates/lock.json"))->toBeFalse();
+            ->toThrow(RuntimeException::class, 'signature verification failed')
+            ->and("{$home}/.larakube/templates/lock.json")->not->toBeFile();
     });
 });
 
@@ -199,9 +195,8 @@ test('download refuses a file whose content does not match the signed manifest h
         ]);
 
         expect(fn (): array => $store->download(ClusterTool::OPENBAO))
-            ->toThrow(RuntimeException::class, 'hash mismatch');
-
-        expect(is_file("{$home}/.larakube/templates/lock.json"))->toBeFalse();
+            ->toThrow(RuntimeException::class, 'hash mismatch')
+            ->and("{$home}/.larakube/templates/lock.json")->not->toBeFile();
     });
 });
 
@@ -216,9 +211,8 @@ test('download refuses an extra file not listed in the manifest', function (): v
         ]);
 
         expect(fn (): array => $store->download(ClusterTool::OPENBAO))
-            ->toThrow(RuntimeException::class, 'do not match manifest');
-
-        expect(is_file("{$home}/.larakube/templates/lock.json"))->toBeFalse();
+            ->toThrow(RuntimeException::class, 'do not match manifest')
+            ->and("{$home}/.larakube/templates/lock.json")->not->toBeFile();
     });
 });
 
@@ -249,9 +243,8 @@ test('download refuses a file path containing parent traversal', function (): vo
         ]);
 
         expect(fn (): array => $store->download(ClusterTool::OPENBAO))
-            ->toThrow(RuntimeException::class, 'Invalid template file path');
-
-        expect(is_file("{$home}/.larakube/templates/lock.json"))->toBeFalse();
+            ->toThrow(RuntimeException::class, 'Invalid template file path')
+            ->and("{$home}/.larakube/templates/lock.json")->not->toBeFile();
     });
 });
 
@@ -263,9 +256,8 @@ test('download refuses a signed manifest belonging to another app', function ():
         ]);
 
         expect(fn (): array => $store->download(ClusterTool::ZITADEL))
-            ->toThrow(RuntimeException::class, "Manifest app 'openbao' does not match requested tool 'zitadel'");
-
-        expect(is_file("{$home}/.larakube/templates/lock.json"))->toBeFalse();
+            ->toThrow(RuntimeException::class, "Manifest app 'openbao' does not match requested tool 'zitadel'")
+            ->and("{$home}/.larakube/templates/lock.json")->not->toBeFile();
     });
 });
 
@@ -276,9 +268,8 @@ test('download surfaces a clear plan required message on HTTP 402', function ():
         ]);
 
         expect(fn (): array => $store->download(ClusterTool::OPENBAO))
-            ->toThrow(RuntimeException::class, 'This app needs a LaraKube Cloud plan');
-
-        expect(is_file("{$home}/.larakube/templates/lock.json"))->toBeFalse();
+            ->toThrow(RuntimeException::class, 'This app needs a LaraKube Cloud plan')
+            ->and("{$home}/.larakube/templates/lock.json")->not->toBeFile();
     });
 });
 
@@ -295,8 +286,8 @@ test('activate prepends a clean release, refuses a modified one, and accepts it 
         $viewsDir = "{$home}/.larakube/templates/openbao/default/1.0.0/views";
         $resolvedViewsDir = realpath($viewsDir) ?: $viewsDir;
 
-        expect($store->modified())->toBe([])
-            ->and($store->refused())->toBe([])
+        expect($store->modified())->toBeEmpty()
+            ->and($store->refused())->toBeEmpty()
             ->and(View::getFinder()->getPaths()[0])->toBe($resolvedViewsDir);
 
         // Modify one template file on disk
@@ -306,7 +297,7 @@ test('activate prepends a clean release, refuses a modified one, and accepts it 
         $store->activate();
 
         expect($store->refused())->toBe(['openbao/default'])
-            ->and($store->modified())->toBe([])
+            ->and($store->modified())->toBeEmpty()
             ->and(View::getFinder()->getPaths())->not->toContain($resolvedViewsDir);
 
         // Explicitly trust the modification
@@ -316,7 +307,7 @@ test('activate prepends a clean release, refuses a modified one, and accepts it 
         $store->activate();
 
         expect($store->modified())->toBe(['openbao/default'])
-            ->and($store->refused())->toBe([])
+            ->and($store->refused())->toBeEmpty()
             ->and(View::getFinder()->getPaths()[0])->toBe($resolvedViewsDir);
     });
 });
@@ -355,7 +346,7 @@ test('ensureFor never reaches the network for an app that is not downloadable', 
         $store->ensureFor('not-a-tool');
 
         $mock->assertNothingSent();
-        expect($store->installed())->toBe([]);
+        expect($store->installed())->toBeEmpty();
     });
 });
 

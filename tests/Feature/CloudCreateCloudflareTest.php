@@ -17,6 +17,9 @@ function cloudflareProbe(array $input): object
 
         public ?Throwable $failWith = null;
 
+        /** @var array<string, int> exit code per command; 0 when unset */
+        public array $exitCodes = [];
+
         public function call($command, array $arguments = []): int
         {
             $this->called[] = [(string) $command, $arguments];
@@ -25,7 +28,13 @@ function cloudflareProbe(array $input): object
                 throw $this->failWith;
             }
 
-            return 0;
+            return $this->exitCodes[(string) $command] ?? 0;
+        }
+
+        /** @return array<string, mixed>|null */
+        public function dnsOutcome(): ?array
+        {
+            return $this->result['dns'] ?? null;
         }
 
         public function finish(string $environment = 'production', string $context = 'ctx'): void
@@ -120,4 +129,42 @@ test('--without-tls skips tls:init but runs external-dns', function (): void {
     expect($probe->called)->toBe([
         ['tool:init', ['--tool' => 'external-dns', 'environment' => 'prod', '--context' => 'ctx', '--provider' => 'google', '--force' => true]],
     ]);
+});
+
+test('the result reports which DNS steps finished, so LaraKube Cloud can show it', function (): void {
+    putenv('LARAKUBE_CLOUDFLARE_TOKEN=cf-token');
+
+    $ok = cloudflareProbe(['--no-interaction' => true, '--dns-provider' => 'cloudflare']);
+    $ok->finish();
+
+    $tlsFailed = cloudflareProbe(['--no-interaction' => true, '--dns-provider' => 'cloudflare']);
+    $tlsFailed->exitCodes = ['tls:init' => 1];
+    $tlsFailed->finish();
+
+    $thrown = cloudflareProbe(['--no-interaction' => true, '--dns-provider' => 'cloudflare']);
+    $thrown->failWith = new RuntimeException('zone not found');
+    $thrown->finish();
+
+    expect($ok->dnsOutcome())->toBe(['provider' => 'cloudflare', 'records' => true, 'tls' => true, 'error' => null])
+        ->and($tlsFailed->dnsOutcome())->toMatchArray(['records' => true, 'tls' => false])
+        ->and($tlsFailed->dnsOutcome()['error'])->toContain('did not finish')
+        ->and($thrown->dnsOutcome())->toMatchArray(['records' => false, 'tls' => false])
+        ->and($thrown->dnsOutcome()['error'])->toContain('zone not found');
+});
+
+test('the result says DNS was skipped when no token was given', function (): void {
+    putenv('LARAKUBE_CLOUDFLARE_TOKEN');
+
+    $probe = cloudflareProbe(['--no-interaction' => true, '--dns-provider' => 'cloudflare']);
+    $probe->finish();
+
+    expect($probe->dnsOutcome())->toMatchArray(['records' => null, 'tls' => null])
+        ->and($probe->called)->toBe([]);
+});
+
+test('a run that never asked for DNS reports nothing about it', function (): void {
+    $probe = cloudflareProbe(['--no-interaction' => true]);
+    $probe->finish();
+
+    expect($probe->dnsOutcome())->toBeNull();
 });

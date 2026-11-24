@@ -390,6 +390,7 @@ class CloudCreateCommand extends Command
             $token = trim((string) (getenv('LARAKUBE_CLOUDFLARE_TOKEN') ?: ''));
             if ($token === '') {
                 $this->laraKubeWarn('--cloudflare was given but no Cloudflare token is set, so DNS and SSL were left for later.');
+                $this->result['dns'] = ['provider' => $provider->value, 'records' => null, 'tls' => null, 'error' => 'No Cloudflare token was set.'];
 
                 return;
             }
@@ -431,20 +432,35 @@ class CloudCreateCommand extends Command
             ];
         }
 
-        foreach ($steps as $step) {
+        // Reported in --json so a caller such as LaraKube Cloud knows which steps finished. null = not attempted.
+        $outcome = ['provider' => $provider->value, 'records' => null, 'tls' => null, 'error' => null];
+
+        foreach ($steps as $key => $step) {
             $wanted = $interactive ? ($asked || confirm($step['question'], default: $step['default'])) : true;
 
             if (! $wanted) {
                 continue;
             }
 
+            $field = $key === 'dns' ? 'records' : 'tls';
+
             try {
-                $this->call($step['command'], $step['arguments']);
+                $succeeded = $this->call($step['command'], $step['arguments']) === 0;
+                $outcome[$field] = $succeeded;
+
+                if (! $succeeded) {
+                    $outcome['error'] ??= "{$step['label']} did not finish.";
+                    $this->laraKubeWarn("{$step['label']} did not finish. The server is ready; finish it later with larakube {$step['command']} --context={$context}.");
+                }
             } catch (Throwable $e) {
+                $outcome[$field] = false;
+                $outcome['error'] ??= "{$step['label']} could not be set up: {$e->getMessage()}";
                 $this->laraKubeWarn("{$step['label']} could not be set up: {$e->getMessage()}");
                 $this->laraKubeLine('  <fg=gray>The server is ready. Finish this later from its page in LaraKube Desktop, or with</> <fg=yellow>larakube '.$step['command'].'</><fg=gray>.</>');
             }
         }
+
+        $this->result['dns'] = $outcome;
     }
 
     /**

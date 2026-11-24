@@ -84,7 +84,7 @@ test('templates:trust lists modified files and trusts them when --force is passe
             ->and($output)->toContain('Trusted modified templates for openbao/default')
             ->and($store->installed()['openbao/default']['trusted_hash'])->not->toBeNull()
             ->and($store->modified())->toBe(['openbao/default'])
-            ->and($store->refused())->toBe([]);
+            ->and($store->refused())->toBeEmpty();
     });
 });
 
@@ -94,8 +94,7 @@ test('templates:trust fails via MissingFlagException when non-interactive withou
         file_put_contents($targetFile, file_get_contents($targetFile)."\n# customized ingress\n");
 
         expect(fn () => Artisan::call('templates:trust', ['app' => 'openbao']))
-            ->toThrow(MissingFlagException::class, 'Missing required --force');
-
-        expect($store->installed()['openbao/default']['trusted_hash'])->toBeNull();
+            ->toThrow(MissingFlagException::class, 'Missing required --force')
+            ->and($store->installed()['openbao/default']['trusted_hash'])->toBeNull();
     });
 });
