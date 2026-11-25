@@ -336,6 +336,17 @@ trait ConfiguresCloudEnvironment
             ));
         }
 
+        // `--managed=` alongside `--only=plex` also sets which services are hosted outside the
+        // cluster (e.g. AWS RDS). Plex services keep their own `managed` entries.
+        if ($this->flag('managed') !== null) {
+            $external = $this->gatherEnvironmentManaged($config, $environment);
+            $this->rejectManagedAndPlexOverlap($external, $selected);
+            $config->environments[$environment]->managed = array_values(array_unique([
+                ...$external,
+                ...array_intersect($config->environments[$environment]->managed, $selected),
+            ]));
+        }
+
         $this->saveProjectConfig($projectPath, $config);
 
         $this->withSpin("Regenerating manifests for '{$environment}'...", function () use ($config) {

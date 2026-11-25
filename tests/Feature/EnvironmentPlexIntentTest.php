@@ -456,3 +456,30 @@ test('cloud:configure --only=target rejects a service that is both --managed and
         ->expectsOutputToContain("Service(s) 'postgres' can't be both externally managed")
         ->assertExitCode(1);
 });
+
+test('cloud:configure --only=plex --managed= marks a service as hosted outside the cluster', function (): void {
+    Process::fake(['*' => Process::result(output: '')]);
+    plexIntentProject($this->tempDir);
+
+    $this->artisan('cloud:configure', [
+        'environment' => 'staging',
+        '--only' => 'plex',
+        '--plex' => 'redis',
+        '--managed' => 'postgres',
+        '--no-interaction' => true,
+    ])->assertExitCode(0);
+
+    $saved = ConfigData::loadFromFile($this->tempDir);
+    expect($saved->getPlex('staging'))->toBe(['redis'])
+        ->and($saved->getManaged('staging'))->toContain('postgres');
+
+    $this->artisan('cloud:configure', [
+        'environment' => 'staging',
+        '--only' => 'plex',
+        '--plex' => 'postgres',
+        '--managed' => 'postgres',
+        '--no-interaction' => true,
+    ])
+        ->expectsOutputToContain("can't be both externally managed")
+        ->assertExitCode(1);
+});
