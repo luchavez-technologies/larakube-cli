@@ -436,3 +436,23 @@ test('cloud:configure --only=hosts rejects a --host for a service the environmen
         ->expectsOutputToContain("Unknown --host service(s): 'bogus'")
         ->assertExitCode(1);
 });
+
+test('cloud:configure --only=target rejects a service that is both --managed and --plex', function (): void {
+    Process::fake(['*' => Process::result(output: '')]);
+    plexIntentProject($this->tempDir, ['local' => []]);
+
+    $this->artisan('cloud:configure', [
+        'environment' => 'staging',
+        '--only' => 'target',
+        '--context' => 'larakube-203.0.113.21',
+        '--web-host' => 'staging.example.com',
+        '--web-hosts' => '',
+        '--ingress' => 'traefik',
+        '--managed' => 'postgres',
+        '--plex' => 'postgres,redis',
+        '--ssh-key' => '~/.ssh/id_rsa',
+        '--no-interaction' => true,
+    ])
+        ->expectsOutputToContain("Service(s) 'postgres' can't be both externally managed")
+        ->assertExitCode(1);
+});

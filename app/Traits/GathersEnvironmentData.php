@@ -149,6 +149,23 @@ trait GathersEnvironmentData
      * review/edit flow — `larakube env {name} --edit` does exactly this,
      * prefilled instead of blank.
      */
+    /**
+     * A service is either hosted outside the cluster or shared from Plex Commons, never both:
+     * each needs different connection values.
+     *
+     * @param  list<string>  $managed
+     * @param  list<string>  $plex
+     */
+    protected function rejectManagedAndPlexOverlap(array $managed, array $plex): void
+    {
+        $both = array_values(array_intersect($managed, $plex));
+        if ($both !== []) {
+            throw new InvalidArgumentException(
+                "Service(s) '".implode("', '", $both)."' can't be both externally managed (--managed) and shared from Plex Commons (--plex). Pick one.",
+            );
+        }
+    }
+
     protected function gatherEnvironmentData(ConfigData $config, string $envName): EnvironmentData
     {
         $envData = new EnvironmentData;
@@ -157,6 +174,7 @@ trait GathersEnvironmentData
         if ($envName !== 'local' || $this->flag('plex') !== null) {
             $envData->plex = $this->gatherEnvironmentPlex($config, $envName);
         }
+        $this->rejectManagedAndPlexOverlap($envData->managed, $envData->plex);
 
         // Client-facing hosts — the optional web host plus any HasPromptableHosts
         // service overrides (Reverb WS, object-storage S3/CDN). Shared via

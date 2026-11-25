@@ -95,9 +95,11 @@ trait ConfiguresCloudEnvironment
         if ($isNewEnvironment) {
             $this->laraKubeInfo("Environment '{$environment}' isn't in your blueprint yet — let's set it up.");
             $plex = $this->flag('plex') !== null ? $this->gatherEnvironmentPlex($config, $environment) : [];
+            $managed = $this->gatherEnvironmentManaged($config, $environment);
+            $this->rejectManagedAndPlexOverlap($managed, $plex);
             $config->addEnvironment($environment, new EnvironmentData(
                 ingress: $this->gatherEnvironmentIngress($config, $environment),
-                managed: $this->gatherEnvironmentManaged($config, $environment),
+                managed: $managed,
                 plex: $plex,
                 additionalWebHosts: $this->gatherAdditionalWebHosts($config, $environment),
             ));
