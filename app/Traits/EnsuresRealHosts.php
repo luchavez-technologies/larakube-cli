@@ -71,6 +71,7 @@ trait EnsuresRealHosts
             // NonInteractiveValidationException when --no-interaction is on).
             if (! $this->isLocalDomain($flagged) && $flagged !== $placeholder) {
                 $config->setHost($environment, 'web', $flagged);
+                $this->applyFlaggedServiceHosts($config, $environment);
 
                 return $this->ensuredHosts[$environment] = $flagged;
             }
@@ -166,6 +167,25 @@ trait EnsuresRealHosts
         }
 
         return $this->ensuredHosts[$environment] = (string) $currentHost;
+    }
+
+    /**
+     * Save every client-facing host given as `--host=service=hostname` for this environment's
+     * services, so a headless run with --web-host still sets them.
+     */
+    protected function applyFlaggedServiceHosts(ConfigData $config, string $environment): void
+    {
+        $flagged = method_exists($this, 'hostOverridesFromFlag') ? $this->hostOverridesFromFlag() : [];
+        foreach ($config->getComponents($environment) as $component) {
+            if (! $component instanceof HasPromptableHosts) {
+                continue;
+            }
+            foreach (array_keys($component->getPromptableHostServices()) as $service) {
+                if (($flagged[$service] ?? '') !== '') {
+                    $config->setHost($environment, $service, $flagged[$service]);
+                }
+            }
+        }
     }
 
     protected function isLocalDomain(string $host): bool

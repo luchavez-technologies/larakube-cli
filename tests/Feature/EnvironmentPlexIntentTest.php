@@ -400,3 +400,23 @@ test('buildPublicEnvScript includes non-secret Plex connection vars from .env.<e
         ->not->toContain('AWS_SECRET_ACCESS_KEY')
         ->not->toContain('super-secret');
 });
+
+test('cloud:configure --only=hosts takes client-facing hosts from --host without prompting', function (): void {
+    Process::fake(['*' => Process::result(output: '')]);
+    $config = plexIntentProject($this->tempDir);
+    $config->addFeature(\App\Enums\LaravelFeature::REVERB);
+    $config->saveToFile($this->tempDir);
+
+    $this->artisan('cloud:configure', [
+        'environment' => 'staging',
+        '--only' => 'hosts',
+        '--web-host' => 'staging.example.com',
+        '--web-hosts' => '',
+        '--host' => ['reverb=ws.example.org', 's3=s3.example.org'],
+        '--no-interaction' => true,
+    ])->assertExitCode(0);
+
+    $saved = ConfigData::loadFromFile($this->tempDir);
+    expect($saved->getHost('staging', 'reverb'))->toBe('ws.example.org')
+        ->and($saved->getHost('staging', 's3'))->toBe('s3.example.org');
+});
