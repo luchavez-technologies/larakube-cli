@@ -10,7 +10,9 @@ use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
+use InvalidArgumentException;
 use LaravelZero\Framework\Commands\Command;
+use RuntimeException;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Throwable;
 
@@ -51,7 +53,7 @@ class CloudAppsInstallCommand extends Command
         $result = ['success' => false, 'app' => $app, 'host' => null, 'error' => null];
 
         try {
-            in_array($app, self::APPS, true) || throw new \InvalidArgumentException("LaraKube Cloud cannot install {$app}.");
+            in_array($app, self::APPS, true) || throw new InvalidArgumentException("LaraKube Cloud cannot install {$app}.");
             $command = $app === 'plex' ? 'plex:init' : 'tool:init';
             $context = $this->useKubeconfig((string) $this->option('kubeconfig'));
             $arguments = $this->initArguments($app, $context);
@@ -85,7 +87,7 @@ class CloudAppsInstallCommand extends Command
             $services = array_values(array_filter(array_map(trim(...), explode(',', (string) $this->option('plex-services')))));
             $unknown = array_diff($services, self::PLEX_SERVICES);
             if ($services === [] || $unknown !== []) {
-                throw new \InvalidArgumentException('Choose Commons services from: '.implode(', ', self::PLEX_SERVICES).'.');
+                throw new InvalidArgumentException('Choose Commons services from: '.implode(', ', self::PLEX_SERVICES).'.');
             }
 
             return [...$arguments, '--services' => implode(',', $services), '--confirm-commons-restart' => true];
@@ -100,7 +102,7 @@ class CloudAppsInstallCommand extends Command
         $domain = strtolower(trim((string) $this->option('domain')));
         if ($domain !== '' && in_array('domain', $accepted, true)) {
             if (preg_match('/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/', $domain) !== 1) {
-                throw new \InvalidArgumentException("{$domain} is not a valid host.");
+                throw new InvalidArgumentException("{$domain} is not a valid host.");
             }
             $arguments['--domain'] = $domain;
         }
@@ -108,7 +110,7 @@ class CloudAppsInstallCommand extends Command
         $email = trim((string) $this->option('admin-email'));
         if ($email !== '' && in_array('admin-email', $accepted, true)) {
             if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
-                throw new \InvalidArgumentException('The admin email is not valid.');
+                throw new InvalidArgumentException('The admin email is not valid.');
             }
             $arguments['--admin-email'] = $email;
         }
@@ -118,7 +120,7 @@ class CloudAppsInstallCommand extends Command
             $choices = collect(ToolInitSpec::for(ClusterTool::from($app)))->firstWhere('name', 'db')?->choices ?? [];
             $db = $db === '' ? (string) array_key_first($choices) : $db;
             if (! array_key_exists($db, $choices)) {
-                throw new \InvalidArgumentException("{$app} does not offer the {$db} storage choice.");
+                throw new InvalidArgumentException("{$app} does not offer the {$db} storage choice.");
             }
             $arguments['--db'] = $db;
         }
@@ -133,12 +135,12 @@ class CloudAppsInstallCommand extends Command
     private function useKubeconfig(string $kubeconfig): string
     {
         if ($kubeconfig === '' || ! is_file($kubeconfig)) {
-            throw new \InvalidArgumentException('A kubeconfig for the cluster is required.');
+            throw new InvalidArgumentException('A kubeconfig for the cluster is required.');
         }
 
         $context = trim(Process::run(['kubectl', 'config', 'view', '--kubeconfig', $kubeconfig, '-o', 'jsonpath={.current-context}'])->output());
         if ($context === '') {
-            throw new \InvalidArgumentException('The kubeconfig has no current context.');
+            throw new InvalidArgumentException('The kubeconfig has no current context.');
         }
 
         $default = home_path('.kube/config');
@@ -147,7 +149,7 @@ class CloudAppsInstallCommand extends Command
         $merged = Process::env(['KUBECONFIG' => file_exists($default) ? "{$kubeconfig}:{$default}" : $kubeconfig])
             ->run(['kubectl', 'config', 'view', '--flatten']);
         if (! $merged->successful() || trim($merged->output()) === '') {
-            throw new \RuntimeException('The kubeconfig could not be read.');
+            throw new RuntimeException('The kubeconfig could not be read.');
         }
 
         File::put($default, $merged->output());

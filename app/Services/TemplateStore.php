@@ -8,6 +8,7 @@ use App\Http\Integrations\LaraKubeCloud\Requests\LatestRelease;
 use App\Http\Integrations\LaraKubeCloud\Requests\SigningKeys;
 use App\Support\Templates\CanonicalJson;
 use App\Support\Templates\ReleaseVerifier;
+use App\Support\Templates\TemplateApp;
 use App\Support\Templates\TrustedKeys;
 use Closure;
 use Illuminate\Support\Facades\View;
@@ -69,23 +70,24 @@ class TemplateStore
     }
 
     /**
-     * Download, verify, and atomically install the latest compatible release for a ClusterTool.
+     * Download, verify, and atomically install the latest compatible release for an app.
      *
      * @return array{version: string, contract: int, key_id: string, fetched_at: string, trusted_hash: null}
      */
-    public function download(ClusterTool $tool, ?string $engine = null): array
+    public function download(ClusterTool|TemplateApp $tool, ?string $engine = null): array
     {
+        $tool = $tool instanceof ClusterTool ? TemplateApp::forTool($tool) : $tool;
         $engineSlug = ($engine !== null && $engine !== '') ? $engine : 'default';
         $engineForTool = $engineSlug === 'default' ? null : $engineSlug;
-        $contracts = $tool->templateContracts($engineForTool);
+        $contracts = $tool->contracts($engineForTool);
 
         $connector = $this->connector ?? new LaraKubeCloudConnector;
 
-        // (a) GET latest with $tool->templateContracts($engine)
+        // (a) GET latest with $tool->contracts($engine)
         try {
-            $response = $connector->send(new LatestRelease($tool->value, $engineSlug, $contracts));
+            $response = $connector->send(new LatestRelease($tool->slug, $engineSlug, $contracts));
         } catch (Throwable $e) {
-            throw new RuntimeException("Failed to fetch template release for '{$tool->value}': {$e->getMessage()}", 0, $e);
+            throw new RuntimeException("Failed to fetch template release for '{$tool->slug}': {$e->getMessage()}", 0, $e);
         }
 
         if ($response->status() === 402) {
@@ -93,11 +95,11 @@ class TemplateStore
         }
 
         if ($response->status() === 404) {
-            throw new RuntimeException($this->extractErrorMessage($response, "No compatible template release found for '{$tool->value}'."));
+            throw new RuntimeException($this->extractErrorMessage($response, "No compatible template release found for '{$tool->slug}'."));
         }
 
         if (! $response->successful()) {
-            throw new RuntimeException($this->extractErrorMessage($response, "LaraKube Cloud returned HTTP {$response->status()} for '{$tool->value}'."));
+            throw new RuntimeException($this->extractErrorMessage($response, "LaraKube Cloud returned HTTP {$response->status()} for '{$tool->slug}'."));
         }
 
         $payload = $response->json();
@@ -134,8 +136,8 @@ class TemplateStore
 
         // (d) manifest.app == tool value, manifest.engine == engine slug ('default' when null), manifest.contract in templateContracts
         $manifestApp = $manifest['app'] ?? null;
-        if ($manifestApp !== $tool->value) {
-            throw new RuntimeException("Manifest app '{$manifestApp}' does not match requested tool '{$tool->value}'.");
+        if ($manifestApp !== $tool->slug) {
+            throw new RuntimeException("Manifest app '{$manifestApp}' does not match requested tool '{$tool->slug}'.");
         }
 
         $manifestEngine = $manifest['engine'] ?? null;
@@ -190,12 +192,12 @@ class TemplateStore
 
         // (f) write everything into a temp dir under root, then rename() to the final version dir (reuse if already exists and verifies)
         $root = $this->root();
-        $versionDir = "{$root}/{$tool->value}/{$engineSlug}/{$version}";
-        $templateFolder = $tool->templateFolder();
+        $versionDir = "{$root}/{$tool->slug}/{$engineSlug}/{$version}";
+        $templateFolder = $tool->folder;
 
         if (! is_dir($versionDir) || ! $this->releaseDirectoryVerifies($versionDir, $templateFolder, $manifest, $signature, $publicKey)) {
-            $this->ensureDirectory("{$root}/{$tool->value}/{$engineSlug}");
-            $tempDir = "{$root}/.tmp-{$tool->value}-{$engineSlug}-".bin2hex(random_bytes(8));
+            $this->ensureDirectory("{$root}/{$tool->slug}/{$engineSlug}");
+            $tempDir = "{$root}/.tmp-{$tool->slug}-{$engineSlug}-".bin2hex(random_bytes(8));
             $this->ensureDirectory($tempDir);
 
             try {
@@ -237,7 +239,7 @@ class TemplateStore
         ];
 
         $lock = $this->readLock();
-        $lock['apps']["{$tool->value}/{$engineSlug}"] = $lockEntry;
+        $lock['apps']["{$tool->slug}/{$engineSlug}"] = $lockEntry;
         $this->writeLock($lock);
 
         return $lockEntry;
@@ -279,8 +281,8 @@ class TemplateStore
                 continue;
             }
 
-            $tool = ClusterTool::tryFrom($app);
-            $templateFolder = $tool?->templateFolder() ?? $app;
+            $tool = TemplateApp::find($app);
+            $templateFolder = $tool?->folder ?? $app;
             $releaseDir = "{$root}/{$app}/{$engine}/{$version}";
             $manifestPath = "{$releaseDir}/manifest.json";
 
@@ -322,10 +324,10 @@ class TemplateStore
     /**
      * Record the current combined file hash as trusted_hash for an installed app/engine.
      */
-    public function trust(ClusterTool|string $app, ?string $engine = null): string
+    public function trust(ClusterTool|TemplateApp|string $app, ?string $engine = null): string
     {
-        $appSlug = $app instanceof ClusterTool ? $app->value : strtolower(trim($app));
-        $tool = ClusterTool::tryFrom($appSlug);
+        $appSlug = $app instanceof TemplateApp ? $app->slug : ($app instanceof ClusterTool ? $app->value : strtolower(trim($app)));
+        $tool = TemplateApp::find($appSlug);
         $engineSlug = ($engine !== null && $engine !== '') ? $engine : ($tool?->defaultEngine() ?? 'default');
         $lockKey = "{$appSlug}/{$engineSlug}";
 
@@ -349,7 +351,7 @@ class TemplateStore
             throw new RuntimeException("Manifest file is invalid for '{$lockKey}'.");
         }
 
-        $templateFolder = $tool?->templateFolder() ?? $appSlug;
+        $templateFolder = $tool?->folder ?? $appSlug;
         $folderDir = "{$releaseDir}/views/k8s/{$templateFolder}";
         [, $combinedHash] = $this->inspectReleaseFiles($folderDir, $manifestFiles);
 
@@ -364,10 +366,10 @@ class TemplateStore
      *
      * @return list<string>
      */
-    public function modifiedFiles(ClusterTool|string $app, ?string $engine = null): array
+    public function modifiedFiles(ClusterTool|TemplateApp|string $app, ?string $engine = null): array
     {
-        $appSlug = $app instanceof ClusterTool ? $app->value : strtolower(trim($app));
-        $tool = ClusterTool::tryFrom($appSlug);
+        $appSlug = $app instanceof TemplateApp ? $app->slug : ($app instanceof ClusterTool ? $app->value : strtolower(trim($app)));
+        $tool = TemplateApp::find($appSlug);
         $engineSlug = ($engine !== null && $engine !== '') ? $engine : ($tool?->defaultEngine() ?? 'default');
         $lockKey = "{$appSlug}/{$engineSlug}";
 
@@ -391,7 +393,7 @@ class TemplateStore
             return ['manifest.json'];
         }
 
-        $templateFolder = $tool?->templateFolder() ?? $appSlug;
+        $templateFolder = $tool?->folder ?? $appSlug;
         $folderDir = "{$releaseDir}/views/k8s/{$templateFolder}";
         $changed = [];
 
@@ -460,22 +462,16 @@ class TemplateStore
             return;
         }
 
-        $tool = null;
-        foreach (ClusterTool::cases() as $candidate) {
-            if ($candidate->templateFolder() === $folder) {
-                $tool = $candidate;
-                break;
-            }
-        }
+        $tool = TemplateApp::forFolder($folder);
 
         // Checking whether a template exists must never reach the network for an app that still ships in this binary.
-        if ($tool === null || ! in_array($tool->value, (array) config('templates.downloadable', []), true)) {
+        if ($tool === null || ! in_array($tool->slug, (array) config('templates.downloadable', []), true)) {
             return;
         }
 
         $installed = $this->installed();
         foreach (array_keys($installed) as $lockKey) {
-            if (str_starts_with($lockKey, $tool->value.'/')) {
+            if (str_starts_with($lockKey, $tool->slug.'/')) {
                 return;
             }
         }

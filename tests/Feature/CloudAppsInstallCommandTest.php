@@ -21,17 +21,15 @@ function cloudAppsInstallResult(string $output): array
 }
 
 test('only listed apps can be installed', function (): void {
-    expect(Artisan::call('cloud:apps:install', ['app' => 'zitadel', '--json' => true]))->toBe(1);
-
-    expect(cloudAppsInstallResult(Artisan::output())['error'])->toContain('cannot install zitadel');
+    expect(Artisan::call('cloud:apps:install', ['app' => 'zitadel', '--json' => true]))->toBe(1)
+        ->and(cloudAppsInstallResult(Artisan::output())['error'])->toContain('cannot install zitadel');
 });
 
 test('a kubeconfig is required, and nothing runs without one', function (): void {
     Process::fake();
 
-    expect(Artisan::call('cloud:apps:install', ['app' => 'openbao', '--json' => true]))->toBe(1);
-
-    expect(cloudAppsInstallResult(Artisan::output())['error'])->toContain('kubeconfig');
+    expect(Artisan::call('cloud:apps:install', ['app' => 'openbao', '--json' => true]))->toBe(1)
+        ->and(cloudAppsInstallResult(Artisan::output())['error'])->toContain('kubeconfig');
     Process::assertNothingRan();
 });
 
@@ -44,9 +42,8 @@ test('hosts, emails, storage choices and Commons services are checked before any
         '*--flatten*' => Process::result(output: "apiVersion: v1\nkind: Config\n"),
     ]);
 
-    expect(Artisan::call('cloud:apps:install', [...$options, '--kubeconfig' => cloudAppsInstallKubeconfig($directory), '--json' => true]))->toBe(1);
-
-    expect(cloudAppsInstallResult(Artisan::output())['error'])->toContain($message);
+    expect(Artisan::call('cloud:apps:install', [...$options, '--kubeconfig' => cloudAppsInstallKubeconfig($directory), '--json' => true]))->toBe(1)
+        ->and(cloudAppsInstallResult(Artisan::output())['error'])->toContain($message);
     Process::assertDidntRun(fn ($process): bool => str_contains(is_array($process->command) ? implode(' ', $process->command) : (string) $process->command, 'apply'));
 })->with([
     'bad host' => [['app' => 'openbao', '--domain' => 'not a host'], 'not a valid host'],

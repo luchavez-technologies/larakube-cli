@@ -2,9 +2,9 @@
 
 namespace App\Commands\Templates;
 
-use App\Enums\ClusterTool;
 use App\Exceptions\MissingFlagException;
 use App\Services\TemplateStore;
+use App\Support\Templates\TemplateApp;
 use App\Traits\LaraKubeOutput;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 
@@ -32,7 +32,7 @@ class TemplatesTrustCommand extends Command
         $this->surfaceActivationWarnings($store);
 
         $appSlug = strtolower(trim((string) $this->argument('app')));
-        $tool = ClusterTool::tryFrom($appSlug);
+        $tool = TemplateApp::find($appSlug);
         $engineOption = trim((string) ($this->option('engine') ?? ''));
         $engineSlug = $engineOption !== '' ? $engineOption : ($tool?->defaultEngine() ?? 'default');
         $lockKey = "{$appSlug}/{$engineSlug}";

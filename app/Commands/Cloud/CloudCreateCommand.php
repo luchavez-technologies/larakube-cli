@@ -27,6 +27,7 @@ use App\Traits\ProvisionsK3sNode;
 use App\Traits\ReadsCommandOptions;
 use App\Traits\ResolvesEnvironmentContext;
 use Illuminate\Support\Facades\Process;
+use InvalidArgumentException;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
@@ -793,7 +794,7 @@ class CloudCreateCommand extends Command
             $this->installerTrust = CloudInstallerTrust::fromOptions(
                 $this->option('cloud-installer-issuer'), $this->option('cloud-installer-audience'), $this->option('cloud-installer-subject'),
             );
-        } catch (\InvalidArgumentException $e) {
+        } catch (InvalidArgumentException $e) {
             $this->laraKubeError($e->getMessage());
 
             return 1;

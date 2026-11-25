@@ -2,7 +2,6 @@
 
 namespace App\Commands\Templates;
 
-use App\Enums\ClusterTool;
 use App\Facades\State;
 use App\Http\Integrations\LaraKubeCloud\LaraKubeCloudConnector;
 use App\Http\Integrations\LaraKubeCloud\Requests\AppReleases;
@@ -11,6 +10,7 @@ use App\Support\Templates\CanonicalJson;
 use App\Support\Templates\ImageDigestResolver;
 use App\Support\Templates\ReleaseManifestBuilder;
 use App\Support\Templates\ReleaseVerifier;
+use App\Support\Templates\TemplateApp;
 use App\Support\Templates\TrustedKeys;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\FailsWithJson;
@@ -78,7 +78,7 @@ class TemplatesPublishCommand extends Command
 
         $tools = [];
         foreach ($this->normalizeAppArguments((array) $this->argument('apps')) as $appSlug) {
-            $tool = ClusterTool::tryFrom($appSlug);
+            $tool = TemplateApp::find($appSlug);
             if ($tool === null) {
                 return $this->failed("Unknown app '{$appSlug}'.");
             }
@@ -122,12 +122,12 @@ class TemplatesPublishCommand extends Command
                     $signatureB64 = base64_encode(sodium_crypto_sign_detached($canonical, $secretKey));
 
                     if (! ReleaseVerifier::verify($manifest, $signatureB64, $derivedPublicKeyB64)) {
-                        return $this->failed("Signature verification against derived public key failed for '{$tool->value}'.");
+                        return $this->failed("Signature verification against derived public key failed for '{$tool->slug}'.");
                     }
 
                     if ($dryRun) {
                         $releases[] = [
-                            'app' => $tool->value,
+                            'app' => $tool->slug,
                             'engine' => $manifest['engine'],
                             'version' => $version,
                             'images' => count($manifest['images']),
@@ -157,7 +157,7 @@ class TemplatesPublishCommand extends Command
                         $publishedVersion = $response->json('version');
 
                         $releases[] = [
-                            'app' => is_string($publishedApp) && $publishedApp !== '' ? $publishedApp : $tool->value,
+                            'app' => is_string($publishedApp) && $publishedApp !== '' ? $publishedApp : $tool->slug,
                             'engine' => $manifest['engine'],
                             'version' => is_string($publishedVersion) && $publishedVersion !== '' ? $publishedVersion : $version,
                             'images' => count($manifest['images']),
@@ -174,7 +174,7 @@ class TemplatesPublishCommand extends Command
 
                     if ($status === 409) {
                         $releases[] = [
-                            'app' => $tool->value,
+                            'app' => $tool->slug,
                             'engine' => $manifest['engine'],
                             'version' => $version,
                             'images' => count($manifest['images']),
@@ -191,7 +191,7 @@ class TemplatesPublishCommand extends Command
 
                     $errorMessage = trim((string) ($response->json('message') ?? $response->json('error') ?? ''));
                     if ($errorMessage === '') {
-                        $errorMessage = "LaraKube Cloud returned HTTP {$status} when uploading '{$tool->value}'.";
+                        $errorMessage = "LaraKube Cloud returned HTTP {$status} when uploading '{$tool->slug}'.";
                     }
 
                     return $this->failed($errorMessage);
@@ -228,9 +228,9 @@ class TemplatesPublishCommand extends Command
         return self::SUCCESS;
     }
 
-    private function resolveNextPatchVersion(LaraKubeCloudConnector $cloud, ClusterTool $tool): string
+    private function resolveNextPatchVersion(LaraKubeCloudConnector $cloud, TemplateApp $tool): string
     {
-        $response = $cloud->send(new AppReleases($tool->value));
+        $response = $cloud->send(new AppReleases($tool->slug));
 
         if ($response->status() === 404) {
             return '1.0.0';
@@ -242,7 +242,7 @@ class TemplatesPublishCommand extends Command
             throw new RuntimeException(
                 $message !== ''
                     ? $message
-                    : "LaraKube Cloud returned HTTP {$response->status()} when fetching releases for '{$tool->value}'.",
+                    : "LaraKube Cloud returned HTTP {$response->status()} when fetching releases for '{$tool->slug}'.",
             );
         }
 

@@ -2,9 +2,9 @@
 
 namespace App\Commands\Templates;
 
-use App\Enums\ClusterTool;
 use App\Facades\State;
 use App\Services\TemplateStore;
+use App\Support\Templates\TemplateApp;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\FailsWithJson;
 use App\Traits\LaraKubeOutput;
@@ -51,18 +51,18 @@ class TemplatesUpdateCommand extends Command
 
         if (is_string($appArg) && trim($appArg) !== '') {
             $appSlug = strtolower(trim($appArg));
-            $tool = ClusterTool::tryFrom($appSlug);
+            $tool = TemplateApp::find($appSlug);
 
             if ($tool === null) {
                 return $this->failed("Unknown app '{$appSlug}'.");
             }
 
             if ($engineOption !== '') {
-                $lockKey = "{$tool->value}/{$engineOption}";
+                $lockKey = "{$tool->slug}/{$engineOption}";
                 $targets[$lockKey] = [$tool, $engineOption, $installed[$lockKey] ?? null];
             } else {
                 foreach ($installed as $lockKey => $entry) {
-                    if (str_starts_with($lockKey, $tool->value.'/')) {
+                    if (str_starts_with($lockKey, $tool->slug.'/')) {
                         [, $engineSlug] = explode('/', $lockKey, 2);
                         $targets[$lockKey] = [$tool, $engineSlug, $entry];
                     }
@@ -70,7 +70,7 @@ class TemplatesUpdateCommand extends Command
 
                 if ($targets === []) {
                     $engineSlug = $tool->defaultEngine() ?? 'default';
-                    $lockKey = "{$tool->value}/{$engineSlug}";
+                    $lockKey = "{$tool->slug}/{$engineSlug}";
                     $targets[$lockKey] = [$tool, $engineSlug, null];
                 }
             }
@@ -84,7 +84,7 @@ class TemplatesUpdateCommand extends Command
                     continue;
                 }
 
-                $tool = ClusterTool::tryFrom($appSlug);
+                $tool = TemplateApp::find($appSlug);
                 if ($tool === null) {
                     continue;
                 }
@@ -100,7 +100,7 @@ class TemplatesUpdateCommand extends Command
 
             if (in_array($lockKey, $modified, true) && ! $force) {
                 $results[] = [
-                    'app' => $tool->value,
+                    'app' => $tool->slug,
                     'engine' => $engineSlug,
                     'previous_version' => $previousVersion,
                     'version' => $previousVersion,
@@ -110,7 +110,7 @@ class TemplatesUpdateCommand extends Command
                 ];
 
                 if (! $this->flag('json')) {
-                    $this->laraKubeLine("Skipped {$tool->value} ({$engineSlug}): modified and trusted (use --force to overwrite).");
+                    $this->laraKubeLine("Skipped {$tool->slug} ({$engineSlug}): modified and trusted (use --force to overwrite).");
                 }
 
                 continue;
@@ -128,7 +128,7 @@ class TemplatesUpdateCommand extends Command
             $restored = ! $changed && (in_array($lockKey, $modified, true) || in_array($lockKey, $refused, true));
 
             $results[] = [
-                'app' => $tool->value,
+                'app' => $tool->slug,
                 'engine' => $engineSlug,
                 'previous_version' => $previousVersion,
                 'version' => $newVersion,
@@ -139,13 +139,13 @@ class TemplatesUpdateCommand extends Command
 
             if (! $this->flag('json')) {
                 if ($previousVersion === null || $previousVersion === '') {
-                    $this->laraKubeLine("Downloaded {$tool->value} ({$engineSlug}) {$newVersion}.");
+                    $this->laraKubeLine("Downloaded {$tool->slug} ({$engineSlug}) {$newVersion}.");
                 } elseif ($restored) {
-                    $this->laraKubeLine("Restored the signed {$tool->value} ({$engineSlug}) {$newVersion}; your local changes were replaced.");
+                    $this->laraKubeLine("Restored the signed {$tool->slug} ({$engineSlug}) {$newVersion}; your local changes were replaced.");
                 } elseif ($changed) {
-                    $this->laraKubeLine("Updated {$tool->value} ({$engineSlug}): {$previousVersion} -> {$newVersion}.");
+                    $this->laraKubeLine("Updated {$tool->slug} ({$engineSlug}): {$previousVersion} -> {$newVersion}.");
                 } else {
-                    $this->laraKubeLine("{$tool->value} ({$engineSlug}) is already up to date ({$newVersion}).");
+                    $this->laraKubeLine("{$tool->slug} ({$engineSlug}) is already up to date ({$newVersion}).");
                 }
             }
         }

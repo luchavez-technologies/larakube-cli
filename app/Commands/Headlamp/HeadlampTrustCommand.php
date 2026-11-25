@@ -2,10 +2,10 @@
 
 namespace App\Commands\Headlamp;
 
-use App\Support\CloudInstallerTrust;
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Services\Kubectl;
+use App\Support\CloudInstallerTrust;
 use App\Traits\DeploysClusterTool;
 use App\Traits\InteractsWithRemoteSsh;
 use App\Traits\InteractsWithSso;

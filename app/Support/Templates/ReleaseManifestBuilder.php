@@ -2,11 +2,9 @@
 
 namespace App\Support\Templates;
 
-use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasCommonsRedisKeys;
-use App\Contracts\HasImages;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasSmtpWiring;
@@ -32,10 +30,11 @@ class ReleaseManifestBuilder
      *     files: list<array{path: string, sha256: string}>
      * }
      */
-    public function describe(ClusterTool $tool, ?string $engine = null): array
+    public function describe(ClusterTool|TemplateApp $app, ?string $engine = null): array
     {
-        [$engineForTool, $engineSlug] = $this->resolveEngine($tool, $engine);
-        $rawFiles = $this->collectTemplateFiles($tool);
+        $app = $app instanceof ClusterTool ? TemplateApp::forTool($app) : $app;
+        [$engineForTool, $engineSlug] = $this->resolveEngine($app, $engine);
+        $rawFiles = $this->collectTemplateFiles($app);
 
         $files = array_map(
             static fn (array $file): array => [
@@ -45,15 +44,14 @@ class ReleaseManifestBuilder
             $rawFiles,
         );
 
-        $services = $this->buildServices($tool, $engineForTool);
-        $vendor = $tool->vendor($engineForTool);
-        $images = $vendor instanceof HasImages ? $vendor->images() : [];
-        $requirements = $this->buildRequirements($vendor);
+        $services = $this->buildServices($app, $engineForTool);
+        $images = $app->images($engineForTool);
+        $requirements = $this->buildRequirements($app, $engineForTool);
 
         return [
-            'tool' => $tool->value,
+            'tool' => $app->slug,
             'engine' => $engineSlug,
-            'contracts' => array_values(array_map('intval', $tool->templateContracts($engineForTool))),
+            'contracts' => $app->contracts($engineForTool),
             'cli_version' => (string) config('app.version'),
             'services' => $services,
             'images' => (object) $images,
@@ -81,14 +79,15 @@ class ReleaseManifestBuilder
      * }
      */
     public function build(
-        ClusterTool $tool,
+        ClusterTool|TemplateApp $app,
         ?string $engine,
         string $version,
         bool $security,
         ImageDigestResolver $digests,
     ): array {
-        [$engineForTool, $engineSlug] = $this->resolveEngine($tool, $engine);
-        $collectedFiles = $this->collectTemplateFiles($tool);
+        $app = $app instanceof ClusterTool ? TemplateApp::forTool($app) : $app;
+        [$engineForTool, $engineSlug] = $this->resolveEngine($app, $engine);
+        $collectedFiles = $this->collectTemplateFiles($app);
 
         $manifestFiles = [];
         $bundleFiles = [];
@@ -103,8 +102,7 @@ class ReleaseManifestBuilder
 
         ksort($manifestFiles, SORT_STRING);
 
-        $vendor = $tool->vendor($engineForTool);
-        $rawImages = $vendor instanceof HasImages ? $vendor->images() : [];
+        $rawImages = $app->images($engineForTool);
         ksort($rawImages, SORT_STRING);
 
         $pinnedImages = [];
@@ -112,15 +110,15 @@ class ReleaseManifestBuilder
             $pinnedImages[(string) $key] = $digests->pin((string) $reference);
         }
 
-        $contracts = array_values(array_map('intval', $tool->templateContracts($engineForTool)));
+        $contracts = $app->contracts($engineForTool);
         $contract = $contracts !== [] ? (int) max($contracts) : 1;
 
-        $services = $this->buildServices($tool, $engineForTool);
-        $requirements = $this->buildRequirements($vendor);
+        $services = $this->buildServices($app, $engineForTool);
+        $requirements = $this->buildRequirements($app, $engineForTool);
 
         return [
             'manifest' => [
-                'app' => $tool->value,
+                'app' => $app->slug,
                 'engine' => $engineSlug,
                 'version' => $version,
                 'contract' => $contract,
@@ -137,12 +135,12 @@ class ReleaseManifestBuilder
     /**
      * @return array{0: string|null, 1: string}
      */
-    private function resolveEngine(ClusterTool $tool, ?string $engine): array
+    private function resolveEngine(TemplateApp $app, ?string $engine): array
     {
         $trimmed = trim((string) ($engine ?? ''));
 
         if ($trimmed === '' || $trimmed === 'default') {
-            $default = $tool->defaultEngine();
+            $default = $app->defaultEngine();
             $engineForTool = $trimmed === 'default' ? null : $default;
             $engineSlug = $engineForTool ?? 'default';
 
@@ -155,12 +153,12 @@ class ReleaseManifestBuilder
     /**
      * @return list<array{path: string, sha256: string, content: string}>
      */
-    private function collectTemplateFiles(ClusterTool $tool): array
+    private function collectTemplateFiles(TemplateApp $app): array
     {
-        $templateDir = base_path('resources/views/k8s/'.$tool->templateFolder());
+        $templateDir = base_path('resources/views/k8s/'.$app->folder);
 
         if (! File::isDirectory($templateDir)) {
-            throw new RuntimeException("Template folder 'resources/views/k8s/{$tool->templateFolder()}' not found for tool '{$tool->value}'.");
+            throw new RuntimeException("Template folder 'resources/views/k8s/{$app->folder}' not found for app '{$app->slug}'.");
         }
 
         $files = [];
@@ -187,8 +185,12 @@ class ReleaseManifestBuilder
     /**
      * @return list<array{key: string, role: string, optional: bool, toggle_flag: null, bundled_only: bool, shares_primary_secret: bool, backup_paths: list<string>}>
      */
-    private function buildServices(ClusterTool $tool, ?string $engine): array
+    private function buildServices(TemplateApp $app, ?string $engine): array
     {
+        if ($app->tool === null) {
+            return [];
+        }
+
         return array_values(array_map(
             static fn (ClusterToolComponentData $component): array => [
                 'key' => $component->key,
@@ -199,15 +201,20 @@ class ReleaseManifestBuilder
                 'shares_primary_secret' => $component->sharesPrimarySecret,
                 'backup_paths' => array_values(array_map('strval', $component->backupPaths)),
             ],
-            $tool->components(null, $engine),
+            $app->tool->components(null, $engine),
         ));
     }
 
     /**
      * @return list<array{kind: string, name: string, optional: bool}>
      */
-    private function buildRequirements(ClusterToolVendor $vendor): array
+    private function buildRequirements(TemplateApp $app, ?string $engine): array
     {
+        if ($app->tool === null) {
+            return [];
+        }
+
+        $vendor = $app->tool->vendor($engine);
         $requirements = [];
 
         if ($vendor instanceof HasCommonsDatabases) {

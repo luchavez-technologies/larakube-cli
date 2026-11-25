@@ -2,6 +2,8 @@
 
 namespace App\Vendors;
 
+use App\Contracts\HasImages;
+use App\Tools\Concerns\PinsImages;
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasCommonsRedisKeys;
@@ -17,8 +19,20 @@ use App\Enums\ClusterTool;
 use App\Enums\SecretKind;
 
 /** The single vendor backing ClusterTool::ERPNEXT — open-source accounting & ERP. */
-final class ErpnextTool implements ClusterToolVendor, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring
+final class ErpnextTool implements ClusterToolVendor, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring, HasImages
 {
+    use PinsImages;
+
+    /**
+     * Pinned here so each release records the image and its digest; the template uses the same tag.
+     *
+     * @return array<string, string>
+     */
+    public function images(): array
+    {
+        return ['erpnext' => 'docker.io/frappe/erpnext:v16.60.0'];
+    }
+
     public function getLabel(): string
     {
         return 'ERPNext';

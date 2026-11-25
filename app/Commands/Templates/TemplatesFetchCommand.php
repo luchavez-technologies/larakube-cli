@@ -2,9 +2,9 @@
 
 namespace App\Commands\Templates;
 
-use App\Enums\ClusterTool;
 use App\Facades\State;
 use App\Services\TemplateStore;
+use App\Support\Templates\TemplateApp;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\FailsWithJson;
 use App\Traits\LaraKubeOutput;
@@ -40,7 +40,7 @@ class TemplatesFetchCommand extends Command
         $fetched = [];
 
         foreach ((array) $this->argument('apps') as $slug) {
-            $tool = ClusterTool::tryFrom((string) $slug);
+            $tool = TemplateApp::find((string) $slug);
 
             if ($tool === null) {
                 return $this->failed("Unknown app '{$slug}'.");
@@ -49,11 +49,11 @@ class TemplatesFetchCommand extends Command
             try {
                 $entry = $store->download($tool, $engine);
             } catch (RuntimeException $exception) {
-                return $this->failed("{$tool->value}: {$exception->getMessage()}");
+                return $this->failed("{$tool->slug}: {$exception->getMessage()}");
             }
 
             $fetched[] = [
-                'app' => $tool->value,
+                'app' => $tool->slug,
                 'engine' => $engine ?? 'default',
                 'version' => (string) ($entry['version'] ?? ''),
                 'key_id' => (string) ($entry['key_id'] ?? ''),

@@ -2,10 +2,10 @@
 
 namespace App\Traits;
 
-use App\Support\CloudInstallerTrust;
 use App\Enums\DnsProvider;
 use App\Services\Kubectl;
 use App\Services\SshKeyInspector;
+use App\Support\CloudInstallerTrust;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Sleep;
 

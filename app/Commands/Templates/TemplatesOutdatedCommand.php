@@ -2,11 +2,11 @@
 
 namespace App\Commands\Templates;
 
-use App\Enums\ClusterTool;
 use App\Facades\State;
 use App\Http\Integrations\LaraKubeCloud\LaraKubeCloudConnector;
 use App\Http\Integrations\LaraKubeCloud\Requests\LatestRelease;
 use App\Services\TemplateStore;
+use App\Support\Templates\TemplateApp;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\FailsWithJson;
 use App\Traits\LaraKubeOutput;
@@ -46,9 +46,9 @@ class TemplatesOutdatedCommand extends Command
                 : [$lockKey, 'default'];
 
             $installedVersion = (string) ($entry['version'] ?? '');
-            $tool = ClusterTool::tryFrom($app);
+            $tool = TemplateApp::find($app);
             $contracts = $tool !== null
-                ? $tool->templateContracts($engine === 'default' ? null : $engine)
+                ? $tool->contracts($engine === 'default' ? null : $engine)
                 : [(int) ($entry['contract'] ?? 1)];
 
             $latestVersion = null;

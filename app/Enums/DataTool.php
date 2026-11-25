@@ -2,6 +2,8 @@
 
 namespace App\Enums;
 
+use App\Contracts\HasImages;
+use App\Tools\Concerns\PinsImages;
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
@@ -13,8 +15,24 @@ use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasSsoLicenseCaveat;
 
 /** The vendor enum backing POCKETBASE/DIRECTUS/WORDPRESS — 'Headless CMS & Data API'. */
-enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasRotatableDatabasePassword, HasSmtpWiring, HasSsoLicenseCaveat
+enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasRotatableDatabasePassword, HasSmtpWiring, HasSsoLicenseCaveat, HasImages
 {
+    use PinsImages;
+
+    /**
+     * Pinned here so each release records the images and their digests; the templates use the same tags.
+     *
+     * @return array<string, string>
+     */
+    public function images(): array
+    {
+        return match ($this) {
+            self::POCKETBASE => ['pocketbase' => 'ghcr.io/muchobien/pocketbase:0.39.11'],
+            self::WORDPRESS => ['wordpress' => 'wordpress:7.1-php8.3-apache', 'busybox' => 'busybox:1.36'],
+            default => [],
+        };
+    }
+
     public function getLabel(): string
     {
         return match ($this) {

@@ -35,7 +35,7 @@ test('tool:outdated tells current, outdated and never-stamped instances apart', 
             ['tool' => 'outline', 'instance' => 'notes-example-com', 'host' => 'notes.example.com'],
         ],
         [
-            toolOutdatedWorkload('n8n', 'flow-example-com', [Labels::REVISION => ToolRevision::for(ClusterTool::N8N)], 'docker.n8n.io/n8nio/n8n:2.47.7'),
+            toolOutdatedWorkload('n8n', 'flow-example-com', [Labels::REVISION => ToolRevision::for(ClusterTool::N8N)], 'n8nio/n8n:2.47.7'),
             toolOutdatedWorkload('headlamp', 'dash-example-com', [Labels::REVISION => 'aaaaaaaaaaaa', Labels::INSTALL_OPTIONS => '{"vpn-only":true}']),
             // Outline still carries no stamp: installed before revisions existed.
             toolOutdatedWorkload('outline', 'notes-example-com'),
@@ -48,7 +48,7 @@ test('tool:outdated tells current, outdated and never-stamped instances apart', 
     $rows = collect($decoded)->keyBy('tool');
 
     expect($rows['n8n']['status'])->toBe('current')
-        ->and($rows['n8n']['images'])->toBe(['docker.n8n.io/n8nio/n8n:2.47.7'])
+        ->and($rows['n8n']['images'])->toBe(['n8nio/n8n:2.47.7'])
         ->and($rows['headlamp']['status'])->toBe('outdated')
         ->and($rows['headlamp']['installedRevision'])->toBe('aaaaaaaaaaaa')
         ->and($rows['headlamp']['installOptions'])->toBe(['vpn-only' => true])
@@ -134,7 +134,7 @@ test('each container carries the digest its pods actually pulled, matched throug
             ],
             'spec' => [
                 'selector' => ['matchLabels' => ['app' => $deployment]],
-                'template' => ['spec' => ['containers' => [['name' => 'n8n', 'image' => 'docker.n8n.io/n8nio/n8n:2.47.7']]]],
+                'template' => ['spec' => ['containers' => [['name' => 'n8n', 'image' => 'n8nio/n8n:2.47.7']]]],
             ],
         ]]])),
         '*get pods -A*' => Process::result(output: json_encode(['items' => [

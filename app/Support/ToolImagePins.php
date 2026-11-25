@@ -63,7 +63,8 @@ final class ToolImagePins
             $reference = substr($reference, 0, $colon);
         }
 
-        $reference = preg_replace('#^(docker\.io|index\.docker\.io|registry-1\.docker\.io)/#', '', $reference) ?? $reference;
+        // docker.n8n.io fronts Docker Hub (its tokens come from auth.docker.io), so it names the same repository.
+        $reference = preg_replace('#^(docker\.io|index\.docker\.io|registry-1\.docker\.io|docker\.n8n\.io)/#', '', $reference) ?? $reference;
 
         return preg_replace('#^library/#', '', $reference) ?? $reference;
     }
