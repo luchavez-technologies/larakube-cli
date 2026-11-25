@@ -6,6 +6,7 @@ use App\Contracts\HasPromptableHosts;
 use App\Data\ConfigData;
 use App\Data\GlobalConfigData;
 use App\Exceptions\MissingFlagException;
+use InvalidArgumentException;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\text;
@@ -128,6 +129,7 @@ trait EnsuresRealHosts
         }
 
         // `--host=service=hostname` answers these headlessly, on commands that declare it.
+        $this->applyFlaggedServiceHosts($config, $environment);
         $flagged = method_exists($this, 'hostOverridesFromFlag') ? $this->hostOverridesFromFlag() : [];
         foreach ($config->getComponents($environment) as $component) {
             if (! $component instanceof HasPromptableHosts) {
@@ -176,15 +178,25 @@ trait EnsuresRealHosts
     protected function applyFlaggedServiceHosts(ConfigData $config, string $environment): void
     {
         $flagged = method_exists($this, 'hostOverridesFromFlag') ? $this->hostOverridesFromFlag() : [];
+        $known = [];
         foreach ($config->getComponents($environment) as $component) {
             if (! $component instanceof HasPromptableHosts) {
                 continue;
             }
             foreach (array_keys($component->getPromptableHostServices()) as $service) {
+                $known[] = $service;
                 if (($flagged[$service] ?? '') !== '') {
                     $config->setHost($environment, $service, $flagged[$service]);
                 }
             }
+        }
+
+        $unknown = array_diff(array_keys($flagged), $known);
+        if ($unknown !== []) {
+            throw new InvalidArgumentException(
+                "Unknown --host service(s): '".implode("', '", $unknown)."'."
+                .($known === [] ? " '{$environment}' has no services with their own host." : ' Use any of: '.implode(', ', $known).'.'),
+            );
         }
     }
 

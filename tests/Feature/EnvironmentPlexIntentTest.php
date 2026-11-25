@@ -404,7 +404,7 @@ test('buildPublicEnvScript includes non-secret Plex connection vars from .env.<e
 test('cloud:configure --only=hosts takes client-facing hosts from --host without prompting', function (): void {
     Process::fake(['*' => Process::result(output: '')]);
     $config = plexIntentProject($this->tempDir);
-    $config->addFeature(\App\Enums\LaravelFeature::REVERB);
+    $config->addFeature(App\Enums\LaravelFeature::REVERB);
     $config->saveToFile($this->tempDir);
 
     $this->artisan('cloud:configure', [
@@ -419,4 +419,20 @@ test('cloud:configure --only=hosts takes client-facing hosts from --host without
     $saved = ConfigData::loadFromFile($this->tempDir);
     expect($saved->getHost('staging', 'reverb'))->toBe('ws.example.org')
         ->and($saved->getHost('staging', 's3'))->toBe('s3.example.org');
+});
+
+test('cloud:configure --only=hosts rejects a --host for a service the environment does not have', function (): void {
+    Process::fake(['*' => Process::result(output: '')]);
+    plexIntentProject($this->tempDir);
+
+    $this->artisan('cloud:configure', [
+        'environment' => 'staging',
+        '--only' => 'hosts',
+        '--web-host' => 'staging.example.com',
+        '--web-hosts' => '',
+        '--host' => ['bogus=x.example.org'],
+        '--no-interaction' => true,
+    ])
+        ->expectsOutputToContain("Unknown --host service(s): 'bogus'")
+        ->assertExitCode(1);
 });
