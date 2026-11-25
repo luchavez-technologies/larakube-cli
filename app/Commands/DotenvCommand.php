@@ -244,6 +244,8 @@ class DotenvCommand extends Command
                 'status' => $status,
                 'isSecret' => $isSecret,
                 'isExcluded' => $isExcluded,
+                // In .env.<env> but empty, even when the value itself is masked: "needs a value".
+                'isBlank' => $localVal !== null && trim((string) $localVal) === '',
                 'local' => ($isSecret && ! $reveal && $localVal !== null) ? '••••••' : $localVal,
                 'cluster' => ($isSecret && ! $reveal && $clusterVal !== null) ? '••••••' : $clusterVal,
             ];

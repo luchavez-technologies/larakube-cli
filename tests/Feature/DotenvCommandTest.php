@@ -216,3 +216,15 @@ test('dotenv --json outputs structured drift data', function (): void {
     $this->artisan('dotenv', ['environment' => 'production', '--json' => true])
         ->assertExitCode(0);
 });
+
+test('dotenv --json marks keys that are present but empty, even when masked', function (): void {
+    saveDotenvConfig($this->tempDir);
+    writeDotenv($this->tempDir, ['APP_URL' => 'https://local.example', 'PAYMONGO_SECRET_KEY' => '', 'APP_KEY' => 'base64:local']);
+    fakeKubectl('yes', [], []);
+
+    Illuminate\Support\Facades\Artisan::call('dotenv', ['environment' => 'production', '--json' => true]);
+    $items = collect(json_decode(Illuminate\Support\Facades\Artisan::output(), true)['items'] ?? [])->keyBy('key');
+
+    expect($items['PAYMONGO_SECRET_KEY']['isBlank'] ?? null)->toBeTrue()
+        ->and($items['APP_KEY']['isBlank'] ?? null)->toBeFalse();
+});
