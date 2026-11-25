@@ -553,8 +553,13 @@ trait GeneratesProjectInfrastructure
         }
         file_put_contents($envPath, implode("\n", array_values(array_unique($lines)))."\n");
 
+        $values = $config->getAllEnvironmentVariables($environment);
+        foreach (array_keys($config->externalServiceEnvironmentKeys($environment)) as $key) {
+            $values[$key] = '';
+        }
+
         $this->syncEnvFile($projectPath, [
-            ...$config->getAllEnvironmentVariables($environment),
+            ...$values,
             'APP_KEY' => 'base64:'.base64_encode(random_bytes(32)),
         ], false, $environment);
 

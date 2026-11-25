@@ -39,11 +39,13 @@ test('a plex-backed postgres is omitted from env-sync (so heal cannot clobber it
         ->not->toHaveKey('DB_PASSWORD');
 });
 
-test('a normally-managed (non-plex) postgres still emits its connection', function (): void {
-    // managed (e.g. RDS) but NOT plex → env-sync should still compute DB_*.
+test('an externally managed (non-plex) postgres emits no connection, so the user\'s values are never overwritten', function (): void {
+    // managed (e.g. RDS) but NOT plex → the in-cluster default would be wrong; the user sets DB_*.
     $config = plexEnvConfig(['managed' => ['postgres']]);
 
-    expect($config->getAllEnvironmentVariables('production'))->toHaveKey('DB_HOST');
+    expect($config->getAllEnvironmentVariables('production'))
+        ->not->toHaveKey('DB_HOST')
+        ->not->toHaveKey('DB_PASSWORD');
 });
 
 test('local is unaffected (no plex) — DB connection is still emitted', function (): void {

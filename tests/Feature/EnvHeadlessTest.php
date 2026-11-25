@@ -203,3 +203,41 @@ test('env seeds .env.<env> with app keys blank and its own APP_KEY, never local 
         chdir($previous);
     }
 });
+
+test('env leaves an externally managed database\'s connection keys blank in the seeded file', function (): void {
+    $directory = envHeadlessProject();
+    $config = ConfigData::loadFromFile($directory->path());
+    $config->setDatabase(DatabaseDriver::POSTGRESQL);
+    $config->saveToFile($directory->path());
+    file_put_contents($directory->path('.env'), "APP_NAME=demo\nDB_HOST=postgres\n");
+    $previous = getcwd();
+    chdir($directory->path());
+    Prompt::interactive(false);
+    Process::fake(['*' => Process::result(output: '')]);
+
+    try {
+        $this->artisan('env', [
+            'name' => 'production',
+            '--context' => 'larakube-203.0.113.21',
+            '--web-host' => 'app.example.com',
+            '--ingress' => 'traefik',
+            '--managed' => 'postgres',
+            '--plex' => '',
+            '--web-hosts' => '',
+            '--no-interaction' => true,
+        ])
+            ->expectsConfirmation('Configure a container registry for production?', 'no')
+            ->expectsQuestion('SSH user', 'larakube')
+            ->expectsQuestion('SSH port', '22')
+            ->expectsQuestion('SSH private key path', '~/.ssh/id_rsa')
+            ->expectsConfirmation("Set up the CI/CD deploy workflow for 'production' now?", 'no')
+            ->assertExitCode(0);
+
+        $seeded = (string) file_get_contents($directory->path('.env.production'));
+
+        expect($seeded)->toMatch('/^DB_HOST=\s*$/m')
+            ->and($seeded)->not->toContain('larakubesecretpassword');
+    } finally {
+        chdir($previous);
+    }
+});

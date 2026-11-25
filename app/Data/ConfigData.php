@@ -1645,10 +1645,41 @@ class ConfigData extends Data
 
     public function getAllEnvironmentVariables(string $environment = 'local'): array
     {
-        return array_merge(
+        $values = array_merge(
             $this->getAllPublicEnvironmentVariables($environment),
             $this->getAllSecretEnvironmentVariables($environment),
         );
+
+        // Outside local, a service hosted outside the cluster (e.g. AWS RDS) has connection values
+        // only the user knows: never emit in-cluster defaults that would overwrite them.
+        if ($environment !== 'local') {
+            foreach (array_keys($this->externalServiceEnvironmentKeys($environment)) as $key) {
+                unset($values[$key]);
+            }
+        }
+
+        return $values;
+    }
+
+    /**
+     * Connection keys of the services this environment hosts outside the cluster (managed, not Plex).
+     *
+     * @return array<string, true>
+     */
+    public function externalServiceEnvironmentKeys(string $environment): array
+    {
+        $external = array_diff($this->getManaged($environment), $this->getPlex($environment));
+        $keys = [];
+        foreach ($this->getComponents($environment) as $component) {
+            if ($component instanceof BackedEnum && in_array($component->value, $external, true)
+                && method_exists($component, 'getEnvironmentVariables')) {
+                foreach (array_keys($component->getEnvironmentVariables($this)) as $key) {
+                    $keys[$key] = true;
+                }
+            }
+        }
+
+        return $keys;
     }
 
     public function getAllPublicEnvironmentVariables(string $environment = 'local'): array
