@@ -2,6 +2,7 @@
 
 namespace App\Commands\Headlamp;
 
+use App\Support\CloudInstallerTrust;
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
 use App\Services\Kubectl;
@@ -196,7 +197,15 @@ class HeadlampTrustCommand extends Command
     {
         $encoded = base64_encode($desired);
 
+        $cloudTrust = CloudInstallerTrust::DROP_IN;
+
+        // The --oidc-* flags can't be combined with the structured authentication file LaraKube Cloud's
+        // install access uses; k3s would not start with both, so stop before touching anything.
         return <<<BASH
+        if [ -f {$cloudTrust} ]; then
+            echo "This server trusts LaraKube Cloud for installs, which can't be combined with these OIDC flags. Nothing was changed." >&2
+            exit 3
+        fi
         mkdir -p /etc/rancher/k3s
         echo {$encoded} | base64 -d > /etc/rancher/k3s/config.yaml
         systemctl restart k3s

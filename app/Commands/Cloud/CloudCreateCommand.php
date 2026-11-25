@@ -11,6 +11,7 @@ use App\Facades\State;
 use App\Services\Cloud\LiveProviderCatalog;
 use App\Services\Cloud\UbuntuImageResolver;
 use App\Services\Kubectl;
+use App\Support\CloudInstallerTrust;
 use App\Support\SshPublicKey;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\EnsuresKubectl;
@@ -64,6 +65,9 @@ class CloudCreateCommand extends Command
         {--size= : Droplet/node size slug}
         {--key= : Path to the SSH private key (VPS)}
         {--authorized-key=* : Public SSH key that keeps access after the build, repeatable; the --key login is removed (Google Cloud VPS, outside a project)}
+        {--cloud-installer-issuer= : LaraKube Cloud: token issuer the API server trusts for installs (VPS)}
+        {--cloud-installer-audience= : LaraKube Cloud: audience those tokens must carry, unique to this server}
+        {--cloud-installer-subject= : LaraKube Cloud: the one subject (cloud identity) allowed to install}
         {--ssh-port=22 : SSH port to configure on the VPS (default: 22; e.g. 8443 if port 22 is blocked)}
         {--admin-cidr= : Restrict SSH + the k3s API to this CIDR (VPS); omit = open}
         {--node-count= : Managed cluster node count (min 1)}
@@ -785,10 +789,24 @@ class CloudCreateCommand extends Command
             return 1;
         }
 
+        try {
+            $this->installerTrust = CloudInstallerTrust::fromOptions(
+                $this->option('cloud-installer-issuer'), $this->option('cloud-installer-audience'), $this->option('cloud-installer-subject'),
+            );
+        } catch (\InvalidArgumentException $e) {
+            $this->laraKubeError($e->getMessage());
+
+            return 1;
+        }
+
         $context = $this->provisionHost($stackName, $ip, $keyPath, $config, $adminCidr, $sshPort);
 
         if ($context === null) {
             return 1;
+        }
+
+        if ($this->installerTrust !== null) {
+            $this->bindCloudInstallers($context);
         }
 
         if ($authorizedKeys !== []) {
@@ -918,6 +936,27 @@ class CloudCreateCommand extends Command
         $this->connectDnsAndTls($environment ?: 'production', $context);
 
         return 0;
+    }
+
+    /**
+     * Gives the trusted installer identity admin on this cluster. The API server already trusts its
+     * tokens (written before k3s was installed); this binding is what grants it anything, and deleting
+     * it is how Cloud's install access is revoked.
+     */
+    protected function bindCloudInstallers(string $context): void
+    {
+        $applied = Process::input(CloudInstallerTrust::bindingManifest())
+            ->run(Kubectl::forContext($context)->prefix().' apply -f -');
+
+        $this->result['installer'] = [
+            'ready' => $applied->successful(),
+            'audience' => $this->installerTrust?->audience,
+            'error' => $applied->successful() ? null : 'The installer role binding could not be applied.',
+        ];
+
+        $applied->successful()
+            ? $this->laraKubeInfo('✅ LaraKube Cloud can install apps here with short-lived tokens. Revoke with: kubectl delete clusterrolebinding '.CloudInstallerTrust::BINDING)
+            : $this->laraKubeWarn('LaraKube Cloud install access was not set up: the role binding could not be applied.');
     }
 
     protected function updateStackContext(string $name, ?string $context, ?string $sshKey = null): void

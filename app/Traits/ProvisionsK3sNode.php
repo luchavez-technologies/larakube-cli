@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Support\CloudInstallerTrust;
 use App\Enums\DnsProvider;
 use App\Services\Kubectl;
 use App\Services\SshKeyInspector;
@@ -37,6 +38,9 @@ trait ProvisionsK3sNode
      */
     protected ?string $traefikWarning = null;
 
+    /** Set before provisioning when LaraKube Cloud should be able to install apps with short-lived tokens. */
+    protected ?CloudInstallerTrust $installerTrust = null;
+
     /**
      * Install K3s on the remote server.
      */
@@ -61,6 +65,7 @@ trait ProvisionsK3sNode
         ]);
 
         $tlsSanScript = $this->ensureK3sTlsSanScript($ip);
+        $installerTrustScript = $this->installerTrust?->nodeScript() ?? '';
 
         // 1. Create Swap (Dynamic size based on RAM)
         // 2. Enable IP Forwarding
@@ -97,6 +102,8 @@ trait ProvisionsK3sNode
 
     echo "Ensuring k3s TLS SAN for {$ip}..."
     {$tlsSanScript}
+
+    {$installerTrustScript}
 
     echo "Installing K3s..."
     {$installK3s}
