@@ -64,13 +64,6 @@ class EnvCommand extends Command
             required: true,
         );
 
-        // 1. Per-environment .env file (seeded from the base .env).
-        $newEnvFile = ".env.{$envName}";
-        if (! file_exists($projectPath.'/'.$newEnvFile) && file_exists($projectPath.'/.env')) {
-            copy($projectPath.'/.env', $projectPath.'/'.$newEnvFile);
-            $this->laraKubeInfo("Created {$newEnvFile}");
-        }
-
         // 2. Keep .env.* out of version control.
         $gitignorePath = $projectPath.'/.gitignore';
         if (file_exists($gitignorePath)) {
@@ -126,6 +119,11 @@ class EnvCommand extends Command
             $this->laraKubeInfo("Environment '{$envName}' already exists in DNA; keeping current settings. Pass --edit to review and update it.");
         }
         $this->saveProjectConfig($projectPath, $config);
+
+        // Per-environment env file: app keys blank, this environment's own values and APP_KEY.
+        if ($this->seedEnvironmentEnvFile($config, $envName)) {
+            $this->laraKubeInfo(".env.{$envName} created — fill in your app's own keys (left blank) before deploying.");
+        }
 
         // 4. Regenerate manifests from the blueprint. The architectural engine
         // is environment-aware, so this produces a complete overlays/{$envName}

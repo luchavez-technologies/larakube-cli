@@ -104,6 +104,9 @@ trait ConfiguresCloudEnvironment
                 additionalWebHosts: $this->gatherAdditionalWebHosts($config, $environment),
             ));
             $this->saveProjectConfig($projectPath, $config);
+            if ($this->seedEnvironmentEnvFile($config, $environment)) {
+                $this->laraKubeInfo(".env.{$environment} created — fill in your app's own keys (left blank) before deploying.");
+            }
 
             $newEnvFile = ".env.{$environment}";
             if (! file_exists("{$projectPath}/{$newEnvFile}") && file_exists("{$projectPath}/.env")) {

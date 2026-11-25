@@ -160,3 +160,46 @@ test('env auto-resolves SSH key and user from ~/.ssh/config when context matches
         chdir($previous);
     }
 });
+
+test('env seeds .env.<env> with app keys blank and its own APP_KEY, never local values', function (): void {
+    $directory = envHeadlessProject();
+    file_put_contents($directory->path('.env'), "APP_NAME=demo\nAPP_KEY=base64:bG9jYWwta2V5\nPAYMONGO_SECRET_KEY=sk_test_local\n");
+    $previous = getcwd();
+    chdir($directory->path());
+    Prompt::interactive(false);
+    Process::fake(['*' => Process::result(output: '')]);
+
+    try {
+        $this->artisan('env', [
+            'name' => 'production',
+            '--context' => 'larakube-203.0.113.21',
+            '--web-host' => 'app.example.com',
+            '--ingress' => 'traefik',
+            '--managed' => '',
+            '--web-hosts' => '',
+            '--no-interaction' => true,
+        ])
+            ->expectsConfirmation('Configure a container registry for production?', 'no')
+            ->expectsQuestion('SSH user', 'larakube')
+            ->expectsQuestion('SSH port', '22')
+            ->expectsQuestion('SSH private key path', '~/.ssh/id_rsa')
+            ->expectsConfirmation("Set up the CI/CD deploy workflow for 'production' now?", 'no')
+            ->assertExitCode(0);
+
+        $seeded = (string) file_get_contents($directory->path('.env.production'));
+
+        expect($seeded)->not->toContain('sk_test_local')
+            ->and($seeded)->toContain('PAYMONGO_SECRET_KEY=')
+            ->and($seeded)->not->toContain('bG9jYWwta2V5')
+            ->and($seeded)->toMatch('/APP_KEY="?base64:[A-Za-z0-9+\/=]{40,}/')
+            ->and($seeded)->toContain('app.example.com');
+
+        file_put_contents($directory->path('.env.production'), "KEEP=me\n");
+        $this->artisan('env', ['name' => 'production', '--no-interaction' => true])
+            ->expectsConfirmation("Set up the CI/CD deploy workflow for 'production' now?", 'no')
+            ->assertExitCode(0);
+        expect(file_get_contents($directory->path('.env.production')))->toContain('KEEP=me')->not->toContain('APP_KEY');
+    } finally {
+        chdir($previous);
+    }
+});

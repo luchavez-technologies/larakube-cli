@@ -527,6 +527,41 @@ trait GeneratesProjectInfrastructure
     }
 
     /**
+     * Create `.env.<environment>` when it is missing: every key from `.env` with a BLANK value except
+     * APP_NAME (so no local or test value reaches another environment), then this environment's computed
+     * values, plus a fresh APP_KEY of its own. Never touches an existing file.
+     *
+     * @return bool whether the file was created
+     */
+    protected function seedEnvironmentEnvFile(ConfigData $config, string $environment): bool
+    {
+        $projectPath = (string) $config->getPath();
+        $envPath = $projectPath.'/.env.'.$environment;
+        if ($environment === 'local' || file_exists($envPath)) {
+            return false;
+        }
+
+        $lines = [];
+        $base = $projectPath.'/.env';
+        if (is_file($base)) {
+            foreach (file($base, FILE_IGNORE_NEW_LINES) ?: [] as $line) {
+                if (preg_match('/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/', $line, $m) === 1) {
+                    // The app's name is the same everywhere and never secret, so it carries over.
+                    $lines[] = $m[1] === 'APP_NAME' ? trim($line) : $m[1].'=';
+                }
+            }
+        }
+        file_put_contents($envPath, implode("\n", array_values(array_unique($lines)))."\n");
+
+        $this->syncEnvFile($projectPath, [
+            ...$config->getAllEnvironmentVariables($environment),
+            'APP_KEY' => 'base64:'.base64_encode(random_bytes(32)),
+        ], false, $environment);
+
+        return true;
+    }
+
+    /**
      * Sync values into an environment's env file: `.env` for local, otherwise
      * `.env.<environment>` (seeded from the base .env if it doesn't exist yet).
      * Works for ANY environment — production, staging, preview, … — not just

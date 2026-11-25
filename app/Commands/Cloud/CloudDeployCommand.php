@@ -107,6 +107,13 @@ class CloudDeployCommand extends Command
         $previousHost = $config->getHost($environment, 'web');
         $host = $this->ensureHosts($config, $environment);
 
+        if ($this->seedEnvironmentEnvFile($config, $environment)) {
+            $this->saveProjectConfig($projectPath, $config);
+            $this->laraKubeWarn(".env.{$environment} was missing — created it with '{$environment}' values and your app's own keys left BLANK. Fill them in, then deploy again.");
+
+            return 1;
+        }
+
         if ($host !== $previousHost) {
             $this->saveProjectConfig($projectPath, $config);
 
@@ -128,11 +135,6 @@ class CloudDeployCommand extends Command
         // orchestrateProjectScaffolding's syncEnv:true below, which loops
         // over every configured cloud environment and would risk clobbering
         // already-deployed envs' Plex-managed values).
-        $envFilePath = $projectPath.'/.env.'.$environment;
-        if (! file_exists($envFilePath)) {
-            $this->laraKubeInfo("No .env.{$environment} found — seeding it with '{$environment}'-scoped values...");
-            $this->syncEnvFile($projectPath, $config->getAllEnvironmentVariables($environment), false, $environment);
-        }
 
         // Keep ASSET_URL aligned with this environment's web domain. @vite
         // prefixes asset URLs with ASSET_URL, so a leaked local "*.dev.test" or
