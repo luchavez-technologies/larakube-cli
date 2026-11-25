@@ -38,6 +38,8 @@ use function Laravel\Prompts\text;
  */
 trait ConfiguresCloudEnvironment
 {
+    use EnsuresNamespace;
+
     // The deploy-target picker (managed kube-context or VPS) lives here, so
     // configureBase can record a managed cluster without hand-edited config.
     // GathersEnvironmentData is the same ingress/managed-services/registry
@@ -863,7 +865,7 @@ trait ConfiguresCloudEnvironment
         $kubectl = Kubectl::forContext($context)->prefix();
         $ns = escapeshellarg($namespace);
 
-        Process::run("{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -");
+        $this->ensureNamespace($kubectl, $namespace);
         Process::run(
             "{$kubectl} create secret docker-registry ".escapeshellarg($secretName)." -n {$ns}"
             .' --docker-server='.escapeshellarg($server)
@@ -938,7 +940,7 @@ trait ConfiguresCloudEnvironment
         $kubectl = Kubectl::forContext($adminContext)->prefix();
         $ns = escapeshellarg($namespace);
 
-        Process::run("{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -");
+        $this->ensureNamespace($kubectl, $namespace);
 
         if (! $this->ensureScopedRbac($adminContext, $namespace, $config->getName(), $environment)) {
             $this->laraKubeError('Failed to create the namespace-scoped ServiceAccount/Role in the cluster.');

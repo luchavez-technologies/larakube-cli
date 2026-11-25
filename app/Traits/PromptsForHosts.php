@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use App\Contracts\HasPromptableHosts;
+use InvalidArgumentException;
 
 use function Laravel\Prompts\text;
 
@@ -53,11 +54,22 @@ trait PromptsForHosts
 
         // Per-service overrides — only genuinely client-facing endpoints worth a
         // vanity subdomain (Reverb WS host, an object-storage S3/CDN host).
+        // `--host=service=hostname` (repeatable) answers these headlessly.
+        $flagged = $this->hostOverridesFromFlag();
+        $known = [];
         foreach ($components as $component) {
             if (! $component instanceof HasPromptableHosts) {
                 continue;
             }
             foreach ($component->getPromptableHostServices() as $service => $label) {
+                $known[] = $service;
+                if (array_key_exists($service, $flagged)) {
+                    if ($flagged[$service] !== '') {
+                        $hosts[$service] = $flagged[$service];
+                    }
+
+                    continue;
+                }
                 $override = text(
                     label: "Custom host for {$label} in {$envName} (optional)",
                     placeholder: 'leave blank to derive from web host',
@@ -70,6 +82,35 @@ trait PromptsForHosts
             }
         }
 
+        $unknown = array_diff(array_keys($flagged), $known);
+        if ($unknown !== []) {
+            throw new InvalidArgumentException(
+                "Unknown --host service(s): '".implode("', '", $unknown)."'."
+                .($known === [] ? ' This environment has no services with their own host.' : ' Use any of: '.implode(', ', $known).'.'),
+            );
+        }
+
         return $hosts;
+    }
+
+    /**
+     * @return array<string, string> service => hostname, from repeatable `--host=service=hostname`
+     */
+    protected function hostOverridesFromFlag(): array
+    {
+        if (! method_exists($this, 'hasOption') || ! $this->hasOption('host')) {
+            return [];
+        }
+
+        $overrides = [];
+        foreach ((array) $this->option('host') as $pair) {
+            [$service, $host] = array_pad(explode('=', (string) $pair, 2), 2, null);
+            if ($host === null || trim($service) === '') {
+                throw new InvalidArgumentException("Invalid --host '{$pair}'. Use --host=service=hostname, e.g. --host=reverb=ws.example.com.");
+            }
+            $overrides[trim($service)] = trim($host);
+        }
+
+        return $overrides;
     }
 }

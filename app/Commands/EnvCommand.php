@@ -31,6 +31,7 @@ class EnvCommand extends Command
                             {--managed= : Comma-separated externally-managed services; pass an empty value for none (skips the prompt)}
                             {--plex= : Comma-separated services to share via Plex Commons; pass an empty value for none (skips the prompt)}
                             {--web-hosts= : Comma-separated additional web hostnames; pass an empty value for none (skips the prompt)}
+                            {--host=* : A client-facing service\'s own host as service=hostname, e.g. reverb=ws.example.com; repeatable (skips the prompt)}
                             {--ssh-key= : Path to SSH private key for remote VPS deployment (skips the prompt)}
                             {--ssh-user= : SSH username for remote VPS deployment (skips the prompt)}
                             {--ssh-port= : SSH port for remote VPS deployment (skips the prompt)}

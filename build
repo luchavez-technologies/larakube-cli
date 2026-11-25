@@ -106,7 +106,11 @@ case $BUILD_TYPE in
                 sudo mv builds/standalone/$OS/$OS-$ARCH /usr/local/bin/larakube
                 sudo chmod +x /usr/local/bin/larakube
                 if [ -d "$HOME/.larakube/bin" ]; then
-                    cp /usr/local/bin/larakube "$HOME/.larakube/bin/larakube"
+                    # Copy then rename, never overwrite in place: macOS keeps a file's code signature
+                    # with the file, so an overwritten binary fails validation and is killed (signal 9).
+                    cp /usr/local/bin/larakube "$HOME/.larakube/bin/larakube.new"
+                    chmod +x "$HOME/.larakube/bin/larakube.new"
+                    mv -f "$HOME/.larakube/bin/larakube.new" "$HOME/.larakube/bin/larakube"
                     echo "📋 Synced local binary to $HOME/.larakube/bin/larakube"
                 fi
                 echo -e "✅ LaraKube ${BOLD}[$VERSION]${RESET} is now live on your system!"

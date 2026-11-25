@@ -272,3 +272,19 @@ test('dotenv:push auto-detects custom Forgejo domains from tea logins and respec
         && str_contains($process->command, "--login 'acme-work'")
         && str_contains($process->command, "--repo 'acme/docs'"));
 });
+
+test('dotenv:push creates the environment namespace first, so it works before any deploy', function (): void {
+    openBaoRegistered();
+    savePushTestConfig($this->tempDir);
+    writePushEnvFile($this->tempDir, ['APP_KEY' => 'base64:abc']);
+
+    Process::fake([
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: '', exitCode: 1),
+        '*' => Process::result(output: 'configured'),
+    ]);
+
+    $this->artisan('dotenv:push', ['environment' => 'production'])->assertExitCode(0);
+
+    Process::assertRan(fn ($process) => str_contains($process->command, 'create namespace')
+        && str_contains($process->command, '--dry-run=client'));
+});

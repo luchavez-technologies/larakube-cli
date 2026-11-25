@@ -139,6 +139,7 @@ class DotenvPushCommand extends Command
 
         $context = $this->option('context') ?: $this->environmentContextOrCurrent($config, $env);
         $kubectl = Kubectl::forContext($context)->prefix();
+        $this->ensureNamespace($kubectl, $namespace);
         $app = (string) ($this->option('app') ?: $config->getName());
 
         StorageDriver::ensureStandaloneGarageSecret(Kubectl::fromPrefix($kubectl), $config, $namespace, $env);

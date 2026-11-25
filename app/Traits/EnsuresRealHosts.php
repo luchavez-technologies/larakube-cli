@@ -126,11 +126,18 @@ trait EnsuresRealHosts
             $config->setHost($environment, 'web', $currentHost);
         }
 
+        // `--host=service=hostname` answers these headlessly, on commands that declare it.
+        $flagged = method_exists($this, 'hostOverridesFromFlag') ? $this->hostOverridesFromFlag() : [];
         foreach ($config->getComponents($environment) as $component) {
             if (! $component instanceof HasPromptableHosts) {
                 continue;
             }
             foreach ($component->getPromptableHostServices() as $service => $label) {
+                if (($flagged[$service] ?? '') !== '') {
+                    $config->setHost($environment, $service, $flagged[$service]);
+
+                    continue;
+                }
                 $current = (string) $config->getHost($environment, $service);
                 $hasRealHost = $current !== '' && ! $this->isLocalDomain($current);
 

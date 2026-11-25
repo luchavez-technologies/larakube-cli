@@ -28,6 +28,7 @@ use Throwable;
 trait InteractsWithRemoteDeploy
 {
     use DeploysMonitoringExporters, InteractsWithGitForge, InteractsWithKustomize, ReadsEnvSources, ResolvesContainerRuntime, StreamsProcessOutput;
+    use EnsuresNamespace;
     use InteractsWithScopedRbac, ResolvesEnvironmentContext;
 
     /** The kube-context cloud:init creates for a host. Pure. */
@@ -710,7 +711,7 @@ trait InteractsWithRemoteDeploy
         // 3. Namespace — ADMIN only (cluster-scoped; the scoped SA can't create it).
         $kubectl = Kubectl::forContext($context)->prefix();
         $ns = escapeshellarg($namespace);
-        Process::run("{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -");
+        $this->ensureNamespace($kubectl, $namespace);
 
         // 4-5. env-sync + apply + rollout THROUGH a namespace-scoped credential.
         $result = $this->applyScopedDeploy($config, $environment, $context, $namespace, "{$name}:{$environment}-latest", $image);
@@ -807,7 +808,7 @@ trait InteractsWithRemoteDeploy
         // 3. Namespace — ADMIN only (cluster-scoped; the scoped SA can't create it).
         $kubectl = Kubectl::forContext($context)->prefix();
         $ns = escapeshellarg($namespace);
-        Process::run("{$kubectl} create namespace {$ns} --dry-run=client -o yaml | {$kubectl} apply -f -");
+        $this->ensureNamespace($kubectl, $namespace);
 
         // GHCR packages are private in LaraKube, so the cluster always needs a pull
         // secret — create it here (admin context) so manual deploys work without a

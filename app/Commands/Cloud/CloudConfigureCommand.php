@@ -42,6 +42,7 @@ class CloudConfigureCommand extends Command
         {--plex= : Comma-separated services to share via Plex Commons; pass an empty value for none (skips the prompt)}
         {--web-host= : The environment\'s primary web host, e.g. app.example.com (skips the prompt)}
         {--web-hosts= : Comma-separated additional web hostnames; pass an empty value to clear (skips the prompt)}
+        {--host=* : A client-facing service\'s own host as service=hostname, e.g. reverb=ws.example.com; repeatable (skips the prompt)}
         {--registry-provider= : Legacy alias for the --registry option}
         {--registry= : Container registry provider: ghcr|dockerhub|gitlab|forgejo|gar (skips the prompt)}
         {--platform= : CI/CD platform: github|gitlab|forgejo (auto-detected from the git remote)}
