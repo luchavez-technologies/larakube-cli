@@ -2,20 +2,20 @@
 
 namespace App\Enums;
 
-use App\Contracts\HasImages;
-use App\Tools\Concerns\PinsImages;
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasImages;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasSsoLicenseCaveat;
+use App\Tools\Concerns\PinsImages;
 
 /** The vendor enum backing POCKETBASE/DIRECTUS/WORDPRESS — 'Headless CMS & Data API'. */
-enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasRotatableDatabasePassword, HasSmtpWiring, HasSsoLicenseCaveat, HasImages
+enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasImages, HasOidcWiring, HasRotatableDatabasePassword, HasSmtpWiring, HasSsoLicenseCaveat
 {
     use PinsImages;
 

@@ -8,10 +8,10 @@ use App\Data\EnvironmentData;
 use App\Data\RegistryData;
 use App\Enums\AppFramework;
 use App\Enums\CliTool;
-use App\Enums\ClusterTool;
 use App\Enums\RegistryProvider;
 use App\Exceptions\MissingFlagException;
 use App\Services\Kubectl;
+use App\Support\ForgejoRegistryLogin;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
@@ -785,8 +785,15 @@ trait ConfiguresCloudEnvironment
                 ? $this->forgejoRegistryCredentials($config, $environment, $registry->getRegistryHost())
                 : null;
 
-            $regUser = $forgejoCredentials['username'] ?? text(label: 'Registry Username for '.$registry->provider->label(), required: true);
-            $regPass = $forgejoCredentials['token'] ?? password(label: 'Registry Password/Token for '.$registry->provider->label(), required: true);
+            $regUser = $forgejoCredentials['username'] ?? $this->registryCredential('USERNAME', 'Registry Username for '.$registry->provider->label(), secret: false);
+            $regPass = $forgejoCredentials['token'] ?? $this->registryCredential('TOKEN', 'Registry Password/Token for '.$registry->provider->label(), secret: true);
+
+            if ($regUser === null || $regPass === null) {
+                $this->laraKubeError("No registry credentials for {$registry->getRegistryHost()}, and this run can't ask for them.");
+                $this->line('  Set <fg=yellow>LARAKUBE_REGISTRY_USERNAME</> and <fg=yellow>LARAKUBE_REGISTRY_TOKEN</> for this run, or run the command in a terminal.');
+
+                return 1;
+            }
 
             $setSecret("{$upperEnv}_REGISTRY_USERNAME", $regUser);
             $setSecret("{$upperEnv}_REGISTRY_PASSWORD", $regPass);
@@ -863,24 +870,42 @@ trait ConfiguresCloudEnvironment
      */
     protected function forgejoRegistryCredentials(ConfigData $config, string $environment, string $registryHost): ?array
     {
-        $context = $this->environmentContextOrCurrent($config, $environment);
-        if (! $context) {
+        $login = ForgejoRegistryLogin::find(
+            $registryHost,
+            $this->environmentContextOrCurrent($config, $environment),
+            fn (string $kubectl, string $namespace, string $secret, string $key): ?string => $this->readClusterSecretKey($kubectl, $namespace, $secret, $key),
+        );
+
+        if ($login === null) {
             return null;
         }
 
-        $kubectl = Kubectl::forContext($context)->prefix();
-        $secret = 'git-secrets-'.ClusterTool::FORGEJO->instanceSlugFromHost($registryHost);
-        $username = $this->readClusterSecretKey($kubectl, ClusterTool::FORGEJO->namespace(), $secret, 'username');
-        $token = $this->readClusterSecretKey($kubectl, ClusterTool::FORGEJO->namespace(), $secret, 'registry-token');
-
-        if ($username === null || $token === null || $token === '' || $token === 'pending') {
-            return null;
-        }
-
-        $this->registerSecret($token);
+        $this->registerSecret($login['token']);
         $this->info("  🔑 Using the registry token LaraKube created for {$registryHost}.");
 
-        return ['username' => $username, 'token' => $token];
+        return ['username' => $login['username'], 'token' => $login['token']];
+    }
+
+    /**
+     * A registry credential LaraKube didn't create: from LARAKUBE_REGISTRY_USERNAME/TOKEN, else
+     * asked for in a terminal. Null when neither is possible, e.g. when LaraKube Desktop runs this.
+     */
+    protected function registryCredential(string $which, string $label, bool $secret): ?string
+    {
+        $value = trim((string) (getenv('LARAKUBE_REGISTRY_'.$which) ?: ''));
+        if ($value !== '') {
+            if ($secret) {
+                $this->registerSecret($value);
+            }
+
+            return $value;
+        }
+
+        if ($this->option('no-interaction') || app()->runningUnitTests() || ! stream_isatty(STDIN)) {
+            return null;
+        }
+
+        return $secret ? password(label: $label, required: true) : text(label: $label, required: true);
     }
 
     /**

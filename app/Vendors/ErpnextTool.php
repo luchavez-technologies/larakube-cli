@@ -2,13 +2,12 @@
 
 namespace App\Vendors;
 
-use App\Contracts\HasImages;
-use App\Tools\Concerns\PinsImages;
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasCommonsRedisKeys;
 use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasImages;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasRotatableDatabasePassword;
@@ -17,9 +16,10 @@ use App\Contracts\HasVpnWiring;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SecretKind;
+use App\Tools\Concerns\PinsImages;
 
 /** The single vendor backing ClusterTool::ERPNEXT — open-source accounting & ERP. */
-final class ErpnextTool implements ClusterToolVendor, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring, HasImages
+final class ErpnextTool implements ClusterToolVendor, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasDeploymentBaseName, HasImages, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring
 {
     use PinsImages;
 

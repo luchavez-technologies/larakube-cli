@@ -8,6 +8,7 @@ use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SharedClusterService;
 use App\Services\Kubectl;
+use App\Support\ForgejoRegistryLogin;
 use Illuminate\Support\Facades\Process;
 
 trait InteractsWithGitForge
@@ -74,9 +75,8 @@ trait InteractsWithGitForge
     }
 
     /**
-     * Copy the registry credentials `tool:init --tool=forgejo` minted (git-secrets-{instance},
-     * the instance being the registry host's slug) into the project namespace
-     * as the `forgejo-login` pull secret.
+     * Copy the registry credentials `tool:init --tool=forgejo` minted for the registry host, from
+     * whichever managed server runs that Forgejo, into the project namespace as `forgejo-login`.
      */
     protected function ensureForgejoPullSecret(string $context, string $namespace, string $environment): void
     {
@@ -90,17 +90,20 @@ trait InteractsWithGitForge
         }
 
         $kubectl = Kubectl::forContext($context)->prefix();
-        $sharedNs = $this->gitNamespace();
-        $secret = ToolInstance::forHost(ClusterTool::FORGEJO, $registryHost)->secret();
+        $login = ForgejoRegistryLogin::find(
+            $registryHost,
+            $context,
+            fn (string $kubectl, string $namespace, string $secret, string $key): ?string => $this->readClusterSecretKey($kubectl, $namespace, $secret, $key),
+        );
 
-        $username = trim((string) $this->readClusterSecretKey($kubectl, $sharedNs, $secret, 'username'));
-        $token = trim((string) $this->readClusterSecretKey($kubectl, $sharedNs, $secret, 'registry-token'));
-
-        if ($username === '' || $token === '' || $token === 'pending') {
-            $this->laraKubeWarn("Skipped Forgejo pull secret — could not read {$secret} credentials from {$sharedNs}.");
+        if ($login === null) {
+            $secret = ToolInstance::forHost(ClusterTool::FORGEJO, $registryHost)->secret();
+            $this->laraKubeWarn("Skipped Forgejo pull secret — no server LaraKube manages has {$secret} for {$registryHost}.");
 
             return;
         }
+
+        ['username' => $username, 'token' => $token] = $login;
 
         $ns = escapeshellarg($namespace);
 

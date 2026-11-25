@@ -24,5 +24,5 @@ test('a Plex Commons release pins every engine image and carries the Commons tem
         ->and($built['manifest']['contract'])->toBe(1)
         ->and(array_keys($built['manifest']['images']))->toContain('postgres', 'mariadb', 'redis', 'seaweedfs')
         ->and($built['manifest']['files'])->toHaveKey('commons.blade.php')
-        ->and($built['manifest']['services'])->toBe([]);
+        ->and($built['manifest']['services'])->toBeEmpty();
 });

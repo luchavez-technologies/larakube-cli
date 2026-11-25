@@ -3,6 +3,8 @@
 use App\Data\CloudData;
 use App\Data\ConfigData;
 use App\Data\EnvironmentData;
+use App\Data\GlobalConfigData;
+use App\Data\StackData;
 use App\Traits\ConfiguresCloudEnvironment;
 use App\Traits\GeneratesProjectInfrastructure;
 use App\Traits\InteractsWithEnvironments;
@@ -121,14 +123,14 @@ test('Forgejo secrets are piped to tea on stdin, never placed in its arguments',
     expect($piped)->toBe('super-secret');
 });
 
-test('CI registry credentials come from the git-secrets Secret of the Forgejo serving the registry host', function (): void {
+test('CI registry credentials come from the Secret of the Forgejo serving the registry host', function (): void {
     $config = ConfigData::from(['name' => 'portal']);
     $config->environments['production'] = EnvironmentData::from([]);
     $config->environments['production']->cloud = new CloudData(context: 'prod-cluster');
 
     Process::fake([
-        "*get secret git-secrets-git-example-com -n larakube-shared -o jsonpath='{.data.username}'" => base64_encode('larakube'),
-        "*get secret git-secrets-git-example-com -n larakube-shared -o jsonpath='{.data.registry-token}'" => base64_encode('tok-123'),
+        "*get secret forgejo-secrets-git-example-com -n larakube-shared -o jsonpath='{.data.username}'" => base64_encode('larakube'),
+        "*get secret forgejo-secrets-git-example-com -n larakube-shared -o jsonpath='{.data.registry-token}'" => base64_encode('tok-123'),
     ]);
 
     expect(cloudConfigureForgejoRunner()->credentials($config, 'production', 'git.example.com'))
@@ -140,7 +142,26 @@ test('a registry host with no LaraKube-managed Forgejo behind it yields no crede
     $config->environments['production'] = EnvironmentData::from([]);
     $config->environments['production']->cloud = new CloudData(context: 'prod-cluster');
 
-    Process::fake(['*get secret git-secrets-*' => '']);
+    Process::fake(['*get secret forgejo-secrets-*' => '']);
 
     expect(cloudConfigureForgejoRunner()->credentials($config, 'production', 'git.example.com'))->toBeNull();
+});
+
+test('registry credentials are found on whichever managed server runs the Forgejo, not only the deploy target', function (): void {
+    $global = GlobalConfigData::load();
+    $global->putStack(StackData::from(['name' => 'forge-server', 'type' => 'vps', 'context' => 'forge-cluster']));
+    $global->save();
+
+    $config = ConfigData::from(['name' => 'portal']);
+    $config->environments['staging'] = EnvironmentData::from([]);
+    $config->environments['staging']->cloud = new CloudData(context: 'staging-cluster');
+
+    Process::fake([
+        "*--context 'staging-cluster'*get secret forgejo-secrets-git-example-com*" => Process::result(exitCode: 1),
+        "*--context 'forge-cluster'*get secret forgejo-secrets-git-example-com -n larakube-shared -o jsonpath='{.data.username}'" => base64_encode('larakube'),
+        "*--context 'forge-cluster'*get secret forgejo-secrets-git-example-com -n larakube-shared -o jsonpath='{.data.registry-token}'" => base64_encode('tok-999'),
+    ]);
+
+    expect(cloudConfigureForgejoRunner()->credentials($config, 'staging', 'git.example.com'))
+        ->toBe(['username' => 'larakube', 'token' => 'tok-999']);
 });
