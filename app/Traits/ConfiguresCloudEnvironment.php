@@ -2,15 +2,19 @@
 
 namespace App\Traits;
 
+use App\Contracts\HasEnvironmentVariables;
 use App\Contracts\PlexProvisionable;
 use App\Data\ConfigData;
 use App\Data\EnvironmentData;
 use App\Data\RegistryData;
 use App\Enums\AppFramework;
+use App\Enums\CacheDriver;
 use App\Enums\CliTool;
 use App\Enums\RegistryProvider;
+use App\Enums\ServerVariation;
 use App\Exceptions\MissingFlagException;
 use App\Services\Kubectl;
+use App\Services\Project\BackingServices;
 use App\Support\ForgejoRegistryLogin;
 use Illuminate\Support\Facades\Process;
 
@@ -40,7 +44,7 @@ trait ConfiguresCloudEnvironment
     // wizard `larakube env` uses, so an environment created on demand here
     // (§ below) is indistinguishable from one created via `env`. EnsuresRealHosts
     // is the same local/placeholder-host guard `cloud:deploy` uses.
-    use EnsuresRealHosts, GathersEnvironmentData, InteractsWithVpn, PushesBuildEnvToCi, ResolvesEnvironmentContext;
+    use EnsuresRealHosts, GathersEnvironmentData, InteractsWithVpn, PushesBuildEnvToCi, ReadsEnvSources, ReconcilesPendingPlexCommons, ResolvesEnvironmentContext;
     use GeneratesProjectInfrastructure, InteractsWithScopedRbac;
     use StreamsProcessOutput;
 
@@ -88,9 +92,11 @@ trait ConfiguresCloudEnvironment
         // just a blueprint entry with no manifests.
         if ($isNewEnvironment) {
             $this->laraKubeInfo("Environment '{$environment}' isn't in your blueprint yet — let's set it up.");
+            $plex = $this->flag('plex') !== null ? $this->gatherEnvironmentPlex($config, $environment) : [];
             $config->addEnvironment($environment, new EnvironmentData(
                 ingress: $this->gatherEnvironmentIngress($config, $environment),
                 managed: $this->gatherEnvironmentManaged($config, $environment),
+                plex: $plex,
                 additionalWebHosts: $this->gatherAdditionalWebHosts($config, $environment),
             ));
             $this->saveProjectConfig($projectPath, $config);
@@ -109,6 +115,18 @@ trait ConfiguresCloudEnvironment
                     $this->laraKubeInfo('Updated .gitignore to exclude .env.* files');
                 }
             }
+        } elseif ($this->flag('plex') !== null) {
+            $previousPlex = $config->getPlex($environment);
+            $selectedPlex = $this->gatherEnvironmentPlex($config, $environment);
+            $removedFromPlex = array_values(array_diff($previousPlex, $selectedPlex));
+            $config->environments[$environment]->plex = $selectedPlex;
+            if ($removedFromPlex !== []) {
+                $config->environments[$environment]->managed = array_values(array_diff(
+                    $config->environments[$environment]->managed,
+                    $removedFromPlex,
+                ));
+            }
+            $this->saveProjectConfig($projectPath, $config);
         }
 
         $this->laraKubeInfo("Configuring the deploy target for '{$environment}'...");
@@ -165,13 +183,14 @@ trait ConfiguresCloudEnvironment
 
         $this->saveProjectConfig($projectPath, $config);
 
-        // New environments need their manifests generated at least once — an
-        // existing env's overlays are already current (every `up`/`env`/`heal`
-        // regenerates them), so this only fires when there's actually something
-        // missing on disk.
-        if ($isNewEnvironment) {
-            $this->withSpin("Generating manifests for '{$environment}'...", function () use ($config) {
+        // New environments (or updates passing --plex=) need their manifests
+        // regenerated so overlays immediately reflect the backing-service choice.
+        if ($isNewEnvironment || $this->flag('plex') !== null) {
+            $this->withSpin("Generating manifests for '{$environment}'...", function () use ($config, $isNewEnvironment) {
                 $this->orchestrateProjectScaffolding($config, false, false);
+                if (! $isNewEnvironment) {
+                    $this->pruneStaleManifests($config);
+                }
 
                 return true;
             });
@@ -270,6 +289,76 @@ trait ConfiguresCloudEnvironment
     }
 
     /**
+     * Configure which eligible backing services in an environment should reuse
+     * Plex Commons vs deploy their own pods inside the app namespace — the
+     * `--only=plex` step of `cloud:configure`. Saves intent in `.larakube.json`
+     * and regenerates/prunes manifests immediately; cluster provisioning runs
+     * automatically on the next `cloud:deploy` or `cloud:configure --only=ci`.
+     */
+    protected function configurePlex(?string $environment = null): int
+    {
+        $environment ??= $this->askForCloudEnvironment(
+            label: 'Which environment are you configuring backing services for?',
+        );
+
+        if ($environment === 'local') {
+            $this->laraKubeError('Use `larakube plex:join local` or `larakube plex:leave local` for local development.');
+
+            return 1;
+        }
+
+        $projectPath = getcwd();
+        $config = $this->getProjectConfigObject($projectPath);
+
+        if (! $config->hasEnvironment($environment)) {
+            $this->laraKubeError("Environment '{$environment}' is not in your blueprint. Run `larakube cloud:configure {$environment}` first.");
+
+            return 1;
+        }
+
+        $selected = $this->gatherEnvironmentPlex($config, $environment);
+        $previousPlex = $config->getPlex($environment);
+        $removedFromPlex = array_values(array_diff($previousPlex, $selected));
+
+        $config->environments[$environment]->plex = $selected;
+
+        if ($removedFromPlex !== []) {
+            $config->environments[$environment]->managed = array_values(array_diff(
+                $config->environments[$environment]->managed,
+                $removedFromPlex,
+            ));
+        }
+
+        $this->saveProjectConfig($projectPath, $config);
+
+        $this->withSpin("Regenerating manifests for '{$environment}'...", function () use ($config) {
+            $this->generateK8sManifests($config);
+            $this->pruneStaleManifests($config);
+
+            return true;
+        });
+
+        $pending = $this->pendingPlexServices($config, $environment);
+
+        if ($selected === []) {
+            $this->laraKubeInfo("All backing services for '{$environment}' are configured to run as own pods in the app namespace.");
+        } else {
+            $this->laraKubeInfo("Plex Commons enabled in '{$environment}' blueprint for: ".implode(', ', $selected).'.');
+        }
+
+        if ($pending !== []) {
+            $this->line('  <fg=gray>Pending Plex Commons services ('.implode(', ', $pending).') will be provisioned automatically on your next deploy or CI/CD configure.</>');
+        }
+
+        if ($removedFromPlex !== []) {
+            $this->laraKubeWarn('Self-hosted pods will return on next deploy for: '.implode(', ', $removedFromPlex).'.');
+            $this->line("  <fg=gray>Existing Commons data is kept untouched until you run</> <fg=yellow>larakube plex:leave {$environment} --restore</><fg=gray>.</>");
+        }
+
+        return 0;
+    }
+
+    /**
      * Prompt to join a shared Commons when the project's drivers map to a
      * plex-ready Commons service (a Postgres/MySQL/MariaDB database, Redis,
      * Meilisearch, or S3 via SeaweedFS/Garage). plex:join rewrites .env and
@@ -279,6 +368,22 @@ trait ConfiguresCloudEnvironment
     protected function maybeJoinCommons(string $environment): void
     {
         $config = $this->getProjectConfigObject(getcwd());
+
+        $pending = $this->pendingPlexServices($config, $environment);
+        if ($pending !== []) {
+            $this->newLine();
+            $this->line('  This environment is configured to use Plex Commons for: <fg=cyan>'.implode(', ', $pending).'</>');
+            if (confirm('Provision and join these Plex Commons services now?', true)) {
+                $context = $this->environmentContextOrCurrent($config, $environment);
+                $this->call('plex:join', array_filter([
+                    'environment' => $environment,
+                    '--context' => $context,
+                    '--service' => $pending,
+                ], fn (mixed $v): bool => $v !== null && $v !== ''));
+            }
+
+            return;
+        }
 
         $shareable = [];
         foreach (array_filter([
@@ -414,6 +519,19 @@ trait ConfiguresCloudEnvironment
 
         $config->environments[$environment]->ciPlatform = $isForgejo ? 'forgejo' : 'github';
         $this->saveProjectConfig($projectPath, $config);
+
+        if ($this->pendingPlexServices($config, $environment) !== []) {
+            $plexContext = $this->environmentContextOrCurrent($config, $environment);
+            if (! $plexContext) {
+                $this->laraKubeError("No cluster target for '{$environment}' — link a server before provisioning Plex Commons.");
+                $this->line('  Run <fg=yellow;options=bold>larakube cloud:configure '.$environment.' --only=target</> first.');
+
+                return 1;
+            }
+            if (! $this->reconcilePendingPlexCommons($config, $environment, $plexContext, $projectPath)) {
+                return 1;
+            }
+        }
 
         if (! confirm("Upload the deploy credentials for '{$environment}' to {$forgeLabel}?", true)) {
             $this->laraKubeInfo('Action cancelled.');
@@ -956,8 +1074,53 @@ trait ConfiguresCloudEnvironment
      */
     protected function buildPublicEnvScript(ConfigData $config, string $environment, string $indent = '          '): string
     {
+        $vars = $config->getAllPublicEnvironmentVariables($environment);
+
+        if ($config->getPlex($environment) !== []) {
+            $envPath = $config->getPath().'/'.($environment === 'local' ? '.env' : ".env.{$environment}");
+            $fileVars = is_file($envPath) ? BackingServices::readEnv($envPath) : [];
+            $plexVars = [];
+
+            foreach ($config->getComponents($environment) as $component) {
+                if (! $component instanceof HasEnvironmentVariables
+                    || $component instanceof ServerVariation
+                    || ! $config->isPlexBacked($component, $environment)) {
+                    continue;
+                }
+
+                $secretKeys = array_keys($component->getSecretEnvironmentVariables($config, $environment));
+
+                foreach ($component->getPublicEnvironmentVariables($config, $environment) as $key => $fallback) {
+                    if ($this->isSecretKey($key, $secretKeys)) {
+                        continue;
+                    }
+
+                    $fromFile = $fileVars[$key] ?? null;
+                    $value = ($fromFile !== null && $fromFile !== '') ? $fromFile : (string) $fallback;
+
+                    if (($fromFile === null || $fromFile === '')
+                        && str_contains($value, '.svc.cluster.local')
+                        && ! str_contains($value, '.larakube-plex.svc.cluster.local')) {
+                        continue;
+                    }
+
+                    if ($this->hasEmbeddedCredentials($value)) {
+                        continue;
+                    }
+
+                    $plexVars[$key] = $value;
+                }
+
+                if ($component === CacheDriver::REDIS && isset($fileVars['REDIS_DB']) && $fileVars['REDIS_DB'] !== '') {
+                    $plexVars['REDIS_DB'] = $fileVars['REDIS_DB'];
+                }
+            }
+
+            $vars = array_merge($plexVars, $vars);
+        }
+
         $lines = [];
-        foreach ($config->getAllPublicEnvironmentVariables($environment) as $key => $value) {
+        foreach ($vars as $key => $value) {
             $lines[] = 'echo '.escapeshellarg("{$key}={$value}").' >> .env';
         }
 
@@ -1024,6 +1187,19 @@ trait ConfiguresCloudEnvironment
         }
 
         $this->saveProjectConfig($projectPath, $config);
+
+        if ($this->pendingPlexServices($config, $environment) !== []) {
+            $plexContext = $this->environmentContextOrCurrent($config, $environment);
+            if (! $plexContext) {
+                $this->laraKubeError("No cluster target for '{$environment}' — link a server before provisioning Plex Commons.");
+                $this->line('  Run <fg=yellow;options=bold>larakube cloud:configure '.$environment.' --only=target</> first.');
+
+                return 1;
+            }
+            if (! $this->reconcilePendingPlexCommons($config, $environment, $plexContext, $projectPath)) {
+                return 1;
+            }
+        }
 
         // Upload secrets via glab (if available) or print manual instructions
         $this->laraKubeInfo("Step 1: Uploading CI/CD variables for '{$environment}'...");

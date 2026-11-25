@@ -151,15 +151,15 @@ class PlexJoinCommand extends Command
 
         // Pick which eligible services to share on the Commons — you can join a
         // SUBSET (e.g. Redis but keep MySQL self-hosted). Everything downstream
-        // (bootstrap, allocation, .env) is driven by this list. Under
-        // --no-interaction, Prompts auto-resolves to `default` (all of them) —
-        // no need for a custom flag to skip this.
-        $services = multiselect(
-            label: "Which services should '{$tenant}' join on the Commons?",
-            options: array_combine($services, $services),
-            default: $services,
-            hint: 'Space to toggle · deselect any you want to keep self-hosted.',
-        );
+        // (bootstrap, allocation, .env) is driven by this list.
+        if (! $this->option('no-interaction') && empty($serviceOption)) {
+            $services = multiselect(
+                label: "Which services should '{$tenant}' join on the Commons?",
+                options: array_combine($services, $services),
+                default: $services,
+                hint: 'Space to toggle · deselect any you want to keep self-hosted.',
+            );
+        }
 
         if (empty($services)) {
             $this->laraKubeInfo('No services selected — nothing to join.');
@@ -224,7 +224,7 @@ class PlexJoinCommand extends Command
                 // (copy real data now vs. do your own backup and run plex:migrate
                 // later) deserves its own explicit answer every time.
                 $shouldMigrate = $this->option('migrate')
-                    || confirm('Migrate this data into the Commons now instead of refusing to join?', false);
+                    || (! $this->option('no-interaction') && confirm('Migrate this data into the Commons now instead of refusing to join?', false));
 
                 if ($shouldMigrate) {
                     $this->laraKubeNewLine();

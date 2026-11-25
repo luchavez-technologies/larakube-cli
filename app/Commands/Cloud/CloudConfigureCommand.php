@@ -32,13 +32,14 @@ class CloudConfigureCommand extends Command
      */
     protected $signature = 'cloud:configure
         {environment? : The environment to configure}
-        {--only= : Re-run just one step instead of the full guided flow: target|registry|ci|hosts}
+        {--only= : Re-run just one step instead of the full guided flow: target|registry|ci|hosts|plex}
         {--rotate : Revoke the current deploy token/secrets and mint fresh ones (use after a leak) — only with --only=ci}
         {--context= : Kube-context (or larakube-<ip> for a VPS) to bind the environment\'s deploy target to, non-interactively}
         {--rebind : Overwrite an already-configured deploy target non-interactively — required when --context= names a DIFFERENT target than what is already saved}
         {--ssh-key= : Path to the SSH private key, when --context= resolves to a VPS (skips the prompt)}
         {--ingress= : Ingress controller slug for the environment (skips the prompt)}
         {--managed= : Comma-separated externally-managed services; pass an empty value for none (skips the prompt)}
+        {--plex= : Comma-separated services to share via Plex Commons; pass an empty value for none (skips the prompt)}
         {--web-host= : The environment\'s primary web host, e.g. app.example.com (skips the prompt)}
         {--web-hosts= : Comma-separated additional web hostnames; pass an empty value to clear (skips the prompt)}
         {--registry-provider= : Legacy alias for the --registry option}
@@ -80,6 +81,7 @@ class CloudConfigureCommand extends Command
                 'registry' => $this->configureRegistry($environment),
                 'ci' => $this->configureCi($environment, (bool) $this->option('rotate')),
                 'hosts' => $this->configureHosts($environment),
+                'plex' => $this->configurePlex($environment),
                 default => $this->unsupportedOnlyValue($only),
             };
         } catch (InvalidArgumentException $e) {
@@ -94,7 +96,7 @@ class CloudConfigureCommand extends Command
 
     private function unsupportedOnlyValue(string $only): int
     {
-        $this->laraKubeError("Unknown --only value '{$only}'. Use one of: target, registry, ci, hosts.");
+        $this->laraKubeError("Unknown --only value '{$only}'. Use one of: target, registry, ci, hosts, plex.");
 
         return 1;
     }

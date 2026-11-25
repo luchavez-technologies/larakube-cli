@@ -9,6 +9,7 @@ use App\Data\RegistryData;
 use App\Enums\IngressController;
 use App\Enums\RegistryProvider;
 use App\Enums\SharedClusterService;
+use App\Services\PlexService;
 use Illuminate\Support\Facades\Process;
 use InvalidArgumentException;
 
@@ -96,6 +97,49 @@ trait GathersEnvironmentData
     }
 
     /**
+     * Prompt for which Plex-eligible backing services should reuse the cluster's
+     * shared Plex Commons in this env (instead of running their own pods inside
+     * the app namespace). Returns [] when the project has no eligible services.
+     *
+     * @return array<int, string>
+     */
+    protected function gatherEnvironmentPlex(ConfigData $config, string $envName): array
+    {
+        $eligible = (new PlexService)->projectCommonsServices($config);
+
+        if (($flag = $this->flag('plex')) !== null) {
+            $chosen = array_values(array_unique(array_filter(array_map('trim', explode(',', (string) $flag)))));
+            $invalid = array_diff($chosen, $eligible);
+
+            if ($invalid !== []) {
+                throw new InvalidArgumentException(
+                    "Invalid --plex service(s): '".implode("', '", $invalid)."'."
+                    .($eligible === [] ? ' This project has no Plex-eligible services.' : ' Use any of: '.implode(', ', $eligible).'.'),
+                );
+            }
+
+            return $chosen;
+        }
+
+        if ($eligible === []) {
+            return [];
+        }
+
+        $labels = $config->getManageableServices();
+        $options = [];
+        foreach ($eligible as $slug) {
+            $options[$slug] = $labels[$slug] ?? ucfirst($slug);
+        }
+
+        return multiselect(
+            label: "Which services should reuse Plex Commons in {$envName} (instead of deploying their own pod in the app namespace)?",
+            options: $options,
+            default: $config->getPlex($envName),
+            hint: 'Selected services will reuse the shared cluster Commons on deploy; unselected services deploy their own pod.',
+        );
+    }
+
+    /**
      * The full environment wizard: ingress, managed services, client-facing
      * hosts, and (for non-local envs) a container registry. All optional —
      * defaults produce an env that uses Traefik, deploys everything locally,
@@ -110,6 +154,9 @@ trait GathersEnvironmentData
         $envData = new EnvironmentData;
         $envData->ingress = $this->gatherEnvironmentIngress($config, $envName);
         $envData->managed = $this->gatherEnvironmentManaged($config, $envName);
+        if ($envName !== 'local' || $this->flag('plex') !== null) {
+            $envData->plex = $this->gatherEnvironmentPlex($config, $envName);
+        }
 
         // Client-facing hosts — the optional web host plus any HasPromptableHosts
         // service overrides (Reverb WS, object-storage S3/CDN). Shared via

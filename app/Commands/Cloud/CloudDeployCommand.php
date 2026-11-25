@@ -15,6 +15,7 @@ use App\Traits\InteractsWithRemoteDeploy;
 use App\Traits\InteractsWithScopedRbac;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PromotesIngressDns;
+use App\Traits\ReconcilesPendingPlexCommons;
 use App\Traits\ResolvesEnvironmentContext;
 use Illuminate\Support\Facades\Process;
 
@@ -26,7 +27,7 @@ class CloudDeployCommand extends Command
 {
     // getGhCommand() comes via LaraKubeOutput → InteractsWithGlobalConfig.
     // EnsuresRealHosts is the same local/placeholder-host guard cloud:configure uses.
-    use EnsuresRealHosts, GeneratesProjectInfrastructure, GuardsSharedStorage, InteractsWithEnvironments, InteractsWithKustomize, InteractsWithProjectConfig, InteractsWithRemoteDeploy, InteractsWithScopedRbac, LaraKubeOutput, PromotesIngressDns, ResolvesEnvironmentContext;
+    use EnsuresRealHosts, GeneratesProjectInfrastructure, GuardsSharedStorage, InteractsWithEnvironments, InteractsWithKustomize, InteractsWithProjectConfig, InteractsWithRemoteDeploy, InteractsWithScopedRbac, LaraKubeOutput, PromotesIngressDns, ReconcilesPendingPlexCommons, ResolvesEnvironmentContext;
 
     protected $signature = 'cloud:deploy
         {environment? : The environment to deploy to}
@@ -75,6 +76,12 @@ class CloudDeployCommand extends Command
 
                     return true;
                 });
+
+                $pending = $this->pendingPlexServices($config, $environment);
+                if ($pending !== []) {
+                    $this->laraKubeWarn('Pending Plex Commons services are not provisioned on the cluster yet: '.implode(', ', $pending).'.');
+                    $this->line("   <fg=gray>Run</> <fg=yellow>larakube cloud:configure {$environment} --only=ci</> <fg=gray>(or</> <fg=yellow>larakube plex:join {$environment}</><fg=gray>) before pushing.</>");
+                }
 
                 $dirty = trim(Process::run(['git', 'status', '--porcelain', '--', '.infrastructure', '.larakube.json'])->output());
 
@@ -150,6 +157,9 @@ class CloudDeployCommand extends Command
         // zero-prompt. Never the global current-context, so local dev pointed
         // elsewhere is undisturbed.
         [$config, $context] = $this->resolveEnvironmentContext($config, $environment, $projectPath);
+        if (! $this->reconcilePendingPlexCommons($config, $environment, $context, $projectPath)) {
+            return 1;
+        }
         $cloud = $config->getCloud($environment);
 
         // A managed cluster (context, no IP) can't be SSH-sideloaded, so it needs
@@ -232,6 +242,9 @@ class CloudDeployCommand extends Command
         }
 
         [$config, $context] = $this->resolveEnvironmentContext($config, $environment, $projectPath);
+        if (! $this->reconcilePendingPlexCommons($config, $environment, $context, $projectPath)) {
+            return 1;
+        }
         $cloud = $config->getCloud($environment);
         $registry = $config->getRegistry($environment);
 

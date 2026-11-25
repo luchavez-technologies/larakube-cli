@@ -73,6 +73,9 @@ final class BackingServices
     private function service(string $kind, string $label, ?BackedEnum $driver, ConfigData $config, string $environment, array $details, bool $reveal, array $env): array
     {
         $mode = $this->mode($driver, $config, $environment);
+        $pending = $driver !== null
+            && $mode === 'commons'
+            && ! in_array($driver->value, $config->getManaged($environment), true);
         $rows = [];
 
         if ($mode !== 'none') {
@@ -94,6 +97,7 @@ final class BackingServices
             'driver' => $driver?->value,
             'name' => $driver !== null && method_exists($driver, 'getLabel') ? (string) $driver->getLabel() : null,
             'mode' => $mode,
+            'pending' => $pending,
             'details' => $rows,
         ];
     }

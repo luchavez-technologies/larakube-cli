@@ -29,6 +29,7 @@ class EnvCommand extends Command
                             {--web-host= : The environment\'s web host, e.g. app.example.com (skips the prompt)}
                             {--ingress= : Ingress controller slug (skips the prompt)}
                             {--managed= : Comma-separated externally-managed services; pass an empty value for none (skips the prompt)}
+                            {--plex= : Comma-separated services to share via Plex Commons; pass an empty value for none (skips the prompt)}
                             {--web-hosts= : Comma-separated additional web hostnames; pass an empty value for none (skips the prompt)}
                             {--ssh-key= : Path to SSH private key for remote VPS deployment (skips the prompt)}
                             {--ssh-user= : SSH username for remote VPS deployment (skips the prompt)}
@@ -107,6 +108,14 @@ class EnvCommand extends Command
             $existing = $config->environments[$envName];
             $existing->ingress = $fresh->ingress;
             $existing->managed = $fresh->managed;
+            if ($envName !== 'local' || $this->flag('plex') !== null) {
+                $previousPlex = $existing->plex;
+                $existing->plex = $fresh->plex;
+                $removedFromPlex = array_values(array_diff($previousPlex, $existing->plex));
+                if ($removedFromPlex !== []) {
+                    $existing->managed = array_values(array_diff($existing->managed, $removedFromPlex));
+                }
+            }
             $existing->hosts = $fresh->hosts;
             $existing->additionalWebHosts = $fresh->additionalWebHosts;
             if ($fresh->registry !== null) {
