@@ -28,9 +28,9 @@ enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommo
     {
         return match ($this) {
             self::PENPOT => [
-                'backend' => 'penpotapp/backend:2.17',
-                'frontend' => 'penpotapp/frontend:2.17',
-                'exporter' => 'penpotapp/exporter:2.17',
+                'backend' => 'penpotapp/backend:2.17.2',
+                'frontend' => 'penpotapp/frontend:2.17.2',
+                'exporter' => 'penpotapp/exporter:2.17.2',
             ],
         };
     }

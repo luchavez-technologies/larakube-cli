@@ -4,6 +4,7 @@ namespace App\Vendors;
 
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsBuckets;
+use App\Contracts\HasImages;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasToolAccessDetails;
@@ -13,11 +14,23 @@ use App\Data\ClusterToolComponentData;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
+use App\Tools\Concerns\PinsImages;
 use Illuminate\Support\Facades\Process;
 
 /** The vendor implementation for oCIS (ownCloud Infinite Scale). */
-final class OcisTool implements ClusterToolVendor, HasCommonsBuckets, HasOidcWiring, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring, HasWorkloadComponents
+final class OcisTool implements ClusterToolVendor, HasCommonsBuckets, HasImages, HasOidcWiring, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring, HasWorkloadComponents
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return [
+            'ocis' => 'owncloud/ocis:8.0.6',
+            'code' => 'collabora/code:26.04.3.2.1',
+        ];
+    }
+
     public function getLabel(): string
     {
         return 'oCIS';

@@ -4,14 +4,27 @@ namespace App\Vendors;
 
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasImages;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
+use App\Tools\Concerns\PinsImages;
 
 /** The single vendor backing the MEET category — 'Video Meetings'. Only LiveKit. */
-final class MeetTool implements ClusterToolVendor, HasDeploymentBaseName, HasWorkloadComponents
+final class MeetTool implements ClusterToolVendor, HasDeploymentBaseName, HasImages, HasWorkloadComponents
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return [
+            'livekit' => 'livekit/livekit-server:v1.13.5',
+            'lk-jwt' => 'ghcr.io/element-hq/lk-jwt-service:0.5.0',
+        ];
+    }
+
     public function getLabel(): string
     {
         return 'LiveKit';

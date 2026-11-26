@@ -3,6 +3,7 @@
 namespace App\Vendors;
 
 use App\Contracts\ClusterToolVendor;
+use App\Contracts\HasImages;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWorkloadComponents;
@@ -10,10 +11,21 @@ use App\Data\ClusterToolComponentData;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
+use App\Tools\Concerns\PinsImages;
 
 /** The single vendor backing the DASHBOARD category — 'Kubernetes Control Plane'. Only Headlamp. */
-final class DashboardTool implements ClusterToolVendor, HasOidcWiring, HasVpnWiring, HasWorkloadComponents
+final class DashboardTool implements ClusterToolVendor, HasImages, HasOidcWiring, HasVpnWiring, HasWorkloadComponents
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return [
+            'headlamp' => 'ghcr.io/headlamp-k8s/headlamp:v0.29.0',
+        ];
+    }
+
     public function getLabel(): string
     {
         return 'Headlamp';

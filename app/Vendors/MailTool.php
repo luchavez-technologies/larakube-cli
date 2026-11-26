@@ -9,6 +9,7 @@ use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasCommonsRedisKeys;
 use App\Contracts\HasDbSecretRef;
+use App\Contracts\HasImages;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasPresenceProbe;
 use App\Contracts\HasRotatableDatabasePassword;
@@ -19,11 +20,22 @@ use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
 use App\Enums\SecretKind;
+use App\Tools\Concerns\PinsImages;
 use Illuminate\Support\Facades\Process;
 
 /** The single vendor backing the MAIL category — 'Mail Server'. Only Stalwart. */
-final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasToolAccessDetails, HasWorkloadComponents
+final class MailTool implements ClusterToolVendor, HasAdminEmailPrompt, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasImages, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasToolAccessDetails, HasWorkloadComponents
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return [
+            'stalwart' => 'stalwartlabs/stalwart:v0.16.14',
+        ];
+    }
+
     public function getLabel(): string
     {
         return 'Stalwart';

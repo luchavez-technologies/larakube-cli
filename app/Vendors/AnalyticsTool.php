@@ -21,7 +21,7 @@ final class AnalyticsTool implements ClusterToolVendor, HasCommonsDatabases, Has
     /** @return array<string, string> */
     public function images(): array
     {
-        return ['umami' => 'ghcr.io/umami-software/umami:postgresql-latest'];
+        return ['umami' => 'ghcr.io/umami-software/umami:postgresql-v2.20.2'];
     }
 
     public function getLabel(): string

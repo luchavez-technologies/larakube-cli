@@ -36,4 +36,9 @@ test('apps LaraKube Cloud installs declare their images, and each declared image
     ClusterTool::PENPOT,
     ClusterTool::CHATWOOT,
     ClusterTool::SENDREC,
+    ClusterTool::STALWART,
+    ClusterTool::BULWARK,
+    ClusterTool::NETBIRD,
+    ClusterTool::HEADLAMP,
+    ClusterTool::LIVEKIT,
 ]);

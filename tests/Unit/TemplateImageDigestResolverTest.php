@@ -57,6 +57,24 @@ test('parse normalizes docker.io single-name, multi-segment, and explicit allowe
             'host' => 'registry.k8s.io',
             'repo' => 'external-dns/external-dns',
             'tag' => 'v0.24.0',
+        ])
+        ->and($resolver->parse('codeberg.org/forgejo/forgejo:16.0.4'))->toBe([
+            'registry' => 'codeberg.org',
+            'host' => 'codeberg.org',
+            'repo' => 'forgejo/forgejo',
+            'tag' => '16.0.4',
+        ])
+        ->and($resolver->parse('code.forgejo.org/forgejo/runner:13.1.0'))->toBe([
+            'registry' => 'code.forgejo.org',
+            'host' => 'code.forgejo.org',
+            'repo' => 'forgejo/runner',
+            'tag' => '13.1.0',
+        ])
+        ->and($resolver->parse('oci.element.io/element-admin:0.1.12'))->toBe([
+            'registry' => 'oci.element.io',
+            'host' => 'oci.element.io',
+            'repo' => 'element-admin',
+            'tag' => '0.1.12',
         ]);
 });
 

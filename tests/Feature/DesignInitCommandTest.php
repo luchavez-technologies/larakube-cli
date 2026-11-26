@@ -59,8 +59,8 @@ test('tool:init --tool=penpot deploys Penpot stack into larakube-shared with Pos
     ])->assertExitCode(0);
 
     expect($appliedManifest)->not->toBeNull()
-        ->and($appliedManifest)->toContain('penpotapp/backend:2.17')
-        ->and($appliedManifest)->toContain('penpotapp/frontend:2.17')
+        ->and($appliedManifest)->toContain('penpotapp/backend:2.17.2')
+        ->and($appliedManifest)->toContain('penpotapp/frontend:2.17.2')
         ->and($appliedManifest)->toContain('PENPOT_DATABASE_USERNAME')
         ->and($appliedManifest)->toContain('postgresql://postgres.larakube-plex.svc.cluster.local:5432/penpot')
         ->and($appliedManifest)->toContain('redis://redis.larakube-plex.svc.cluster.local:6379/0')
@@ -124,7 +124,7 @@ test('tool:init --tool=penpot includes penpot-exporter container when --with-exp
     ])->assertExitCode(0);
 
     expect($appliedManifest)->not->toBeNull()
-        ->and($appliedManifest)->toContain('penpotapp/exporter:2.17')
+        ->and($appliedManifest)->toContain('penpotapp/exporter:2.17.2')
         ->and($appliedManifest)->toContain('PENPOT_EXPORTER_URI');
 });
 

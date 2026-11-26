@@ -33,7 +33,7 @@ spec:
     spec:
       containers:
         - name: umami
-          image: ghcr.io/umami-software/umami:postgresql-latest
+          image: ghcr.io/umami-software/umami:postgresql-v2.20.2
           ports:
             - containerPort: 3000
               name: http

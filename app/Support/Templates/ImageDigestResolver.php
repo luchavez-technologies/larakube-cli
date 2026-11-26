@@ -22,6 +22,9 @@ class ImageDigestResolver
         'gcr.io' => 'gcr.io',
         'oci.external-secrets.io' => 'oci.external-secrets.io',
         'docker.elastic.co' => 'docker.elastic.co',
+        'codeberg.org' => 'codeberg.org',
+        'code.forgejo.org' => 'code.forgejo.org',
+        'oci.element.io' => 'oci.element.io',
     ];
 
     private const REPO_PATTERN = '/^[a-z0-9]+([._\/-][a-z0-9]+)*$/';

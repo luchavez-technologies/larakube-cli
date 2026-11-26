@@ -5,6 +5,7 @@ namespace App\Vendors;
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasImages;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasPresenceProbe;
@@ -15,10 +16,27 @@ use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
 use App\Enums\SecretKind;
+use App\Tools\Concerns\PinsImages;
 
 /** The single vendor backing the VPN category — 'Zero-Trust VPN Mesh'. Only NetBird. */
-final class VpnTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasOidcWiring, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasWorkloadComponents
+final class VpnTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasImages, HasOidcWiring, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasWorkloadComponents
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return [
+            'management' => 'netbirdio/management:0.77.1',
+            'dashboard' => 'netbirdio/dashboard:v2.91.1',
+            'signal' => 'netbirdio/signal:0.77.1',
+            'relay' => 'netbirdio/relay:0.77.1',
+            'client' => 'netbirdio/netbird:0.77.1',
+            'socat' => 'alpine/socat:1.8.1.3',
+            'coredns' => 'coredns/coredns:1.14.6',
+        ];
+    }
+
     public function getLabel(): string
     {
         return 'NetBird';

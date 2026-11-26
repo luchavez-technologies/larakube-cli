@@ -44,7 +44,7 @@ spec:
     spec:
       containers:
         - name: uptime-kuma
-          image: louislam/uptime-kuma:1
+          image: louislam/uptime-kuma:1.23.17
           ports:
             - containerPort: 3001
               name: ui

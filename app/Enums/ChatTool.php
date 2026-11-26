@@ -7,6 +7,7 @@ use App\Contracts\ConfiguresViaConfigFile;
 use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDbSecretRef;
+use App\Contracts\HasImages;
 use App\Contracts\HasMeetBridge;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
@@ -17,10 +18,28 @@ use App\Contracts\HasWhiteLabel;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 use App\Data\ToolInstance;
+use App\Tools\Concerns\PinsImages;
 
 /** The vendor enum backing ClusterTool::MATRIX — 'Team Chat'. Only Matrix today. */
-enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasMeetBridge, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents
+enum ChatTool: string implements ClusterToolVendor, ConfiguresViaConfigFile, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasImages, HasMeetBridge, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return match ($this) {
+            self::MATRIX => [
+                'synapse' => 'matrixdotorg/synapse:v1.159.0',
+                'element-web' => 'vectorim/element-web:v1.12.26',
+                'coturn' => 'coturn/coturn:4.17.2-alpine',
+                'mas' => 'ghcr.io/element-hq/matrix-authentication-service:1.23.0',
+                'element-admin' => 'oci.element.io/element-admin:0.1.12',
+                'postgres' => 'postgres:15-alpine',
+            ],
+        };
+    }
+
     public function getLabel(): string
     {
         return 'Matrix';

@@ -47,6 +47,14 @@ return [
         'penpot',
         'chatwoot',
         'sendrec',
+        'zitadel',
+        'stalwart',
+        'bulwark',
+        'netbird',
+        'headlamp',
+        'livekit',
+        'ocis',
+        'matrix',
     ],
 
 ];

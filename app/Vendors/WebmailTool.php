@@ -4,16 +4,28 @@ namespace App\Vendors;
 
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasImages;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
+use App\Tools\Concerns\PinsImages;
 
 /** The single vendor backing the WEBMAIL category — 'Webmail UI'. Only Bulwark. 1:1 bound to the one Stalwart. */
-final class WebmailTool implements ClusterToolVendor, HasDeploymentBaseName, HasVpnWiring, HasWorkloadComponents
+final class WebmailTool implements ClusterToolVendor, HasDeploymentBaseName, HasImages, HasVpnWiring, HasWorkloadComponents
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return [
+            'bulwark' => 'ghcr.io/bulwarkmail/webmail:1.7.8',
+        ];
+    }
+
     public function getLabel(): string
     {
         return 'Bulwark';

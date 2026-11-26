@@ -20,10 +20,10 @@ function cloudAppsInstallResult(string $output): array
     return (array) json_decode((string) end($lines), true);
 }
 
-test('only listed apps can be installed', function (): void {
-    expect(Artisan::call('cloud:apps:install', ['app' => 'zitadel', '--json' => true]))->toBe(1)
-        ->and(cloudAppsInstallResult(Artisan::output())['error'])->toContain('cannot install zitadel');
-});
+test('only listed apps can be installed', function (string $unlisted): void {
+    expect(Artisan::call('cloud:apps:install', ['app' => $unlisted, '--json' => true]))->toBe(1)
+        ->and(cloudAppsInstallResult(Artisan::output())['error'])->toContain("cannot install {$unlisted}");
+})->with(['external-dns', 'nonexistent']);
 
 test('a kubeconfig is required, and nothing runs without one', function (): void {
     Process::fake();

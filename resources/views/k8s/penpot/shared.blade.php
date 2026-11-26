@@ -45,7 +45,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: penpotapp/backend:2.17
+          image: penpotapp/backend:2.17.2
           ports:
             - containerPort: 6060
               name: http
@@ -230,7 +230,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: penpotapp/frontend:2.17
+          image: penpotapp/frontend:2.17.2
           ports:
             - containerPort: 8080
               name: http
@@ -296,7 +296,7 @@ spec:
     spec:
       containers:
         - name: exporter
-          image: penpotapp/exporter:2.17
+          image: penpotapp/exporter:2.17.2
           ports:
             - containerPort: 6061
               name: http

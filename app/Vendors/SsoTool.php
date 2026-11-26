@@ -7,6 +7,7 @@ use App\Contracts\HasAdminEmailPrompt;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasImages;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasToolAccessDetails;
 use App\Contracts\HasWorkloadComponents;
@@ -14,10 +15,24 @@ use App\Data\ClusterToolComponentData;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
+use App\Tools\Concerns\PinsImages;
 
 /** The single vendor backing the SSO category — 'Identity Provider / SSO'. Only Zitadel. */
-final class SsoTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasRotatableDatabasePassword, HasToolAccessDetails, HasWorkloadComponents
+final class SsoTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasImages, HasRotatableDatabasePassword, HasToolAccessDetails, HasWorkloadComponents
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return [
+            'zitadel' => 'ghcr.io/zitadel/zitadel:v4.16.1',
+            'proxy' => 'quay.io/oauth2-proxy/oauth2-proxy:v7.15.3',
+            'postgres' => 'postgres:15-alpine',
+            'busybox' => 'busybox:1.36',
+        ];
+    }
+
     public function getLabel(): string
     {
         return 'Zitadel';
