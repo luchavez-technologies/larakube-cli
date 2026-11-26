@@ -81,3 +81,18 @@ test('an app install confirms Commons restarts, since the Install click in LaraK
 
     expect($arguments)->toMatchArray(['--tool' => 'umami', '--confirm-commons-restart' => true, '--no-interaction' => true]);
 });
+
+test('Plex Commons accepts every engine the LaraKube CLI can provision, and refuses planned ones', function (): void {
+    $directory = TemporaryDirectory::make();
+    expect(home_path())->not->toBe((string) (posix_getpwuid(posix_getuid())['dir'] ?? ''));
+    Process::preventStrayProcesses();
+    Process::fake([
+        '*jsonpath={.current-context}*' => Process::result(output: 'larakube-cloud-installer'),
+        '*--flatten*' => Process::result(output: "apiVersion: v1\nkind: Config\n"),
+    ]);
+
+    Artisan::call('cloud:apps:install', ['app' => 'plex', '--plex-services' => 'typesense', '--kubeconfig' => cloudAppsInstallKubeconfig($directory), '--json' => true]);
+    $error = (string) cloudAppsInstallResult(Artisan::output())['error'];
+
+    expect($error)->toContain('Commons services')->toContain('garage')->toContain('meilisearch')->toContain('headless-shell')->not->toContain('typesense');
+});

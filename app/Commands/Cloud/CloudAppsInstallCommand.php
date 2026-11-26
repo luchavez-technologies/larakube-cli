@@ -3,6 +3,7 @@
 namespace App\Commands\Cloud;
 
 use App\Enums\ClusterTool;
+use App\Services\PlexService;
 use App\Services\Tools\InitOption;
 use App\Services\Tools\ToolInitSpec;
 use App\Support\Console\MaskedLogOutput;
@@ -62,9 +63,6 @@ class CloudAppsInstallCommand extends Command
         'matrix',
     ];
 
-    /** Shared Commons services Cloud may ask for. */
-    private const PLEX_SERVICES = ['postgres', 'redis', 'mariadb', 'seaweedfs'];
-
     protected $signature = 'cloud:apps:install
         {app : The app to install}
         {--kubeconfig= : Kubeconfig with a short-lived token for this cluster}
@@ -119,10 +117,12 @@ class CloudAppsInstallCommand extends Command
         $arguments = ['environment' => 'production', '--context' => $context, '--no-interaction' => true];
 
         if ($app === 'plex') {
+            // Every Commons engine the LaraKube CLI can provision, from the same catalog plex:show gives Desktop.
+            $ready = array_keys(array_filter(app(PlexService::class)->commonsServiceCatalog(), fn (array $meta): bool => $meta['ready']));
             $services = array_values(array_filter(array_map(trim(...), explode(',', (string) $this->option('plex-services')))));
-            $unknown = array_diff($services, self::PLEX_SERVICES);
+            $unknown = array_diff($services, $ready);
             if ($services === [] || $unknown !== []) {
-                throw new InvalidArgumentException('Choose Commons services from: '.implode(', ', self::PLEX_SERVICES).'.');
+                throw new InvalidArgumentException('Choose Commons services from: '.implode(', ', $ready).'.');
             }
 
             return [...$arguments, '--services' => implode(',', $services), '--confirm-commons-restart' => true];
