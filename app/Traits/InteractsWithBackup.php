@@ -246,14 +246,78 @@ trait InteractsWithBackup
      */
     protected function backupAwsEnv(array $config): array
     {
+        $region = ($config['region'] ?? '') !== ''
+            ? $config['region']
+            : $this->defaultBackupRegion((string) ($config['endpoint'] ?? ''));
+
         return [
             'AWS_ACCESS_KEY_ID' => $config['access_key'],
             'AWS_SECRET_ACCESS_KEY' => $config['secret_key'],
-            // R2 wants "auto"; anything else is provider-specific.
-            'AWS_DEFAULT_REGION' => $config['region'] !== '' ? $config['region'] : 'auto',
+            // R2 wants "auto"; AWS S3 wants a real region such as us-east-1.
+            'AWS_DEFAULT_REGION' => $region,
             'AWS_REQUEST_CHECKSUM_CALCULATION' => 'when_required',
             'AWS_RESPONSE_CHECKSUM_VALIDATION' => 'when_required',
         ];
+    }
+
+    /**
+     * Default region for a backup endpoint when none was explicitly supplied.
+     */
+    protected function defaultBackupRegion(string $endpoint): string
+    {
+        $host = strtolower((string) parse_url($endpoint, PHP_URL_HOST));
+
+        if ($host === 'amazonaws.com' || str_ends_with($host, '.amazonaws.com')) {
+            return 'us-east-1';
+        }
+
+        return 'auto';
+    }
+
+    /**
+     * Read the newest entry from `~/.larakube/backup-recovery.txt` (or `$path`).
+     *
+     * @return array{endpoint: string, bucket: string, access_key: string, secret_key: string, passphrase: string, region: string}|null
+     */
+    protected function readRecoveryCard(?string $path = null): ?array
+    {
+        $file = $path ?: home_path('.larakube/backup-recovery.txt');
+
+        if (! is_file($file) || ! is_readable($file)) {
+            return null;
+        }
+
+        $raw = (string) @file_get_contents($file);
+
+        if (trim($raw) === '') {
+            return null;
+        }
+
+        $blocks = preg_split('/^\s*─{4,}\s*$/mu', $raw) ?: [$raw];
+        $latest = (string) end($blocks);
+
+        $extract = static function (string $block, string $label): string {
+            if (preg_match('/^\s*'.preg_quote($label, '/').'\s+(.+?)\s*$/m', $block, $matches) === 1) {
+                return trim($matches[1]);
+            }
+
+            return '';
+        };
+
+        $card = [
+            'endpoint' => $extract($latest, 'endpoint'),
+            'bucket' => $extract($latest, 'bucket'),
+            'region' => $extract($latest, 'region'),
+            'access_key' => $extract($latest, 'access key'),
+            'secret_key' => $extract($latest, 'secret key'),
+            'passphrase' => $extract($latest, 'passphrase'),
+        ];
+
+        if ($card['endpoint'] === '' && $card['bucket'] === '' && $card['secret_key'] === '' && $card['passphrase'] === '') {
+            return null;
+        }
+
+        return $card;
     }
 
     /**
@@ -473,29 +537,74 @@ trait InteractsWithBackup
      * volume (Synapse mounts homeserver.yaml under /data), and only the
      * PVC-backed mount is restorable.
      *
-     * @param  array<string, string>  $target
-     * @return array{claim: string, mountPath: string}|null
+     * Fetch a Deployment or StatefulSet spec JSON, falling back from deploy to
+     * statefulset when the preferred kind is not found.
+     *
+     * @return array<string, mixed>|null
      */
-    protected function resolveVolumeClaim(string $kubectl, array $target): ?array
+    protected function fetchWorkloadSpec(string $kubectl, string $namespace, string $name, string $kind = 'deploy'): ?array
     {
-        $spec = Kubectl::fromPrefix($kubectl)->raw(
-            ['get', 'deploy', $target['deployment'], '-n', $target['namespace'], '-o', 'json'], timeoutSeconds: 60,
-        )->json();
+        $kube = Kubectl::fromPrefix($kubectl);
+        $spec = $kube->raw(['get', $kind, $name, '-n', $namespace, '-o', 'json'], timeoutSeconds: 60)->json();
 
-        if (! is_array($spec)) {
-            return null;
+        if (! is_array($spec) && $kind === 'deploy') {
+            $spec = $kube->raw(['get', 'statefulset', $name, '-n', $namespace, '-o', 'json'], timeoutSeconds: 60)->json();
         }
 
-        $pod = $spec['spec']['template']['spec'] ?? [];
+        return is_array($spec) ? $spec : null;
+    }
 
+    /**
+     * Map volume names to PVC claim names for Deployments and StatefulSets
+     * (including volumeClaimTemplates -> `<tpl>-<sts>-0`).
+     *
+     * @param  array<string, mixed>  $spec
+     * @return array<string, string>
+     */
+    protected function extractWorkloadClaims(array $spec, string $name): array
+    {
+        $pod = is_array($spec['spec']['template']['spec'] ?? null) ? $spec['spec']['template']['spec'] : [];
         $claims = [];
+
         foreach ($pod['volumes'] ?? [] as $volume) {
             if (($volume['persistentVolumeClaim']['claimName'] ?? '') !== '') {
-                $claims[$volume['name']] = $volume['persistentVolumeClaim']['claimName'];
+                $claims[(string) $volume['name']] = (string) $volume['persistentVolumeClaim']['claimName'];
             }
         }
 
+        foreach ($spec['spec']['volumeClaimTemplates'] ?? [] as $template) {
+            $tplName = (string) ($template['metadata']['name'] ?? '');
+            if ($tplName !== '' && ! isset($claims[$tplName])) {
+                $claims[$tplName] = "{$tplName}-{$name}-0";
+            }
+        }
+
+        return $claims;
+    }
+
+    /**
+     * @param  array<string, mixed>  $target
+     * @return array{claim: string, mountPath: string, subPath?: string}|null
+     */
+    protected function resolveVolumeClaim(string $kubectl, array $target): ?array
+    {
+        $spec = $this->fetchWorkloadSpec(
+            $kubectl,
+            (string) $target['namespace'],
+            (string) $target['deployment'],
+            (string) ($target['kind'] ?? 'deploy'),
+        );
+
+        if ($spec === null) {
+            return null;
+        }
+
+        $pod = is_array($spec['spec']['template']['spec'] ?? null) ? $spec['spec']['template']['spec'] : [];
+        $claims = $this->extractWorkloadClaims($spec, (string) $target['deployment']);
+
         $best = null;
+        $targetPath = (string) ($target['paths'][0] ?? '');
+
         foreach ($pod['containers'] ?? [] as $container) {
             if (($container['name'] ?? '') !== $target['container']) {
                 continue;
@@ -505,16 +614,192 @@ trait InteractsWithBackup
                 $path = (string) ($mount['mountPath'] ?? '');
                 $claim = $claims[$mount['name'] ?? ''] ?? null;
 
-                if ($claim === null || ! str_starts_with($target['paths'][0].'/', rtrim($path, '/').'/')) {
+                if ($claim === null || ! str_starts_with($targetPath.'/', rtrim($path, '/').'/')) {
                     continue;
                 }
 
                 if ($best === null || strlen($path) > strlen($best['mountPath'])) {
-                    $best = ['claim' => $claim, 'mountPath' => $path];
+                    $entry = ['claim' => $claim, 'mountPath' => $path];
+                    $subPath = (string) ($mount['subPath'] ?? '');
+                    if ($subPath !== '') {
+                        $entry['subPath'] = $subPath;
+                    }
+                    $best = $entry;
                 }
             }
         }
 
         return $best;
+    }
+
+    /**
+     * Discover every PVC-backed mount on a workload (Deployment or StatefulSet),
+     * together with any nested non-PVC subpaths (ConfigMap/Secret/emptyDir)
+     * shadowed underneath each mount.
+     *
+     * @return list<array{pvc: string, mountPath: string, subPath: string, container: string, excludedSubpaths: list<string>}>
+     */
+    protected function discoverWorkloadPvcMounts(
+        string $kubectl,
+        string $namespace,
+        string $name,
+        ?string $containerName = null,
+        string $kind = 'deploy',
+    ): array {
+        $spec = $this->fetchWorkloadSpec($kubectl, $namespace, $name, $kind);
+
+        if ($spec === null) {
+            return [];
+        }
+
+        $pod = is_array($spec['spec']['template']['spec'] ?? null) ? $spec['spec']['template']['spec'] : [];
+        $claims = $this->extractWorkloadClaims($spec, $name);
+        $mounts = [];
+
+        foreach ($pod['containers'] ?? [] as $container) {
+            $cName = (string) ($container['name'] ?? '');
+            if ($containerName !== null && $containerName !== '' && $cName !== $containerName) {
+                continue;
+            }
+
+            $allContainerMounts = is_array($container['volumeMounts'] ?? null) ? $container['volumeMounts'] : [];
+
+            foreach ($allContainerMounts as $mount) {
+                $volName = (string) ($mount['name'] ?? '');
+                $pvc = $claims[$volName] ?? null;
+                $mountPath = (string) ($mount['mountPath'] ?? '');
+
+                if ($pvc === null || $mountPath === '') {
+                    continue;
+                }
+
+                $normalizedRoot = rtrim($mountPath, '/').'/';
+                $excluded = [];
+
+                foreach ($allContainerMounts as $other) {
+                    $otherVol = (string) ($other['name'] ?? '');
+                    $otherPath = (string) ($other['mountPath'] ?? '');
+                    if ($otherPath === '' || isset($claims[$otherVol]) || $otherPath === $mountPath) {
+                        continue;
+                    }
+
+                    if (str_starts_with($otherPath, $normalizedRoot)) {
+                        $excluded[] = ltrim(substr($otherPath, strlen($normalizedRoot)), '/');
+                    }
+                }
+
+                $mounts[] = [
+                    'pvc' => $pvc,
+                    'mountPath' => $mountPath,
+                    'subPath' => (string) ($mount['subPath'] ?? ''),
+                    'container' => $cName,
+                    'excludedSubpaths' => array_values(array_unique(array_filter($excluded, fn (string $s): bool => $s !== ''))),
+                ];
+            }
+        }
+
+        return $mounts;
+    }
+
+    /**
+     * Restore a `.tar.gz` archive into a PVC via a throwaway alpine pod,
+     * scaling the owning workload to 0 first (unless already paused at 0) and
+     * restoring its original replica count in `finally`.
+     *
+     * @param  array{
+     *   kind?: string,
+     *   mode?: 'pvc-root'|'live-mounts',
+     *   podName?: string,
+     *   replicas?: int,
+     *   claim: string,
+     *   mountPath?: string,
+     *   subPath?: string,
+     *   extractDir?: string,
+     * }  $options
+     */
+    protected function restorePvcArchive(
+        string $kubectl,
+        string $namespace,
+        string $workloadName,
+        string $archivePath,
+        array $options,
+    ): bool {
+        $kind = (string) ($options['kind'] ?? 'deploy');
+        $mode = (string) ($options['mode'] ?? 'live-mounts');
+        $pod = (string) ($options['podName'] ?? "larakube-restore-{$workloadName}");
+        $replicas = (int) ($options['replicas'] ?? 1);
+        $claim = (string) $options['claim'];
+        $subPath = (string) ($options['subPath'] ?? '');
+
+        if ($mode === 'pvc-root') {
+            $containerMount = ['name' => 'data', 'mountPath' => '/pvc'];
+            $extractDir = $subPath !== '' ? '/pvc/'.ltrim($subPath, '/') : '/pvc';
+        } else {
+            $mountPath = (string) ($options['mountPath'] ?? '/data');
+            $containerMount = ['name' => 'data', 'mountPath' => $mountPath];
+            if ($subPath !== '') {
+                $containerMount['subPath'] = $subPath;
+            }
+            $extractDir = (string) ($options['extractDir'] ?? $mountPath);
+        }
+
+        if ($replicas > 0) {
+            $stopped = Process::timeout(300)->run(
+                "{$kubectl} scale {$kind}/{$workloadName} -n {$namespace} --replicas=0",
+            )->successful() && Process::timeout(300)->run(
+                // Without this the claim can still be attached when the helper pod
+                // tries to mount it, and ReadWriteOnce means the helper never starts.
+                "{$kubectl} wait --for=delete pod -l app={$workloadName} -n {$namespace} --timeout=180s",
+            )->successful();
+
+            if (! $stopped) {
+                return false;
+            }
+        }
+
+        try {
+            $overrides = json_encode([
+                'spec' => [
+                    'containers' => [[
+                        'name' => 'restore',
+                        'image' => 'alpine:3.20',
+                        'command' => ['sleep', '600'],
+                        'volumeMounts' => [$containerMount],
+                    ]],
+                    'volumes' => [['name' => 'data', 'persistentVolumeClaim' => ['claimName' => $claim]]],
+                ],
+            ], JSON_THROW_ON_ERROR);
+
+            $started = Process::timeout(300)->run(
+                "{$kubectl} run {$pod} -n {$namespace} --image=alpine:3.20 --restart=Never "
+                .'--overrides='.escapeshellarg($overrides),
+            )->successful() && Process::timeout(300)->run(
+                "{$kubectl} wait --for=condition=Ready pod/{$pod} -n {$namespace} --timeout=180s",
+            )->successful();
+
+            if (! $started) {
+                return false;
+            }
+
+            if ($mode === 'pvc-root' && $subPath !== '') {
+                Process::timeout(60)->run(
+                    "{$kubectl} exec {$pod} -n {$namespace} -- mkdir -p ".escapeshellarg($extractDir),
+                );
+            }
+
+            return Process::timeout(1800)->run(
+                "{$kubectl} exec -i {$pod} -n {$namespace} -- tar xzf - -C ".escapeshellarg($extractDir)
+                .' < '.escapeshellarg($archivePath),
+            )->successful();
+        } finally {
+            // Always, even when the untar failed: a running service left at 0
+            // replicas because a restore errored is an outage this command caused.
+            Process::timeout(300)->run("{$kubectl} delete pod {$pod} -n {$namespace} --ignore-not-found");
+            if ($replicas > 0) {
+                Process::timeout(300)->run(
+                    "{$kubectl} scale {$kind}/{$workloadName} -n {$namespace} --replicas={$replicas}",
+                );
+            }
+        }
     }
 }

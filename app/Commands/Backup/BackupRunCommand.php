@@ -161,13 +161,14 @@ class BackupRunCommand extends Command
         foreach ($this->producedItems($work) as $item) {
             $sealed = "{$work}/{$item['object']}";
 
-            $ok = $this->withSpin("Encrypting and uploading {$item['name']}...", fn () => Process::timeout(600)->run(
-                'openssl enc -aes-256-cbc -pbkdf2 -salt -pass '.escapeshellarg("pass:{$config['passphrase']}")
-                .' -in '.escapeshellarg($item['path']).' -out '.escapeshellarg($sealed),
-            )->successful() && Process::timeout(1800)->env($this->backupAwsEnv($config))->run(
-                'aws --endpoint-url '.escapeshellarg($config['endpoint'])
-                .' s3 cp '.escapeshellarg($sealed).' '.escapeshellarg("s3://{$config['bucket']}/{$prefix}{$item['object']}"),
-            )->successful());
+            $ok = $this->withSpin("Encrypting and uploading {$item['name']}...", fn () => Process::timeout(600)
+                ->env(['PASSPHRASE' => $config['passphrase']])->run(
+                    'openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:PASSPHRASE'
+                    .' -in '.escapeshellarg($item['path']).' -out '.escapeshellarg($sealed),
+                )->successful() && Process::timeout(1800)->env($this->backupAwsEnv($config))->run(
+                    'aws --endpoint-url '.escapeshellarg($config['endpoint'])
+                    .' s3 cp '.escapeshellarg($sealed).' '.escapeshellarg("s3://{$config['bucket']}/{$prefix}{$item['object']}"),
+                )->successful());
 
             if (! $ok) {
                 // No manifest is written, so this prefix stays invisible to

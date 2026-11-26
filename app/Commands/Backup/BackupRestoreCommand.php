@@ -2,6 +2,7 @@
 
 namespace App\Commands\Backup;
 
+use App\Services\Backup\DatabaseRestorer;
 use App\Services\Kubectl;
 use App\Traits\ConfirmsDestructiveAction;
 use App\Traits\DeploysClusterTool;
@@ -12,6 +13,7 @@ use App\Traits\RequiresFlagsWhenNonInteractive;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\multiselect;
+use function Laravel\Prompts\password;
 
 use LaravelZero\Framework\Commands\Command;
 
@@ -38,8 +40,8 @@ class BackupRestoreCommand extends Command
         {--endpoint=  : Destination endpoint. Use when the cluster is gone.}
         {--bucket=    : Destination bucket. Use when the cluster is gone.}
         {--access-key= : Access key. Use when the cluster is gone.}
-        {--secret-key= : Secret key. Use when the cluster is gone.}
-        {--passphrase= : Decryption passphrase. Use when the cluster is gone.}
+        {--region=    : Region override (defaults to us-east-1 for AWS S3, auto otherwise).}
+        {--recovery-file= : Path to recovery card file (default: ~/.larakube/backup-recovery.txt).}
         {--database=  : Restore just this database, live. Destructive.}
         {--volume=    : Restore just this volume, live. Destructive — scales its service down first.}
         {--dry-run    : Verify only, and never offer to restore. Default when nothing is named.}
@@ -65,11 +67,11 @@ class BackupRestoreCommand extends Command
             $this->line('  <fg=gray>Either run `larakube backup:init` on a live cluster, or — if the cluster');
             $this->line('  is gone, which is what this command is for — pass the destination directly:</>');
             $this->newLine();
-            $this->line('  <fg=blue>larakube backup:restore --endpoint=… --bucket=… \\</>');
-            $this->line('  <fg=blue>    --access-key=… --secret-key=… --passphrase=…</>');
+            $this->line('  <fg=blue>larakube backup:restore --recovery-file=~/.larakube/backup-recovery.txt</>');
             $this->newLine();
-            $this->line('  <fg=gray>Those five values are in the recovery card `backup:init` wrote to');
-            $this->line('  ~/.larakube/backup-recovery.txt, and hopefully somewhere else too.</>');
+            $this->line('  <fg=gray>Or pass --endpoint= --bucket= --access-key= with LARAKUBE_BACKUP_SECRET_KEY');
+            $this->line('  and LARAKUBE_BACKUP_PASSPHRASE in the environment. Credentials are on the');
+            $this->line('  recovery card `backup:init` wrote to ~/.larakube/backup-recovery.txt.</>');
             $this->newLine();
 
             return 1;
@@ -228,8 +230,8 @@ class BackupRestoreCommand extends Command
             ->env($this->backupAwsEnv($config))->run(
                 'aws --endpoint-url '.escapeshellarg($config['endpoint'])
                 .' s3 cp '.escapeshellarg("s3://{$config['bucket']}/{$key}").' '.escapeshellarg($sealed),
-            )->successful() && Process::timeout(600)->run(
-                'openssl enc -d -aes-256-cbc -pbkdf2 -pass '.escapeshellarg("pass:{$config['passphrase']}")
+            )->successful() && Process::timeout(600)->env(['PASSPHRASE' => $config['passphrase']])->run(
+                'openssl enc -d -aes-256-cbc -pbkdf2 -pass env:PASSPHRASE'
                 .' -in '.escapeshellarg($sealed).' -out '.escapeshellarg($plain),
             )->successful());
     }
@@ -398,19 +400,18 @@ class BackupRestoreCommand extends Command
         }
 
         $service = $driver->commonsServiceName();
-        $preamble = $driver->commonsRestorePreamble($database);
+        $restorer = DatabaseRestorer::forPod($kubectl, 'larakube-plex', "deploy/{$service}", $service);
 
-        // The preamble has to reach psql on the SAME stdin as the dump — it
-        // clears the schema and hands the session to the tenant role, and both
-        // only hold for the connection that replays the dump.
-        $stream = $preamble === ''
-            ? 'gunzip -c '.escapeshellarg($dump)
-            : '{ printf %s '.escapeshellarg($preamble).'; gunzip -c '.escapeshellarg($dump).'; }';
+        $ok = $this->withSpin(
+            "Restoring database {$database} into {$driver->value}...",
+            fn () => $restorer->restore($driver, $database, $dump),
+        );
 
-        return $this->withSpin("Restoring database {$database} into {$driver->value}...", fn () => Process::timeout(1800)->run(
-            "{$stream} | {$kubectl} exec -i deploy/{$service} -n larakube-plex -c {$service} -- "
-            .'sh -c '.escapeshellarg($driver->commonsAdminRestoreCommand($database)),
-        )->successful());
+        if (! $ok && $restorer->lastError() !== null) {
+            $this->laraKubeError($restorer->lastError());
+        }
+
+        return $ok;
     }
 
     /**
@@ -420,10 +421,6 @@ class BackupRestoreCommand extends Command
      * cannot work: scaling to 0 deletes the only pod there is to exec into. And
      * untarring into a live service risks a half-written volume under a running
      * process, which is worse than the failure being restored from.
-     *
-     * So: stop the service, mount its claim into a plain alpine pod at the SAME
-     * path the real pod uses (the archive's leading component is the mount point
-     * itself), write, then put everything back — including on failure.
      */
     protected function restoreVolume(string $kubectl, string $work, string $name): bool
     {
@@ -453,74 +450,44 @@ class BackupRestoreCommand extends Command
 
         $ns = $target['namespace'];
         $deploy = $target['deployment'];
+        $kind = (string) ($target['kind'] ?? 'deploy');
         $pod = "larakube-restore-{$name}";
-        $replicas = $this->currentReplicas($kubectl, $ns, $deploy);
+        $replicas = $this->currentReplicas($kubectl, $ns, $deploy, $kind);
 
-        $ok = $this->withSpin("Stopping {$deploy}...", fn () => Process::timeout(300)->run(
-            "{$kubectl} scale deploy/{$deploy} -n {$ns} --replicas=0",
-        )->successful() && Process::timeout(300)->run(
-            // Without this the claim can still be attached when the helper pod
-            // tries to mount it, and ReadWriteOnce means the helper never starts.
-            "{$kubectl} wait --for=delete pod -l app={$deploy} -n {$ns} --timeout=180s",
-        )->successful());
-
-        try {
-            if (! $ok) {
-                $this->laraKubeError("Could not stop {$deploy} — refusing to write to a volume still in use.");
-
-                return false;
-            }
-
-            $overrides = json_encode([
-                'spec' => [
-                    'containers' => [[
-                        'name' => 'restore',
-                        'image' => 'alpine:3.20',
-                        'command' => ['sleep', '600'],
-                        'volumeMounts' => [['name' => 'data', 'mountPath' => $claim['mountPath']]],
-                    ]],
-                    'volumes' => [['name' => 'data', 'persistentVolumeClaim' => ['claimName' => $claim['claim']]]],
-                ],
-            ], JSON_THROW_ON_ERROR);
-
-            $started = $this->withSpin("Mounting {$claim['claim']}...", fn () => Process::timeout(300)->run(
-                "{$kubectl} run {$pod} -n {$ns} --image=alpine:3.20 --restart=Never "
-                .'--overrides='.escapeshellarg($overrides),
-            )->successful() && Process::timeout(300)->run(
-                "{$kubectl} wait --for=condition=Ready pod/{$pod} -n {$ns} --timeout=180s",
-            )->successful());
-
-            if (! $started) {
-                $this->laraKubeError("Helper pod for '{$name}' never became ready.");
-
-                return false;
-            }
-
-            // -C dirname(paths[0]) mirrors how backup:run created it: `tar -C
-            // dirname base…`, so members are bare basenames relative to that one
-            // shared directory. Extracting anywhere else nests them a level deep.
-            return $this->withSpin("Restoring volume {$name}...", fn () => Process::timeout(1800)->run(
-                "{$kubectl} exec -i {$pod} -n {$ns} -- tar xzf - -C ".escapeshellarg(dirname($target['paths'][0]))
-                .' < '.escapeshellarg($archive),
-            )->successful());
-        } finally {
-            // Always, even when the untar failed: a service left at 0 replicas
-            // because a restore errored is an outage this command caused.
-            Process::timeout(300)->run("{$kubectl} delete pod {$pod} -n {$ns} --ignore-not-found");
-            $this->withSpin("Starting {$deploy}...", fn () => Process::timeout(300)->run(
-                "{$kubectl} scale deploy/{$deploy} -n {$ns} --replicas={$replicas}",
-            ));
-        }
+        return $this->withSpin("Restoring volume {$name}...", fn () => $this->restorePvcArchive(
+            $kubectl,
+            $ns,
+            $deploy,
+            $archive,
+            [
+                'kind' => $kind,
+                'mode' => 'live-mounts',
+                'podName' => $pod,
+                'replicas' => $replicas,
+                'claim' => $claim['claim'],
+                'mountPath' => $claim['mountPath'],
+                'subPath' => (string) ($claim['subPath'] ?? ''),
+                'extractDir' => dirname($target['paths'][0]),
+            ],
+        ));
     }
 
-    /** Replica count to restore afterwards; 1 when it cannot be read. */
-    protected function currentReplicas(string $kubectl, string $ns, string $deploy): int
+    /** Replica count to restore afterwards; preserves paused state (0), defaults to 1 if unreadable. */
+    protected function currentReplicas(string $kubectl, string $ns, string $deploy, string $kind = 'deploy'): int
     {
         $raw = trim(Process::timeout(60)->run(
-            "{$kubectl} get deploy {$deploy} -n {$ns} -o jsonpath=".escapeshellarg('{.spec.replicas}'),
+            "{$kubectl} get {$kind} {$deploy} -n {$ns} -o jsonpath=".escapeshellarg('{.spec.replicas}'),
         )->output());
 
-        return $raw === '' ? 1 : max(1, (int) $raw);
+        if ($raw !== '') {
+            return max(0, (int) $raw);
+        }
+
+        $paused = trim(Process::timeout(60)->run(
+            "{$kubectl} get {$kind} {$deploy} -n {$ns} -o jsonpath=".escapeshellarg('{.metadata.annotations.larakube\.app/paused-replicas}'),
+        )->output());
+
+        return $paused !== '' ? 0 : 1;
     }
 
     /**
@@ -553,20 +520,35 @@ class BackupRestoreCommand extends Command
      */
     protected function resolveRestoreConfig(string $kubectl): ?array
     {
-        $endpoint = (string) ($this->option('endpoint') ?? '');
-        $bucket = (string) ($this->option('bucket') ?? '');
+        $recoveryFile = (string) ($this->option('recovery-file') ?? '');
+        $card = $recoveryFile !== '' ? $this->readRecoveryCard($recoveryFile) : null;
+
+        $endpoint = (string) ($this->option('endpoint') ?: ($card['endpoint'] ?? ''));
+        $bucket = (string) ($this->option('bucket') ?: ($card['bucket'] ?? ''));
+        $regionFlag = (string) ($this->option('region') ?? '');
 
         if ($endpoint !== '' && $bucket !== '') {
+            $accessKey = (string) ($this->option('access-key') ?: getenv('LARAKUBE_BACKUP_ACCESS_KEY') ?: ($card['access_key'] ?? ''));
+            $secretKey = (string) (getenv('LARAKUBE_BACKUP_SECRET_KEY') ?: ($card['secret_key'] ?? '') ?: ($this->cannotPrompt() ? '' : password(label: 'Secret access key')));
+            $passphrase = (string) (getenv('LARAKUBE_BACKUP_PASSPHRASE') ?: ($card['passphrase'] ?? '') ?: ($this->cannotPrompt() ? '' : password(label: 'Decryption passphrase')));
+            $region = (string) ($regionFlag ?: getenv('LARAKUBE_BACKUP_REGION') ?: ($card['region'] ?? '') ?: $this->defaultBackupRegion($endpoint));
+
             return [
                 'endpoint' => $endpoint,
                 'bucket' => $bucket,
-                'access_key' => (string) ($this->option('access-key') ?? ''),
-                'secret_key' => (string) ($this->option('secret-key') ?? ''),
-                'passphrase' => (string) ($this->option('passphrase') ?? ''),
-                'region' => 'auto',
+                'access_key' => $accessKey,
+                'secret_key' => $secretKey,
+                'passphrase' => $passphrase,
+                'region' => $region,
             ];
         }
 
-        return $this->readBackupConfig($kubectl, $this->backupNamespace());
+        $config = $this->readBackupConfig($kubectl, $this->backupNamespace());
+
+        if ($config !== null && $regionFlag !== '') {
+            $config['region'] = $regionFlag;
+        }
+
+        return $config;
     }
 }

@@ -324,6 +324,17 @@ class CloudMigrateCommand extends Command
         $this->newLine();
         $this->laraKubeInfo('Restoring Commons data onto the new cluster...');
 
+        $recoveryFile = $directory->path('backup-recovery.txt');
+        file_put_contents($recoveryFile, implode("\n", [
+            "  endpoint    {$backupConfig['endpoint']}",
+            "  bucket      {$backupConfig['bucket']}",
+            "  region      {$backupConfig['region']}",
+            "  access key  {$backupConfig['access_key']}",
+            "  secret key  {$backupConfig['secret_key']}",
+            "  passphrase  {$backupConfig['passphrase']}",
+        ])."\n");
+        @chmod($recoveryFile, 0600);
+
         foreach ($manifest['items'] as $item) {
             $flag = $item['kind'] === 'database' ? '--database' : '--volume';
 
@@ -334,11 +345,7 @@ class CloudMigrateCommand extends Command
                 '--context' => $destinationContext,
                 '--backup' => $stamp,
                 $flag => $item['name'],
-                '--endpoint' => $backupConfig['endpoint'],
-                '--bucket' => $backupConfig['bucket'],
-                '--access-key' => $backupConfig['access_key'],
-                '--secret-key' => $backupConfig['secret_key'],
-                '--passphrase' => $backupConfig['passphrase'],
+                '--recovery-file' => $recoveryFile,
                 '--force' => true,
                 '--no-interaction' => true,
             ]);

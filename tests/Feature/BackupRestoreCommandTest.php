@@ -55,13 +55,21 @@ test('restore accepts the destination on the command line, for when no cluster e
         '*' => Process::result(output: ''),
     ]);
 
-    $this->artisan('backup:restore local --no-interaction '
-        .'--endpoint=https://acct.r2.cloudflarestorage.com --bucket=b '
-        .'--access-key=AK --secret-key=SK --passphrase=pp')
-        ->assertExitCode(1)
-        // Got past config resolution to the actual lookup — i.e. it did NOT
-        // stop at "no destination configured".
-        ->expectsOutputToContain('No completed backups found');
+    putenv('LARAKUBE_BACKUP_SECRET_KEY=SK');
+    putenv('LARAKUBE_BACKUP_PASSPHRASE=pp');
+
+    try {
+        $this->artisan('backup:restore local --no-interaction '
+            .'--endpoint=https://acct.r2.cloudflarestorage.com --bucket=b '
+            .'--access-key=AK')
+            ->assertExitCode(1)
+            // Got past config resolution to the actual lookup — i.e. it did NOT
+            // stop at "no destination configured".
+            ->expectsOutputToContain('No completed backups found');
+    } finally {
+        putenv('LARAKUBE_BACKUP_SECRET_KEY');
+        putenv('LARAKUBE_BACKUP_PASSPHRASE');
+    }
 });
 
 test('restore without a cluster or flags explains the recovery card', function (): void {

@@ -24,6 +24,7 @@ class SecretsExportCommand extends Command
         {environment=local      : Target environment}
         {--engine=              : Source engine to export from ("openbao")}
         {--output=              : Path to write the JSON file (default: ./secrets-export.json)}
+        {--include-policies     : Also export custom OpenBao ACL policies (excluding built-in policies)}
         {--context=             : Target a specific kube-context}';
 
     protected $description = 'Export all secrets from the secrets manager to a local JSON file';
@@ -62,49 +63,101 @@ class SecretsExportCommand extends Command
             'engine' => 'openbao',
             'exported_at' => now()->toIso8601String(),
             'environments' => [],
+            'secrets' => [],
         ];
 
         $rows = [];
-        $totalKeys = 0;
+        $paths = [];
 
-        $this->withSpin('Listing secret mounts from OpenBao...', function () use ($kubectl, $token, &$listResponse): void {
-            $listResponse = $this->openBaoApi($kubectl, 'GET', '/v1/secret/metadata?list=true', null, $token);
-        });
-
-        $keys = $listResponse['data']['keys'] ?? [];
-
-        foreach ($keys as $envSlug) {
-            $envSlug = rtrim($envSlug, '/');
-            if ($envSlug === '') {
-                continue;
+        $walkError = null;
+        $walk = function (string $prefix) use (&$walk, $kubectl, $token, &$paths, &$walkError): void {
+            if ($walkError !== null) {
+                return;
             }
 
-            $this->withSpin("Listing keys for environment \"{$envSlug}\"...", function () use ($kubectl, $token, $envSlug, &$subKeysResponse): void {
-                $subKeysResponse = $this->openBaoApi($kubectl, 'GET', "/v1/secret/metadata/{$envSlug}?list=true", null, $token);
-            });
+            $listEndpoint = $prefix === ''
+                ? '/v1/secret/metadata?list=true'
+                : "/v1/secret/metadata/{$prefix}?list=true";
 
-            $subKeys = $subKeysResponse['data']['keys'] ?? [];
-            $envSecrets = [];
+            $listResponse = $this->openBaoApi($kubectl, 'GET', $listEndpoint, null, $token);
+            if ($listResponse === null || ! isset($listResponse['data']['keys']) || ! is_array($listResponse['data']['keys'])) {
+                $label = $prefix === '' ? 'secret/' : "secret/{$prefix}";
+                $walkError = "Failed to list OpenBao path \"{$label}\"".($this->lastSecretsBackendError !== null ? " ({$this->lastSecretsBackendError})" : '.');
 
-            foreach ($subKeys as $key) {
-                $key = rtrim($key, '/');
-                if ($key === '') {
+                return;
+            }
+
+            foreach ($listResponse['data']['keys'] as $entry) {
+                $entry = (string) $entry;
+                if ($entry === '') {
                     continue;
                 }
 
-                $this->withSpin("Reading {$envSlug}/{$key}...", function () use ($kubectl, $token, $envSlug, $key, &$secretData): void {
-                    $secretData = $this->openBaoApi($kubectl, 'GET', "/v1/secret/data/{$envSlug}/{$key}", null, $token);
-                });
+                $isFolder = str_ends_with($entry, '/');
+                $trimmed = rtrim($entry, '/');
+                if ($trimmed === '') {
+                    continue;
+                }
 
-                $val = $secretData['data']['data']['value'] ?? null;
-                if ($val !== null) {
-                    $envSecrets[$key] = $val;
-                    $rows[] = [$envSlug, $key];
-                    $totalKeys++;
+                $full = $prefix === '' ? $trimmed : "{$prefix}/{$trimmed}";
+
+                if ($isFolder) {
+                    $walk($full);
+                    if ($walkError !== null) {
+                        return;
+                    }
+                } else {
+                    $paths[] = $full;
                 }
             }
+        };
 
-            $export['environments'][$envSlug] = $envSecrets;
+        $listed = $this->withSpin('Listing secrets recursively from OpenBao...', fn () => $walk(''));
+
+        if (! $listed || $walkError !== null) {
+            $this->laraKubeError($walkError ?? 'Failed to list secrets from OpenBao.');
+
+            return 1;
+        }
+
+        foreach ($paths as $path) {
+            $secretData = null;
+            $readOk = $this->withSpin("Reading {$path}...", function () use ($kubectl, $token, $path, &$secretData): void {
+                $secretData = $this->openBaoApi($kubectl, 'GET', "/v1/secret/data/{$path}", null, $token);
+            });
+
+            $payload = $secretData['data']['data'] ?? null;
+            if (! $readOk || $secretData === null || ! is_array($payload)) {
+                $this->laraKubeError(
+                    "Failed to read OpenBao secret \"secret/{$path}\""
+                    .($this->lastSecretsBackendError !== null ? " ({$this->lastSecretsBackendError})" : '.'),
+                );
+
+                return 1;
+            }
+
+            $export['secrets'][$path] = $payload;
+
+            $segments = explode('/', $path, 2);
+            $envSlug = $segments[0];
+            $keySlug = $segments[1] ?? '';
+
+            // Preserve legacy environments[env][key] shape for single-segment keys with a `value` field.
+            if ($keySlug !== '' && ! str_contains($keySlug, '/') && array_key_exists('value', $payload) && is_scalar($payload['value'])) {
+                $export['environments'][$envSlug][$keySlug] = (string) $payload['value'];
+            } else {
+                $export['environments'][$envSlug] ??= [];
+            }
+
+            $rows[] = [$envSlug, $keySlug !== '' ? $keySlug : $path];
+        }
+
+        if ($this->option('include-policies')) {
+            $policies = $this->exportCustomAclPolicies($kubectl, $token);
+            if ($policies === null) {
+                return 1;
+            }
+            $export['policies'] = $policies;
         }
 
         $json = json_encode($export, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
@@ -122,6 +175,7 @@ class SecretsExportCommand extends Command
         }
 
         $this->laraKubeNewLine();
+        $totalKeys = count($export['secrets']);
         $this->laraKubeInfo("✅ Exported {$totalKeys} secret(s) to: {$output}");
         $this->newLine();
         $this->line('  <fg=yellow>⚠  This file contains raw secret values. Treat it like a .env file.</>');
@@ -129,6 +183,43 @@ class SecretsExportCommand extends Command
         $this->newLine();
 
         return 0;
+    }
+
+    /**
+     * Export custom KV ACL policies (excluding OpenBao built-ins and LaraKube system policies).
+     *
+     * @return array<string, string>|null
+     */
+    protected function exportCustomAclPolicies(string $kubectl, string $token): ?array
+    {
+        $list = $this->openBaoApi($kubectl, 'GET', '/v1/sys/policies/acl?list=true', null, $token);
+        if ($list === null || ! isset($list['data']['keys']) || ! is_array($list['data']['keys'])) {
+            $this->laraKubeError('Failed to list OpenBao ACL policies.');
+
+            return null;
+        }
+
+        $reserved = array_merge(['root', 'default'], array_keys(SecretsBackend::OPENBAO->policies()));
+        $policies = [];
+
+        foreach ($list['data']['keys'] as $name) {
+            $name = (string) $name;
+            if ($name === '' || in_array($name, $reserved, true)) {
+                continue;
+            }
+
+            $policy = $this->openBaoApi($kubectl, 'GET', "/v1/sys/policies/acl/{$name}", null, $token);
+            $hcl = $policy['data']['policy'] ?? $policy['policy'] ?? null;
+            if ($policy === null || ! is_string($hcl)) {
+                $this->laraKubeError("Failed to read OpenBao ACL policy \"{$name}\".");
+
+                return null;
+            }
+
+            $policies[$name] = $hcl;
+        }
+
+        return $policies;
     }
 
     protected function resolveEngine(): SecretsBackend

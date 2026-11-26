@@ -12,6 +12,7 @@ use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
 use App\Traits\ResolvesEnvironmentContext;
 use App\Traits\SyncsClusterSecrets;
+use App\Traits\WiresTenantDbSecrets;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\confirm;
@@ -19,11 +20,10 @@ use function Laravel\Prompts\multiselect;
 
 use Laravel\Prompts\Prompt;
 use LaravelZero\Framework\Commands\Command;
-use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class PlexJoinCommand extends Command
 {
-    use InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext, SyncsClusterSecrets;
+    use InteractsWithPlex, InteractsWithProjectConfig, LaraKubeOutput, ResolvesEnvironmentContext, SyncsClusterSecrets, WiresTenantDbSecrets;
 
     protected $signature = 'plex:join
         {environment? : Environment to join to the Commons — "local" (default) or a cloud environment. Omit to be prompted.}
@@ -562,59 +562,6 @@ class PlexJoinCommand extends Command
         )));
         ConfigData::from($data)->saveToFile($projectPath);
         $this->line('  <fg=gray>Marked managed + plex in .larakube.json:</> '.implode(', ', $services));
-    }
-
-    /**
-     * Wire OpenBao's static-role password for $roleName into the app's own
-     * laravel-secrets Secret (DB_PASSWORD key), via the same
-     * VaultDynamicSecret + Kubernetes-auth mechanism secrets:wire uses for
-     * cluster tools — waits for a verifiably fresh sync before restarting, so
-     * an already-deployed app never restarts against a password OpenBao has
-     * already superseded (the exact race that took Documenso down a second
-     * time this session; also the exact mechanism plex:rotate now reuses for
-     * an explicit credential reset). A first-time join has nothing running
-     * yet, so the restart step is skipped — cloud:deploy/up reads the fresh
-     * secret on its own first boot.
-     *
-     * $roleName must be the exact OpenBao static-role name registerStaticRole()
-     * created ("tenant-{tenant}", not the bare tenant) — found live 2026-08-01:
-     * this read the bare tenant name while registration used the prefixed one,
-     * so every OpenBao-backed plex:join db wiring 400'd with "unknown role" and
-     * silently fell back to the weaker .env-only mode.
-     */
-    protected function wireTenantDbSecret(string $kubectl, string $namespace, string $roleName): bool
-    {
-        $refreshTimeBefore = $this->externalSecretRefreshTime($kubectl, $namespace, 'laravel-secrets-db');
-
-        $manifest = view('k8s.openbao.eso-db-static', [
-            'namespace' => $namespace,
-            'openbaoServer' => $this->openBaoServerUrl($kubectl),
-            'secretName' => 'laravel-secrets',
-            'roleName' => $roleName,
-            'passwordKey' => 'DB_PASSWORD',
-        ])->render();
-
-        $temporaryDirectory = TemporaryDirectory::make();
-        $tmp = $temporaryDirectory->path('larakube-eso-db-static-'.$roleName.'.yaml');
-        file_put_contents($tmp, $manifest);
-        $applied = Process::run("{$kubectl} apply -f ".escapeshellarg($tmp))->successful();
-        $temporaryDirectory->delete();
-
-        if (! $applied) {
-            return false;
-        }
-
-        $this->forceExternalSecretReconcile($kubectl, $namespace, 'laravel-secrets-db');
-
-        if (! $this->waitForExternalSecretSynced($kubectl, $namespace, 'laravel-secrets-db', $refreshTimeBefore)) {
-            return false;
-        }
-
-        if (Kubectl::fromPrefix($kubectl)->hasDeployment($namespace, 'web')) {
-            $this->restartSecretConsumers($kubectl, $namespace, 'web');
-        }
-
-        return true;
     }
 
     protected function printNext(string $env): void

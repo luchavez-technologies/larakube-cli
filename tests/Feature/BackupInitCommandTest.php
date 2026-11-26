@@ -58,21 +58,31 @@ test('backup:init refuses a destination inside the cluster', function (): void {
     // SeaweedFS shares a block device with every volume it would protect, so a
     // disk or droplet loss destroys the data and the backups together.
     Process::fake(backupInitFakes());
+    putenv('LARAKUBE_BACKUP_SECRET_KEY=s');
 
-    $this->artisan('backup:init local --no-interaction '
-        .'--endpoint=http://seaweedfs.larakube-plex.svc.cluster.local:8333 '
-        .'--bucket=b --access-key=k --secret-key=s')
-        ->assertExitCode(1)
-        ->expectsOutputToContain('inside this cluster');
+    try {
+        $this->artisan('backup:init local --no-interaction '
+            .'--endpoint=http://seaweedfs.larakube-plex.svc.cluster.local:8333 '
+            .'--bucket=b --access-key=k')
+            ->assertExitCode(1)
+            ->expectsOutputToContain('inside this cluster');
+    } finally {
+        putenv('LARAKUBE_BACKUP_SECRET_KEY');
+    }
 });
 
 test('backup:init rejects localhost too', function (): void {
     Process::fake(backupInitFakes());
+    putenv('LARAKUBE_BACKUP_SECRET_KEY=s');
 
-    $this->artisan('backup:init local --no-interaction --endpoint=http://localhost:9000 '
-        .'--bucket=b --access-key=k --secret-key=s')
-        ->assertExitCode(1)
-        ->expectsOutputToContain('inside this cluster');
+    try {
+        $this->artisan('backup:init local --no-interaction --endpoint=http://localhost:9000 '
+            .'--bucket=b --access-key=k')
+            ->assertExitCode(1)
+            ->expectsOutputToContain('inside this cluster');
+    } finally {
+        putenv('LARAKUBE_BACKUP_SECRET_KEY');
+    }
 });
 
 test('backup:init accepts a real off-site endpoint and prints the passphrase once', function (): void {
@@ -82,14 +92,19 @@ test('backup:init accepts a real off-site endpoint and prints the passphrase onc
         '*create secret*' => Process::result(output: 'created'),
         '*apply -f *' => Process::result(output: 'configured'),
     ]));
+    putenv('LARAKUBE_BACKUP_SECRET_KEY=SK');
 
-    $this->artisan('backup:init local --no-interaction '
-        .'--endpoint=https://s3.us-west-004.backblazeb2.com '
-        .'--bucket=luchtech-backups --access-key=AK --secret-key=SK')
-        ->assertExitCode(0)
-        // The passphrase lives in a Secret on the cluster these backups exist
-        // to survive — so it has to be shown once and carried off the machine.
-        ->expectsOutputToContain('WRITE THIS DOWN SOMEWHERE OFF THIS SERVER');
+    try {
+        $this->artisan('backup:init local --no-interaction '
+            .'--endpoint=https://s3.us-west-004.backblazeb2.com '
+            .'--bucket=luchtech-backups --access-key=AK')
+            ->assertExitCode(0)
+            // The passphrase lives in a Secret on the cluster these backups exist
+            // to survive — so it has to be shown once and carried off the machine.
+            ->expectsOutputToContain('WRITE THIS DOWN SOMEWHERE OFF THIS SERVER');
+    } finally {
+        putenv('LARAKUBE_BACKUP_SECRET_KEY');
+    }
 });
 
 test('backup:init --json takes its keys from the environment and never prints the passphrase', function (): void {
@@ -227,12 +242,17 @@ test('a token without R2 permission says exactly which scope is missing', functi
 test('bucket creation is refused for non-R2 endpoints rather than failing obscurely', function (): void {
     Process::fake(backupInitFakes());
     Http::fake();
+    putenv('LARAKUBE_BACKUP_SECRET_KEY=s');
 
-    $this->artisan('backup:init local --no-interaction --create-bucket '
-        .'--endpoint=https://s3.us-west-004.backblazeb2.com '
-        .'--bucket=b --access-key=k --secret-key=s --cloudflare-token=t')
-        ->assertExitCode(1)
-        ->expectsOutputToContain('only supported for Cloudflare R2');
+    try {
+        $this->artisan('backup:init local --no-interaction --create-bucket '
+            .'--endpoint=https://s3.us-west-004.backblazeb2.com '
+            .'--bucket=b --access-key=k --cloudflare-token=t')
+            ->assertExitCode(1)
+            ->expectsOutputToContain('only supported for Cloudflare R2');
+    } finally {
+        putenv('LARAKUBE_BACKUP_SECRET_KEY');
+    }
 });
 
 test('the environment argument selects the cluster, not whatever kubectl points at', function (): void {
@@ -243,11 +263,16 @@ test('the environment argument selects the cluster, not whatever kubectl points 
         '*create secret*' => Process::result(output: 'created'),
         '*apply -f *' => Process::result(output: 'configured'),
     ]));
+    putenv('LARAKUBE_BACKUP_SECRET_KEY=s');
 
-    $this->artisan('backup:init production --no-interaction --context=some-cluster '
-        .'--endpoint=https://acct.r2.cloudflarestorage.com '
-        .'--bucket=b --access-key=k --secret-key=s')
-        ->assertExitCode(0);
+    try {
+        $this->artisan('backup:init production --no-interaction --context=some-cluster '
+            .'--endpoint=https://acct.r2.cloudflarestorage.com '
+            .'--bucket=b --access-key=k')
+            ->assertExitCode(0);
+    } finally {
+        putenv('LARAKUBE_BACKUP_SECRET_KEY');
+    }
 
     // Every kubectl call must carry the resolved context.
     Process::assertRan(fn ($job) => str_contains($job->command, "--context 'some-cluster'")

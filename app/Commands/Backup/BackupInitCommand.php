@@ -35,8 +35,8 @@ class BackupInitCommand extends Command
         {--endpoint=   : S3-compatible endpoint (e.g. https://s3.us-west-004.backblazeb2.com)}
         {--bucket=     : Destination bucket}
         {--access-key= : Access key ID}
-        {--secret-key= : Secret access key}
-        {--region=auto : Region. Cloudflare R2 requires "auto"; most others accept it.}
+        {--region=     : Region (defaults to us-east-1 for AWS S3, auto otherwise)}
+        {--recovery-file= : Path to recovery card file to read secret credentials from}
         {--cloudflare-token= : Cloudflare API token, to create the R2 bucket for you}
         {--create-bucket : Create the bucket before configuring (Cloudflare R2 only)}
         {--context=    : Target a specific kube-context}
@@ -62,7 +62,10 @@ class BackupInitCommand extends Command
         $kubectl = Kubectl::forContext($context)->prefix();
         $ns = $this->backupNamespace();
 
-        $endpoint = (string) ($this->option('endpoint') ?: ($this->cannotPrompt() ? '' : text(
+        $recoveryFile = (string) ($this->option('recovery-file') ?? '');
+        $card = $recoveryFile !== '' ? $this->readRecoveryCard($recoveryFile) : null;
+
+        $endpoint = (string) ($this->option('endpoint') ?: ($card['endpoint'] ?? '') ?: ($this->cannotPrompt() ? '' : text(
             label: 'S3-compatible endpoint for backups',
             placeholder: 'https://<account-id>.r2.cloudflarestorage.com',
             hint: 'Cloudflare R2 (10GB free, no egress fees), Backblaze B2, or DO Spaces. Must NOT be this cluster.',
@@ -85,14 +88,15 @@ class BackupInitCommand extends Command
             return 1;
         }
 
-        $bucket = (string) ($this->option('bucket') ?: ($this->cannotPrompt() ? '' : text(
+        $bucket = (string) ($this->option('bucket') ?: ($card['bucket'] ?? '') ?: ($this->cannotPrompt() ? '' : text(
             label: 'Destination bucket', placeholder: 'luchtech-backups',
         )));
-        $accessKey = (string) ($this->option('access-key') ?: getenv('LARAKUBE_BACKUP_ACCESS_KEY') ?: ($this->cannotPrompt() ? '' : text(label: 'Access key ID')));
-        $secretKey = (string) ($this->option('secret-key') ?: getenv('LARAKUBE_BACKUP_SECRET_KEY') ?: ($this->cannotPrompt() ? '' : password(label: 'Secret access key')));
+        $accessKey = (string) ($this->option('access-key') ?: getenv('LARAKUBE_BACKUP_ACCESS_KEY') ?: ($card['access_key'] ?? '') ?: ($this->cannotPrompt() ? '' : text(label: 'Access key ID')));
+        $secretKey = (string) (getenv('LARAKUBE_BACKUP_SECRET_KEY') ?: ($card['secret_key'] ?? '') ?: ($this->cannotPrompt() ? '' : password(label: 'Secret access key')));
+        $region = (string) ($this->option('region') ?: ($card['region'] ?? '') ?: $this->defaultBackupRegion($endpoint));
 
         if ($bucket === '' || $accessKey === '' || $secretKey === '') {
-            $this->laraKubeError('Bucket and credentials are all required.');
+            $this->laraKubeError('Bucket and credentials are all required (pass LARAKUBE_BACKUP_SECRET_KEY or --recovery-file= non-interactively).');
 
             return 1;
         }
@@ -116,7 +120,7 @@ class BackupInitCommand extends Command
             'bucket' => $bucket,
             'access-key' => $accessKey,
             'secret-key' => $secretKey,
-            'region' => (string) $this->option('region'),
+            'region' => $region,
             'passphrase' => $passphrase,
         ])->ok);
 
@@ -143,7 +147,7 @@ class BackupInitCommand extends Command
             'access_key' => $accessKey,
             'secret_key' => $secretKey,
             'passphrase' => $passphrase,
-            'region' => (string) $this->option('region'),
+            'region' => $region,
         ]);
 
         if ($card !== null) {
@@ -297,11 +301,7 @@ class BackupInitCommand extends Command
         To restore from a machine with nothing else:
 
           larakube backup:restore \\
-            --endpoint={$config['endpoint']} \\
-            --bucket={$config['bucket']} \\
-            --access-key={$config['access_key']} \\
-            --secret-key=<secret key above> \\
-            --passphrase=<passphrase above>
+            --recovery-file=~/.larakube/backup-recovery.txt
 
         TXT;
 

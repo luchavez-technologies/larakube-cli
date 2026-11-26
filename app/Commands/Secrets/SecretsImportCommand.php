@@ -56,19 +56,44 @@ class SecretsImportCommand extends Command
 
         $data = json_decode((string) file_get_contents($input), true);
 
-        if (! is_array($data) || ! isset($data['environments']) || ! is_array($data['environments'])) {
+        if (! is_array($data) || (! isset($data['environments']) && ! isset($data['secrets']))) {
             $this->laraKubeError("Invalid export file format: {$input}");
 
             return 1;
         }
 
-        $environments = $data['environments'];
-        $totalKeys = array_sum(array_map('count', $environments));
+        /** @var array<string, array<string, mixed>> $secretsMap */
+        $secretsMap = [];
+
+        if (isset($data['secrets']) && is_array($data['secrets'])) {
+            foreach ($data['secrets'] as $path => $payload) {
+                $path = trim((string) $path, '/');
+                if ($path === '' || ! is_array($payload)) {
+                    $this->laraKubeError("Invalid secret entry in {$input}: {$path}");
+
+                    return 1;
+                }
+                $secretsMap[$path] = $payload;
+            }
+        } elseif (isset($data['environments']) && is_array($data['environments'])) {
+            foreach ($data['environments'] as $envSlug => $secrets) {
+                if (! is_array($secrets)) {
+                    continue;
+                }
+                foreach ($secrets as $key => $value) {
+                    $secretsMap["{$envSlug}/{$key}"] = is_array($value) ? $value : ['value' => $value];
+                }
+            }
+        }
+
+        /** @var array<string, string> $policies */
+        $policies = is_array($data['policies'] ?? null) ? $data['policies'] : [];
+
+        $totalKeys = count($secretsMap);
 
         $this->laraKubeInfo(sprintf(
-            'Found %d secret(s) across %d environment(s) in %s',
+            'Found %d secret(s) in %s',
             $totalKeys,
-            count($environments),
             $input,
         ));
 
@@ -97,20 +122,37 @@ class SecretsImportCommand extends Command
         $rows = [];
         $failed = 0;
 
-        foreach ($environments as $envSlug => $secrets) {
-            foreach ($secrets as $key => $value) {
-                $this->withSpin("Writing {$envSlug}/{$key}...", function () use ($kubectl, $token, $envSlug, $key, $value, &$result): void {
-                    $result = $this->openBaoApi($kubectl, 'POST', "/v1/secret/data/{$envSlug}/{$key}", [
-                        'data' => ['value' => $value],
-                    ], $token);
-                });
+        foreach ($secretsMap as $path => $payload) {
+            $result = null;
+            $this->withSpin("Writing {$path}...", function () use ($kubectl, $token, $path, $payload, &$result): void {
+                $result = $this->openBaoApi($kubectl, 'POST', "/v1/secret/data/{$path}", [
+                    'data' => $payload,
+                ], $token);
+            });
 
-                $ok = $result !== null;
-                $rows[] = [$envSlug, $key, $ok ? '✅ Written' : '❌ Failed'];
+            $ok = $result !== null;
+            [$envSlug, $keySlug] = array_pad(explode('/', $path, 2), 2, $path);
+            $rows[] = [$envSlug, $keySlug, $ok ? '✅ Written' : '❌ Failed'];
 
-                if (! $ok) {
-                    $failed++;
-                }
+            if (! $ok) {
+                $failed++;
+            }
+        }
+
+        // ── 5. Restore custom ACL policies (if included in export) ───────────
+        foreach ($policies as $policyName => $hcl) {
+            if (! is_string($hcl)) {
+                continue;
+            }
+            $result = null;
+            $this->withSpin("Writing policy {$policyName}...", function () use ($kubectl, $token, $policyName, $hcl, &$result): void {
+                $result = $this->openBaoApi($kubectl, 'PUT', "/v1/sys/policies/acl/{$policyName}", [
+                    'policy' => $hcl,
+                ], $token);
+            });
+
+            if ($result === null) {
+                $failed++;
             }
         }
 
@@ -123,12 +165,12 @@ class SecretsImportCommand extends Command
         $this->laraKubeNewLine();
 
         if ($failed > 0) {
-            $this->laraKubeError("{$failed} secret(s) failed to write. Check OpenBao logs and retry.");
+            $this->laraKubeError("{$failed} item(s) failed to write. Check OpenBao logs and retry.");
 
             return 1;
         }
 
-        $this->laraKubeInfo("✅ Imported {$totalKeys} secret(s) into OpenBao (secret/<env>/<key>).");
+        $this->laraKubeInfo("✅ Imported {$totalKeys} secret(s) into OpenBao (secret/<path>).");
 
         return 0;
     }
