@@ -6,13 +6,11 @@ use App\Enums\ClusterTool;
 use App\Services\Tools\InitOption;
 use App\Services\Tools\ToolInitSpec;
 use App\Traits\EmitsJsonOutput;
+use App\Traits\InstallsForLaraKubeCloud;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Process;
 use InvalidArgumentException;
 use LaravelZero\Framework\Commands\Command;
-use RuntimeException;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Throwable;
 
@@ -23,7 +21,7 @@ use Throwable;
  */
 class CloudAppsInstallCommand extends Command
 {
-    use EmitsJsonOutput, LaraKubeOutput;
+    use EmitsJsonOutput, InstallsForLaraKubeCloud, LaraKubeOutput;
 
     /** Apps LaraKube Cloud can install. Each goes through tool:init, Plex Commons through plex:init. */
     public const APPS = [
@@ -165,42 +163,5 @@ class CloudAppsInstallCommand extends Command
         }
 
         return $arguments;
-    }
-
-    /**
-     * Merges the given kubeconfig into the default one and returns its context, so the app's own
-     * init command can target it with --context like any other cluster.
-     */
-    private function useKubeconfig(string $kubeconfig): string
-    {
-        if ($kubeconfig === '' || ! is_file($kubeconfig)) {
-            throw new InvalidArgumentException('A kubeconfig for the cluster is required.');
-        }
-
-        $context = trim(Process::run(['kubectl', 'config', 'view', '--kubeconfig', $kubeconfig, '-o', 'jsonpath={.current-context}'])->output());
-        if ($context === '') {
-            throw new InvalidArgumentException('The kubeconfig has no current context.');
-        }
-
-        $default = home_path('.kube/config');
-        File::ensureDirectoryExists(dirname($default), 0700);
-
-        $merged = Process::env(['KUBECONFIG' => file_exists($default) ? "{$kubeconfig}:{$default}" : $kubeconfig])
-            ->run(['kubectl', 'config', 'view', '--flatten']);
-        if (! $merged->successful() || trim($merged->output()) === '') {
-            throw new RuntimeException('The kubeconfig could not be read.');
-        }
-
-        File::put($default, $merged->output());
-        @chmod($default, 0600);
-
-        return $context;
-    }
-
-    private function lastLines(string $output): string
-    {
-        $lines = array_values(array_filter(array_map(trim(...), preg_split('/\R/u', mb_scrub(preg_replace('/\e\[[0-9;]*m/', '', $output) ?? '')) ?: [])));
-
-        return implode("\n", array_slice($lines, -6)) ?: 'The install did not finish.';
     }
 }
