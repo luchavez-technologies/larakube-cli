@@ -8,15 +8,25 @@ use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasImages;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\UsesForwardAuth;
+use App\Tools\Concerns\PinsImages;
 
 /** The single vendor backing the RECORD category — 'Screen Recording & Sharing'. Only Sendrec. */
-final class RecordTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring, UsesForwardAuth
+final class RecordTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasImages, HasOidcWiring, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring, UsesForwardAuth
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return ['sendrec' => 'ghcr.io/sendrec/sendrec:v1.89.1'];
+    }
+
     public function getLabel(): string
     {
         return 'Sendrec';

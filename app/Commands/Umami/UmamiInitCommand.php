@@ -15,7 +15,6 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
-use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
@@ -26,7 +25,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 abstract class UmamiInitCommand extends AbstractToolInitCommand
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithAnalytics, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithAnalytics, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     protected function runInit(): int
     {
@@ -35,10 +34,6 @@ abstract class UmamiInitCommand extends AbstractToolInitCommand
 
     protected function deployAnalytics(): int
     {
-        if ($this->refuseUnshippedTool(ClusterTool::UMAMI)) {
-            return 1;
-        }
-
         $env = $this->resolveEnvironment();
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;

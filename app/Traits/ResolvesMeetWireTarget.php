@@ -18,8 +18,6 @@ use function Laravel\Prompts\select;
  */
 trait ResolvesMeetWireTarget
 {
-    use RefusesUnshippedTools;
-
     /**
      * Resolve which tool to wire. Mirrors MailWireCommand::resolveTargets():
      * honour --tool= when given, prompt from the installed set when not, and
@@ -30,7 +28,7 @@ trait ResolvesMeetWireTarget
     protected function resolveMeetWireTarget(string $kubectl, string $verb): ?ClusterTool
     {
         $installed = array_values(array_filter(
-            ClusterTool::shippedCases(),
+            ClusterTool::cases(),
             fn (ClusterTool $t) => $t->hasMeetWire() && $this->isMeetWireTargetDeployed($kubectl, $t),
         ));
 
@@ -42,10 +40,6 @@ trait ResolvesMeetWireTarget
             if ($tool === null) {
                 $this->laraKubeError("'{$slug}' cannot be wired to Meet. Laravel apps use `larakube add meet` instead.");
 
-                return null;
-            }
-
-            if ($this->refuseUnshippedTool($tool)) {
                 return null;
             }
 

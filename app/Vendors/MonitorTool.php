@@ -5,6 +5,7 @@ namespace App\Vendors;
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasImages;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasPresenceProbe;
@@ -19,10 +20,26 @@ use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
 use App\Services\Kubectl;
+use App\Tools\Concerns\PinsImages;
 
 /** The single vendor backing the MONITOR category — Grafana, Prometheus and Loki. */
-final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasOidcWiring, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents
+final class MonitorTool implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasImages, HasOidcWiring, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return [
+            'grafana' => 'grafana/grafana:10.4.2',
+            'prometheus' => 'prom/prometheus:v2.51.2',
+            'loki' => 'grafana/loki:3.0.0',
+            'promtail' => 'grafana/promtail:3.0.0',
+            'tempo' => 'grafana/tempo:2.10.7',
+            'kube-state-metrics' => 'registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.12.0',
+        ];
+    }
+
     public function getLabel(): string
     {
         return 'Grafana';

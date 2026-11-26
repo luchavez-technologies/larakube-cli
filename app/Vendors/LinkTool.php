@@ -7,6 +7,7 @@ use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasCommonsRedisKeys;
 use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasImages;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
@@ -14,10 +15,19 @@ use App\Contracts\HasWhiteLabel;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SecretKind;
+use App\Tools\Concerns\PinsImages;
 
 /** The single vendor backing the LINK category — 'Link Management'. Only Kutt. */
-final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasRotatableDatabasePassword, HasSmtpWiring, HasWhiteLabel
+final class LinkTool implements ClusterToolVendor, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasDeploymentBaseName, HasImages, HasOidcWiring, HasRotatableDatabasePassword, HasSmtpWiring, HasWhiteLabel
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return ['kutt' => 'kutt/kutt:v3.2.6'];
+    }
+
     public function getLabel(): string
     {
         return 'Kutt';

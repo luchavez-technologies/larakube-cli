@@ -14,7 +14,6 @@ use App\Traits\InteractsWithPlex;
 use App\Traits\InteractsWithSso;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
-use App\Traits\RefusesUnshippedTools;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolHost;
 use App\Traits\SyncsClusterSecrets;
@@ -48,7 +47,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  */
 abstract class AbstractToolRemoveCommand extends Command
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, DeregistersSsoApp, InteractsWithPlex, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesToolHost, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, DeploysClusterTool, DeregistersSsoApp, InteractsWithPlex, InteractsWithSso, InteractsWithZitadelApi, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolHost, SyncsClusterSecrets;
 
     /** The instance the teardown loop is currently removing; null outside handle(). */
     protected ?string $currentInstance = null;
@@ -86,10 +85,6 @@ abstract class AbstractToolRemoveCommand extends Command
     public function handle(): int
     {
         $tool = $this->tool();
-
-        if ($this->refuseUnshippedTool($tool)) {
-            return 1;
-        }
 
         $this->renderHeader();
 

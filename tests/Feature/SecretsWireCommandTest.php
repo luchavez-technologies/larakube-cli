@@ -241,28 +241,6 @@ test('secrets:wire --tool=planka registers a static role for planka and restarts
     Process::assertRan(fn ($process) => str_contains($process->command, 'rollout restart deployment/planka'));
 });
 
-test('secrets:wire --tool=umami refuses because Umami is not yet shipped', function (): void {
-    openBaoRegistered();
-    Process::fake([
-        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
-        '*port-forward*' => Process::result(output: ''),
-        '*' => Process::result(output: ''),
-    ]);
-
-    Saloon::fake([
-        // databaseEngineMounted()
-        MockResponse::make(['data' => ['database/' => ['type' => 'database']]]),
-        // kubernetesAuthEnabled()
-        MockResponse::make(['data' => ['kubernetes/' => ['type' => 'kubernetes']]]),
-    ]);
-
-    $this->artisan('secrets:wire local --tool=umami --force')
-        ->assertExitCode(1)
-        ->expectsOutputToContain('Umami (Web Analytics) is not yet shipped');
-
-    Process::assertNotRan(fn ($process) => str_contains($process->command, 'apply -f'));
-});
-
 test('waitForExternalSecretSynced requires status=True, reason=SecretSynced, AND a fresh refreshTime', function (): void {
     openBaoRegistered();
     $command = new class extends SecretsWireCommand

@@ -90,9 +90,8 @@ class ToolInitCommand extends Command
     private function resolveTool(string $slug): ?ClusterTool
     {
         $tool = ClusterTool::tryFrom(strtolower(trim($slug)));
-        $available = array_values(array_filter(ClusterTool::shippedCases(), fn (ClusterTool $case): bool => ToolInitCommands::has($case)));
+        $available = array_values(array_filter(ClusterTool::cases(), fn (ClusterTool $case): bool => ToolInitCommands::has($case)));
 
-        // A tool that is not shipped still resolves, so its own init can say why it is refused.
         if ($tool === null || ! ToolInitCommands::has($tool)) {
             $this->laraKubeError($slug === '' ? 'Say which tool to deploy with --tool=.' : "Unknown tool '{$slug}'.");
             $this->line('  <fg=gray>One of:</> '.implode(', ', array_map(fn (ClusterTool $case): string => $case->value, $available)));

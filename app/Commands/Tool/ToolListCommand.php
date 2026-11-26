@@ -81,7 +81,7 @@ class ToolListCommand extends Command
         // (as --refresh does), so the fast registry-only view sees them too.
         $liveUnregistered = [];
         if (! $registryOnly) {
-            foreach (ClusterTool::shippedCases() as $tool) {
+            foreach (ClusterTool::cases() as $tool) {
                 $isRegistered = array_filter(
                     $registered,
                     function ($e) use ($tool): bool {
@@ -106,7 +106,7 @@ class ToolListCommand extends Command
         }
 
         $rows = [];
-        foreach (ClusterTool::shippedCases() as $tool) {
+        foreach (ClusterTool::cases() as $tool) {
             $vendor = $tool->vendor();
             $instances = array_values(array_filter(
                 $registered,
@@ -460,7 +460,7 @@ class ToolListCommand extends Command
     protected function discoverConventionTools(string $kubectl): array
     {
         $namespaces = array_values(array_unique(
-            array_map(fn (ClusterTool $t) => $t->namespace(), ClusterTool::shippedCases()),
+            array_map(fn (ClusterTool $t) => $t->namespace(), ClusterTool::cases()),
         ));
 
         $found = [];
@@ -551,7 +551,7 @@ class ToolListCommand extends Command
         foreach ($registered as $entry) {
             $toolSlug = $entry['tool'] ?? null;
             $tool = ClusterTool::tryFrom((string) $toolSlug)?->canonicalTool();
-            if ($tool !== null && $tool->isShipped()) {
+            if ($tool !== null) {
                 $validInstances[$tool->value][] = (string) ($entry['instance'] ?? '');
             }
         }
@@ -570,8 +570,8 @@ class ToolListCommand extends Command
             $host = $entry['host'] ?? null;
             $tool = ClusterTool::tryFrom((string) $toolSlug)?->canonicalTool();
 
-            // 1. Tool not recognized or not shipped (e.g. gitea when forgejo is the shipped tool)
-            if ($tool === null || ! $tool->isShipped()) {
+            // 1. Tool not recognized (e.g. legacy gitea when forgejo is the canonical tool)
+            if ($tool === null) {
                 $dirty = true;
 
                 continue;

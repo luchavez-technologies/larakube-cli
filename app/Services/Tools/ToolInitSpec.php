@@ -231,13 +231,6 @@ final class ToolInitSpec
                 InitOption::force(),
                 InitOption::proxied(),
             ],
-            ClusterTool::PLAUSIBLE => [
-                InitOption::context(),
-                InitOption::domain('Base domain OR full host for Plausible (example.com → prefix.example.com)'),
-                InitOption::vpnOnly(),
-                InitOption::force(),
-                InitOption::proxied(),
-            ],
             ClusterTool::POCKETBASE => [
                 InitOption::context(),
                 InitOption::domain('Base domain OR full host for PocketBase (example.com → prefix.example.com). Omit to target/update the default instance'),
@@ -370,13 +363,6 @@ final class ToolInitSpec
                 InitOption::force(),
                 InitOption::proxied(),
             ],
-            ClusterTool::RESUME => [
-                InitOption::context(),
-                InitOption::domain('Base domain OR full host for Resume (example.com → prefix.example.com)'),
-                InitOption::vpnOnly(),
-                InitOption::force(),
-                InitOption::proxied(),
-            ],
             default => [],
         };
     }
@@ -435,7 +421,6 @@ final class ToolInitSpec
             ClusterTool::OUTLINE => 'Deploy the Outline wiki / knowledge base stack into larakube-shared',
             ClusterTool::PENPOT => 'Deploy the Penpot design & prototyping suite into larakube-shared',
             ClusterTool::PLANKA => 'Deploy the Planka task management stack into larakube-shared',
-            ClusterTool::PLAUSIBLE => 'Deploy the Plausible web analytics stack into larakube-shared',
             ClusterTool::POCKETBASE => 'Deploy a PocketBase stack (Embedded SQLite) into larakube-shared',
             ClusterTool::WORDPRESS => 'Deploy a WordPress companion app (SQLite or MySQL) into larakube-shared',
             ClusterTool::SENDREC => 'Deploy the Sendrec async video platform stack into larakube-shared',

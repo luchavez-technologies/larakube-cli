@@ -160,7 +160,7 @@ test('sso:grant\'s picker offers every role-bearing tool — Drive included — 
     ]);
 
     $expectedTools = [];
-    foreach (array_filter(ClusterTool::shippedCases(), fn (ClusterTool $t) => $t->grantableRoles() !== []) as $t) {
+    foreach (array_filter(ClusterTool::cases(), fn (ClusterTool $t) => $t->grantableRoles() !== []) as $t) {
         $expectedTools[$t->value] = $t->getLabel();
     }
 

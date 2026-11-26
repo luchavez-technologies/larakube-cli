@@ -22,7 +22,7 @@ final class ToolInitOptions
     {
         $options = [];
 
-        foreach (ClusterTool::shippedCases() as $tool) {
+        foreach (ClusterTool::cases() as $tool) {
             if (! ToolInitCommands::has($tool)) {
                 continue;
             }

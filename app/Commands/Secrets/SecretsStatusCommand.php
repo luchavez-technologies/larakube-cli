@@ -142,7 +142,7 @@ class SecretsStatusCommand extends Command
      */
     protected function staticRoleSummary(string $kubectl): array
     {
-        $capable = array_filter(ClusterTool::shippedCases(), fn (ClusterTool $t) => $t->dbSecretRef() !== null);
+        $capable = array_filter(ClusterTool::cases(), fn (ClusterTool $t) => $t->dbSecretRef() !== null);
         $registered = $this->getRegisteredTools($kubectl);
 
         $instancesToProbe = [];

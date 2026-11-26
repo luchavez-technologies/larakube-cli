@@ -234,7 +234,7 @@ test('hasInstanceAwareRemoval() only allowlists the tools with real per-instance
         ClusterTool::DOCUMENSO,
         ClusterTool::N8N, ClusterTool::WINDMILL,
         ClusterTool::KUTT,
-        ClusterTool::UMAMI, ClusterTool::PLAUSIBLE,
+        ClusterTool::UMAMI,
         ClusterTool::TEABLE,
         ClusterTool::PLANKA,
         ClusterTool::KUMA,
@@ -430,8 +430,8 @@ test('remove and show commands name the tool, and the engine when there is more 
         ->and(ClusterTool::OUTLINE->showCommand())->toBe('outline:show');
 });
 
-test('every shipped tool describes itself for its card', function (): void {
-    foreach (ClusterTool::shippedCases() as $tool) {
+test('every tool describes itself for its card', function (): void {
+    foreach (ClusterTool::cases() as $tool) {
         expect($tool->tagline())->not->toBe('', "{$tool->value} has no tagline")
             ->and($tool->brandName())->not->toBe('', "{$tool->value} has no name")
             ->and($tool->logo())->not->toBe('', "{$tool->value} has no logo")

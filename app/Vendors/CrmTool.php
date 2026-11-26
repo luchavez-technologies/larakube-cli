@@ -7,6 +7,7 @@ use App\Contracts\HasAdminEmailPrompt;
 use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasCommonsRedisKeys;
+use App\Contracts\HasImages;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWorkloadComponents;
@@ -14,10 +15,19 @@ use App\Data\ClusterToolComponentData;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
+use App\Tools\Concerns\PinsImages;
 
 /** The single vendor backing the CRM category — 'CRM'. Only Twenty. */
-final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasSmtpWiring, HasVpnWiring, HasWorkloadComponents
+final class CrmTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasImages, HasSmtpWiring, HasVpnWiring, HasWorkloadComponents
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return ['twenty' => 'twentycrm/twenty:v2.35.0'];
+    }
+
     public function getLabel(): string
     {
         return 'Twenty';

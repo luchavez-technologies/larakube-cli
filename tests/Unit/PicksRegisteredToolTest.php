@@ -37,7 +37,7 @@ function picksSubject(string $registryJson): object
             $out = [];
             foreach ($this->getRegisteredTools($kubectl) as $entry) {
                 $tool = ClusterTool::tryFrom((string) ($entry['tool'] ?? ''));
-                if ($tool === null || ! $tool->isShipped() || ! $capable($tool)) {
+                if ($tool === null || ! $capable($tool)) {
                     continue;
                 }
                 $host = (string) ($entry['host'] ?? '');

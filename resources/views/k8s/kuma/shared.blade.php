@@ -70,6 +70,13 @@ spec:
               port: 3001
             initialDelaySeconds: 10
             periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
       volumes:
         - name: uptime-kuma-volume
           persistentVolumeClaim:

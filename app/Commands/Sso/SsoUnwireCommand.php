@@ -15,7 +15,6 @@ use App\Traits\InteractsWithVpn;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PicksRegisteredTool;
-use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolEngine;
 use App\Traits\ResolvesToolHost;
 use App\Traits\SyncsClusterSecrets;
@@ -25,7 +24,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class SsoUnwireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithVpn, InteractsWithZitadelApi, LaraKubeOutput, PicksRegisteredTool, RefusesUnshippedTools, ResolvesToolEngine, ResolvesToolHost, SyncsClusterSecrets;
+    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithVpn, InteractsWithZitadelApi, LaraKubeOutput, PicksRegisteredTool, ResolvesToolEngine, ResolvesToolHost, SyncsClusterSecrets;
 
     protected $signature = 'sso:unwire
         {environment=local : Environment whose tool SSO to unwire}

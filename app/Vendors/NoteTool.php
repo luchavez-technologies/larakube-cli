@@ -9,6 +9,7 @@ use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasCommonsRedisKeys;
 use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasImages;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasRotatableDatabasePassword;
@@ -16,10 +17,19 @@ use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
+use App\Tools\Concerns\PinsImages;
 
 /** The single vendor backing the NOTES category — 'Team Wiki & Knowledge Base'. Only Outline. */
-final class NoteTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring
+final class NoteTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasDeploymentBaseName, HasImages, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return ['outline' => 'outlinewiki/outline:1.9.2'];
+    }
+
     public function getLabel(): string
     {
         return 'Outline';

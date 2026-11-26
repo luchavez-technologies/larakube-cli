@@ -2,11 +2,22 @@
 
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
+use Illuminate\Support\Facades\Process;
 
-test('tool:init --tool=umami refuses because Umami is unshipped', function (): void {
-    $this->artisan('tool:init --tool=umami local --no-interaction')
-        ->assertExitCode(1)
-        ->expectsOutputToContain('Umami (Web Analytics) is not yet shipped');
+test('tool:init --tool=umami deploys Umami onto Commons Postgres', function (): void {
+    Process::fake([
+        '*get configmap plex-commons*' => json_encode(['version' => 1, 'services' => ['postgres' => ['enabled' => true]]]),
+        '*get secret plex-admin*' => Process::result(output: base64_encode('pw')),
+        '*exec *' => Process::result(output: 'ok'),
+        '*create namespace*' => Process::result(output: 'namespace created'),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*rollout *' => Process::result(output: 'rolled out'),
+        '*' => Process::result(output: ''),
+    ]);
+
+    $this->artisan('tool:init local --tool=umami --no-interaction')
+        ->assertExitCode(0)
+        ->expectsOutputToContain('Umami analytics stack is live.');
 });
 
 test('analytics manifest carries canonical resource naming and identity labels', function (): void {
@@ -48,8 +59,14 @@ test('analytics ToolInstance resolves canonical database and secrets', function 
         ->and($instance->database())->toBe('umami_analytics_example_test');
 });
 
-test('umami:remove refuses because Umami is unshipped', function (): void {
+test('umami:remove tears down a registered Umami instance', function (): void {
+    $registry = base64_encode(json_encode([['tool' => 'umami', 'instance' => 'analytics-example-test', 'host' => 'analytics.example.test']]));
+    Process::fake([
+        '*get secret larakube-tools-registry*' => Process::result(output: $registry),
+        '* delete *' => Process::result(output: 'deleted'),
+        '*' => Process::result(output: ''),
+    ]);
+
     $this->artisan('umami:remove local --force --no-interaction')
-        ->assertExitCode(1)
-        ->expectsOutputToContain('Umami (Web Analytics) is not yet shipped');
+        ->assertExitCode(0);
 });

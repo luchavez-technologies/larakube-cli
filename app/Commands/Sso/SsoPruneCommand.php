@@ -209,7 +209,7 @@ class SsoPruneCommand extends Command
      * its per-instance one, so a registered-but-unwired-yet tool's project
      * survives even with no sso-app secret yet.
      *
-     * Keyed on the registry, not on ClusterTool::shippedCases(): protecting
+     * Keyed on the registry, not on ClusterTool::cases(): protecting
      * every name the CLI could ever emit meant a project left behind by a
      * tool nobody has installed could never be pruned, which is the one case
      * this command exists for.

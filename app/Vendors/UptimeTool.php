@@ -4,11 +4,21 @@ namespace App\Vendors;
 
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasImages;
 use App\Contracts\HasVpnWiring;
+use App\Tools\Concerns\PinsImages;
 
 /** The single vendor backing the UPTIME category — 'Status Pages'. Only Uptime Kuma. */
-final class UptimeTool implements ClusterToolVendor, HasDeploymentBaseName, HasVpnWiring
+final class UptimeTool implements ClusterToolVendor, HasDeploymentBaseName, HasImages, HasVpnWiring
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return ['kuma' => 'louislam/uptime-kuma:1'];
+    }
+
     public function getLabel(): string
     {
         return 'Uptime Kuma';

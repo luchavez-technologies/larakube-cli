@@ -14,4 +14,26 @@ test('apps LaraKube Cloud installs declare their images, and each declared image
     foreach ($vendor->images() as $image) {
         expect($templates)->toContain($image);
     }
-})->with([ClusterTool::POCKETBASE, ClusterTool::WORDPRESS, ClusterTool::ERPNEXT]);
+})->with([
+    ClusterTool::POCKETBASE,
+    ClusterTool::WORDPRESS,
+    ClusterTool::ERPNEXT,
+    ClusterTool::KUMA,
+    ClusterTool::VAULTWARDEN,
+    ClusterTool::OUTLINE,
+    ClusterTool::UMAMI,
+    ClusterTool::YOPASS,
+    ClusterTool::PLANKA,
+    ClusterTool::KUTT,
+    ClusterTool::TEABLE,
+    ClusterTool::DOCUMENSO,
+    ClusterTool::RESUME,
+    ClusterTool::DIRECTUS,
+    ClusterTool::TWENTY,
+    ClusterTool::GRAFANA,
+    ClusterTool::METABASE,
+    ClusterTool::GLITCHTIP,
+    ClusterTool::PENPOT,
+    ClusterTool::CHATWOOT,
+    ClusterTool::SENDREC,
+]);

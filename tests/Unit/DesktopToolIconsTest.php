@@ -18,7 +18,7 @@ test('every shipped tool is named in Desktop\'s icon map', function (): void {
     $source = strtolower((string) file_get_contents($path));
     $missing = [];
 
-    foreach (ClusterTool::shippedCases() as $tool) {
+    foreach (ClusterTool::cases() as $tool) {
         $names = [$tool->value, $tool->canonicalTool()->value, strtolower($tool->canonicalTool()->brandName())];
 
         if (array_filter($names, fn (string $name): bool => str_contains($source, $name)) === []) {

@@ -6,16 +6,30 @@ use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasAdminEmailPrompt;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasCommonsRedisKeys;
+use App\Contracts\HasImages;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWhiteLabel;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 use App\Enums\ClusterToolComponentRole;
+use App\Tools\Concerns\PinsImages;
 
 /** The single vendor backing the ERRORS category — 'Error Tracking'. Only GlitchTip. */
-final class ErrorTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasCommonsRedisKeys, HasSmtpWiring, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents
+final class ErrorTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasCommonsRedisKeys, HasImages, HasSmtpWiring, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return [
+            'glitchtip' => 'glitchtip/glitchtip:6.2.2',
+            'db' => 'postgres:15-alpine',
+            'cache' => 'valkey/valkey:8.0-alpine',
+        ];
+    }
+
     public function getLabel(): string
     {
         return 'GlitchTip';

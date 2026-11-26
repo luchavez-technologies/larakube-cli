@@ -14,7 +14,6 @@ use App\Traits\InteractsWithToolRegistry;
 use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PicksRegisteredTool;
-use App\Traits\RefusesUnshippedTools;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEngine;
 use App\Traits\ResolvesToolHost;
@@ -26,7 +25,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class MailUnwireCommand extends Command
 {
-    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithToolRegistry, InteractsWithZitadelApi, LaraKubeOutput, PicksRegisteredTool, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
+    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithToolRegistry, InteractsWithZitadelApi, LaraKubeOutput, PicksRegisteredTool, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'mail:unwire
         {environment=local : Environment whose mail settings to unwire}
@@ -79,16 +78,13 @@ class MailUnwireCommand extends Command
 
                 return [];
             }
-            if ($this->refuseUnshippedTool($tool)) {
-                return [];
-            }
 
             return [$tool];
         }
 
         if ($this->option('all')) {
             $installed = [];
-            foreach (ClusterTool::shippedCases() as $candidate) {
+            foreach (ClusterTool::cases() as $candidate) {
                 // hasMailWire() is the pair's marker contract (HasSmtpWiring),
                 // and it already folds in SSO -- Zitadel takes SMTP through its
                 // own API rather than deployment env, so it has no smtpEnv()

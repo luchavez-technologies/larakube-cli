@@ -8,7 +8,7 @@ use function Laravel\Prompts\multiselect;
 
 trait ResolvesClusterTool
 {
-    use InteractsWithToolRegistry, RefusesUnshippedTools;
+    use InteractsWithToolRegistry;
 
     /**
      * Resolve one or more ClusterTools from the --tool option (comma-separated)
@@ -29,11 +29,8 @@ trait ResolvesClusterTool
                 $tool = ClusterTool::tryFrom($slug);
                 if ($tool === null) {
                     $this->error("  Unknown tool: {$slug}");
-                    $this->line('  Available tools: '.implode(', ', array_map(fn ($t) => $t->value, ClusterTool::shippedCases())));
+                    $this->line('  Available tools: '.implode(', ', array_map(fn ($t) => $t->value, ClusterTool::cases())));
 
-                    return [];
-                }
-                if ($this->refuseUnshippedTool($tool)) {
                     return [];
                 }
                 $tools[] = $tool;
@@ -55,7 +52,7 @@ trait ResolvesClusterTool
         $installedTools = array_unique($installedTools);
         $options = [];
 
-        foreach (ClusterTool::shippedCases() as $tool) {
+        foreach (ClusterTool::cases() as $tool) {
             $isInstalled = in_array($tool->value, $installedTools, true)
                 || ($actionHint === 'remove' && $this->isToolPresentOnCluster($kubectl, $tool));
 

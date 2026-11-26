@@ -53,7 +53,7 @@ test('tool:init refuses an option the chosen tool does not take, and says what i
 test('tool:init takes every option any tool takes, so no tool is out of its reach', function (): void {
     $definition = Artisan::all()['tool:init']->getDefinition();
 
-    foreach (ClusterTool::shippedCases() as $tool) {
+    foreach (ClusterTool::cases() as $tool) {
         if (! ToolInitCommands::has($tool)) {
             continue;
         }
@@ -68,7 +68,7 @@ test('tool:init takes every option any tool takes, so no tool is out of its reac
 });
 
 test('the spec describes every tool the init families cover, and nothing is covered twice', function (): void {
-    foreach (ClusterTool::shippedCases() as $tool) {
+    foreach (ClusterTool::cases() as $tool) {
         if (ToolInitCommands::has($tool)) {
             expect(ToolInitSpec::for($tool))->not->toBeEmpty("{$tool->value} has an init family but no options")->toContainOnlyInstancesOf(InitOption::class);
         }
@@ -80,7 +80,7 @@ test('every tool is deployed through tool:init, and no {tool}:init command exist
 
     expect($commands)->toHaveKey('tool:init');
 
-    foreach (ClusterTool::shippedCases() as $tool) {
+    foreach (ClusterTool::cases() as $tool) {
         if (ToolInitCommands::has($tool)) {
             expect($commands)->not->toHaveKey("{$tool->canonicalTool()->value}:init", "{$tool->value} still has its own init command");
         }
@@ -92,7 +92,7 @@ test('every tool is deployed through tool:init, and no {tool}:init command exist
 });
 
 test('a command built from the spec has the name, options and description the spec gives', function (): void {
-    foreach (ClusterTool::shippedCases() as $tool) {
+    foreach (ClusterTool::cases() as $tool) {
         if (! ToolInitCommands::has($tool)) {
             continue;
         }

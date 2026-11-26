@@ -15,7 +15,6 @@ use App\Traits\InteractsWithTraefik;
 use App\Traits\InteractsWithUptime;
 use App\Traits\InteractsWithVolumeSizing;
 use App\Traits\LaraKubeOutput;
-use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
@@ -25,7 +24,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 abstract class KumaInitCommand extends AbstractToolInitCommand
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithTraefik, InteractsWithUptime, InteractsWithVolumeSizing, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithTraefik, InteractsWithUptime, InteractsWithVolumeSizing, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     protected function runInit(): int
     {
@@ -34,10 +33,6 @@ abstract class KumaInitCommand extends AbstractToolInitCommand
 
     protected function deployUptime(): int
     {
-        if ($this->refuseUnshippedTool(ClusterTool::KUMA)) {
-            return 1;
-        }
-
         $env = $this->resolveEnvironment();
         $context = $this->resolveToolContext($env, $this->option('context'));
         $kubectl = Kubectl::forContext($context)->prefix();

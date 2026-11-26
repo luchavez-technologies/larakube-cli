@@ -111,10 +111,6 @@ test('every wire pair has a predicate backed by its own marker contract', functi
     // return null — vpnMiddlewareTarget(), smtpEnv(), dbSecretRef() — so the
     // pickers drifted apart. These are the contracts of record.
     foreach (ClusterTool::cases() as $tool) {
-        if (! $tool->isShipped()) {
-            continue;
-        }
-
         $vendor = $tool->vendor();
 
         expect($tool->hasVpnWire())->toBe($vendor instanceof App\Contracts\HasVpnWiring)

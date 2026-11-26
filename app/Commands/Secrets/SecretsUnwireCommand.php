@@ -11,7 +11,6 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithSecrets;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PicksRegisteredTool;
-use App\Traits\RefusesUnshippedTools;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesEnvironmentContext;
 use App\Traits\ResolvesToolHost;
@@ -22,7 +21,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class SecretsUnwireCommand extends Command
 {
-    use ConfirmsDestructiveAction, InteractsWithClusterContext, InteractsWithSecrets, LaraKubeOutput, PicksRegisteredTool, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesEnvironmentContext, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
+    use ConfirmsDestructiveAction, InteractsWithClusterContext, InteractsWithSecrets, LaraKubeOutput, PicksRegisteredTool, RequiresFlagsWhenNonInteractive, ResolvesEnvironmentContext, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'secrets:unwire
         {environment=local : Environment whose secrets to unwire}
@@ -93,15 +92,7 @@ class SecretsUnwireCommand extends Command
         $option = (string) ($this->option('tool') ?? '');
         if ($option !== '') {
             $tool = ClusterTool::tryFrom($option);
-            if ($tool === null) {
-                $this->laraKubeError("Tool '{$option}' has no OpenBao DB static-role configuration.");
-
-                return [];
-            }
-            if ($this->refuseUnshippedTool($tool)) {
-                return [];
-            }
-            if (! $tool->hasSecretsWire()) {
+            if ($tool === null || ! $tool->hasSecretsWire()) {
                 $this->laraKubeError("Tool '{$option}' has no OpenBao DB static-role configuration.");
 
                 return [];
@@ -119,7 +110,7 @@ class SecretsUnwireCommand extends Command
         // like it did something; --all keeps the wider net because it is
         // explicitly a sweep.
         $installed = [];
-        foreach (ClusterTool::shippedCases() as $candidate) {
+        foreach (ClusterTool::cases() as $candidate) {
             if (! $candidate->hasSecretsWire()) {
                 continue;
             }

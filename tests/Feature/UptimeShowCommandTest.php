@@ -3,18 +3,17 @@
 use App\Enums\ClusterTool;
 use Illuminate\Support\Facades\Process;
 
-test('kuma:show refuses because Uptime Kuma is not yet shipped', function (): void {
+test('kuma:show warns when Uptime Kuma is not installed', function (): void {
     Process::fake([
         '*' => Process::result(output: ''),
     ]);
 
     $this->artisan('kuma:show local')
         ->assertExitCode(1)
-        ->expectsOutputToContain('Uptime Kuma (Status Pages) is not yet shipped');
-
-    Process::assertNotRan(fn ($process) => true);
+        ->expectsOutputToContain('Uptime Kuma is not installed');
 });
 
-test('uptime stays hidden from tool:list until shipped', function (): void {
-    expect(ClusterTool::KUMA->isShipped())->toBeFalse();
+test('ClusterTool::options() advertises kuma and umami', function (): void {
+    expect(ClusterTool::options())->toHaveKeys(['kuma', 'umami'])
+        ->not->toHaveKey('plausible');
 });

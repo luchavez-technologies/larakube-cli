@@ -6,7 +6,6 @@ use App\Enums\ClusterTool;
 use App\Exceptions\MissingFlagException;
 use App\Traits\InteractsWithToolRegistry;
 use App\Traits\LaraKubeOutput;
-use App\Traits\RefusesUnshippedTools;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesStandaloneEnvironment;
 use LaravelZero\Framework\Commands\Command;
@@ -22,7 +21,7 @@ use LaravelZero\Framework\Commands\Command;
  */
 class ToolShowCommand extends Command
 {
-    use InteractsWithToolRegistry, LaraKubeOutput, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesStandaloneEnvironment;
+    use InteractsWithToolRegistry, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesStandaloneEnvironment;
 
     protected $signature = 'tool:show
         {environment? : The environment to inspect}
@@ -78,11 +77,8 @@ class ToolShowCommand extends Command
             $tool = ClusterTool::tryFrom($slug);
             if ($tool === null) {
                 $this->laraKubeError("Unknown tool '{$slug}'.");
-                $this->line('  <fg=gray>Available: </>'.implode(', ', array_column(ClusterTool::shippedCases(), 'value')));
+                $this->line('  <fg=gray>Available: </>'.implode(', ', array_column(ClusterTool::cases(), 'value')));
 
-                return null;
-            }
-            if ($this->refuseUnshippedTool($tool)) {
                 return null;
             }
 
@@ -117,7 +113,7 @@ class ToolShowCommand extends Command
         }
 
         $options = [];
-        foreach (ClusterTool::shippedCases() as $tool) {
+        foreach (ClusterTool::cases() as $tool) {
             if (in_array($tool->value, $installedTools, true)) {
                 $options[$tool->value] = $tool->getLabel();
             }

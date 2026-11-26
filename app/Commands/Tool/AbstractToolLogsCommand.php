@@ -8,14 +8,13 @@ use App\Services\Kubectl;
 use App\Support\Labels;
 use App\Traits\DeploysClusterTool;
 use App\Traits\LaraKubeOutput;
-use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
 use LaravelZero\Framework\Commands\Command;
 
 abstract class AbstractToolLogsCommand extends Command
 {
-    use DeploysClusterTool, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolHost, StreamsProcessOutput;
+    use DeploysClusterTool, LaraKubeOutput, ResolvesToolHost, StreamsProcessOutput;
 
     public function __construct()
     {
@@ -41,10 +40,6 @@ abstract class AbstractToolLogsCommand extends Command
     public function handle(): int
     {
         $tool = $this->tool();
-
-        if ($this->refuseUnshippedTool($tool)) {
-            return 1;
-        }
 
         if ($this->option('json')) {
             return $this->emitJsonLogs($tool);

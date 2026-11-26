@@ -51,10 +51,6 @@ trait PicksRegisteredTool
             return false;
         }
 
-        if (method_exists($this, 'refuseUnshippedTool') && $this->refuseUnshippedTool($tool)) {
-            return false;
-        }
-
         return $tool;
     }
 
@@ -79,7 +75,7 @@ trait PicksRegisteredTool
         foreach ($this->getRegisteredTools($kubectl) as $entry) {
             $tool = ClusterTool::tryFrom((string) ($entry['tool'] ?? ''));
 
-            if ($tool === null || ! $tool->isShipped() || ! $capable($tool)) {
+            if ($tool === null || ! $capable($tool)) {
                 continue;
             }
 

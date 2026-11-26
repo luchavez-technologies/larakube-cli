@@ -5,10 +5,12 @@ namespace App\Enums;
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasImages;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
 use App\Data\ToolInstance;
+use App\Tools\Concerns\PinsImages;
 
 /**
  * The vendor enum backing ClusterTool::PLANKA — 'Project Management'.
@@ -24,8 +26,18 @@ use App\Data\ToolInstance;
  * like Directus's paid SSO — Directus's wiring is real and works with a
  * license; there is no OIDC code left in the OSS image to wire into.
  */
-enum TaskTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring
+enum TaskTool: string implements ClusterToolVendor, HasCommonsDatabases, HasDeploymentBaseName, HasImages, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return match ($this) {
+            self::PLANKA => ['planka' => 'ghcr.io/plankanban/planka:2.2.1'],
+        };
+    }
+
     public function getLabel(): string
     {
         return 'Planka';

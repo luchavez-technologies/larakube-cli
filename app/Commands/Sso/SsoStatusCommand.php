@@ -185,7 +185,7 @@ class SsoStatusCommand extends Command
     }
 
     /**
-     * Iterate ClusterTool::shippedCases(), for each check its sso-app-{slug}
+     * Iterate registered tools, for each check its sso-app-{slug}
      * secret via readSsoSecret() — plain secret read per tool, never a Zitadel
      * API/port-forward call per tool.
      *

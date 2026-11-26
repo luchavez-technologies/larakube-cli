@@ -8,6 +8,7 @@ use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasImages;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
@@ -15,10 +16,19 @@ use App\Contracts\HasVpnWiring;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SecretKind;
+use App\Tools\Concerns\PinsImages;
 
 /** The single vendor backing the SIGN category — 'Document Signing'. Only Documenso. */
-final class SignTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring
+final class SignTool implements ClusterToolVendor, HasClusterSecretDbKey, HasCommonsBuckets, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasImages, HasOidcWiring, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return ['documenso' => 'documenso/documenso:v2.16.0'];
+    }
+
     public function getLabel(): string
     {
         return 'Documenso';

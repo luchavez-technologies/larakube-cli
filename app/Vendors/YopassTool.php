@@ -6,7 +6,9 @@ use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsRedisKeys;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasImages;
 use App\Contracts\HasVpnWiring;
+use App\Tools\Concerns\PinsImages;
 
 /**
  * The single vendor backing the PASTE category — 'Secure Paste Sharing'.
@@ -24,8 +26,16 @@ use App\Contracts\HasVpnWiring;
  * YopassInitCommand only when Commons offers an S3 driver — Redis is the
  * one hard requirement.
  */
-final class YopassTool implements ClusterToolVendor, HasCommonsBuckets, HasCommonsRedisKeys, HasDeploymentBaseName, HasVpnWiring
+final class YopassTool implements ClusterToolVendor, HasCommonsBuckets, HasCommonsRedisKeys, HasDeploymentBaseName, HasImages, HasVpnWiring
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return ['yopass' => 'jhaals/yopass:14.8.0'];
+    }
+
     public function getLabel(): string
     {
         return 'Secure Paste Sharing (Yopass)';

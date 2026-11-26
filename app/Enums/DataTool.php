@@ -28,8 +28,8 @@ enum DataTool: string implements ClusterToolVendor, HasCommonsBuckets, HasCommon
     {
         return match ($this) {
             self::POCKETBASE => ['pocketbase' => 'ghcr.io/muchobien/pocketbase:0.39.11'],
+            self::DIRECTUS => ['directus' => 'directus/directus:12'],
             self::WORDPRESS => ['wordpress' => 'wordpress:7.1-php8.3-apache', 'busybox' => 'busybox:1.36'],
-            default => [],
         };
     }
 

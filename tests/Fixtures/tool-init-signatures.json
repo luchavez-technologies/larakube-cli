@@ -661,28 +661,6 @@
    "kind": "flag"
   }
  },
- "plausible:init": {
-  "context": {
-   "default": null,
-   "kind": "value"
-  },
-  "domain": {
-   "default": null,
-   "kind": "value"
-  },
-  "force": {
-   "default": false,
-   "kind": "flag"
-  },
-  "proxied": {
-   "default": false,
-   "kind": "flag"
-  },
-  "vpn-only": {
-   "default": false,
-   "kind": "flag"
-  }
- },
  "pocketbase:init": {
   "admin-email": {
    "default": null,

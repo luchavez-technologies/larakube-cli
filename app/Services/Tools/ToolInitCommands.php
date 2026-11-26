@@ -24,7 +24,6 @@ use App\Commands\OpenBao\OpenBaoInitCommand;
 use App\Commands\Outline\OutlineInitCommand;
 use App\Commands\Penpot\PenpotInitCommand;
 use App\Commands\Planka\PlankaInitCommand;
-use App\Commands\Plausible\PlausibleInitCommand;
 use App\Commands\PocketBase\PocketBaseInitCommand;
 use App\Commands\Resume\ResumeInitCommand;
 use App\Commands\Sendrec\SendrecInitCommand;
@@ -43,11 +42,8 @@ use App\Enums\ClusterTool;
 use LogicException;
 
 /**
- * Builds the command that deploys a Cluster Tool, from the tool alone. Tools
- * of one family share their deploy logic (Plausible and Umami are both an
- * analytics stack), so the family decides the class and the tool decides what
- * it is told: its options, its description, and for the engine families which
- * engine to deploy. Adding a tool is an enum case and an entry in family().
+ * Builds the command that deploys a Cluster Tool, from the tool alone. Adding a
+ * tool is an enum case and an entry in family().
  */
 final class ToolInitCommands
 {
@@ -57,7 +53,6 @@ final class ToolInitCommands
 
         return match ($base) {
             UmamiInitCommand::class => new class($tool) extends UmamiInitCommand {},
-            PlausibleInitCommand::class => new class($tool) extends PlausibleInitCommand {},
             MatrixInitCommand::class => new class($tool) extends MatrixInitCommand {},
             HeadlampInitCommand::class => new class($tool) extends HeadlampInitCommand {},
             PocketBaseInitCommand::class => new class($tool) extends PocketBaseInitCommand {},
@@ -129,7 +124,6 @@ final class ToolInitCommands
             ClusterTool::OUTLINE => OutlineInitCommand::class,
             ClusterTool::PENPOT => PenpotInitCommand::class,
             ClusterTool::PLANKA => PlankaInitCommand::class,
-            ClusterTool::PLAUSIBLE => PlausibleInitCommand::class,
             ClusterTool::POCKETBASE => PocketBaseInitCommand::class,
             ClusterTool::WORDPRESS => WordpressInitCommand::class,
             ClusterTool::RESUME => ResumeInitCommand::class,

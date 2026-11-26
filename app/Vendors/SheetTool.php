@@ -8,6 +8,7 @@ use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasCommonsRedisKeys;
 use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasImages;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasRotatableDatabasePassword;
@@ -16,10 +17,19 @@ use App\Contracts\HasVpnWiring;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\SecretKind;
+use App\Tools\Concerns\PinsImages;
 
 /** The single vendor backing the SHEETS category — 'Spreadsheet Database'. Only Teable. */
-final class SheetTool implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasDeploymentBaseName, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring
+final class SheetTool implements ClusterToolVendor, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasDeploymentBaseName, HasImages, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return ['teable' => 'teableio/teable:release.2026-07-26T01-04-56Z.2377'];
+    }
+
     public function getLabel(): string
     {
         return 'Teable';

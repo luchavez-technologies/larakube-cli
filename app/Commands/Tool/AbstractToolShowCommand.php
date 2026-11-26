@@ -9,7 +9,6 @@ use App\Services\Kubectl;
 use App\Support\K8sAnnotations;
 use App\Traits\DeploysClusterTool;
 use App\Traits\LaraKubeOutput;
-use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolHost;
 use Illuminate\Support\Facades\Process;
 
@@ -35,7 +34,7 @@ use Throwable;
  */
 abstract class AbstractToolShowCommand extends Command
 {
-    use DeploysClusterTool, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolHost;
+    use DeploysClusterTool, LaraKubeOutput, ResolvesToolHost;
 
     public function __construct()
     {
@@ -55,10 +54,6 @@ abstract class AbstractToolShowCommand extends Command
     public function handle(): int
     {
         $tool = $this->tool();
-
-        if ($this->refuseUnshippedTool($tool)) {
-            return 1;
-        }
 
         $env = (string) $this->argument('environment');
 

@@ -79,4 +79,4 @@ test('init and remove agree on every name', function (ClusterTool $tool): void {
     }
 
     expect($result['problems'])->toBeEmpty();
-})->with(fn () => array_map(fn (ClusterTool $tool) => [$tool], ClusterTool::shippedCases()));
+})->with(fn () => array_map(fn (ClusterTool $tool) => [$tool], ClusterTool::cases()));

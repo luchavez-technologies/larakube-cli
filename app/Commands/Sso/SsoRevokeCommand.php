@@ -150,7 +150,7 @@ class SsoRevokeCommand extends Command
     protected function resolveRolesFromCurrentAccess(string $ssoHost, string $pat, string $kubectl, string $userId, string $email): ?array
     {
         $projects = [];
-        foreach (ClusterTool::shippedCases() as $tool) {
+        foreach (ClusterTool::cases() as $tool) {
             if (! $tool->requiresRbacGating()) {
                 continue;
             }

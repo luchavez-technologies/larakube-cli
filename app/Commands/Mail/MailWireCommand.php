@@ -16,7 +16,6 @@ use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PicksRegisteredTool;
 use App\Traits\ReconcilesPenpotFlags;
-use App\Traits\RefusesUnshippedTools;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEngine;
 use App\Traits\StreamsProcessOutput;
@@ -30,7 +29,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class MailWireCommand extends Command
 {
-    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithToolRegistry, InteractsWithZitadelApi, LaraKubeOutput, PicksRegisteredTool, ReconcilesPenpotFlags, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, StreamsProcessOutput, SyncsClusterSecrets;
+    use InteractsWithChat, InteractsWithClusterContext, InteractsWithMail, InteractsWithSso, InteractsWithToolRegistry, InteractsWithZitadelApi, LaraKubeOutput, PicksRegisteredTool, ReconcilesPenpotFlags, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'mail:wire
         {environment=local : Environment whose mail server to target}
@@ -141,7 +140,7 @@ class MailWireCommand extends Command
     protected function resolveTargets(string $kubectl): array
     {
         $capable = array_filter(
-            ClusterTool::shippedCases(),
+            ClusterTool::cases(),
             fn (ClusterTool $t) => $t->smtpEnv() !== null || $t === ClusterTool::ZITADEL,
         );
 
@@ -157,15 +156,7 @@ class MailWireCommand extends Command
         $slug = $this->option('tool');
         if ($slug !== null) {
             $tool = ClusterTool::tryFrom($slug);
-            if ($tool === null) {
-                $this->laraKubeError("'{$slug}' is not an SMTP-capable tool.");
-
-                return [];
-            }
-            if ($this->refuseUnshippedTool($tool)) {
-                return [];
-            }
-            if ($tool->smtpEnv() === null && $tool !== ClusterTool::ZITADEL) {
+            if ($tool === null || ($tool->smtpEnv() === null && $tool !== ClusterTool::ZITADEL)) {
                 $this->laraKubeError("'{$slug}' is not an SMTP-capable tool.");
 
                 return [];

@@ -112,7 +112,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::CHATWOOT => new SupportTool,
             self::METABASE => new InsightTool,
             self::GLITCHTIP => new ErrorTool,
-            self::UMAMI, self::PLAUSIBLE => new AnalyticsTool,
+            self::UMAMI => new AnalyticsTool,
             self::LIVEKIT => new MeetTool,
             self::EXTERNAL_DNS => new DnsTool,
             self::KUMA => new UptimeTool,
@@ -152,7 +152,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::DOCUMENSO => 'Documenso (Document Signing)',
             self::CHATWOOT => 'Chatwoot (Customer Support)',
             self::UMAMI => 'Umami (Web Analytics)',
-            self::PLAUSIBLE => 'Plausible (Privacy Analytics)',
             self::HEADLAMP => 'Headlamp (Kubernetes Dashboard)',
             self::STALWART => 'Stalwart (All-in-One Mail Server)',
             self::BULWARK => 'Bulwark (Webmail Client)',
@@ -204,7 +203,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::DOCUMENSO => '✍️',
             self::CHATWOOT => '💬',
             self::UMAMI => '📊',
-            self::PLAUSIBLE => '📈',
             self::HEADLAMP => '☸️',
             self::STALWART => '✉️',
             self::BULWARK => '📬',
@@ -252,7 +250,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::DOCUMENSO => 'Documenso',
             self::CHATWOOT => 'Chatwoot',
             self::UMAMI => 'Umami',
-            self::PLAUSIBLE => 'Plausible',
             self::HEADLAMP => 'Headlamp',
             self::STALWART => 'Stalwart',
             self::BULWARK => 'Bulwark',
@@ -315,7 +312,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::ERPNEXT => SharedClusterService::ERPNEXT,
             self::DOCUMENSO => SharedClusterService::SIGN,
             self::CHATWOOT => SharedClusterService::SUPPORT,
-            self::UMAMI, self::PLAUSIBLE => SharedClusterService::ANALYTICS,
+            self::UMAMI => SharedClusterService::ANALYTICS,
             self::HEADLAMP => SharedClusterService::DASHBOARD,
             self::STALWART => SharedClusterService::MAIL,
             self::BULWARK => SharedClusterService::WEBMAIL,
@@ -400,7 +397,7 @@ enum ClusterTool: string implements HasWorkloadComponents
     {
         $best = null;
 
-        foreach (self::shippedCases() as $tool) {
+        foreach (self::cases() as $tool) {
             foreach ($tool->engineCandidates() as $engine) {
                 foreach ($tool->components(engine: $engine) as $component) {
                     $prefix = $component->deployment.'-';
@@ -655,35 +652,6 @@ enum ClusterTool: string implements HasWorkloadComponents
     }
 
     /**
-     * Whether this tool is release-ready and may be advertised to operators.
-     *
-     * Unshipped tools are hidden from every listing/prompt UI (tool:list,
-     * tool:add, tool:show, and the wire commands' candidate loops), and their
-     * per-tool commands refuse to run with a "not yet shipped" message. The
-     * case itself, its reverse lookups (forDeployment(), forCommonsResource(),
-     * forCommonsTenant(), forGrantableRoleKey()) and its components stay fully
-     * intact so live resources are still discovered, backed up, and torn down.
-     *
-     * Current unshipped tools, and the gap that withholds them:
-     *  - ANALYTICS (Umami): no OIDC/SSO integration and no SMTP client wiring —
-     *    it cannot join the fleet's identity or mail story yet.
-     *  - UPTIME (Uptime Kuma): no OIDC/SSO integration and no programmatic SMTP
-     *    story (its mail settings are UI-only, over SQLite) — nothing to wire.
-     *
-     * PASTE (Yopass) is shipped despite having no OIDC/SSO story — that's a
-     * deliberate exception, not an oversight: zero-knowledge/no-account
-     * secret sharing is the whole point of the tool, so "no auth" is the
-     * design, not a gap.
-     */
-    public function isShipped(): bool
-    {
-        return match ($this) {
-            self::UMAMI, self::PLAUSIBLE, self::KUMA => false,
-            default => true,
-        };
-    }
-
-    /**
      * Whether this case represents a deprecated legacy category verb rather than an
      * individual tool. No case does anymore (DATA, the last one, was deleted once
      * the live cluster had nothing registered under it to migrate) — kept as a
@@ -730,7 +698,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::ERPNEXT => null,
             self::DOCUMENSO => 'sign',
             self::CHATWOOT => 'support',
-            self::UMAMI, self::PLAUSIBLE => null,
+            self::UMAMI => null,
             self::HEADLAMP => 'dashboard',
             self::STALWART => 'mail',
             self::BULWARK => 'webmail',
@@ -788,7 +756,6 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::DOCUMENSO => 'Digital Document Signing',
             self::CHATWOOT => 'Customer Support & Live Chat',
             self::UMAMI => 'Privacy-Focused Web Analytics',
-            self::PLAUSIBLE => 'Lightweight Web Analytics',
             self::HEADLAMP => 'Kubernetes Control Plane Dashboard',
             self::STALWART => 'All-in-One Mail Server',
             self::BULWARK => 'Webmail Client',
@@ -857,7 +824,7 @@ enum ClusterTool: string implements HasWorkloadComponents
             self::ERPNEXT => [ToolCategory::PRODUCTIVITY],
             self::DOCUMENSO => [ToolCategory::PRODUCTIVITY, ToolCategory::SECURITY],
             self::CHATWOOT => [ToolCategory::COMMUNICATION, ToolCategory::PRODUCTIVITY],
-            self::UMAMI, self::PLAUSIBLE => [ToolCategory::ANALYTICS],
+            self::UMAMI => [ToolCategory::ANALYTICS],
             self::HEADLAMP => [ToolCategory::DEVOPS],
             self::STALWART => [ToolCategory::COMMUNICATION, ToolCategory::DEVOPS],
             self::BULWARK => [ToolCategory::COMMUNICATION, ToolCategory::PRODUCTIVITY],
@@ -1015,13 +982,6 @@ enum ClusterTool: string implements HasWorkloadComponents
                 'storage' => [],
                 'auth' => [],
                 'mail' => [],
-            ],
-            self::PLAUSIBLE => [
-                'databases' => ['postgresql'],
-                'cache' => [],
-                'storage' => [],
-                'auth' => [],
-                'mail' => ['smtp'],
             ],
             self::TEABLE => [
                 'databases' => ['postgresql'],
@@ -1235,23 +1195,15 @@ enum ClusterTool: string implements HasWorkloadComponents
     }
 
     /**
-     * Every case that is release-ready, for listings and prompts.
-     *
-     * @return list<self>
-     */
-    public static function shippedCases(): array
-    {
-        return array_values(array_filter(self::cases(), fn (self $tool) => $tool->isShipped() && ! $tool->isLegacy()));
-    }
-
-    /**
      * Get an associative array of value => label for prompts.
      */
     public static function options(): array
     {
         $options = [];
-        foreach (self::shippedCases() as $tool) {
-            $options[$tool->value] = $tool->getLabel();
+        foreach (self::cases() as $tool) {
+            if (! $tool->isLegacy()) {
+                $options[$tool->value] = $tool->getLabel();
+            }
         }
 
         return $options;
@@ -1659,7 +1611,7 @@ enum ClusterTool: string implements HasWorkloadComponents
         return match ($this) {
             self::POCKETBASE, self::SUPABASE, self::DIRECTUS, self::WORDPRESS, self::OUTLINE, self::TWENTY,
             self::PENPOT, self::YOPASS, self::DOCUMENSO,
-            self::N8N, self::WINDMILL, self::KUTT, self::UMAMI, self::PLAUSIBLE,
+            self::N8N, self::WINDMILL, self::KUTT, self::UMAMI,
             self::TEABLE, self::PLANKA, self::KUMA, self::METABASE,
             self::ERPNEXT,
             self::GLITCHTIP, self::CHATWOOT, self::SENDREC, self::RESUME,
@@ -1980,7 +1932,7 @@ enum ClusterTool: string implements HasWorkloadComponents
         return match ($this) {
             self::GRAFANA, self::FORGEJO, self::OUTLINE,
             self::N8N, self::WINDMILL, self::DOCUMENSO, self::POCKETBASE, self::SUPABASE,
-            self::DIRECTUS, self::WORDPRESS, self::KUTT, self::UMAMI, self::PLAUSIBLE,
+            self::DIRECTUS, self::WORDPRESS, self::KUTT, self::UMAMI,
             self::TEABLE, self::PLANKA, self::HEADLAMP,
             self::ERPNEXT,
             self::LIVEKIT, self::BULWARK, self::OCIS, self::NETBIRD,
@@ -2234,7 +2186,6 @@ enum ClusterTool: string implements HasWorkloadComponents
     case DOCUMENSO = 'documenso';
     case CHATWOOT = 'chatwoot';
     case UMAMI = 'umami';
-    case PLAUSIBLE = 'plausible';
     case HEADLAMP = 'headlamp';
     case STALWART = 'stalwart';
     case BULWARK = 'bulwark';

@@ -8,6 +8,7 @@ use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasCommonsRedisKeys;
 use App\Contracts\HasDbSecretRef;
+use App\Contracts\HasImages;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasPresenceProbe;
@@ -19,11 +20,27 @@ use App\Contracts\HasWhiteLabel;
 use App\Contracts\HasWorkloadComponents;
 use App\Contracts\UsesCliOidc;
 use App\Data\ClusterToolComponentData;
+use App\Tools\Concerns\PinsImages;
 use Illuminate\Support\Facades\Process;
 
 /** The vendor enum backing ClusterTool::FORGEJO — 'Git Forge & CI/CD'. Only Forgejo today; a future alternative would add a case here. */
-enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasOidcWiring, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents, UsesCliOidc
+enum GitForgeTool: string implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasImages, HasOidcWiring, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring, HasWhiteLabel, HasWorkloadComponents, UsesCliOidc
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return match ($this) {
+            self::FORGEJO => [
+                'forgejo' => 'codeberg.org/forgejo/forgejo:16.0.4',
+                'runner' => 'code.forgejo.org/forgejo/runner:13.1.0',
+                'podman' => 'quay.io/podman/stable:v5.8.4',
+                'job' => 'docker.io/library/node:24-trixie',
+            ],
+        };
+    }
+
     public function getLabel(): string
     {
         return 'Forgejo';

@@ -20,7 +20,6 @@ use App\Traits\InteractsWithZitadelApi;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PicksRegisteredTool;
 use App\Traits\ReconcilesPenpotFlags;
-use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolEngine;
 use App\Traits\ResolvesToolHost;
 use App\Traits\SyncsClusterSecrets;
@@ -34,7 +33,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class SsoWireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithVpn, InteractsWithZitadelApi, LaraKubeOutput, PicksRegisteredTool, ReconcilesPenpotFlags, RefusesUnshippedTools, ResolvesToolEngine, ResolvesToolHost, SyncsClusterSecrets;
+    use DeploysClusterTool, InteractsWithChat, InteractsWithClusterContext, InteractsWithSso, InteractsWithVpn, InteractsWithZitadelApi, LaraKubeOutput, PicksRegisteredTool, ReconcilesPenpotFlags, ResolvesToolEngine, ResolvesToolHost, SyncsClusterSecrets;
 
     protected $signature = 'sso:wire
         {environment=local : Environment whose deployment to wire}

@@ -5,6 +5,7 @@ namespace App\Vendors;
 use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDbSecretRef;
+use App\Contracts\HasImages;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasPresenceProbe;
@@ -17,11 +18,20 @@ use App\Data\ClusterToolComponentData;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
 use App\Enums\ClusterToolComponentRole;
+use App\Tools\Concerns\PinsImages;
 use Illuminate\Support\Facades\Process;
 
 /** The single vendor backing the PASSWORDS category — 'Password Manager'. Only Vaultwarden. */
-final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasDbSecretRef, HasOidcWiring, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring, HasWorkloadComponents
+final class PasswordTool implements ClusterToolVendor, HasCommonsDatabases, HasDbSecretRef, HasImages, HasOidcWiring, HasOpenbaoSync, HasPresenceProbe, HasRotatableDatabasePassword, HasSmtpWiring, HasToolAccessDetails, HasVpnWiring, HasWorkloadComponents
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return ['vaultwarden' => 'vaultwarden/server:1.37.5'];
+    }
+
     public function getLabel(): string
     {
         return 'Vaultwarden';

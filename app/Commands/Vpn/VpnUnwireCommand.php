@@ -11,7 +11,6 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithVpn;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PicksRegisteredTool;
-use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolHost;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
@@ -19,7 +18,7 @@ use Throwable;
 
 class VpnUnwireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithVpn, LaraKubeOutput, PicksRegisteredTool, RefusesUnshippedTools, ResolvesToolHost;
+    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithVpn, LaraKubeOutput, PicksRegisteredTool, ResolvesToolHost;
 
     protected $signature = 'vpn:unwire
         {environment=local : Environment whose deployment to unwire}

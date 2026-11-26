@@ -6,16 +6,26 @@ use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasAdminEmailPrompt;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasCommonsRedisKeys;
+use App\Contracts\HasImages;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasWhiteLabel;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
 use App\Enums\ClusterToolComponentRole;
+use App\Tools\Concerns\PinsImages;
 
 /** The single vendor backing the SUPPORT category — 'Customer Support'. Only Chatwoot. */
-final class SupportTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasCommonsRedisKeys, HasRotatableDatabasePassword, HasSmtpWiring, HasWhiteLabel, HasWorkloadComponents
+final class SupportTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasCommonsRedisKeys, HasImages, HasRotatableDatabasePassword, HasSmtpWiring, HasWhiteLabel, HasWorkloadComponents
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return ['chatwoot' => 'chatwoot/chatwoot:v4.16.2'];
+    }
+
     public function getLabel(): string
     {
         return 'Chatwoot';

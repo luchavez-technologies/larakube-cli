@@ -26,7 +26,35 @@ class CloudAppsInstallCommand extends Command
     use EmitsJsonOutput, LaraKubeOutput;
 
     /** Apps LaraKube Cloud can install. Each goes through tool:init, Plex Commons through plex:init. */
-    public const APPS = ['plex', 'openbao', 'n8n', 'pocketbase', 'wordpress', 'erpnext'];
+    public const APPS = [
+        'plex',
+        'openbao',
+        'n8n',
+        'pocketbase',
+        'wordpress',
+        'erpnext',
+        'kuma',
+        'vaultwarden',
+        'outline',
+        'umami',
+        'yopass',
+        'planka',
+        'kutt',
+        'teable',
+        'documenso',
+        'resume',
+        'supabase',
+        'directus',
+        'windmill',
+        'twenty',
+        'grafana',
+        'forgejo',
+        'metabase',
+        'glitchtip',
+        'penpot',
+        'chatwoot',
+        'sendrec',
+    ];
 
     /** Shared Commons services Cloud may ask for. */
     private const PLEX_SERVICES = ['postgres', 'redis', 'mariadb', 'seaweedfs'];

@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Process;
  * command's --remove branch.
  */
 test('tool:remove takes the environment as its only positional', function (): void {
-    foreach (ClusterTool::shippedCases() as $tool) {
+    foreach (ClusterTool::cases() as $tool) {
         $definition = $this->app
             ->make(Kernel::class)
             ->all()[$tool->removeCommand()]
@@ -25,7 +25,7 @@ test('tool:remove takes the environment as its only positional', function (): vo
 test('every tool has a remove command and none of them still accept --remove on init', function (): void {
     $commands = $this->app->make(Kernel::class)->all();
 
-    foreach (ClusterTool::shippedCases() as $tool) {
+    foreach (ClusterTool::cases() as $tool) {
         expect($commands)->toHaveKey($tool->removeCommand());
 
         if (ToolInitCommands::has($tool)) {
@@ -293,7 +293,7 @@ test('--domain on a tool without real per-instance teardown errors instead of si
     // regardless of what host was passed. hasInstanceAwareRemoval() closes
     // that gap for every tool except the 4 with real per-instance logic.
     $groupB = array_filter(
-        ClusterTool::shippedCases(),
+        ClusterTool::cases(),
         // DNS excluded: external-dns:remove is a bespoke Cloudflare-zone command that
         // never extended AbstractToolRemoveCommand and has no --domain option
         // at all — this loop only covers tools sharing the generic guard.

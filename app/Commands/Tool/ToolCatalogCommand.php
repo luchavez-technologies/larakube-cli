@@ -151,7 +151,7 @@ class ToolCatalogCommand extends Command
         $entries = [];
         $seen = [];
 
-        foreach (ClusterTool::shippedCases() as $tool) {
+        foreach (ClusterTool::cases() as $tool) {
             $row = $tool->toCatalogRow(isLocal: $isLocal);
             $row['upvotesCount'] = 0;
             $row['remoteUpdatedAt'] = null;

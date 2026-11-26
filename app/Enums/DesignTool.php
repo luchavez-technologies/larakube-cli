@@ -8,6 +8,7 @@ use App\Contracts\HasCommonsBuckets;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasCommonsRedisKeys;
 use App\Contracts\HasDbSecretRef;
+use App\Contracts\HasImages;
 use App\Contracts\HasOidcWiring;
 use App\Contracts\HasOpenbaoSync;
 use App\Contracts\HasRotatableDatabasePassword;
@@ -15,10 +16,25 @@ use App\Contracts\HasSmtpWiring;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWorkloadComponents;
 use App\Data\ClusterToolComponentData;
+use App\Tools\Concerns\PinsImages;
 
 /** The vendor enum backing ClusterTool::PENPOT — 'Design & Prototyping'. Only Penpot today. */
-enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring, HasWorkloadComponents
+enum DesignTool: string implements ClusterToolVendor, HasBaselineFlags, HasCommonsBuckets, HasCommonsDatabases, HasCommonsRedisKeys, HasDbSecretRef, HasImages, HasOidcWiring, HasOpenbaoSync, HasRotatableDatabasePassword, HasSmtpWiring, HasVpnWiring, HasWorkloadComponents
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return match ($this) {
+            self::PENPOT => [
+                'backend' => 'penpotapp/backend:2.17',
+                'frontend' => 'penpotapp/frontend:2.17',
+                'exporter' => 'penpotapp/exporter:2.17',
+            ],
+        };
+    }
+
     public function getLabel(): string
     {
         return 'Penpot';

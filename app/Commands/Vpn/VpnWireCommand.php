@@ -9,14 +9,13 @@ use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithVpn;
 use App\Traits\LaraKubeOutput;
 use App\Traits\PicksRegisteredTool;
-use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolHost;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
 class VpnWireCommand extends Command
 {
-    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithVpn, LaraKubeOutput, PicksRegisteredTool, RefusesUnshippedTools, ResolvesToolHost;
+    use DeploysClusterTool, InteractsWithClusterContext, InteractsWithVpn, LaraKubeOutput, PicksRegisteredTool, ResolvesToolHost;
 
     protected $signature = 'vpn:wire
         {environment=local : Environment whose deployment to wire}

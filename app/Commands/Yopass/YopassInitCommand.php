@@ -15,7 +15,6 @@ use App\Traits\InteractsWithIngressProxy;
 use App\Traits\InteractsWithPaste;
 use App\Traits\InteractsWithPlex;
 use App\Traits\LaraKubeOutput;
-use App\Traits\RefusesUnshippedTools;
 use App\Traits\ResolvesToolEnvironment;
 use App\Traits\ResolvesToolHost;
 use App\Traits\StreamsProcessOutput;
@@ -33,7 +32,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
  */
 abstract class YopassInitCommand extends AbstractToolInitCommand
 {
-    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPaste, InteractsWithPlex, LaraKubeOutput, RefusesUnshippedTools, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
+    use ConfirmsDestructiveAction, DeploysClusterTool, InteractsWithClusterContext, InteractsWithIngressProxy, InteractsWithPaste, InteractsWithPlex, LaraKubeOutput, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, VerifiesKubernetesRollout;
 
     protected function runInit(): int
     {
@@ -42,10 +41,6 @@ abstract class YopassInitCommand extends AbstractToolInitCommand
 
     protected function deployPaste(): int
     {
-        if ($this->refuseUnshippedTool(ClusterTool::YOPASS)) {
-            return 1;
-        }
-
         $env = $this->resolveToolEnvironment(ClusterTool::YOPASS);
         $context = $this->resolveToolContext($env, $this->option('context'));
         $this->plexContext = $context;

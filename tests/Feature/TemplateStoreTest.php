@@ -342,7 +342,7 @@ test('ensureFor never reaches the network for an app that is not downloadable', 
 
         $store->resolveBundledPathUsing(static fn (string $folder): string => "{$home}/nonexistent-bundled/{$folder}");
 
-        $store->ensureFor('plausible');
+        $store->ensureFor('zitadel');
         $store->ensureFor('not-a-tool');
 
         $mock->assertNothingSent();

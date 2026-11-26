@@ -6,7 +6,6 @@ use App\Enums\ClusterTool;
 use App\Services\Kubectl;
 use App\Traits\DeploysClusterTool;
 use App\Traits\LaraKubeOutput;
-use App\Traits\RefusesUnshippedTools;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use App\Traits\ResolvesToolEngine;
 use App\Traits\ResolvesToolEnvironment;
@@ -22,7 +21,7 @@ use LaravelZero\Framework\Commands\Command;
 
 class SecretsRotateCommand extends Command
 {
-    use DeploysClusterTool, LaraKubeOutput, RefusesUnshippedTools, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
+    use DeploysClusterTool, LaraKubeOutput, RequiresFlagsWhenNonInteractive, ResolvesToolEngine, ResolvesToolEnvironment, ResolvesToolHost, StreamsProcessOutput, SyncsClusterSecrets;
 
     protected $signature = 'secrets:rotate
         {environment=local : Environment whose secrets to target}
@@ -96,7 +95,7 @@ class SecretsRotateCommand extends Command
      */
     protected function resolveTargets(string $kubectl, string $domain): array
     {
-        $capable = array_filter(ClusterTool::shippedCases(), fn (ClusterTool $t) => $t->dbSecretRef() !== null);
+        $capable = array_filter(ClusterTool::cases(), fn (ClusterTool $t) => $t->dbSecretRef() !== null);
 
         // A tool's OWN registered host, not a bare/no-instance guess — a
         // fully migrated tool (e.g. GIT) has no legitimate bare deployment
@@ -150,17 +149,7 @@ class SecretsRotateCommand extends Command
         $slug = $this->option('tool');
         if ($slug !== null) {
             $tool = ClusterTool::tryFrom($slug);
-            if ($tool === null) {
-                $this->laraKubeError("'{$slug}' does not have a Commons database password OpenBao can rotate.");
-
-                return [];
-            }
-
-            if ($this->refuseUnshippedTool($tool)) {
-                return [];
-            }
-
-            if ($tool->dbSecretRef() === null) {
+            if ($tool === null || $tool->dbSecretRef() === null) {
                 $this->laraKubeError("'{$slug}' does not have a Commons database password OpenBao can rotate.");
 
                 return [];

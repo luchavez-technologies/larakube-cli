@@ -21,7 +21,7 @@ use function Laravel\Prompts\select;
  */
 trait InteractsWithSsoGrants
 {
-    use DeploysClusterTool, InteractsWithSso, InteractsWithZitadelApi, RefusesUnshippedTools;
+    use DeploysClusterTool, InteractsWithSso, InteractsWithZitadelApi;
 
     /**
      * Resolve Zitadel's host and the automation PAT — printing its own
@@ -128,9 +128,6 @@ trait InteractsWithSsoGrants
 
                 return null;
             }
-            if ($this->refuseUnshippedTool($tool)) {
-                return null;
-            }
             if (! $tool->requiresRbacGating() && $tool->ssoAdminRoles() === []) {
                 $this->laraKubeError("'{$tool->value}' has no role-gated access to grant — every authenticated user already gets in.");
 
@@ -141,7 +138,7 @@ trait InteractsWithSsoGrants
         }
 
         $gated = array_values(array_filter(
-            ClusterTool::shippedCases(),
+            ClusterTool::cases(),
             fn (ClusterTool $t) => $t->grantableRoles() !== [],
         ));
         if ($gated === []) {

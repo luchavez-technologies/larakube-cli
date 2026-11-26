@@ -6,14 +6,24 @@ use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDbSecretRef;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasImages;
 use App\Contracts\HasRotatableDatabasePassword;
 use App\Contracts\HasVpnWiring;
 use App\Data\ToolInstance;
 use App\Enums\ClusterTool;
+use App\Tools\Concerns\PinsImages;
 
 /** The single vendor backing the ANALYTICS category — 'Web Analytics'. Only Umami. */
-final class AnalyticsTool implements ClusterToolVendor, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasRotatableDatabasePassword, HasVpnWiring
+final class AnalyticsTool implements ClusterToolVendor, HasCommonsDatabases, HasDbSecretRef, HasDeploymentBaseName, HasImages, HasRotatableDatabasePassword, HasVpnWiring
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return ['umami' => 'ghcr.io/umami-software/umami:postgresql-latest'];
+    }
+
     public function getLabel(): string
     {
         return 'Umami';

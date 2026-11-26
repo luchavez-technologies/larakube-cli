@@ -26,7 +26,7 @@ test('every shipped ClusterTool container declares cpu and memory requests', fun
                 ->not->toBeNull("{$tool->value} {$workload->kind}/{$workload->name} container {$container->name} is missing resources.requests.memory");
         }
     }
-})->with(fn () => array_map(fn (ClusterTool $tool) => [$tool], ClusterTool::shippedCases()));
+})->with(fn () => array_map(fn (ClusterTool $tool) => [$tool], ClusterTool::cases()));
 
 test('every Traefik manifest container declares cpu and memory requests', function (string $view): void {
     $rendered = view($view, match ($view) {

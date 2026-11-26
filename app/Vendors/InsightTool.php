@@ -6,12 +6,22 @@ use App\Contracts\ClusterToolVendor;
 use App\Contracts\HasAdminEmailPrompt;
 use App\Contracts\HasCommonsDatabases;
 use App\Contracts\HasDeploymentBaseName;
+use App\Contracts\HasImages;
 use App\Contracts\HasVpnWiring;
 use App\Contracts\HasWhiteLabel;
+use App\Tools\Concerns\PinsImages;
 
 /** The single vendor backing the INSIGHTS category — 'Business Intelligence'. Only Metabase. */
-final class InsightTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasDeploymentBaseName, HasVpnWiring, HasWhiteLabel
+final class InsightTool implements ClusterToolVendor, HasAdminEmailPrompt, HasCommonsDatabases, HasDeploymentBaseName, HasImages, HasVpnWiring, HasWhiteLabel
 {
+    use PinsImages;
+
+    /** @return array<string, string> */
+    public function images(): array
+    {
+        return ['metabase' => 'metabase/metabase:v0.63.1'];
+    }
+
     public function getLabel(): string
     {
         return 'Metabase';
