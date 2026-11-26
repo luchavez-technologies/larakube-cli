@@ -5,13 +5,13 @@ namespace App\Commands\Cloud;
 use App\Enums\ClusterTool;
 use App\Services\Tools\InitOption;
 use App\Services\Tools\ToolInitSpec;
+use App\Support\Console\MaskedLogOutput;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\InstallsForLaraKubeCloud;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Artisan;
 use InvalidArgumentException;
 use LaravelZero\Framework\Commands\Command;
-use Symfony\Component\Console\Output\BufferedOutput;
 use Throwable;
 
 /**
@@ -93,7 +93,8 @@ class CloudAppsInstallCommand extends Command
             $arguments = $this->initArguments($app, $context);
             $result['host'] = $arguments['--domain'] ?? null;
 
-            $output = new BufferedOutput;
+            // Streams to the Job log (stderr) as it runs, credentials masked.
+            $output = new MaskedLogOutput($this->output);
             $exit = Artisan::call($command, $arguments, $output);
             $result['success'] = $exit === 0;
             $result['error'] = $exit === 0 ? null : $this->lastLines($output->fetch());

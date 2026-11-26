@@ -3,13 +3,13 @@
 namespace App\Commands\Cloud;
 
 use App\Enums\ClusterTool;
+use App\Support\Console\MaskedLogOutput;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\InstallsForLaraKubeCloud;
 use App\Traits\LaraKubeOutput;
 use Illuminate\Support\Facades\Artisan;
 use InvalidArgumentException;
 use LaravelZero\Framework\Commands\Command;
-use Symfony\Component\Console\Output\BufferedOutput;
 use Throwable;
 
 /**
@@ -59,7 +59,8 @@ class CloudAppsRemoveCommand extends Command
                 $arguments['--purge'] = true;
             }
 
-            $output = new BufferedOutput;
+            // Streams to the Job log (stderr) as it runs, credentials masked.
+            $output = new MaskedLogOutput($this->output);
             $exit = Artisan::call($tool->removeCommand(), $arguments, $output);
             $result['success'] = $exit === 0;
             $result['error'] = $exit === 0 ? null : $this->lastLines($output->fetch(), 'The removal did not finish.');
