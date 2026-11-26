@@ -1,5 +1,7 @@
 # LaraKube Cloud installs apps with short-lived tokens
 
+> The Google-issued tokens below now cover GKE only. k3s servers on every provider move to tokens LaraKube Cloud issues itself. See ADR 0038 and `cloud-cluster-access-drivers.md`.
+
 ## Goal
 LaraKube Cloud installs apps (OpenBao first) on a server it created, without holding standing admin
 access. Cloud's own access stays read-only. Admin access is borrowed per install from the customer's
