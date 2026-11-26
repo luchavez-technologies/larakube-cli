@@ -75,8 +75,10 @@ test('CanonicalJson rejects float values anywhere in the structure', function ()
 test('TrustedKeys includes dev_key in source checkouts and ignores it when running inside a phar', function (): void {
     $fixture = templateCanonicalJsonFixture();
 
+    // Staging keys are added on any build that is not a stable release, which a CI build is not.
     config([
         'templates.trusted_keys' => ['prod-2026' => 'cHJvZC1rZXk='],
+        'templates.staging_keys' => [],
         'templates.dev_key' => "{$fixture['key_id']}:{$fixture['public_key']}",
     ]);
 
