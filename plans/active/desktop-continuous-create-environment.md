@@ -204,3 +204,22 @@ Rules: no PHPStan, no `./build`, no commits. Run only the Pest files named below
   - But `tests/Feature/PlexEnvSyncTest.php` ("a normally-managed (non-plex) postgres still emits its connection") deliberately pins the opposite: managed means RDS, and `DB_*` is still computed. That computed `DB_HOST` is the in-cluster FQDN (`getInternalFqdn`), which is wrong for RDS.
   - Reverted. Ask the user, then change or delete that test and re-apply: add `externalServiceEnvironmentKeys()` on ConfigData and use it in `getAllEnvironmentVariables` and `seedEnvironmentEnvFile`. The test in `EnvHeadlessTest` uses `--managed=postgres --plex=` and expects `DB_HOST` blank.
 - **Task 3 DONE (user approved changing PlexEnvSyncTest):** External (managed, non-Plex) services emit no connection keys outside local; the seed writes them blank.
+
+## Desktop progress
+- **DONE (`f692220`, desktop develop):** `projects.link` accepts `managed[]` and `hosts[service]`, passed as `--managed=` and `--host=`. Tested in ProjectsTest.
+- **Approach change:** no new `createEnvironment` endpoint for now. The create flow calls the existing actions in order:
+  1. `projects.link`: target, plex, managed and hosts.
+  2. `projects.ci`, if CI is on.
+  3. `projects.dotenv.update`, to fill the blank keys.
+  4. `projects.dotenv.push`.
+
+  Each one is already a Run, so the UI watches each run's status and moves to the next step only on success.
+- **Next:**
+  - Expose the project's promptable host services, and which keys are blank or managed, in the project props (Desktop side).
+  - Build the stepper UI in `AddEnvironmentDialog`, extracting the drawer sections.
+- **DONE (desktop `9e170b7`, `36c43d6`):** `promptableHostServices()` in `backing-services-picker.tsx`. The Add Environment drawer shows one address field per service and sends `hosts[slug]`.
+- **Follow-up:** that helper hardcodes the Reverb, SeaweedFS and Garage slugs, which goes against "Desktop doesn't branch on tool slugs" (`NoToolDataInDesktopTest` only scans pages). Have the CLI's project `--json` emit `hostServices: [{slug,label}]` from `HasPromptableHosts`, and read that instead.
+- **DONE (desktop `b5e5947`):** the backing-services picker has an opt-in third option, External, and the Add Environment drawer sends `managed[]`. Not yet in the Environment Settings drawer (pass `external`/`onExternalChange` there, plus `managed[]` support in `projects.backing-services`).
+- **DONE:** LaraKube CLI `e6fe546a` (`--only=plex --managed=`); Desktop `a4d0cbb` (External in the Settings drawer, `managed_configured` marker). Desktop needs a LaraKube CLI build that includes the `feat/cloud-installer-trust` commits.
+- **DONE:** LaraKube CLI `f2db75bb` (`isBlank` in `dotenv --json`); Desktop `05a2479` (a "Needs a value" notice in the environment variables card). Still to do: disable or confirm Push while keys are blank ("Leave these blank"); the create-flow stepper with the CI toggle and "Push now".
+- **DONE:** Desktop `ede77fb` (Push disabled while keys are blank, with a "Leave these blank" opt-out) and `40da706` (after Create, open Settings at Delivery Pipeline). **Still to do (real stepper):** one dialog with Next/Back that runs link → ci → dotenv update → push, with a tick per step.
