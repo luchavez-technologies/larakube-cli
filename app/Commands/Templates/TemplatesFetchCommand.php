@@ -47,14 +47,16 @@ class TemplatesFetchCommand extends Command
             }
 
             try {
-                $entry = $store->download($tool, $engine);
+                // Same engine an install downloads when none is named.
+                $appEngine = $engine ?? $tool->defaultEngine();
+                $entry = $store->download($tool, $appEngine);
             } catch (RuntimeException $exception) {
                 return $this->failed("{$tool->slug}: {$exception->getMessage()}");
             }
 
             $fetched[] = [
                 'app' => $tool->slug,
-                'engine' => $engine ?? 'default',
+                'engine' => $appEngine ?? 'default',
                 'version' => (string) ($entry['version'] ?? ''),
                 'key_id' => (string) ($entry['key_id'] ?? ''),
             ];

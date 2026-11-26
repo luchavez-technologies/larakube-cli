@@ -71,3 +71,11 @@ test('templates:fetch rejects an unknown app', function (): void {
         expect(Artisan::call('templates:fetch', ['apps' => ['not-an-app'], '--json' => true]))->not->toBe(0);
     });
 });
+
+test('templates:fetch asks for the engine an install would use when none is named', function (): void {
+    templatesFetchWithTempHome(['message' => 'No such app.'], function (): void {
+        Artisan::call('templates:fetch', ['apps' => ['planka'], '--json' => true]);
+
+        MockClient::global()->assertSent(fn ($request): bool => $request instanceof LatestRelease && $request->engine === 'planka');
+    });
+});

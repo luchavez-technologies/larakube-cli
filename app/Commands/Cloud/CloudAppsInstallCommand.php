@@ -131,6 +131,9 @@ class CloudAppsInstallCommand extends Command
 
         $accepted = array_map(fn (InitOption $option): string => $option->name, ToolInitSpec::for(ClusterTool::from($app)));
         $arguments['--tool'] = $app;
+        // The Install click in LaraKube Cloud is the user's confirmation, as Desktop's is: a runner
+        // cannot answer the prompt, so an app that adds a service to a running Commons would fail.
+        $arguments['--confirm-commons-restart'] = true;
         if (in_array('force', $accepted, true)) {
             $arguments['--force'] = true;
         }

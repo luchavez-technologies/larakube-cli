@@ -16,7 +16,7 @@ final class UptimeTool implements ClusterToolVendor, HasDeploymentBaseName, HasI
     /** @return array<string, string> */
     public function images(): array
     {
-        return ['kuma' => 'louislam/uptime-kuma:1.23.17'];
+        return ['kuma' => 'louislam/uptime-kuma:2.5.12'];
     }
 
     public function getLabel(): string

@@ -71,3 +71,13 @@ test('the given kubeconfig is merged into the default one, never replacing other
     Process::assertRan(fn ($process): bool => ($process->environment['KUBECONFIG'] ?? '') === cloudAppsInstallKubeconfig($directory).':'.$default);
     expect(file_get_contents($default))->toBe("merged\n");
 });
+
+test('an app install confirms Commons restarts, since the Install click in LaraKube Cloud is the confirmation', function (): void {
+    $command = app(App\Commands\Cloud\CloudAppsInstallCommand::class);
+    $command->setLaravel(app());
+    $command->setInput(new Symfony\Component\Console\Input\ArrayInput(['app' => 'umami'], $command->getDefinition()));
+
+    $arguments = (fn (): array => $this->initArguments('umami', 'larakube-cloud-installer'))->call($command);
+
+    expect($arguments)->toMatchArray(['--tool' => 'umami', '--confirm-commons-restart' => true, '--no-interaction' => true]);
+});

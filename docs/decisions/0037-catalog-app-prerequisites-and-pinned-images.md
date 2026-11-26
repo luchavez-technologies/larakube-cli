@@ -15,7 +15,7 @@ LaraKube Cloud installs apps from its catalog by running `cloud:apps:install` in
 2. **Cloud enforces it twice.** `InstallServerAppRequest` rejects the install unless every required app has status `installed` on that server. The server's Apps tab disables Install and says which app to install first. The first is the guarantee; the second is only guidance.
 3. **The CLI keeps its own refusal.** `*:init` still checks its prerequisite (for Bulwark, `isMailInstalled`). The catalog `requires` does not replace it, so the CLI stays correct when run by hand.
 4. **Every image an app declares through `HasImages` is an exact release tag.** No major-only (`:1`, `:12`), minor-only, or `latest` tags for an app's own image. The tag is changed in the vendor's `images()` and the template together, and `AppImagePinsTest` fails if they disagree.
-5. **Images change only after checking the registry.** The exact tag is the one the floating tag pointed to on the day it was pinned, verified by comparing digests. A newer version is a separate, deliberate change.
+5. **Images change only after checking the registry.** The exact tag is the one the floating tag pointed to on the day it was pinned, verified by comparing digests. A newer version is a separate, deliberate change. Umami `3.5.0` matched `postgresql-latest` by digest. Uptime Kuma moved from the 1.x line to `2.5.12` on purpose; its template sets `UPTIME_KUMA_DB_TYPE=sqlite` so v2 keeps the existing SQLite data and skips its database-choice page.
 6. **The registry allowlist grows only for a registry an app needs.** `ImageDigestResolver` in the CLI and in Cloud must list the same registries.
 
 ## Consequences

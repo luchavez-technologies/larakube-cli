@@ -44,7 +44,10 @@ spec:
     spec:
       containers:
         - name: uptime-kuma
-          image: louislam/uptime-kuma:1.23.17
+          image: louislam/uptime-kuma:2.5.12
+          env:
+            - name: UPTIME_KUMA_DB_TYPE
+              value: sqlite
           ports:
             - containerPort: 3001
               name: ui
