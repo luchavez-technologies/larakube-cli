@@ -1,113 +1,117 @@
-# Report: Cloud Template Catalog Apps (Batch 1 & Batch 2)
+# Report: Cloud Template Catalog Apps (all batches)
 
-## Summary
+For review by Claude. Nothing is pushed. Nothing is published to any Cloud.
 
-- **21 apps processed** across Batch 1 (10) and Batch 2 (11):
-  - **CLI vendors (`HasImages` + `PinsImages`)**: Added `images()` to 19 vendors; `Supabase` and `Windmill` already implemented `HasImages`.
-  - **`tests/Feature/AppImagePinsTest.php`**: Added 18 apps to the dataset (3 skipped because their templates read images from PHP variables rather than literal strings; listed below).
-  - **`config/templates.php` (`downloadable`)**: Added all 21 app slugs.
-  - **`app/Commands/Cloud/CloudAppsInstallCommand.php` (`APPS`)**: Added all 21 app slugs.
-  - **Cloud (`../cloud`)**: Added all 21 app entries to `database/seeders/CatalogAppSeeder.php`, removed the migration-seeding anti-pattern (`2026_11_25_060031_seed_official_catalog_apps.php` deleted), made `DatabaseSeeder` strictly idempotent (dropped Laravel's boilerplate `User::factory()->create()`), and enabled `AUTORUN_LARAVEL_MIGRATION_SEED="true"` in `Dockerfile.php` and `.infrastructure/k8s/base/laravel.yaml`.
-- **Template edits**: Only `resources/views/k8s/kuma/shared.blade.php` received container `resources.requests`/`limits` (`50m`/`128Mi` -> `250m`/`256Mi`) required by `ToolResourceRequestsTest` once the CLI unshipped gate was removed. No other templates were edited.
-- **Zero image tag, version, or registry edits.**
+## 1. Read this first
 
----
+**Commits to review**
 
-## Per-App Status & Declared Images
+| Repo | Branch | Commit | What |
+|---|---|---|---|
+| `cli` | `feat/cloud-installer-trust` | `c0ff49d5` | 21 apps (Batch 1 and 2), unshipped gate removed, Plausible dropped |
+| `cli` | same | `6c794493` | final 8 apps, 4 tag pins, 3 registries |
+| `cli` | same | next commit | ADR 0037 and this report |
+| `cloud` | `develop` | `454bfbf` | 21 catalog entries, migration seeding removed, deploy seeder |
+| `cloud` | `develop` | `9df73f4` | final 8 apps, `requires` gate, registries, ERPNext prefix |
 
-### Batch 1
+(`032a055b` is another agent's backup work. Not part of this task.)
 
-| App | Status | Vendor | `AppImagePinsTest` | Cloud Prefix / Category | Declared Images (`key => image`) |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `kuma` | Done | `App\Vendors\UptimeTool` | Added | `status` / `monitoring` | `kuma => louislam/uptime-kuma:1` |
-| `vaultwarden` | Done | `App\Vendors\PasswordTool` | Added | `vault` / `security` | `vaultwarden => vaultwarden/server:1.37.5` |
-| `outline` | Done | `App\Vendors\NoteTool` | Added | `notes` / `productivity` | `outline => outlinewiki/outline:1.9.2` |
-| `umami` | Done | `App\Vendors\AnalyticsTool` | Added | `analytics` / `analytics` | `umami => ghcr.io/umami-software/umami:postgresql-latest` |
-| `yopass` | Done | `App\Vendors\YopassTool` | Added | `paste` / `security` | `yopass => jhaals/yopass:14.8.0` |
-| `planka` | Done | `App\Enums\TaskTool::PLANKA` | Added | `tasks` / `productivity` | `planka => ghcr.io/plankanban/planka:2.2.1` |
-| `kutt` | Done | `App\Vendors\LinkTool` | Added | `link` / `productivity` | `kutt => kutt/kutt:v3.2.6` |
-| `teable` | Done | `App\Vendors\SheetTool` | Added | `sheet` / `productivity` | `teable => teableio/teable:release.2026-07-26T01-04-56Z.2377` |
-| `documenso` | Done | `App\Vendors\SignTool` | Added | `sign` / `business` | `documenso => documenso/documenso:v2.16.0` |
-| `resume` | Done | `App\Vendors\ResumeTool` | Added | `resume` / `productivity` | `resume => amruthpillai/reactive-resume:v5.2.5` |
+**Deviations from the handoff rules.** Each was requested by the user in this session.
 
-### Batch 2
+| Handoff rule | What was done | Authorised by |
+|---|---|---|
+| Never change an image tag, version or registry | Pinned Kuma, Umami, Directus and Penpot to exact tags; allowed 3 more registries | User, "yes" to fixing floating tags |
+| Do not edit templates | Edited the Kuma, Umami, Directus and Penpot templates (tag only); Kuma template also got resource requests/limits so `ToolResourceRequestsTest` passes without the shipped gate | User, same |
+| Skip the dependency apps | Added all 8: Zitadel, Stalwart, Bulwark, NetBird, Headlamp, LiveKit, oCIS, Matrix | User approved the plan |
+| Seed through a migration | Deleted the migration; Cloud now seeds on deploy with `AUTORUN_LARAVEL_MIGRATION_SEED` | User |
+| Keep the "unshipped" gate | Removed `RefusesUnshippedTools`, `isShipped()`, `shippedCases()`, and `ClusterTool::PLAUSIBLE` with its commands | User |
+| No PHPStan, full suite or commits | All run. The pre-commit hooks require them | User asked for commits |
 
-| App | Status | Vendor | `AppImagePinsTest` | Cloud Prefix / Category | Declared Images (`key => image`) |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `supabase` | Done (vendor already had `HasImages`) | `App\Tools\Supabase` | **Skipped** (PHP `image()` calls) | `supabase` / `backend` | `studio => supabase/studio:2026.11.02-sha-a05e7ec`<br>`gateway => envoyproxy/envoy:v1.39.6`<br>`auth => supabase/gotrue:v2.197.0`<br>`rest => postgrest/postgrest:v14.18`<br>`realtime => supabase/realtime:v2.148.3`<br>`storage => supabase/storage-api:v1.89.12`<br>`imgproxy => darthsim/imgproxy:v4.0.21`<br>`meta => supabase/postgres-meta:v0.100.0`<br>`functions => supabase/edge-runtime:v1.77.9`<br>`db => supabase/postgres:17.6.1.136`<br>`supavisor => supabase/supavisor:2.9.13` |
-| `directus` | Done | `App\Enums\DataTool::DIRECTUS` | Added | `data` / `backend` | `directus => directus/directus:12` |
-| `windmill` | Done (vendor already had `HasImages`) | `App\Tools\Windmill` | **Skipped** (PHP `image()` calls) | `windmill` / `automation` | `windmill => ghcr.io/windmill-labs/windmill:1.770.0`<br>`lsp => ghcr.io/windmill-labs/windmill-lsp:1.134.1`<br>`postgres => postgres:15-alpine` |
-| `twenty` | Done | `App\Vendors\CrmTool` | Added | `crm` / `business` | `twenty => twentycrm/twenty:v2.35.0` |
-| `grafana` | Done | `App\Vendors\MonitorTool` | Added | `grafana` / `monitoring` | `grafana => grafana/grafana:10.4.2`<br>`prometheus => prom/prometheus:v2.51.2`<br>`loki => grafana/loki:3.0.0`<br>`promtail => grafana/promtail:3.0.0`<br>`tempo => grafana/tempo:2.10.7`<br>`kube-state-metrics => registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.12.0` |
-| `forgejo` | Done (see registry & template notes) | `App\Enums\GitForgeTool::FORGEJO` | **Skipped** (PHP version vars) | `git` / `developer` | `forgejo => codeberg.org/forgejo/forgejo:16.0.4`<br>`runner => code.forgejo.org/forgejo/runner:13.1.0`<br>`podman => quay.io/podman/stable:v5.8.4`<br>`job => docker.io/library/node:24-trixie` |
-| `metabase` | Done | `App\Vendors\InsightTool` | Added | `insights` / `analytics` | `metabase => metabase/metabase:v0.63.1` |
-| `glitchtip` | Done | `App\Vendors\ErrorTool` | Added | `errors` / `monitoring` | `glitchtip => glitchtip/glitchtip:6.2.2`<br>`db => postgres:15-alpine`<br>`cache => valkey/valkey:8.0-alpine` |
-| `penpot` | Done | `App\Enums\DesignTool::PENPOT` | Added | `design` / `design` | `backend => penpotapp/backend:2.17`<br>`frontend => penpotapp/frontend:2.17`<br>`exporter => penpotapp/exporter:2.17` |
-| `chatwoot` | Done | `App\Vendors\SupportTool` | Added | `support` / `business` | `chatwoot => chatwoot/chatwoot:v4.16.2` |
-| `sendrec` | Done | `App\Vendors\RecordTool` | Added | `record` / `productivity` | `sendrec => ghcr.io/sendrec/sendrec:v1.89.1` |
+## 2. What changed, per layer
 
-### Skipped Apps (per Handoff Rules)
+**CLI**
+- `HasImages` + `PinsImages` + `images()` on 27 vendor classes or enums (19 earlier, 8 now: `SsoTool`, `MailTool`, `WebmailTool`, `VpnTool`, `DashboardTool`, `MeetTool`, `OcisTool`, `ChatTool`).
+- `config/templates.php` `downloadable` and `CloudAppsInstallCommand::APPS`: 35 apps plus `plex` (36 slugs; `external-dns` is downloadable but not installable).
+- `ImageDigestResolver::ALLOWED_REGISTRIES`: added `codeberg.org`, `code.forgejo.org`, `oci.element.io`.
+- `ToolFootprint` and the Kuma template: resource requests for Kuma and Umami.
+- Removed Plausible and the unshipped gate across commands, traits and tests; `tests/Fixtures/tool-init-signatures.json` updated.
+- ADR `0037-catalog-app-prerequisites-and-pinned-images.md`, indexed in the README.
 
-- **Skipped completely (cross-app dependencies, reserved for Claude)**: `zitadel`, `stalwart`, `bulwark` (requires `stalwart`), `netbird`, `matrix`, `headlamp`, `livekit`, `ocis`. (`plausible` was dropped completely per follow-up instruction.)
-- **Skipped in `AppImagePinsTest.php` dataset only (images rendered from PHP variables rather than literal strings in `resources/views/k8s/<folder>/*.blade.php`)**:
-  1. `supabase`: Templates call `{{ $tool->vendor()->image('...') }}` (`Supabase` already implemented `HasImages`).
-  2. `windmill`: Template calls `{{ $tool->image('...') }}` (`Windmill` already implemented `HasImages`).
-  3. `forgejo`: `resources/views/k8s/forgejo/forgejo.blade.php` builds image strings from `$forgejoVersion`, `$runnerVersion`, `$podmanVersion`, and `$jobImage` passed by `ForgejoInitCommand` constants (`FORGEJO_VERSION`, `RUNNER_VERSION`, `PODMAN_VERSION`, `JOB_IMAGE`).
+**Cloud**
+- `CatalogAppSeeder`: 36 entries, all `AccessTier::Free` on creation (tier is never reset, so the admin UI toggle survives deploys). ERPNext prefix `erp` to `erpnext`. Bulwark has `options.requires = ['stalwart']`.
+- `DatabaseSeeder`: only `CatalogAppSeeder`; the `test@example.com` factory user is gone. Idempotent, tested twice-run.
+- `Dockerfile.php` and `.infrastructure/k8s/base/laravel.yaml`: `AUTORUN_LARAVEL_MIGRATION_SEED=true`.
+- `InstallableApps` exposes `requires`; `ServerController` passes it to the page; `InstallServerAppRequest` rejects an install whose prerequisite is not `installed` on that server; `servers/show.tsx` disables Install and names the missing app.
+- `ImageDigestResolver::REGISTRIES`: same 3 registries as the CLI.
 
----
+## 3. Declared images per app
 
-## Suspect, Stale, Floating, or Unusual-Registry Images (Untouched)
+Source of truth is each vendor's `images()`.
 
-1. **`forgejo` — registries blocked by `ImageDigestResolver` (will block `templates:publish forgejo`)**:
-   - `codeberg.org/forgejo/forgejo:16.0.4` and `code.forgejo.org/forgejo/runner:13.1.0`: neither `codeberg.org` nor `code.forgejo.org` is in `ImageDigestResolver::ALLOWED_REGISTRIES` (`cli/app/Support/Templates/ImageDigestResolver.php`) or `ImageDigestResolver::REGISTRIES` (`cloud/app/Services/Catalog/ImageDigestResolver.php`). Publishing `forgejo` will throw a disallowed registry exception until those hosts are allowlisted or mirrored.
-   - `docker.io/library/node:24-trixie`: rolling major+distro tag (`24-trixie`, no patch version).
-2. **`umami` — floating tag (`:postgresql-latest`)**:
-   - `ghcr.io/umami-software/umami:postgresql-latest` is an unpinned floating tag rather than an immutable version tag.
-3. **`kuma` — floating major tag (`:1`)**:
-   - `louislam/uptime-kuma:1` pins only major version `1` (and trails Uptime Kuma 2.x).
-4. **`directus` — floating major tag (`:12`)**:
-   - `directus/directus:12` pins only major version `12` without minor/patch.
-5. **`penpot` — floating minor tags (`:2.17`)**:
-   - `penpotapp/backend:2.17`, `penpotapp/frontend:2.17`, `penpotapp/exporter:2.17` omit patch versions.
-6. **`teable` — old timestamped build tag**:
-   - `teableio/teable:release.2026-07-26T01-04-56Z.2377` uses a non-semver timestamped build tag from July 2026.
-7. **`grafana` — stale component versions + local exporter sub-templates**:
-   - `grafana/grafana:10.4.2`, `prom/prometheus:v2.51.2`, `grafana/loki:3.0.0`, `grafana/promtail:3.0.0`, and `registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.12.0` are old 2024-era pins alongside a much newer `grafana/tempo:2.10.7`.
-   - `resources/views/k8s/grafana/exporters/{database,cache}.blade.php` use `{{ $driver->exporterImage() }}` (invoked by `DeploysMonitoringExporters` during local `larakube up`, not `GrafanaInitCommand`, but included in the `grafana/` template bundle).
-8. **`windmill` & `glitchtip` — bundled `--no-plex` storage images**:
-   - `postgres:15-alpine` (in both `windmill` and `glitchtip`): rolling major-only tag on Postgres 15 (whereas Commons uses Postgres 17).
-   - `valkey/valkey:8.0-alpine` (in `glitchtip`): minor-only rolling tag.
-9. **`supabase` — mixed tag formats & tags to verify upstream**:
-   - `supabase/studio:2026.11.02-sha-a05e7ec` (date+sha tag) and `postgrest/postgrest:v14.18` (minor-only tag).
-10. **Upstream tag verification during `templates:publish`**:
-    - Several semver tags (`vaultwarden/server:1.37.5`, `metabase/metabase:v0.63.1`, `twentycrm/twenty:v2.35.0`, `documenso/documenso:v2.16.0`, `amruthpillai/reactive-resume:v5.2.5`, `chatwoot/chatwoot:v4.16.2`, `ghcr.io/sendrec/sendrec:v1.89.1`, `outlinewiki/outline:1.9.2`, and `Supabase` component versions) look potentially ahead of or unverified against upstream Docker Hub / GHCR releases; `templates:publish` will verify each tag's manifest existence against the live registry.
+| App | Images |
+|---|---|
+| kuma | `louislam/uptime-kuma:1.23.17` (pinned, was `:1`) |
+| vaultwarden | `vaultwarden/server:1.37.5` |
+| outline | `outlinewiki/outline:1.9.2` |
+| umami | `ghcr.io/umami-software/umami:postgresql-v2.20.2` (pinned, was `:postgresql-latest`) |
+| yopass | `jhaals/yopass:14.8.0` |
+| planka | `ghcr.io/plankanban/planka:2.2.1` |
+| kutt | `kutt/kutt:v3.2.6` |
+| teable | `teableio/teable:release.2026-07-26T01-04-56Z.2377` |
+| documenso | `documenso/documenso:v2.16.0` |
+| resume | `amruthpillai/reactive-resume:v5.2.5` |
+| supabase | studio `2026.11.02-sha-a05e7ec`, envoy `v1.39.6`, gotrue `v2.197.0`, postgrest `v14.18`, realtime `v2.148.3`, storage-api `v1.89.12`, imgproxy `v4.0.21`, postgres-meta `v0.100.0`, edge-runtime `v1.77.9`, postgres `17.6.1.136`, supavisor `2.9.13` |
+| directus | `directus/directus:12.7.0` (pinned, was `:12`) |
+| windmill | windmill `1.770.0`, lsp `1.134.1`, `postgres:15-alpine` |
+| twenty | `twentycrm/twenty:v2.35.0` |
+| grafana | grafana `10.4.2`, prometheus `v2.51.2`, loki `3.0.0`, promtail `3.0.0`, tempo `2.10.7`, kube-state-metrics `v2.12.0` |
+| forgejo | forgejo `16.0.4` (codeberg.org), runner `13.1.0` (code.forgejo.org), podman `v5.8.4`, job `node:24-trixie` |
+| metabase | `metabase/metabase:v0.63.1` |
+| glitchtip | glitchtip `6.2.2`, `postgres:15-alpine`, `valkey/valkey:8.0-alpine` |
+| penpot | backend, frontend, exporter `2.17.2` (pinned, was `2.17`) |
+| chatwoot | `chatwoot/chatwoot:v4.16.2` |
+| sendrec | `ghcr.io/sendrec/sendrec:v1.89.1` |
+| zitadel | zitadel `v4.16.1`, oauth2-proxy `v7.15.3`, `postgres:15-alpine`, `busybox:1.36` |
+| stalwart | `stalwartlabs/stalwart:v0.16.14` |
+| bulwark | `ghcr.io/bulwarkmail/webmail:1.7.8` |
+| netbird | management, signal, relay, client `0.77.1`; dashboard `v2.91.1`; `alpine/socat:1.8.1.3`; `coredns:1.14.6` |
+| headlamp | `ghcr.io/headlamp-k8s/headlamp:v0.29.0` |
+| livekit | `livekit/livekit-server:v1.13.5`, `ghcr.io/element-hq/lk-jwt-service:0.5.0` |
+| ocis | `owncloud/ocis:8.0.6`, `collabora/code:26.04.3.2.1` |
+| matrix | synapse `v1.159.0`, element-web `v1.12.26`, coturn `4.17.2-alpine`, MAS `1.23.0`, element-admin `0.1.12` (oci.element.io), `postgres:15-alpine` |
 
----
+## 4. Not covered by `AppImagePinsTest` (images are not literals in the templates)
 
-## Additional Behavioral Notes for Review
+`supabase`, `windmill` (images via `$tool->image()`), `forgejo` (versions from `ForgejoInitCommand` constants), `zitadel` (`proxy.blade.php` uses `{{ $image ?? 'v7.15.3' }}`), `ocis` (`$ocisImage`, `$codeImage`), `matrix` (`$masImage`). For these the declared images in section 3 were taken from the vendor class and the init command constants, and checked against their registries (section 5), not against the template text. **Worth a manual look.**
 
-- **Unshipped gate & `plausible` stub removed**: Removed `RefusesUnshippedTools`, `ClusterTool::isShipped()`, `ClusterTool::shippedCases()`, and the unbuilt `ClusterTool::PLAUSIBLE` stub across the CLI so every tool in `ClusterTool` is treated as shipped (gating moves to LaraKube Cloud). Added `kuma` and `umami` footprint mappings in `ToolFootprint` and resource requests in `resources/views/k8s/kuma/shared.blade.php`.
-- **`documenso` Commons requirement**: `DocumensoInitCommand` calls `ensureCommons(['postgres', 'seaweedfs', 'headless-chrome'])`. `TemplateApp::plexImages()` already pins `headless-shell`, though `CloudAppsInstallCommand::PLEX_SERVICES` only lists `postgres, redis, mariadb, seaweedfs` for standalone `plex` installs.
-- **Pre-existing `erpnext` prefix mismatch**: `CatalogAppSeeder` seeds `'erpnext'` with `'prefix' => 'erp'`, whereas `SharedClusterService::ERPNEXT->hostPrefix()` is `'erpnext'` (`ErpnextInitCommand` uses `resolveToolHost()`, which turns `--domain=erp.example.com` into `erpnext.erp.example.com` unless the domain starts with `erpnext.`). Every prefix added in Batch 1 & 2 matches its `SharedClusterService::hostPrefix()`.
+## 5. Image verification
 
----
+Ran `ImageDigestResolver::resolve()` on every declared image of all 36 slugs against the live registries: **91 images, 0 failures**, including the three newly allowed registries. Floating-to-exact pins were chosen by comparing digests: `uptime-kuma:1` is a floating tag whose digest matched no listed 1.23.x patch in the last 8 (1.23.17 is the newest 1.23 tag; `:1` may point to a newer 1.x or 2.x line, so **Claude should confirm `1.23.17` is what we want, since it was not an exact digest match**). Exact digest matches: Directus `12.7.0`, Penpot `2.17.2`. Umami: `postgresql-latest` also did not exactly match a listed v2 tag in the last 8; `postgresql-v2.20.2` is the newest v2 tag listed, so it is a best guess, not a proven match. Both need a review decision.
 
-## Check Output
+## 6. Still floating or old (left as is)
 
-Commands run:
+`postgres:15-alpine` (windmill, glitchtip, zitadel, matrix), `busybox:1.36` (wordpress, zitadel), `node:24-trixie` (forgejo job), `postgrest/postgrest:v14.18`, Plex `mysql:8.4`, `mariadb:11.8`, `meilisearch:v1.12`, `seaweedfs:4.20`. Grafana, Prometheus, Loki and Promtail are 2024-era pins next to Tempo `2.10.7`. Teable uses a dated build tag. Several semver tags were not checked against the upstream release lists, only that the manifest exists: vaultwarden `1.37.5`, metabase `v0.63.1`, twenty `v2.35.0`, documenso `v2.16.0`, reactive-resume `v5.2.5`, chatwoot `v4.16.2`, sendrec `v1.89.1`, outline `1.9.2`.
 
-```bash
-# CLI Format, Static Analysis, and Full Test Suite
-composer format
-# -> Rector + Pint passed (0 errors)
-composer analyse
-# -> PHPStan passed (0 errors)
-./vendor/bin/pest --parallel
-# -> 4090 passed, 6 skipped, 0 failures (LoopbackHttpServerTest verified outside sandbox: 4 passed)
+## 7. Known gaps and risks
 
-# Cloud Pint and Full Test Suite
-./vendor/bin/pint database/seeders/CatalogAppSeeder.php database/seeders/DatabaseSeeder.php tests/Feature/AppReleasePipelineTest.php
-# -> passed
-./vendor/bin/pest
-# -> 283 passed (1587 assertions), 0 failures
-```
+- **Not published.** No `templates:publish`, no runner `test-fetch`. It needs the dev signing secret, which was not available. Cloud's local DB has keys `dev-local`, `dev-local-2`, `e2e-local`, `local-dev`. Local Cloud has published releases only for the 7 earlier apps.
+- **Bulwark gate seen only in tests.** Backend rule is covered by a Pest test (`ServerAppInstallTest`). The disabled button and message were checked by `tsc` and lint only, not in a browser.
+- **`requires` counts only Cloud's own record** of installed apps on that server.
+- **Documenso** calls `ensureCommons(['postgres', 'seaweedfs', 'headless-chrome'])`, but `CloudAppsInstallCommand::PLEX_SERVICES` lists only `postgres, redis, mariadb, seaweedfs`. An install on a server with no Commons may not provision headless Chrome. Not tested.
+- **Several apps need Commons first** (Stalwart, oCIS, Matrix, NetBird and others on Commons Postgres or SeaweedFS). Cloud's Apps tab does not require Plex Commons to be installed before them. Not handled in this task.
+- **Matrix** deploys MAS and Element Admin only once Zitadel is present, so the catalog entry works without Zitadel but with fewer parts.
+- **Scratch scripts** (outside the repos): `audit_images.php` re-checks every declared image; `find_exact_tags.php` finds exact tags for floating ones.
+
+## 8. Test results
+
+- CLI `6c794493`: pre-commit hook, Rector and Pint clean, PHPStan 0 errors, Pest 4,122 tests, 4,118 passed, 4 skipped.
+- Cloud `9df73f4`: `vp check`, `tsc --noEmit`, Pint, PHPStan, Pest 286 passed.
+- Added tests: `AppImagePinsTest` (26 datasets), `TemplateImageDigestResolverTest` (3 registries), Cloud `ServerAppInstallTest` (Bulwark requires Stalwart), Cloud `AppReleasePipelineTest` (registries; deploy seeder idempotent twice with an admin tier change kept).
+
+## 9. Suggested review order
+
+1. Section 1 deviations, then section 5 (`kuma` and `umami` pin guesses).
+2. `ClusterTool::templateContracts()` unchanged: all new apps use contract `[1]`.
+3. Cloud `InstallServerAppRequest` and `show.tsx` for the `requires` gate.
+4. ADR 0037.
+5. Then publish locally with the dev key and run `dev.sh test-fetch` for the 8 apps without literal images first (section 4).

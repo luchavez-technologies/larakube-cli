@@ -52,3 +52,4 @@ Consequences**. Statuses: `Accepted`, `Superseded by NNNN`, `Proposed`.
 | [0034](0034-ubuntu-24-04-until-containerd-fix.md) | Servers boot Ubuntu 24.04 LTS until k3s ships the containerd AppArmor fix | Accepted |
 | [0035](0035-commons-postgres-ships-pgvector.md) | The Commons Postgres ships pgvector; Laravel AI tenants get the extension at allocation | Accepted |
 | [0036](0036-apps-and-projects-vocabulary.md) | "Apps" and "Projects" replace "Cluster Tools" and "Your apps" in what users see | Accepted |
+| [0037](0037-catalog-app-prerequisites-and-pinned-images.md) | Catalog apps declare prerequisites that Cloud enforces, and every catalog image is an exact tag | Accepted |
