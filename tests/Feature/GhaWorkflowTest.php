@@ -349,3 +349,10 @@ test('every audit combination renders a workflow that parses as YAML', function 
             ->and(collect($parsed['jobs']['build']['steps'])->pluck('name')->filter()->count())->toBeGreaterThan(3);
     }
 });
+
+test('the CI test step makes a throwaway APP_KEY, so no key is committed and a public-only .env still runs the suite', function (): void {
+    $parsed = Symfony\Component\Yaml\Yaml::parse(view('k8s.cloud-pilot-deploy', ghaViewData(['audit' => ['withTests' => true]]))->render());
+    $step = collect($parsed['jobs']['build']['steps'])->firstWhere('name', '🧪 Application tests');
+
+    expect($step['run'])->toContain('APP_KEY="base64:$(php -r \'echo base64_encode(random_bytes(32));\')" php artisan test');
+});

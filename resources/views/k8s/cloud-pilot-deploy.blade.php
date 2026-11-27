@@ -140,7 +140,9 @@ jobs:
 @if($audit['withTests'])
 
       - name: 🧪 Application tests
-        run: php artisan test
+        # The .env above holds public values only, and a stock phpunit.xml sets no APP_KEY. A throwaway
+        # key made for this run lets the suite encrypt, with nothing committed for a secret scanner to flag.
+        run: APP_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')" php artisan test
 @endif
 @if($config->usesWayfinder())
 
