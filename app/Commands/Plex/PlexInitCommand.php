@@ -305,6 +305,9 @@ class PlexInitCommand extends Command
 
                 if (trim($host) !== '') {
                     $spec['services'][$service]['host'] = trim($host);
+                } elseif (! $isLocal) {
+                    // Allowed (apps still store files), but their links won't open in browsers.
+                    $this->laraKubeWarn("The Commons '{$service}' has no public address, so apps' file links will only work inside the cluster. Add one with --s3-host=, or from LaraKube Desktop's Plex Commons page.");
                 }
             }
 

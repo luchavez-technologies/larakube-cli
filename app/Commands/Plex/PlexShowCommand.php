@@ -2,8 +2,10 @@
 
 namespace App\Commands\Plex;
 
+use App\Contracts\HasPromptableHosts;
 use App\Data\ConfigData;
 use App\Enums\ClusterTool;
+use App\Services\PlexService;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\InteractsWithClusterContext;
 use App\Traits\InteractsWithPlex;
@@ -233,8 +235,38 @@ class PlexShowCommand extends Command
             // Scaled to zero by plex:stop; Desktop shows these as Paused.
             'paused' => $this->plex()->pausedServices(),
             'serviceCatalog' => $this->buildServiceCatalog($spec),
+            'endpoints' => $this->buildEndpoints($spec),
             'tenants' => $buckets,
         ];
+    }
+
+    /**
+     * Where each live engine is reached: its in-cluster address, its public https address if it has
+     * one, and whether it can have one at all (object storage, whose file links browsers open). An
+     * engine that could but has no public address is how Desktop knows to offer adding one.
+     *
+     * @param  array<string, mixed>  $spec
+     * @return array<string, array{internal: string, public: ?string, publicCapable: bool}>
+     */
+    private function buildEndpoints(array $spec): array
+    {
+        $catalog = $this->commonsServiceCatalog();
+        $endpoints = [];
+
+        foreach ($spec['services'] ?? [] as $service => $config) {
+            if (! is_array($config) || ! ($config['enabled'] ?? false)) {
+                continue;
+            }
+            $port = (int) ($config['port'] ?? 0);
+            $host = is_string($config['host'] ?? null) && $config['host'] !== '' ? $config['host'] : null;
+            $endpoints[$service] = [
+                'internal' => "{$service}.".PlexService::NAMESPACE.'.svc.cluster.local'.($port > 0 ? ":{$port}" : ''),
+                'public' => $host !== null ? "https://{$host}" : null,
+                'publicCapable' => ($catalog[$service]['driver'] ?? null) instanceof HasPromptableHosts,
+            ];
+        }
+
+        return $endpoints;
     }
 
     /**

@@ -281,3 +281,21 @@ test('plex:show --json never leaks credentials, even with a matching project che
         $temporaryDirectory->delete();
     }
 });
+
+test('plex:show --json reports where each live engine is reached, and which can have a public address', function (): void {
+    Process::fake(plexShowFakes([
+        '*get configmap plex-commons*' => Process::result(output: (string) json_encode(['version' => 1, 'services' => [
+            'postgres' => ['enabled' => true, 'port' => 5432],
+            'seaweedfs' => ['enabled' => true, 'port' => 8333],
+            'garage' => ['enabled' => true, 'port' => 3900, 'host' => 's3.example.com'],
+            'mysql' => ['enabled' => false, 'port' => 3306],
+        ]])),
+    ]));
+
+    $endpoints = plexShowJsonReport(['environment' => 'local', '--context' => 'test-ctx'])['endpoints'];
+
+    expect($endpoints)->toHaveKeys(['postgres', 'seaweedfs', 'garage'])->not->toHaveKey('mysql')
+        ->and($endpoints['postgres'])->toBe(['internal' => 'postgres.larakube-plex.svc.cluster.local:5432', 'public' => null, 'publicCapable' => false])
+        ->and($endpoints['seaweedfs'])->toBe(['internal' => 'seaweedfs.larakube-plex.svc.cluster.local:8333', 'public' => null, 'publicCapable' => true])
+        ->and($endpoints['garage']['public'])->toBe('https://s3.example.com');
+});
