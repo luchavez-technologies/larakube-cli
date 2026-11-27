@@ -160,16 +160,19 @@ test('real MySQL shadow-DB swap removes ghost tables, preserves charset/views/ro
                 return $p;
             };
 
+            // Over TCP, like the Postgres test: the image first runs a socket-only server to initialise,
+            // then restarts. A socket check can pass on that temporary server and the next command land
+            // in the restart; only the real server listens on TCP.
             $ready = false;
             for ($i = 0; $i < 80; $i++) {
-                if ($mysqlExec(null, 'SELECT 1;')->isSuccessful()) {
+                if (runDbDocker($docker, ['exec', $cid, 'mysql', '--protocol=TCP', '-h127.0.0.1', '-uroot', '-prootpw', '-N', '-B', '-e', 'SELECT 1'])->isSuccessful()) {
                     $ready = true;
                     break;
                 }
                 usleep(500_000);
             }
-            expect($ready)->toBeTrue('MySQL container did not become ready in time.')
-                ->and($mysqlExec(null, <<<'SQL'
+            expect($ready)->toBeTrue('MySQL container did not become ready in time.');
+            $seed = $mysqlExec(null, <<<'SQL'
 CREATE DATABASE app_mysql CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE app_mysql;
 CREATE TABLE items (id INT PRIMARY KEY, title VARCHAR(64));
@@ -188,7 +191,8 @@ BEGIN
     RETURN c;
 END//
 DELIMITER ;
-SQL)->isSuccessful())->toBeTrue();
+SQL);
+            expect($seed->isSuccessful())->toBeTrue($seed->getErrorOutput());
 
             $dumpProc = runDbDocker($docker, ['exec', $cid, 'mysqldump', '-uroot', '-prootpw', '--routines', '--triggers', '--single-transaction', 'app_mysql']);
             expect($dumpProc->isSuccessful())->toBeTrue($dumpProc->getErrorOutput());
