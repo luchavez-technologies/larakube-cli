@@ -245,10 +245,14 @@ class DotenvPushCommand extends Command
     {
         $targetSecret = $this->resolveSecretName($namespace, $kubectl, $config);
         $ok = true;
-        $pushAction = function () use (&$ok, $kubectl, $env, $app, $toPush): void {
+        $failed = [];
+        $pushAction = function () use (&$ok, &$failed, $kubectl, $env, $app, $toPush): void {
             foreach ($toPush as $key => $value) {
-                if (! $this->pushClusterSecret($kubectl, "{$app}/{$key}", $value, $env)) {
+                // Each write opens its own port-forward, which now and then isn't ready in time: one retry.
+                if (! $this->pushClusterSecret($kubectl, "{$app}/{$key}", $value, $env)
+                    && ! $this->pushClusterSecret($kubectl, "{$app}/{$key}", $value, $env)) {
                     $ok = false;
+                    $failed[$key] = $this->lastSecretsBackendError ?? 'OpenBao refused the write';
                 }
             }
         };
@@ -260,10 +264,14 @@ class DotenvPushCommand extends Command
         }
 
         if (! $ok) {
+            $written = count($toPush) - count($failed);
             if ($this->option('json')) {
-                $this->jsonOutput(['success' => false, 'error' => 'One or more keys failed to write to OpenBao.']);
+                $this->jsonOutput(['success' => false, 'error' => count($failed).' key(s) failed to write to OpenBao.', 'failed' => $failed, 'written' => $written]);
             } else {
-                $this->laraKubeError('One or more keys failed to write to OpenBao — see above.');
+                $this->laraKubeError(count($failed).' of '.count($toPush)." key(s) failed to write to OpenBao ({$written} written). Push again to retry; writes are safe to repeat.");
+                foreach ($failed as $key => $reason) {
+                    $this->line("  <fg=red>{$key}</>: {$reason}");
+                }
             }
 
             return 1;

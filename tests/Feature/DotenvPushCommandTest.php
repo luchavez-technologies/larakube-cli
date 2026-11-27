@@ -316,3 +316,37 @@ test('dotenv:push sends the app\'s own settings with the secrets, but not what t
     Saloon::assertNotSent(fn ($request) => $request instanceof DynamicRequest
         && str_ends_with($request->resolveEndpoint(), '/v1/secret/data/production/push-test/APP_URL'));
 });
+
+test('dotenv:push retries a key whose OpenBao write failed once, and names any that still fail', function (): void {
+    openBaoRegistered();
+    savePushTestConfig($this->tempDir);
+    writePushEnvFile($this->tempDir, ['APP_KEY' => 'base64:abc', 'ZITADEL_CLIENT_SECRET' => 'shh']);
+
+    Process::fake([
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
+        '*port-forward*' => Process::result(output: ''),
+        '*create namespace*' => Process::result(output: 'configured'),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*' => Process::result(),
+    ]);
+    $attempts = [];
+    Saloon::fake([
+        DynamicRequest::class => function ($pending) use (&$attempts) {
+            $key = basename($pending->getRequest()->resolveEndpoint());
+            $attempts[$key] = ($attempts[$key] ?? 0) + 1;
+
+            // APP_KEY fails once then works; ZITADEL_CLIENT_SECRET always fails.
+            return ($key === 'APP_KEY' && $attempts[$key] === 1) || $key === 'ZITADEL_CLIENT_SECRET'
+                ? MockResponse::make(['errors' => ['backend unavailable']], 500)
+                : MockResponse::make([]);
+        },
+        DynamicNoBodyRequest::class => MockResponse::make([]),
+    ]);
+
+    $this->artisan('dotenv:push', ['environment' => 'production'])
+        ->expectsOutputToContain('1 of 2 key(s) failed to write to OpenBao (1 written)')
+        ->expectsOutputToContain('ZITADEL_CLIENT_SECRET')
+        ->assertExitCode(1);
+
+    expect($attempts)->toBe(['APP_KEY' => 2, 'ZITADEL_CLIENT_SECRET' => 2]);
+});
