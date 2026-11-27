@@ -151,9 +151,15 @@ class DotenvPushCommand extends Command
 
         $local = $this->parseDotenvVars((string) file_get_contents($envFile));
         $knownSecrets = array_keys($config->getAllSecretEnvironmentVariables($env));
+        // The deploy workflow writes the blueprint's public values into the app's ConfigMap, and replaces
+        // that ConfigMap on every deploy. Every other key in .env.<env> (the app's own settings, secret or
+        // not) only reaches the pods through here, so it is pushed with the secrets.
+        $workflowKeys = array_flip(array_keys($config->getAllPublicEnvironmentVariables($env)));
         $toPush = array_filter(
             $local,
-            fn (string $value, string $key) => $this->isSecretKey($key, $knownSecrets) || $this->hasEmbeddedCredentials($value),
+            fn (string $value, string $key) => $this->isSecretKey($key, $knownSecrets)
+                || $this->hasEmbeddedCredentials($value)
+                || ! isset($workflowKeys[$key]),
             ARRAY_FILTER_USE_BOTH,
         );
 

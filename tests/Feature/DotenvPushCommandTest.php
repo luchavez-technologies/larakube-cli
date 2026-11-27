@@ -288,3 +288,31 @@ test('dotenv:push creates the environment namespace first, so it works before an
     Process::assertRan(fn ($process) => str_contains($process->command, 'create namespace')
         && str_contains($process->command, '--dry-run=client'));
 });
+
+test('dotenv:push sends the app\'s own settings with the secrets, but not what the deploy workflow writes itself', function (): void {
+    openBaoRegistered();
+    savePushTestConfig($this->tempDir);
+    writePushEnvFile($this->tempDir, ['APP_KEY' => 'base64:abc', 'ZITADEL_BASE_URL' => 'https://sso.example.com', 'APP_URL' => 'https://app.example.com']);
+
+    Process::fake([
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
+        '*port-forward*' => Process::result(output: ''),
+        '*create namespace*' => Process::result(output: 'configured'),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*' => Process::result(),
+    ]);
+    Saloon::fake([
+        DynamicRequest::class => MockResponse::make([]),
+        DynamicNoBodyRequest::class => openBaoFake([
+            '*/v1/secret/metadata/production/push-test*' => ['data' => ['keys' => ['APP_KEY', 'ZITADEL_BASE_URL']]],
+        ], default: ['data' => ['data' => ['value' => 'x']]]),
+    ]);
+
+    $this->artisan('dotenv:push', ['environment' => 'production'])->assertExitCode(0);
+
+    Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
+        && str_ends_with($request->resolveEndpoint(), '/v1/secret/data/production/push-test/ZITADEL_BASE_URL')
+        && $request->body()->get('data')['value'] === 'https://sso.example.com');
+    Saloon::assertNotSent(fn ($request) => $request instanceof DynamicRequest
+        && str_ends_with($request->resolveEndpoint(), '/v1/secret/data/production/push-test/APP_URL'));
+});
