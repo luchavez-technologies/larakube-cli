@@ -4,6 +4,7 @@ use App\Commands\Cloud\CloudCreateCommand;
 use App\Data\GlobalConfigData;
 use App\Facades\State;
 use Illuminate\Console\OutputStyle;
+use Illuminate\Support\Facades\Process;
 use Laravel\Prompts\Key;
 use Laravel\Prompts\Prompt;
 use Symfony\Component\Console\Input\ArrayInput;
@@ -324,4 +325,23 @@ test('interactive ensureGcpCredentials handles multiple billing accounts', funct
 
     expect($success)->toBeTrue();
     Process::assertRan(fn ($process) => str_contains($process->command, 'billing projects link') && str_contains($process->command, 'CCCCCC-222222-DDDDDD'));
+});
+
+test('a Google access token handed over by the caller is a credential on its own, with a project', function (): void {
+    Process::fake();
+    putenv('GOOGLE_OAUTH_ACCESS_TOKEN=ya29.handed-over');
+
+    try {
+        $withProject = gcpFlagRunner(['--provider' => 'gcp', '--gcp-project' => 'friends-credits-123'])->gcpCredentials();
+        State::setTransientGcpProject(null);
+        $withoutProject = gcpFlagRunner(['--provider' => 'gcp'])->gcpCredentials();
+    } finally {
+        putenv('GOOGLE_OAUTH_ACCESS_TOKEN');
+    }
+
+    expect($withProject)->toBeTrue()
+        ->and($withoutProject)->toBeFalse()
+        ->and(State::lastError())->toContain('--gcp-project=');
+    // No gcloud sign-in or token: the handed-over token is the credential.
+    Process::assertDidntRun(fn ($process): bool => preg_match('/auth (login|print-access-token)/', is_array($process->command) ? implode(' ', $process->command) : (string) $process->command) === 1);
 });

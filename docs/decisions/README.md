@@ -54,3 +54,4 @@ Consequences**. Statuses: `Accepted`, `Superseded by NNNN`, `Proposed`.
 | [0036](0036-apps-and-projects-vocabulary.md) | "Apps" and "Projects" replace "Cluster Tools" and "Your apps" in what users see | Accepted |
 | [0037](0037-catalog-app-prerequisites-and-pinned-images.md) | Catalog apps declare prerequisites that Cloud enforces, and every catalog image is an exact tag | Accepted |
 | [0038](0038-cloud-cluster-access-read-and-install.md) | LaraKube Cloud reaches a cluster through separate read and install accesses; install access is minted per install wherever the platform allows | Accepted |
+| [0039](0039-cloud-connects-google-cloud-by-impersonation.md) | LaraKube Cloud connects to Google Cloud by impersonating a service account the customer sets up from Cloud Shell; no key is stored | Accepted |

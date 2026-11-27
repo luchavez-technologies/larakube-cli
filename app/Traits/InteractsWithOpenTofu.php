@@ -456,6 +456,14 @@ HCL;
      */
     protected function gcpAccountAccessToken(?string $credentials): ?string
     {
+        $provided = trim((string) getenv('GOOGLE_OAUTH_ACCESS_TOKEN'));
+        if ($provided !== '') {
+            // Handed over by the caller (LaraKube Cloud, ADR 0039); it names its own account.
+            State::registerSecret($provided);
+
+            return $provided;
+        }
+
         $account = $this->getGcpAccount();
         $adc = home_path('.config/gcloud/application_default_credentials.json');
 

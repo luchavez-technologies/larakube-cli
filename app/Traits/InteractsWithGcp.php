@@ -28,6 +28,19 @@ trait InteractsWithGcp
             State::setTransientGcpProject($flagProject);
         }
 
+        // A short-lived access token handed over by the caller (LaraKube Cloud impersonating the
+        // customer's service account, ADR 0039) is a credential on its own: no key file, no gcloud.
+        if (($token = $this->providedGcpAccessToken()) !== null) {
+            State::registerSecret($token);
+            if (! $this->getGcpProjectId()) {
+                $this->laraKubeError('A Google access token was given without a project. Pass --gcp-project= as well.');
+
+                return false;
+            }
+
+            return true;
+        }
+
         if ($flagCreds = $this->flag('gcp-credentials')) {
             $path = str_replace('~', home_path(), trim($flagCreds));
             if (! file_exists($path)) {
@@ -192,6 +205,14 @@ trait InteractsWithGcp
      * null with an error naming its projects. A project passed with --gcp-project or set in the
      * environment is used as given, as is any project when the account's projects can't be listed.
      */
+    /** The Google access token the caller passed in GOOGLE_OAUTH_ACCESS_TOKEN, if any. */
+    protected function providedGcpAccessToken(): ?string
+    {
+        $token = trim((string) getenv('GOOGLE_OAUTH_ACCESS_TOKEN'));
+
+        return $token !== '' ? $token : null;
+    }
+
     protected function projectTheAccountCanUse(string $gcloudBin, ?string $projectId): ?string
     {
         $account = $this->getGcpAccount();

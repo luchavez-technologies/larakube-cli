@@ -305,3 +305,18 @@ test('removeTofuWorkdir is a no-op when the stack was never provisioned', functi
     tofuHelper()->removeWorkdir('never-existed-stack');
     expect(true)->toBeTrue();
 });
+
+test('a Google access token handed over by the caller reaches OpenTofu as is, without gcloud', function (): void {
+    Process::fake();
+    putenv('GOOGLE_OAUTH_ACCESS_TOKEN=ya29.handed-over');
+
+    try {
+        $env = tofuHelper()->env('mystack', false);
+    } finally {
+        putenv('GOOGLE_OAUTH_ACCESS_TOKEN');
+    }
+
+    expect($env['GOOGLE_OAUTH_ACCESS_TOKEN'] ?? null)->toBe('ya29.handed-over')
+        ->and($env)->not->toHaveKey('TF_VAR_gcp_credentials');
+    Process::assertDidntRun(fn ($p): bool => str_contains((string) $p->command, 'print-access-token'));
+});
