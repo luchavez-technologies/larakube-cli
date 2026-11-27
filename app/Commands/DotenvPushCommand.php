@@ -216,7 +216,9 @@ class DotenvPushCommand extends Command
                 }
             }
 
-            return $toPush === [] ? 0 : $this->pushToOpenBao($kubectl, $namespace, $env, $app, $toPush, $config);
+            $moved = $this->removeSettingsFromOpenBao($kubectl, $env, $app, array_keys($settings));
+
+            return $toPush === [] && $moved === 0 ? 0 : $this->pushToOpenBao($kubectl, $namespace, $env, $app, $toPush, $config);
         }
 
         if (! $this->option('json')) {
@@ -364,5 +366,32 @@ class DotenvPushCommand extends Command
         } elseif ($ciSync['error']) {
             $this->laraKubeWarn("Cluster push succeeded, but CI build env sync skipped: {$ciSync['error']}");
         }
+    }
+
+    /**
+     * Settings now pushed to the ConfigMap that an earlier push stored in OpenBao: deleted there, so the
+     * app Secret (synced from OpenBao, and read after the ConfigMap) stops overriding them with an old
+     * value. Returns how many were removed.
+     *
+     * @param  list<string>  $settingKeys
+     */
+    private function removeSettingsFromOpenBao(string $kubectl, string $env, string $app, array $settingKeys): int
+    {
+        $token = $this->readOpenBaoBootstrapSecret($kubectl, $this->secretsNamespace(), 'root-token');
+        if ($token === null || $settingKeys === []) {
+            return 0;
+        }
+
+        $listed = $this->openBaoApi($kubectl, 'GET', "/v1/secret/metadata/{$env}/{$app}?list=true", null, $token)['data']['keys'] ?? [];
+        $stale = array_values(array_intersect($settingKeys, is_array($listed) ? $listed : []));
+        foreach ($stale as $key) {
+            $this->openBaoApi($kubectl, 'DELETE', "/v1/secret/metadata/{$env}/{$app}/{$key}", null, $token);
+        }
+
+        if ($stale !== [] && ! $this->option('json')) {
+            $this->laraKubeInfo('Moved '.count($stale).' setting(s) that are not secret out of OpenBao and into the ConfigMap.');
+        }
+
+        return count($stale);
     }
 }

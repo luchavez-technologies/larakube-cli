@@ -355,3 +355,33 @@ test('dotenv:push retries a key whose OpenBao write failed once, and names any t
 
     expect($attempts)->toBe(['APP_KEY' => 2, 'ZITADEL_CLIENT_SECRET' => 2]);
 });
+
+test('dotenv:push moves a setting an earlier push stored in OpenBao out of it, so it cannot override the ConfigMap', function (): void {
+    openBaoRegistered();
+    savePushTestConfig($this->tempDir);
+    writePushEnvFile($this->tempDir, ['APP_KEY' => 'base64:abc', 'APP_LOCALE' => 'en']);
+
+    Process::fake([
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
+        '*port-forward*' => Process::result(output: ''),
+        '*create namespace*' => Process::result(output: 'configured'),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*' => Process::result(),
+    ]);
+    Saloon::fake([
+        DynamicRequest::class => MockResponse::make([]),
+        DynamicNoBodyRequest::class => openBaoFake([
+            '*/v1/secret/metadata/production/push-test*' => ['data' => ['keys' => ['APP_KEY', 'APP_LOCALE']]],
+        ], default: ['data' => ['data' => ['value' => 'x']]]),
+    ]);
+
+    $this->artisan('dotenv:push', ['environment' => 'production'])
+        ->expectsOutputToContain('Moved 1 setting(s)')
+        ->assertExitCode(0);
+
+    Saloon::assertSent(fn ($request) => $request instanceof DynamicNoBodyRequest
+        && $request->getMethod()->value === 'DELETE'
+        && str_ends_with($request->resolveEndpoint(), '/v1/secret/metadata/production/push-test/APP_LOCALE'));
+    Saloon::assertNotSent(fn ($request) => $request->getMethod()->value === 'DELETE'
+        && str_ends_with($request->resolveEndpoint(), '/APP_KEY'));
+});
