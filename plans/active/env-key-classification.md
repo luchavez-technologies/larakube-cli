@@ -24,6 +24,7 @@ Five places decide whether a key is secret, a setting, or needed at build time, 
 
 ### 1. The classifier (CLI, no behaviour change)
 - `App\Support\EnvKeyClassifier::classify(ConfigData $config, string $env, string $key, ?string $value): EnvKeyClass` returns `{owner: managed|app, secret: bool, build: bool, reason: string}`. `reason` names the rule that decided, for debugging and for Desktop's tooltip.
+- `AppFramework` data covers more than prefixes: some frameworks read single keys at build time (Laravel's Vite plugin reads `ASSET_URL` to prefix asset links, which matters for a CDN). Add a `buildEnvKeys()` next to `publicEnvPrefixes()`. Since `ce7a34b5`, `buildPublicEnvScript()` drops `ASSET_URL`; harmless while assets share the site's address.
 - Order: overrides (phase 2; empty for now), component declarations and Plex Commons managed keys, `AppFramework` data, one pattern list (the union of the CLI's and Desktop's: PASS, SECRET, KEY, TOKEN, PRIVATE, CREDENTIAL, DSN), value checks.
 - Move every site above onto it. `isSecretKey()` becomes a thin wrapper, then goes away. `buildPublicEnvScript()` uses `publicEnvPrefixes()` instead of `VITE_`.
 - Tests: unit-test the classifier per rule. The existing DotenvPush, GhaWorkflow and EnvironmentPlexIntent tests must keep passing unchanged.
