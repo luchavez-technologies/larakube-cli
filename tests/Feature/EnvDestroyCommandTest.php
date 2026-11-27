@@ -107,5 +107,5 @@ test('env:destroy refuses local and unknown environments', function (): void {
         $this->artisan('env:destroy production --force')->assertExitCode(1);
     });
 
-    expect($calls)->toBe([]);
+    expect($calls)->toBeEmpty();
 });
