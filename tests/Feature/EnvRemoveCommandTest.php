@@ -162,3 +162,33 @@ test('non-interactive env:remove with no environment argument fails loudly inste
         $temporaryDirectory->delete();
     }
 })->throws(InvalidArgumentException::class, 'Pass the environment to remove');
+
+test('env:remove deletes the environment\'s deploy workflow, and only that one', function (): void {
+    [$config, $tempDir, $temporaryDirectory] = envRemoveProject([
+        'local' => [],
+        'staging' => ['hosts' => ['web' => 'stg.example.com']],
+        'production' => ['hosts' => ['web' => 'prod.example.com']],
+    ]);
+    mkdir("{$tempDir}/.github/workflows", 0755, true);
+    mkdir("{$tempDir}/.forgejo/workflows", 0755, true);
+    file_put_contents("{$tempDir}/.github/workflows/larakube-deploy-staging.yml", "name: staging\n");
+    file_put_contents("{$tempDir}/.forgejo/workflows/larakube-deploy-staging.yml", "name: staging\n");
+    file_put_contents("{$tempDir}/.github/workflows/larakube-deploy-production.yml", "name: production\n");
+    file_put_contents("{$tempDir}/.github/workflows/tests.yml", "name: tests\n");
+
+    $originalDir = getcwd();
+    chdir($tempDir);
+
+    try {
+        $this->artisan('env:remove staging --force')
+            ->expectsOutputToContain('Removed .github/workflows/larakube-deploy-staging.yml')
+            ->assertExitCode(0);
+
+        expect("{$tempDir}/.github/workflows/larakube-deploy-staging.yml")->not->toBeFile()
+            ->and("{$tempDir}/.forgejo/workflows/larakube-deploy-staging.yml")->not->toBeFile()
+            ->and("{$tempDir}/.github/workflows/larakube-deploy-production.yml")->toBeFile()
+            ->and("{$tempDir}/.github/workflows/tests.yml")->toBeFile();
+    } finally {
+        chdir($originalDir);
+    }
+});
