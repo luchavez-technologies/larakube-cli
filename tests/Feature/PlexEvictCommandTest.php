@@ -69,9 +69,19 @@ test('plex:evict reports an empty Commons instead of failing', function (): void
 test('plex:evict rejects a tenant that is not in the registry', function (): void {
     Process::fake(plexEvictFakes());
 
-    $this->artisan('plex:evict local --tenant=typo_local --force')
+    $this->artisan('plex:evict local --tenant=typo_local')
         ->assertExitCode(1)
         ->expectsOutputToContain("'typo_local' is not a tenant of this Commons");
+
+    Process::assertDidntRun(fn ($process) => str_contains((string) $process->command, 'DROP'));
+});
+
+test('plex:evict --force treats a tenant that is already gone as evicted, so scripted runs can repeat', function (): void {
+    Process::fake(plexEvictFakes());
+
+    $this->artisan('plex:evict local --tenant=never_joined_local --force')
+        ->assertExitCode(0)
+        ->expectsOutputToContain("'never_joined_local' is not a tenant of this Commons — nothing to evict");
 
     Process::assertDidntRun(fn ($process) => str_contains((string) $process->command, 'DROP'));
 });

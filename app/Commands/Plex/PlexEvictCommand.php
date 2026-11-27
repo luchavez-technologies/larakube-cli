@@ -72,6 +72,14 @@ class PlexEvictCommand extends Command
         $tenant = $this->resolveTenant($tenants);
 
         if (! isset($tenants[$tenant])) {
+            // Scripted runs (env:destroy, Desktop) must be safe to repeat: a tenant that is already
+            // gone, or never joined, is already evicted. Asked by hand, it is more likely a typo.
+            if ($this->option('force')) {
+                $this->laraKubeInfo("'{$tenant}' is not a tenant of this Commons — nothing to evict.");
+
+                return 0;
+            }
+
             $this->laraKubeError("'{$tenant}' is not a tenant of this Commons.");
             $this->laraKubeLine('  <fg=gray>List the real ones with</> <fg=cyan>larakube plex:show</><fg=gray>.</>');
 
