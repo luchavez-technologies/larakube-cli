@@ -22,12 +22,73 @@ Five places decide whether a key is secret, a setting, or needed at build time, 
 
 ## Phases
 
-### 1. The classifier (CLI, no behaviour change)
-- `App\Support\EnvKeyClassifier::classify(ConfigData $config, string $env, string $key, ?string $value): EnvKeyClass` returns `{owner: managed|app, secret: bool, build: bool, reason: string}`. `reason` names the rule that decided, for debugging and for Desktop's tooltip.
-- `AppFramework` data covers more than prefixes: some frameworks read single keys at build time (Laravel's Vite plugin reads `ASSET_URL` to prefix asset links, which matters for a CDN). Add a `buildEnvKeys()` next to `publicEnvPrefixes()`. Since `ce7a34b5`, `buildPublicEnvScript()` drops `ASSET_URL`; harmless while assets share the site's address.
-- Order: overrides (phase 2; empty for now), component declarations and Plex Commons managed keys, `AppFramework` data, one pattern list (the union of the CLI's and Desktop's: PASS, SECRET, KEY, TOKEN, PRIVATE, CREDENTIAL, DSN), value checks.
-- Move every site above onto it. `isSecretKey()` becomes a thin wrapper, then goes away. `buildPublicEnvScript()` uses `publicEnvPrefixes()` instead of `VITE_`.
-- Tests: unit-test the classifier per rule. The existing DotenvPush, GhaWorkflow and EnvironmentPlexIntent tests must keep passing unchanged.
+### 1. The classifier (CLI only; Desktop untouched)
+Goal: every "what kind of key is this" decision in the CLI goes through one class. Behaviour stays the same, except for the three fixes listed under "Intended changes". Work on branch `refactor/env-key-classifier` off `develop`.
+
+**New code**
+- `app/Support/EnvKeyClass.php`: a `final readonly` value object with
+  - `string $key`;
+  - `bool $managed` (true = LaraKube derives the value; never pushed from a local file over LaraKube's own);
+  - `bool $secret`;
+  - `bool $build`;
+  - `string $reason`: a short, stable slug naming the rule that decided, e.g. `component-secret`, `plex-managed`, `framework-prefix:VITE_`, `name:TOKEN`, `value:pem`, `value:url-credentials`, `value:service-account`, `reference-of:VITE_APP_NAME`, `default`.
+- `app/Support/EnvKeyClassifier.php`, constructed per call as `new EnvKeyClassifier($config, $environment)` (no container binding needed). Public methods:
+  - `classify(string $key, ?string $value = null): EnvKeyClass`;
+  - `classifyAll(array $pairs): array<string, EnvKeyClass>`. It also marks keys referenced as `${KEY}` inside build-time values as `build`, with reason `reference-of:<KEY>`, unless they are secret.
+- **Rule order: first match wins on each axis.**
+  - **secret:** component secret keys (`getAllSecretEnvironmentVariables`), then the name patterns, then the value checks.
+  - **managed:** `getPlexManagedKeys($env)` and the keys of `getAllPublicEnvironmentVariables` / `getAllSecretEnvironmentVariables`. Record managed now, but don't act on it beyond the Plex exclusion that exists today (Desktop uses it in phase 3).
+  - **build:** for a static SPA (`AppFramework::isStaticSpa()`), every non-secret key. Otherwise, keys matching `AppFramework::publicEnvPrefixes()`, plus references from `classifyAll()`. A secret is never `build`.
+- Phase 2's overrides (`envKeys`) slot in first, at the top of each axis; leave a clearly named private method returning `[]` for now.
+- **Name patterns, in one constant:** `PASS`, `SECRET`, `KEY`, `TOKEN`, `PRIVATE`, `CREDENTIAL`, `DSN`, substring and case-insensitive. This is today's CLI list, which matches Desktop's `inferIsSecretKey()`.
+- **Value checks:** move today's `hasEmbeddedCredentials()` into the classifier: a URL with `user:pass@`, `-----BEGIN`, or `"private_key"`.
+
+**Call sites to move (the whole list; grep to confirm nothing else decides this)**
+| File | Today | After |
+|---|---|---|
+| `app/Traits/ReadsEnvSources.php` | `isSecretKey()`, `hasEmbeddedCredentials()` hold the rules | thin wrappers calling the classifier, marked `@deprecated`; the rules live only in the classifier |
+| `app/Commands/DotenvPushCommand.php` ~L157–175 | secret/setting split and Plex exclusion, inline | `classifyAll()`; `secret` goes to OpenBao/Secret, the rest to the ConfigMap, `managed && plex` is excluded |
+| `app/Commands/DotenvCommand.php` ~L101–122, ~L190 | name-only `isSecretKey()` | `classify($key, $value)`, so value checks apply here too |
+| `app/Traits/ConfiguresCloudEnvironment.php` `buildPublicEnvScript()`, `buildStaticPublicEnvScript()` | hardcoded `VITE_` and its own reference scan | the `build` flag from `classifyAll()` |
+| `app/Traits/PushesBuildEnvToCi.php` `buildEnvPairs()` | its own prefix loop | the `build` flag |
+| `app/Traits/GeneratesProjectInfrastructure.php` ~L546 `seedEnvironmentEnvFile()` | `getPlexManagedKeys` directly | the `managed` flag (same result) |
+| `app/Commands/Data/DataWireCommand.php` L78, `DataUnwireCommand.php` L109 | their own fallback list `['VITE_','PUBLIC_','NEXT_PUBLIC_','ASTRO_']` | the classifier; drop the fallback list (`ASTRO_` is not a real prefix) |
+
+**Intended changes (each needs its own test)**
+1. `dotenv <env>` (Desktop's table) treats a value with credentials or a PEM block as secret, the same as `dotenv:push`.
+2. `buildPublicEnvScript()` uses the framework's prefixes, not `VITE_` (affects Astro and Next.js server apps).
+3. `DataWireCommand` and `DataUnwireCommand` lose the stray `ASTRO_` fallback.
+
+**Tests**
+- New `tests/Unit/EnvKeyClassifierTest.php`, at least one test per rule and per `reason` slug, including:
+  - `DATABASE_URL=postgres://u:p@h/db` is secret (`value:url-credentials`);
+  - `LARAKUBE_GOOGLE_PLATFORM_CREDENTIALS` is secret by name;
+  - a key named `SIGNER` holding `{"private_key":…}` is secret by value;
+  - `VITE_APP_NAME="${APP_NAME}"` makes `APP_NAME` build (`reference-of:VITE_APP_NAME`);
+  - `VITE_X` referencing `${DB_PASSWORD}` does not make `DB_PASSWORD` build;
+  - a Plex-managed key is managed;
+  - for every `AppFramework` case, its prefixes come out build and a `*_SECRET` key never does (the matrix test);
+  - a static SPA puts every non-secret key in build.
+- These existing tests must pass **without edits to their assertions**:
+  - `tests/Feature/DotenvPushCommandTest.php`;
+  - `tests/Feature/DotenvCommandTest.php`;
+  - `tests/Feature/GhaWorkflowTest.php`;
+  - `tests/Feature/EnvironmentPlexIntentTest.php`;
+  - `tests/Unit/AppFrameworkStaticSiteTest.php`;
+  - the GitLab and CloudConfigure feature tests.
+- Add tests only for the three intended changes.
+- Follow ADR 0019 (`docs/decisions/0019-test-fidelity-conventions.md`): `Process::fake` / `Saloon::fake` for everything, helper names unique across the suite, `TemporaryDirectory` for temp dirs.
+
+**Done means**
+- `composer test` (the full suite) passes with zero failures.
+- `composer analyse` passes, run separately and never at the same time as the suite.
+- `vendor/bin/pint` is clean.
+- `grep -rn "PASSWORD\|'TOKEN'\|publicEnvPrefixes\|getPlexManagedKeys" app` shows them only in the classifier, `AppFramework`, `ConfigData` and the deprecated wrappers.
+- Commits on the branch: `refactor(env): …` for the move and `fix(env): …` for each intended change, each with a body explaining why.
+
+**Verified afterwards by Claude Code, not the implementer**
+- Review the diff and rerun the full suite.
+- Then the user runs `./build` and Push for staging from Desktop. The ConfigMap and Secret key sets on `hello-cloud` must match the ones before (57 settings, 10 secrets).
 
 ### 2. Overrides
 - `.larakube.json` gets `envKeys: {KEY: {secret?: bool, build?: bool}}` on `ConfigData`, project-wide.
@@ -47,4 +108,4 @@ Five places decide whether a key is secret, a setting, or needed at build time, 
 
 ## Verification
 - After each phase, run the full CLI suite. After phase 3, run Desktop's suite.
-- Live check on `hello-cloud`: `dotenv:push staging` gives the same ConfigMap and Secret key sets as before phase 1 (43/44 settings, 10 secrets). After phase 3, Desktop's table matches the CLI JSON row for row.
+- Live check on `hello-cloud`: `dotenv:push staging` gives the same ConfigMap and Secret key sets as before phase 1 (57 settings, 10 secrets). After phase 3, Desktop's table matches the CLI JSON row for row.
