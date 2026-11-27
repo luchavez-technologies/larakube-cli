@@ -1067,7 +1067,7 @@ trait ConfiguresCloudEnvironment
                     if (strlen($value) >= 2 && in_array($value[0], ['"', "'"], true) && $value[-1] === $value[0]) {
                         $value = substr($value, 1, -1);
                     }
-                    $lines[] = 'echo '.escapeshellarg("{$m[1]}={$value}").' >> .env';
+                    $lines[] = 'echo '.escapeshellarg($this->formatBuildEnvPayload([$m[1] => (string) $value])).' >> .env';
 
                     break;
                 }
@@ -1107,7 +1107,7 @@ trait ConfiguresCloudEnvironment
 
         $lines = [];
         foreach ($build as $key => $value) {
-            $lines[] = 'echo '.escapeshellarg("{$key}={$value}").' >> .env';
+            $lines[] = 'echo '.escapeshellarg($this->formatBuildEnvPayload([$key => (string) $value])).' >> .env';
         }
 
         return implode("\n{$indent}", $lines);

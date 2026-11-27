@@ -388,7 +388,8 @@ test('buildPublicEnvScript bakes only what the frontend build needs, never runti
     expect($m[1])->not->toBeEmpty()
         ->and(collect($m[1])->every(fn (string $key): bool => str_starts_with($key, 'VITE_') || $key === 'APP_NAME'))->toBeTrue()
         ->and($script)->toContain('VITE_REVERB_HOST')
-        ->toContain("echo 'APP_NAME=Plex Intent' >> .env")
+        // Quoted, or Laravel and Vite refuse to load a value with a space.
+        ->toContain("echo 'APP_NAME=\"Plex Intent\"' >> .env")
         ->not->toContain('DB_HOST')
         ->not->toContain('AWS_BUCKET')
         ->not->toContain('APP_URL=')
