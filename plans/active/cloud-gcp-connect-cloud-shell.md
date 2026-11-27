@@ -4,6 +4,8 @@
 A friend with Google Cloud credits connects their project to LaraKube Cloud with one click and one Enter, and Cloud never holds a key.
 
 ## Steps
+Status: 1–5 built and tested (LaraKube CLI `e7e848e9`; Cloud uncommitted→committed with this plan's update). 6 waits for a LaraKube Cloud section in the docs site. Live test pending the platform account.
+
 1. **LaraKube CLI:** accept `GOOGLE_OAUTH_ACCESS_TOKEN` as a Google credential: no key file and no local `gcloud` login required when it is set; OpenTofu gets it as now. Test the token path in `cloud:create` and `cloud:destroy`.
 2. **Cloud, platform identity:** config for the platform service account (its key JSON from a deployment secret, `LARAKUBE_GOOGLE_PLATFORM_CREDENTIALS`), and a small client for IAM Credentials (`generateAccessToken`, `generateIdToken`) and IAM (`serviceAccounts.get`), signed as the platform account (reuse the JWT bearer code in `InstallerTokens`).
 3. **Cloud, credentials:** `cloud_credentials.kind` (`key` | `impersonation`), plus `service_account_email` and `subject` (numeric ID) for impersonation; `vault_path` nullable for it. A pending connection stores the random service account name Cloud expects.

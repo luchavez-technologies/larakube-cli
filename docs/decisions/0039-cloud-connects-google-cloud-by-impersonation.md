@@ -15,7 +15,7 @@ LaraKube Desktop and the LaraKube CLI avoid keys by using the person's own `gclo
 2. **Setup is one command the customer runs in Google Cloud Shell, as themselves.** Cloud shows an "Open Cloud Shell" button and a command tailored to their project. The command:
    - enables the APIs LaraKube needs;
    - creates a service account with a name Cloud chose at random for this connection (`larakube-<random>`);
-   - grants it only the roles ADR 0027 lists for a server: Compute Instance Admin (v1) and Service Account User, and DNS Administrator when Cloud DNS is used;
+   - grants it only what creating a LaraKube server touches (ADR 0027): Compute Instance Admin (v1) for the VM and its address, Compute Security Admin and Compute Network Admin for its firewall rules, Service Account User, and Service Usage Consumer so OpenTofu can read the Compute API's state (the command itself enables the APIs, as the customer), plus DNS Administrator when Cloud DNS is used;
    - grants LaraKube Cloud's platform service account the Service Account Token Creator role on that one service account.
 
    The customer can read every line before pressing Enter. No Google OAuth app is involved, so there is no Google verification review and no 100-user cap.
