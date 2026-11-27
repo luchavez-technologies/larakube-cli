@@ -56,3 +56,4 @@ Consequences**. Statuses: `Accepted`, `Superseded by NNNN`, `Proposed`.
 | [0038](0038-cloud-cluster-access-read-and-install.md) | LaraKube Cloud reaches a cluster through separate read and install accesses; install access is minted per install wherever the platform allows | Accepted |
 | [0039](0039-cloud-connects-google-cloud-by-impersonation.md) | LaraKube Cloud connects to Google Cloud by impersonating a service account the customer sets up from Cloud Shell; no key is stored | Accepted |
 | [0040](0040-cloud-environments-share-a-server-safely.md) | LaraKube Cloud environments on one server get their own OpenBao prefix, Kubernetes sign-in and runner Job namespace, set up by one script | Accepted |
+| [0041](0041-runtime-settings-come-only-from-dotenv-push.md) | An environment's runtime settings come only from `dotenv:push` (secrets to OpenBao, the rest to the ConfigMap); deploy workflows keep only build-time values | Accepted |

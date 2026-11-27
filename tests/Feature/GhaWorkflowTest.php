@@ -310,9 +310,9 @@ test('the deploy job refuses to proceed when laravel-secrets is missing, and nev
         ->toContain('dotenv:push production')
         ->not->toContain('kubectl create secret generic laravel-secrets');
 
-    // The ConfigMap still gets created from the public .env — only the Secret
-    // creation moved to `dotenv:push`.
-    expect($workflowContent)->toContain('kubectl create configmap laravel-config');
+    // Runtime settings come from dotenv:push (ADR 0041): the workflow only checks the ConfigMap exists.
+    expect($workflowContent)->not->toContain('kubectl create configmap')
+        ->and($workflowContent)->toContain('kubectl get configmap laravel-config -n test-app-production');
 });
 
 test('the deploy job pins the image to the digest the build job pushed', function (): void {

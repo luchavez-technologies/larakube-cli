@@ -151,17 +151,15 @@ class DotenvPushCommand extends Command
 
         $local = $this->parseDotenvVars((string) file_get_contents($envFile));
         $knownSecrets = array_keys($config->getAllSecretEnvironmentVariables($env));
-        // The deploy workflow writes the blueprint's public values into the app's ConfigMap, and replaces
-        // that ConfigMap on every deploy. Every other key in .env.<env> (the app's own settings, secret or
-        // not) only reaches the pods through here, so it is pushed with the secrets.
-        $workflowKeys = array_flip(array_keys($config->getAllPublicEnvironmentVariables($env)));
+        // .env.<env> is the one source of an environment's runtime settings (ADR 0041): its secrets go to
+        // OpenBao (or the app Secret), everything else to the app's ConfigMap. The deploy workflow no
+        // longer writes that ConfigMap, so nothing else replaces what is pushed here.
         $toPush = array_filter(
             $local,
-            fn (string $value, string $key) => $this->isSecretKey($key, $knownSecrets)
-                || $this->hasEmbeddedCredentials($value)
-                || ! isset($workflowKeys[$key]),
+            fn (string $value, string $key) => $this->isSecretKey($key, $knownSecrets) || $this->hasEmbeddedCredentials($value),
             ARRAY_FILTER_USE_BOTH,
         );
+        $settings = array_diff_key($local, $toPush);
 
         // Plex/OpenBao owns these regardless of what the local file happens to
         // hold — a manually-added or stale DB_PASSWORD must never overwrite a
@@ -175,7 +173,7 @@ class DotenvPushCommand extends Command
             $toPush = array_diff_key($toPush, array_flip($plexManaged));
         }
 
-        if ($toPush === []) {
+        if ($toPush === [] && $settings === []) {
             $ciSync = $this->syncHybridBuildEnvIfConfigured($config, $env);
             if ($ciSync !== null && $ciSync['pushed']) {
                 if ($this->option('json')) {
@@ -206,7 +204,19 @@ class DotenvPushCommand extends Command
         }
 
         if ($this->isOpenBaoBootstrapped($kubectl, $this->secretsNamespace())) {
-            return $this->pushToOpenBao($kubectl, $namespace, $env, $app, $toPush, $config);
+            if ($settings !== []) {
+                $configMap = $this->resolveConfigMapName($namespace, $kubectl, $config);
+                if (! Kubectl::fromPrefix($kubectl)->putConfigMap($namespace, $configMap, $settings)->ok) {
+                    $this->laraKubeError("Could not write the settings to ConfigMap '{$configMap}' in '{$namespace}'.");
+
+                    return 1;
+                }
+                if (! $this->option('json')) {
+                    $this->laraKubeInfo('Wrote '.count($settings)." setting(s) to ConfigMap '{$configMap}' in '{$namespace}'.");
+                }
+            }
+
+            return $toPush === [] ? 0 : $this->pushToOpenBao($kubectl, $namespace, $env, $app, $toPush, $config);
         }
 
         if (! $this->option('json')) {

@@ -169,30 +169,24 @@ jobs:
     steps:
 @include('k8s.ci.deploy-connect')
 
-      - name: 🛡 Create .env file (public/build vars only)
+      - name: 🔒 Verify runtime settings were pushed
         run: |
-          touch .env
-          {!! $publicEnvScript !!}
-
-      - name: 🔒 Verify runtime secrets were pushed
-        run: |
-          # app-secrets (or legacy laravel-secrets) now only ever comes from `larakube dotenv:push`, run
-          # from a developer's own machine — this workflow never holds runtime
-          # credentials, only the public/build subset above. Fail fast with a
-          # clear fix instead of letting every pod CrashLoop on a missing
-          # envFrom source a few minutes from now.
+          # The app's runtime settings come only from `larakube dotenv:push`, run from a developer's own
+          # machine (ADR 0041): secrets to the app Secret, everything else to its ConfigMap. This
+          # workflow only builds and rolls out. Fail fast with the fix instead of letting every pod
+          # CrashLoop on a missing envFrom source a few minutes from now.
           if ! kubectl get secret {{ $config->getSecretName() }} -n {{ $namespace }} >/dev/null 2>&1 && ! kubectl get secret {{ $config->getLegacySecretName() }} -n {{ $namespace }} >/dev/null 2>&1; then
             echo "::error::Runtime secrets missing in '{{ $namespace }}'. Run 'larakube dotenv:push {{ $environment }}' from your machine before deploying."
+            exit 1
+          fi
+          if ! kubectl get configmap {{ $config->getConfigMapName() }} -n {{ $namespace }} >/dev/null 2>&1 && ! kubectl get configmap {{ $config->getLegacyConfigMapName() }} -n {{ $namespace }} >/dev/null 2>&1; then
+            echo "::error::Runtime settings missing in '{{ $namespace }}'. Run 'larakube dotenv:push {{ $environment }}' from your machine before deploying."
             exit 1
           fi
 
       - name: 🏗 Prepare Manifests & Deploy
         run: |
-          # 1. Update ConfigMap (public/build config only — runtime secrets are
-          #    dotenv:push's job, verified above, never this workflow's).
-          kubectl create configmap {{ $config->getConfigMapName() }} -n {{ $namespace }} --from-env-file=.env --dry-run=client -o yaml | kubectl apply -f -
-
-          # 2. Deploy via Kustomize at the pushed digest. The namespace already
+          # Deploy via Kustomize at the pushed digest. The namespace already
           #    exists (created at `cloud:configure` time), and this runner uses a
           #    NAMESPACE-SCOPED credential — so strip the cluster-scoped
           #    Namespace doc, which the scoped ServiceAccount can't apply.
