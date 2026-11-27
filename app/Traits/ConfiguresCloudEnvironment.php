@@ -2,16 +2,13 @@
 
 namespace App\Traits;
 
-use App\Contracts\HasEnvironmentVariables;
 use App\Contracts\PlexProvisionable;
 use App\Data\ConfigData;
 use App\Data\EnvironmentData;
 use App\Data\RegistryData;
 use App\Enums\AppFramework;
-use App\Enums\CacheDriver;
 use App\Enums\CliTool;
 use App\Enums\RegistryProvider;
-use App\Enums\ServerVariation;
 use App\Exceptions\MissingFlagException;
 use App\Services\Kubectl;
 use App\Services\Project\BackingServices;
@@ -1081,64 +1078,35 @@ trait ConfiguresCloudEnvironment
     }
 
     /**
-     * A shell script fragment — one `echo 'KEY=VALUE' >> .env` line per
-     * public/build variable, computed straight from the blueprint at
-     * generation time. Baked as literal text into the generated CI
-     * workflow (GHA + GitLab), same as today's hand-written VITE_APP_URL
-     * line — no secret, no CI variable, nothing "uploaded" at all, because
-     * none of these values were ever secret to begin with (VITE_* compiles
-     * into a public JS bundle regardless). Runtime credentials never take
-     * this path; only `dotenv:push` writes those, straight to the cluster.
+     * A shell script fragment, one `echo 'KEY=VALUE' >> .env` line per value the image build needs,
+     * baked as literal text into the generated CI workflow (GHA + GitLab). Only what the frontend
+     * build compiles in: the `VITE_*` keys, plus any key their values refer to (`VITE_APP_NAME=
+     * "${APP_NAME}"`). None of it is secret; it ships in a public JS bundle anyway. Runtime settings
+     * never take this path: `dotenv:push` sends them to the cluster (ADR 0041).
      */
     protected function buildPublicEnvScript(ConfigData $config, string $environment, string $indent = '          '): string
     {
         $vars = $config->getAllPublicEnvironmentVariables($environment);
+        $build = array_filter($vars, fn ($value, string $key): bool => str_starts_with($key, 'VITE_'), ARRAY_FILTER_USE_BOTH);
 
-        if ($config->getPlex($environment) !== []) {
-            $envPath = $config->getPath().'/'.($environment === 'local' ? '.env' : ".env.{$environment}");
-            $fileVars = is_file($envPath) ? BackingServices::readEnv($envPath) : [];
-            $plexVars = [];
-
-            foreach ($config->getComponents($environment) as $component) {
-                if (! $component instanceof HasEnvironmentVariables
-                    || $component instanceof ServerVariation
-                    || ! $config->isPlexBacked($component, $environment)) {
-                    continue;
-                }
-
-                $secretKeys = array_keys($component->getSecretEnvironmentVariables($config, $environment));
-
-                foreach ($component->getPublicEnvironmentVariables($config, $environment) as $key => $fallback) {
-                    if ($this->isSecretKey($key, $secretKeys)) {
-                        continue;
-                    }
-
-                    $fromFile = $fileVars[$key] ?? null;
-                    $value = ($fromFile !== null && $fromFile !== '') ? $fromFile : (string) $fallback;
-
-                    if (($fromFile === null || $fromFile === '')
-                        && str_contains($value, '.svc.cluster.local')
-                        && ! str_contains($value, '.larakube-plex.svc.cluster.local')) {
-                        continue;
-                    }
-
-                    if ($this->hasEmbeddedCredentials($value)) {
-                        continue;
-                    }
-
-                    $plexVars[$key] = $value;
-                }
-
-                if ($component === CacheDriver::REDIS && isset($fileVars['REDIS_DB']) && $fileVars['REDIS_DB'] !== '') {
-                    $plexVars['REDIS_DB'] = $fileVars['REDIS_DB'];
+        // A referenced key can live in the blueprint or only in .env.<env> (APP_NAME usually does).
+        $envPath = $config->getPath().'/'.($environment === 'local' ? '.env' : ".env.{$environment}");
+        $fileVars = is_file($envPath) ? BackingServices::readEnv($envPath) : [];
+        // VITE_* keys set only in .env.<env> reach the build through <ENV>_BUILD_ENV, but what they
+        // refer to still has to be here.
+        $viteFromFile = array_filter($fileVars, fn (string $key): bool => str_starts_with($key, 'VITE_'), ARRAY_FILTER_USE_KEY);
+        foreach ([...array_values($build), ...array_values($viteFromFile)] as $value) {
+            preg_match_all('/\$\{([A-Z0-9_]+)\}/', (string) $value, $refs);
+            foreach ($refs[1] as $ref) {
+                $resolved = $vars[$ref] ?? $fileVars[$ref] ?? null;
+                if ($resolved !== null && ! isset($build[$ref]) && ! $this->isSecretKey($ref, []) && ! $this->hasEmbeddedCredentials((string) $resolved)) {
+                    $build[$ref] = $resolved;
                 }
             }
-
-            $vars = array_merge($plexVars, $vars);
         }
 
         $lines = [];
-        foreach ($vars as $key => $value) {
+        foreach ($build as $key => $value) {
             $lines[] = 'echo '.escapeshellarg("{$key}={$value}").' >> .env';
         }
 

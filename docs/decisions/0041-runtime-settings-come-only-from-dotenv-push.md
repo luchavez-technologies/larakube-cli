@@ -17,7 +17,7 @@ The workflow writing settings bought little: a deploy already refuses to run unt
 
 1. **`.env.<env>` is the one source of an environment's runtime settings, and `dotenv:push` the one way they reach the cluster.** Secrets (by name, or values with credentials in them) go to OpenBao or the app Secret, as before. Every other key goes to the app's ConfigMap, written whole by `dotenv:push`.
 2. **The deploy workflow no longer writes the ConfigMap.** It checks that both the Secret and the ConfigMap exist and stops with the fix (`larakube dotenv:push <env>`) if not, then builds and rolls out.
-3. **Build-time values stay with the build.** The workflow's build job still writes the blueprint's public values and `<ENV>_BUILD_ENV` into the image build's `.env`, because a frontend (Vite, a static site) bakes them in at build time.
+3. **Only build-time values stay with the build.** The workflow's build job writes the `VITE_*` keys (plus any key their values refer to, such as `APP_NAME` for `VITE_APP_NAME="${APP_NAME}"`) and `<ENV>_BUILD_ENV` into the image build's `.env`, because the frontend bakes them in at build time. Runtime settings (database, cache, storage, URLs) are not written there. A static site, which has no runtime, still gets all its public values.
 4. Plex Commons' secret keys stay out of the push, as before: OpenBao rotates them. Its connection addresses are pushed like any other setting.
 
 ## Consequences

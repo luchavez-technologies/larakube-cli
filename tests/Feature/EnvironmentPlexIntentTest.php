@@ -348,34 +348,24 @@ test('BackingServices marks services in plex but not managed as pending', functi
         ->and($services['storage']['pending'])->toBeFalse();
 });
 
-test('buildPublicEnvScript includes non-secret Plex connection vars from .env.<env> and excludes all secrets and keys', function (): void {
+test('buildPublicEnvScript bakes only what the frontend build needs, never runtime settings or secrets', function (): void {
     $config = plexIntentProject($this->tempDir, [
         'local' => [],
         'staging' => [
             'ingress' => 'traefik',
-            'hosts' => ['web' => 'staging.example.com'],
+            'hosts' => ['web' => 'staging.example.com', 'reverb' => 'ws-staging.example.com'],
             'plex' => ['postgres', 'redis', 'seaweedfs'],
             'managed' => ['postgres', 'redis', 'seaweedfs'],
         ],
     ]);
+    $config->addFeature(App\Enums\LaravelFeature::REVERB);
 
     file_put_contents($this->tempDir.'/.env.staging', implode("\n", [
-        'APP_NAME=plex-intent',
-        'DB_CONNECTION=pgsql',
+        'APP_NAME="Plex Intent"',
+        'VITE_APP_NAME="${APP_NAME}"',
         'DB_HOST=postgres.larakube-plex.svc.cluster.local',
-        'DB_PORT=5432',
-        'DB_DATABASE=plex_intent_staging',
-        'DB_USERNAME=plex_intent_staging',
         'DB_PASSWORD=super-secret-db-password',
-        'REDIS_HOST=redis.larakube-plex.svc.cluster.local',
-        'REDIS_PORT=6379',
-        'REDIS_DB=4',
-        'REDIS_PASSWORD=super-secret-redis-password',
-        'AWS_ACCESS_KEY_ID=larakube-access',
-        'AWS_SECRET_ACCESS_KEY=super-secret-s3-key',
         'AWS_BUCKET=plex-intent-staging',
-        'AWS_ENDPOINT=http://seaweedfs.larakube-plex.svc.cluster.local:8333',
-        'AWS_URL=https://s3-staging.example.com/plex-intent-staging',
     ])."\n");
 
     $runner = new class
@@ -393,20 +383,15 @@ test('buildPublicEnvScript includes non-secret Plex connection vars from .env.<e
     };
 
     $script = $runner->script($config, 'staging');
+    preg_match_all("/^echo '([A-Z0-9_]+)=/m", $script, $m);
 
-    expect($script)
-        ->toContain("echo 'DB_CONNECTION=pgsql' >> .env")
-        ->toContain("echo 'DB_HOST=postgres.larakube-plex.svc.cluster.local' >> .env")
-        ->toContain("echo 'DB_DATABASE=plex_intent_staging' >> .env")
-        ->toContain("echo 'DB_USERNAME=plex_intent_staging' >> .env")
-        ->toContain("echo 'REDIS_HOST=redis.larakube-plex.svc.cluster.local' >> .env")
-        ->toContain("echo 'REDIS_DB=4' >> .env")
-        ->toContain("echo 'AWS_BUCKET=plex-intent-staging' >> .env")
-        ->toContain("echo 'AWS_ENDPOINT=http://seaweedfs.larakube-plex.svc.cluster.local:8333' >> .env")
-        ->not->toContain('DB_PASSWORD')
-        ->not->toContain('REDIS_PASSWORD')
-        ->not->toContain('AWS_ACCESS_KEY_ID')
-        ->not->toContain('AWS_SECRET_ACCESS_KEY')
+    expect($m[1])->not->toBeEmpty()
+        ->and(collect($m[1])->every(fn (string $key): bool => str_starts_with($key, 'VITE_') || $key === 'APP_NAME'))->toBeTrue()
+        ->and($script)->toContain('VITE_REVERB_HOST')
+        ->toContain("echo 'APP_NAME=Plex Intent' >> .env")
+        ->not->toContain('DB_HOST')
+        ->not->toContain('AWS_BUCKET')
+        ->not->toContain('APP_URL=')
         ->not->toContain('super-secret');
 });
 
