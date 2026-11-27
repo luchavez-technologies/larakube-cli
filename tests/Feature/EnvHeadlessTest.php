@@ -241,3 +241,44 @@ test('env leaves an externally managed database\'s connection keys blank in the 
         chdir($previous);
     }
 });
+
+test('env seeds .env.<env> from .env.example\'s defaults, never from local values', function (): void {
+    $directory = envHeadlessProject();
+    file_put_contents($directory->path('.env'), "APP_NAME=demo\nAPP_LOCALE=fr\nLOG_LEVEL=debug\nPAYMONGO_SECRET_KEY=sk_test_local\n");
+    file_put_contents($directory->path('.env.example'), "APP_NAME=Laravel\nAPP_LOCALE=en\nLOG_LEVEL=\nBCRYPT_ROUNDS=12\n# COMMENTED=1\n");
+    $previous = getcwd();
+    chdir($directory->path());
+    Prompt::interactive(false);
+    Process::fake(['*' => Process::result(output: '')]);
+
+    try {
+        $this->artisan('env', [
+            'name' => 'production',
+            '--context' => 'larakube-203.0.113.21',
+            '--web-host' => 'app.example.com',
+            '--ingress' => 'traefik',
+            '--managed' => '',
+            '--web-hosts' => '',
+            '--no-interaction' => true,
+        ])
+            ->expectsConfirmation('Configure a container registry for production?', 'no')
+            ->expectsQuestion('SSH user', 'larakube')
+            ->expectsQuestion('SSH port', '22')
+            ->expectsQuestion('SSH private key path', '~/.ssh/id_rsa')
+            ->expectsConfirmation("Set up the CI/CD deploy workflow for 'production' now?", 'no')
+            ->assertExitCode(0);
+
+        $seeded = (string) file_get_contents($directory->path('.env.production'));
+
+        expect($seeded)->toMatch('/^APP_NAME=demo$/m')
+            ->and($seeded)->toMatch('/^APP_LOCALE=en$/m')
+            ->and($seeded)->toMatch('/^BCRYPT_ROUNDS=12$/m')
+            ->and($seeded)->toMatch('/^LOG_LEVEL=$/m')
+            ->and($seeded)->toMatch('/^PAYMONGO_SECRET_KEY=$/m')
+            ->and($seeded)->not->toContain('fr')
+            ->and($seeded)->not->toContain('debug')
+            ->and($seeded)->not->toContain('COMMENTED');
+    } finally {
+        chdir($previous);
+    }
+});

@@ -141,6 +141,8 @@ test('cloud:configure --only=plex rejects unknown or ineligible service slugs', 
 test('cloud:configure --only=target --plex=... creates a new environment with Plex-backed manifests from the start', function (): void {
     Process::fake(['*' => Process::result(output: '')]);
     plexIntentProject($this->tempDir, ['local' => []]);
+    file_put_contents($this->tempDir.'/.env', "APP_NAME=plexintent\nDB_HOST=postgres\nDB_PASSWORD=local-secret\nREDIS_HOST=redis\nMAIL_HOST=mailpit\n");
+    unlink($this->tempDir.'/.env.staging'); // A new environment: nothing seeded yet.
 
     $this->artisan('cloud:configure', [
         'environment' => 'staging',
@@ -166,6 +168,13 @@ test('cloud:configure --only=target --plex=... creates a new environment with Pl
         ->and(file_exists($this->tempDir.'/.infrastructure/k8s/overlays/staging/postgres-managed-delete-deployment.yaml'))->toBeTrue()
         ->and(file_exists($this->tempDir.'/.infrastructure/k8s/overlays/staging/redis-managed-delete-deployment.yaml'))->toBeTrue()
         ->and(file_exists($this->tempDir.'/.infrastructure/k8s/overlays/staging/seaweedfs-volumes.yaml'))->toBeTrue();
+
+    // plex:join writes the Commons connection keys when it joins, so they are not left blank for the user.
+    $seeded = (string) file_get_contents($this->tempDir.'/.env.staging');
+    expect($seeded)->not->toContain('DB_HOST')
+        ->and($seeded)->not->toContain('DB_PASSWORD')
+        ->and($seeded)->not->toContain('REDIS_HOST')
+        ->and($seeded)->toMatch('/^MAIL_HOST=$/m');
 });
 
 test('env command accepts --plex= and generates Plex-backed overlays', function (): void {

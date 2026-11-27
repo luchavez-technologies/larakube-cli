@@ -527,9 +527,11 @@ trait GeneratesProjectInfrastructure
     }
 
     /**
-     * Create `.env.<environment>` when it is missing: every key from `.env` with a BLANK value except
-     * APP_NAME (so no local or test value reaches another environment), then this environment's computed
-     * values, plus a fresh APP_KEY of its own. Never touches an existing file.
+     * Create `.env.<environment>` when it is missing: every key from `.env` and `.env.example`, valued
+     * from `.env.example` (the app's committed defaults) and otherwise BLANK, never from `.env`, so no
+     * local or test value reaches another environment; APP_NAME carries over. Then this environment's
+     * computed values and a fresh APP_KEY of its own. Keys of services it takes from Plex Commons are
+     * left out: `plex:join` writes them when it joins. Never touches an existing file.
      *
      * @return bool whether the file was created
      */
@@ -541,19 +543,24 @@ trait GeneratesProjectInfrastructure
             return false;
         }
 
+        $plexKeys = array_flip($config->getPlexManagedKeys($environment));
+        $local = $this->envFileLines($projectPath.'/.env');
+        $defaults = $this->envFileLines($projectPath.'/.env.example');
         $lines = [];
-        $base = $projectPath.'/.env';
-        if (is_file($base)) {
-            foreach (file($base, FILE_IGNORE_NEW_LINES) ?: [] as $line) {
-                if (preg_match('/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/', $line, $m) === 1) {
-                    // The app's name is the same everywhere and never secret, so it carries over.
-                    $lines[] = $m[1] === 'APP_NAME' ? trim($line) : $m[1].'=';
-                }
+        foreach (array_keys($local + $defaults) as $key) {
+            if (isset($plexKeys[$key])) {
+                continue;
             }
+            // The app's name is the same everywhere and never secret, so it carries over.
+            $lines[$key] = match (true) {
+                $key === 'APP_NAME' => $local[$key] ?? $defaults[$key],
+                isset($defaults[$key]) => $defaults[$key],
+                default => $key.'=',
+            };
         }
-        file_put_contents($envPath, implode("\n", array_values(array_unique($lines)))."\n");
+        file_put_contents($envPath, implode("\n", $lines)."\n");
 
-        $values = $config->getAllEnvironmentVariables($environment);
+        $values = array_diff_key($config->getAllEnvironmentVariables($environment), $plexKeys);
         foreach (array_keys($config->externalServiceEnvironmentKeys($environment)) as $key) {
             $values[$key] = '';
         }
@@ -1977,5 +1984,22 @@ trait GeneratesProjectInfrastructure
             $this->line('');
             $this->line('  <fg=yellow;options=bold>⚠ No changes have been applied yet.</>');
         }
+    }
+
+    /**
+     * The `KEY=value` lines of an env file, by key; comments and blank lines are skipped.
+     *
+     * @return array<string, string>
+     */
+    private function envFileLines(string $path): array
+    {
+        $lines = [];
+        foreach (is_file($path) ? (file($path, FILE_IGNORE_NEW_LINES) ?: []) : [] as $line) {
+            if (preg_match('/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/', $line, $m) === 1 && ! isset($lines[$m[1]])) {
+                $lines[$m[1]] = trim($line);
+            }
+        }
+
+        return $lines;
     }
 }
