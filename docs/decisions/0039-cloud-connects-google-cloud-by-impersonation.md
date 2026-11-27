@@ -36,3 +36,22 @@ LaraKube Desktop and the LaraKube CLI avoid keys by using the person's own `gclo
 - A leaked Cloud database yields no customer cloud access; the platform key plus a customer's grant is needed, and the customer can withdraw the grant.
 - LaraKube Cloud depends on its platform service account; losing or rotating its key interrupts operations until the new key is deployed, though customers' grants name the account, not the key.
 - The LaraKube CLI accepts a Google access token from `GOOGLE_OAUTH_ACCESS_TOKEN` as a credential source, alongside a key file and the local `gcloud` login.
+
+## Amendment: Connect with Google
+
+Cloud Shell still assumes people know what a Google Cloud project is, and LaraKube Cloud is for
+non-developers first. So the main path becomes **Connect with Google**:
+
+- The person allows Google's permission screen for `cloud-platform` once. LaraKube Cloud asks for
+  online access only, so no refresh token exists, and the access token lives for at most an hour,
+  encrypted, only for the setup.
+- They pick the billing account that pays (where their credits are). LaraKube Cloud then creates a
+  project just for LaraKube, links that billing account, enables the APIs, and sets up the same
+  service account and grants as point 2, on their behalf.
+- The outcome is identical to the Cloud Shell setup: LaraKube Cloud impersonates that service
+  account and holds no Google key or login for the customer. Cloud Shell stays as the advanced path
+  for people who want to read every line or use an existing project.
+- Until Google reviews the app, it is limited to 100 users for the project's lifetime, each listed as
+  a test user, who see an "unverified app" notice. Review is required before the public can use it.
+- Signing in to LaraKube Cloud with Google or GitHub is separate and asks only for basic profile
+  scopes, so it needs no review and does not count toward that cap.
