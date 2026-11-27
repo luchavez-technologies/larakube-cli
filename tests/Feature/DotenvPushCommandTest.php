@@ -385,3 +385,38 @@ test('dotenv:push moves a setting an earlier push stored in OpenBao out of it, s
     Saloon::assertNotSent(fn ($request) => $request->getMethod()->value === 'DELETE'
         && str_ends_with($request->resolveEndpoint(), '/APP_KEY'));
 });
+
+test('dotenv:push keeps credential files out of the ConfigMap, by name or by what the value holds', function (): void {
+    openBaoRegistered();
+    savePushTestConfig($this->tempDir);
+    writePushEnvFile($this->tempDir, [
+        'GOOGLE_PLATFORM_CREDENTIALS' => '{"type":"service_account"}',
+        'SIGNER' => '{"type":"service_account","private_key":"x"}',
+        'APP_LOCALE' => 'en',
+    ]);
+
+    Process::fake([
+        '*get secret openbao-secrets-secrets-example-com*' => Process::result(output: base64_encode('hvs.token')),
+        '*port-forward*' => Process::result(output: ''),
+        '*create namespace*' => Process::result(output: 'configured'),
+        '*apply -f *' => Process::result(output: 'applied'),
+        '*' => Process::result(),
+    ]);
+    Saloon::fake([
+        DynamicRequest::class => MockResponse::make([]),
+        DynamicNoBodyRequest::class => openBaoFake([
+            '*/v1/secret/metadata/production/push-test*' => ['data' => ['keys' => []]],
+        ], default: ['data' => ['data' => ['value' => 'x']]]),
+    ]);
+
+    $this->artisan('dotenv:push', ['environment' => 'production'])
+        ->expectsOutputToContain('Wrote 1 setting(s) to ConfigMap')
+        ->assertExitCode(0);
+
+    foreach (['GOOGLE_PLATFORM_CREDENTIALS', 'SIGNER'] as $key) {
+        Saloon::assertSent(fn ($request) => $request instanceof DynamicRequest
+            && str_ends_with($request->resolveEndpoint(), "/v1/secret/data/production/push-test/{$key}"));
+    }
+    Process::assertNotRan(fn ($process) => str_contains((string) $process->input, '"kind":"ConfigMap"')
+        && (str_contains((string) $process->input, 'GOOGLE_PLATFORM_CREDENTIALS') || str_contains((string) $process->input, 'SIGNER')));
+});

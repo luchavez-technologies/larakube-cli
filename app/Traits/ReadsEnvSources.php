@@ -177,21 +177,27 @@ trait ReadsEnvSources
      */
     protected function isSecretKey(string $key, array $knownSecrets): bool
     {
+        // The same names LaraKube Desktop's settings table treats as secret.
         return in_array($key, $knownSecrets, true)
-            || str_contains($key, 'PASSWORD')
+            || str_contains($key, 'PASS')
             || str_contains($key, 'SECRET')
             || str_contains($key, 'KEY')
-            || str_contains($key, 'TOKEN');
+            || str_contains($key, 'TOKEN')
+            || str_contains($key, 'PRIVATE')
+            || str_contains($key, 'CREDENTIAL')
+            || str_contains($key, 'DSN');
     }
 
     /**
-     * A connection URL that carries its own credentials
-     * (postgresql://user:password@host/db, redis://:password@host). Such a
-     * value is secret whatever its key is named — DATABASE_URL and REDIS_URL
-     * match none of the name patterns above. Pure.
+     * A value that carries its own credentials, secret whatever its key is named: a connection URL
+     * (postgresql://user:password@host/db, redis://:password@host), a PEM block, or a service account
+     * key's JSON. Pure.
      */
     protected function hasEmbeddedCredentials(string $value): bool
     {
-        return preg_match('#^[a-z][a-z0-9+.-]*://[^/@\s]*:[^/@\s]+@#i', trim($value, " \t\"'")) === 1;
+        return preg_match('#^[a-z][a-z0-9+.-]*://[^/@\s]*:[^/@\s]+@#i', trim($value, " \t\"'")) === 1
+            // A key file pasted into one value: a PEM block, or a service account's JSON with its private key.
+            || str_contains($value, '-----BEGIN')
+            || str_contains($value, '"private_key"');
     }
 }
