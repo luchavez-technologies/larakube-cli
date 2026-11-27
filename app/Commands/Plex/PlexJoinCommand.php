@@ -580,7 +580,7 @@ class PlexJoinCommand extends Command
         }
 
         $this->line('    1. <fg=yellow>git add . && git commit</> (blueprint + regenerated manifests now target the Commons)');
-        $this->line("    2. <fg=yellow>larakube cloud:configure {$env} --only=ci</> (re-upload the .env.{$env} secret)");
+        $this->line("    2. <fg=yellow>larakube dotenv:push {$env}</> (send the new Commons connection to the cluster)");
         $this->line('    3. Deploy as usual — the app now uses the Commons, not its own pods.');
     }
 }
