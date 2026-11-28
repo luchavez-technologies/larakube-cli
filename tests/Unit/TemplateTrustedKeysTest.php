@@ -104,8 +104,8 @@ test('cloud endpoint resolves url per channel and honours LARAKUBE_CLOUD_URL ove
             ->and((new LaraKubeCloudConnector)->resolveBaseUrl())->toBe('https://cloud.larakube.app');
 
         TrustedKeys::resolveStableReleaseUsing(static fn (): bool => false);
-        expect(CloudEndpoint::url())->toBe('https://cloud-stg.larakube.app')
-            ->and((new LaraKubeCloudConnector)->resolveBaseUrl())->toBe('https://cloud-stg.larakube.app');
+        expect(CloudEndpoint::url())->toBe('https://cloud-staging.larakube.app')
+            ->and((new LaraKubeCloudConnector)->resolveBaseUrl())->toBe('https://cloud-staging.larakube.app');
 
         putenv('LARAKUBE_CLOUD_URL=https://custom-cloud.larakube.test/');
         TrustedKeys::resolveStableReleaseUsing(static fn (): bool => true);

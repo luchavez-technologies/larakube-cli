@@ -6,7 +6,7 @@ class CloudEndpoint
 {
     public const PRODUCTION_URL = 'https://cloud.larakube.app';
 
-    public const STAGING_URL = 'https://cloud-stg.larakube.app';
+    public const STAGING_URL = 'https://cloud-staging.larakube.app';
 
     /**
      * Resolve the LaraKube Cloud base URL for the current CLI channel.
