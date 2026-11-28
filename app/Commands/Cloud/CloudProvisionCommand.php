@@ -6,6 +6,7 @@ use App\Data\StackData;
 use App\Exceptions\MissingFlagException;
 use App\Services\SshKeyInspector;
 use App\Traits\EmitsJsonOutput;
+use App\Traits\HandsOverCloudServer;
 use App\Traits\InteractsWithGlobalConfig;
 use App\Traits\InteractsWithProjectConfig;
 use App\Traits\LaraKubeOutput;
@@ -14,7 +15,6 @@ use App\Traits\ReadsCommandOptions;
 use App\Traits\RequiresFlagsWhenNonInteractive;
 use Illuminate\Support\Facades\Process;
 
-use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\password;
 use function Laravel\Prompts\text;
 
@@ -23,7 +23,7 @@ use Spatie\TemporaryDirectory\TemporaryDirectory;
 
 class CloudProvisionCommand extends Command
 {
-    use EmitsJsonOutput, InteractsWithGlobalConfig, InteractsWithProjectConfig, LaraKubeOutput, ProvisionsK3sNode, ReadsCommandOptions, RequiresFlagsWhenNonInteractive;
+    use EmitsJsonOutput, HandsOverCloudServer, InteractsWithGlobalConfig, InteractsWithProjectConfig, LaraKubeOutput, ProvisionsK3sNode, ReadsCommandOptions, RequiresFlagsWhenNonInteractive;
 
     /**
      * The name and signature of the console command.
@@ -37,10 +37,16 @@ class CloudProvisionCommand extends Command
         {--ssh-passphrase= : Passphrase for encrypted private key (if needed)}
         {--stack-name= : Custom stack identifier (default: vps-<ip>)}
         {--admin-email= : Admin email address for Let\'s Encrypt / ACME}
+        {--authorized-key=* : Public SSH key that keeps access after the build, repeatable; the --ssh-key login is removed (outside a project)}
+        {--cloud-installer-issuer= : LaraKube Cloud: token issuer the API server trusts for installs}
+        {--cloud-installer-audience= : LaraKube Cloud: audience those tokens must carry, unique to this server}
+        {--cloud-installer-subject= : LaraKube Cloud: the one subject (cloud identity) allowed to install}
         {--without-dns : Skip ExternalDNS setup}
         {--without-tls : Skip Cloudflare DNS challenge SSL setup}
         {--cloudflare : Automate DNS and TLS with Cloudflare}
         {--cloudflare-token= : Cloudflare API token}
+        {--dns-provider= : Automatically configure DNS & TLS using this provider (cloudflare, route53, or google)}
+        {--dns-tls-group= : With LARAKUBE_DNS_GROUPS, the group whose token also issues SSL certificates through the DNS challenge}
         {--context= : Custom kube-context name}
         {--json : Emit one machine-readable JSON result on stdout}';
 
@@ -68,6 +74,16 @@ class CloudProvisionCommand extends Command
         $this->renderHeader();
 
         $environment = $this->argument('environment');
+        $projectConfig = $this->isLaraKubeProject(false) ? $this->getProjectConfigObject(getcwd()) : null;
+
+        $authorizedKeys = $this->resolveAuthorizedKeys('custom', $projectConfig);
+        if ($authorizedKeys === false) {
+            return 1;
+        }
+
+        if (! $this->resolveCloudInstallerTrust()) {
+            return 1;
+        }
 
         $this->laraKubeInfo('LaraKube Cloud Pilot: VPS Provisioner');
         $this->laraKubeWarn('Recommended: 1GB RAM minimum for stable K3s deployments.');
@@ -177,7 +193,7 @@ class CloudProvisionCommand extends Command
 
             $this->laraKubeInfo('Connection successful!');
 
-            $config = $this->getProjectConfigObject(getcwd());
+            $config = $projectConfig ?? $this->getProjectConfigObject(getcwd());
 
             // The full single-node pipeline (k3s, larakube user, harden, lock root,
             // kubeconfig, Traefik) lives in ProvisionsK3sNode so cloud:create shares it.
@@ -197,6 +213,19 @@ class CloudProvisionCommand extends Command
                 $context = $customContext;
             }
 
+            if ($this->installerTrust !== null) {
+                $this->bindCloudInstallers($context);
+            }
+
+            if ($authorizedKeys !== []) {
+                $pubKey = $this->resolvePublicKey($effectiveKeyPath, $keyPath);
+                if (! $this->handOverDirectSshAccess($pubKey, $ip, (int) $port, $effectiveKeyPath, $authorizedKeys)) {
+                    return 1;
+                }
+
+                $this->result['sshUser'] = 'larakube';
+            }
+
             // Register stack in GlobalConfig
             $stackName = (string) ($this->option('stack-name') ?: 'vps-'.str_replace('.', '-', $ip));
             $stack = new StackData(
@@ -209,14 +238,14 @@ class CloudProvisionCommand extends Command
                 account: null,
                 projectId: null,
                 createdAt: gmdate('c'),
-                sshKey: $keyPath,
+                sshKey: $authorizedKeys === [] ? $keyPath : null,
                 role: 'deploy',
                 tunnelPort: null,
                 port: (int) $port,
             );
 
-            if ($config && $environment) {
-                $stack->bind($config->getName(), $environment);
+            if ($projectConfig && $environment) {
+                $stack->bind($projectConfig->getName(), $environment);
             }
 
             $globalConfig = $this->getGlobalConfig();
@@ -233,20 +262,10 @@ class CloudProvisionCommand extends Command
                 putenv("LARAKUBE_CLOUDFLARE_TOKEN={$cfToken}");
             }
 
-            if (! $this->option('without-dns')) {
-                if ($this->option('cloudflare') || (! $this->cannotPrompt() && confirm('Would you like to automate DNS records with Cloudflare for this cluster?'))) {
-                    $this->call('tool:init', ['--tool' => 'external-dns', 'environment' => $environment ?: 'production', '--context' => $context]);
-                }
-            }
-
-            if (! $this->option('without-tls')) {
-                if ($this->option('cloudflare') || (! $this->cannotPrompt() && confirm('Would you like to enable the Cloudflare DNS challenge for SSL certificates (so proxied hosts keep renewing)?', default: true))) {
-                    $this->call('tls:init', ['environment' => $environment ?: 'production', '--context' => $context]);
-                }
-            }
+            $this->connectDnsAndTls($environment ?: 'production', $context);
 
             if ($this->flag('json')) {
-                $this->jsonOutput([
+                $this->jsonOutput(array_merge([
                     'success' => true,
                     'name' => $stackName,
                     'ip' => $ip,
@@ -254,7 +273,7 @@ class CloudProvisionCommand extends Command
                     'provider' => 'custom',
                     'kind' => 'vps',
                     'warnings' => array_filter([$this->traefikWarning]),
-                ]);
+                ], $this->result));
             }
 
             return 0;
