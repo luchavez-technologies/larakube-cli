@@ -1,9 +1,12 @@
 {{--
     Opt-in S3-compatible remote state, activated by LARAKUBE_TOFU_STATE_BUCKET +
     LARAKUBE_TOFU_STATE_ENDPOINT (+ optional LARAKUBE_TOFU_STATE_REGION).
-    Backend credentials come from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in
-    the environment. Native S3 locking (use_lockfile) requires OpenTofu >= 1.10
-    (or Terraform >= 1.10) — the headless job image pins its tofu version.
+    Backend credentials come from LARAKUBE_TOFU_STATE_ACCESS_KEY_ID /
+    LARAKUBE_TOFU_STATE_SECRET_ACCESS_KEY when set (leaving AWS_ACCESS_KEY_ID /
+    AWS_SECRET_ACCESS_KEY free for the AWS provider), or from inherited
+    AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in the environment. Native S3
+    locking (use_lockfile) requires OpenTofu >= 1.10 (or Terraform >= 1.10) —
+    the headless job image pins its tofu version.
 --}}
 terraform {
   backend "s3" {
@@ -16,6 +19,10 @@ terraform {
     }
 
     use_lockfile = true
+@if(! empty($accessKey) && ! empty($secretKey))
+    access_key = "{{ $accessKey }}"
+    secret_key = "{{ $secretKey }}"
+@endif
 @if(! empty($credentialsFile))
     shared_credentials_files = ["{{ $credentialsFile }}"]
     profile                  = "{{ $profile ?? 'r2' }}"

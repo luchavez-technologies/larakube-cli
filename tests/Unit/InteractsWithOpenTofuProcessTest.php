@@ -282,6 +282,47 @@ test('writeTofuFiles writes backend.tf when remote state is configured and remov
     }
 });
 
+test('LARAKUBE_TOFU_STATE_ACCESS_KEY_ID and SECRET_ACCESS_KEY pass explicit keys to the backend and leave AWS_* free for the provider', function (): void {
+    try {
+        putenv('LARAKUBE_TOFU_STATE_BUCKET=state-bucket');
+        putenv('LARAKUBE_TOFU_STATE_ENDPOINT=https://acct.r2.cloudflarestorage.com');
+        putenv('LARAKUBE_TOFU_STATE_ACCESS_KEY_ID=r2-state-access-key');
+        putenv('LARAKUBE_TOFU_STATE_SECRET_ACCESS_KEY=r2-state-secret-key');
+        putenv('AWS_ACCESS_KEY_ID=aws-provider-access-key');
+        putenv('AWS_SECRET_ACCESS_KEY=aws-provider-secret-key');
+
+        $remote = tofuHelper()->remoteState();
+        expect($remote)->toBe([
+            'bucket' => 'state-bucket',
+            'endpoint' => 'https://acct.r2.cloudflarestorage.com',
+            'region' => 'us-east-1',
+            'accessKey' => 'r2-state-access-key',
+            'secretKey' => 'r2-state-secret-key',
+        ]);
+
+        $dir = tofuHelper()->writeFiles('aws-state-separation-stack', ['main.tf' => '# hcl']);
+        $backendHcl = (string) file_get_contents($dir.'/backend.tf');
+
+        expect($backendHcl)
+            ->toContain('access_key = "r2-state-access-key"')
+            ->toContain('secret_key = "r2-state-secret-key"')
+            ->not->toContain('aws-provider-access-key')
+            ->not->toContain('aws-provider-secret-key');
+
+        $env = tofuHelper()->env('aws-state-separation-stack', false);
+        expect($env['AWS_ACCESS_KEY_ID'] ?? null)->toBe('aws-provider-access-key')
+            ->and($env['AWS_SECRET_ACCESS_KEY'] ?? null)->toBe('aws-provider-secret-key');
+    } finally {
+        putenv('LARAKUBE_TOFU_STATE_BUCKET');
+        putenv('LARAKUBE_TOFU_STATE_ENDPOINT');
+        putenv('LARAKUBE_TOFU_STATE_ACCESS_KEY_ID');
+        putenv('LARAKUBE_TOFU_STATE_SECRET_ACCESS_KEY');
+        putenv('AWS_ACCESS_KEY_ID');
+        putenv('AWS_SECRET_ACCESS_KEY');
+        tofuHelper()->removeWorkdir('aws-state-separation-stack');
+    }
+});
+
 test('removeTofuWorkdir deletes the stack dir entirely, including a nested .terraform/ cache and stale state', function (): void {
     // Defensive: a prior interrupted run of this exact test could have left the
     // fixture dir behind (this is real filesystem I/O against the test HOME).
