@@ -5,6 +5,7 @@ use App\Http\Integrations\Google\Requests\ExchangeServiceAccountJwtRequest;
 use App\Http\Integrations\Google\Requests\GetInstanceRequest;
 use App\Http\Integrations\Google\Requests\SetInstanceMetadataRequest;
 use App\Http\Integrations\Google\Requests\WaitZoneOperationRequest;
+use Illuminate\Support\Facades\Process;
 use Saloon\Http\Faking\MockClient;
 use Saloon\Http\Faking\MockResponse;
 use Saloon\Http\PendingRequest;
@@ -139,4 +140,78 @@ test('a service account token is minted against Google and never from the key fi
     } finally {
         MockClient::destroyGlobal();
     }
+});
+
+function sshSyncClusterKubeconfig(): string
+{
+    $dir = TemporaryDirectory::make();
+    $path = $dir->path('server.kubeconfig');
+    file_put_contents($path, "apiVersion: v1\nkind: Config\n");
+
+    return $path;
+}
+
+test('through the cluster, the keys go in as data and the Job can touch only the user\'s .ssh directory', function (): void {
+    $manifest = CloudSshKeysSyncCommand::syncManifest('larakube-ssh-keys-abc', 'kube-system', [sshSyncKey('one'), sshSyncKey('two')]);
+    [$configMap, $job] = $manifest['items'];
+    $pod = $job['spec']['template']['spec'];
+    $container = $pod['containers'][0];
+
+    expect($configMap['data']['authorized_keys'])->toBe(sshSyncKey('one')."\n".sshSyncKey('two')."\n")
+        ->and($container['command'][2])->not->toContain(sshSyncKey('one'))
+        ->and($container['image'])->toBe(CloudSshKeysSyncCommand::SYNC_IMAGE)
+        ->and($container['image'])->toContain('@sha256:')
+        ->and($container['securityContext']['privileged'])->toBeFalse()
+        ->and($container['securityContext']['allowPrivilegeEscalation'])->toBeFalse()
+        ->and($container['securityContext']['readOnlyRootFilesystem'])->toBeTrue()
+        ->and($container['securityContext']['capabilities'])->toBe(['drop' => ['ALL'], 'add' => ['CHOWN', 'DAC_OVERRIDE', 'FOWNER']])
+        ->and($pod['automountServiceAccountToken'])->toBeFalse()
+        ->and(collect($pod['volumes'])->pluck('hostPath.path')->filter()->values()->all())->toBe(['/home/larakube/.ssh'])
+        ->and($job['spec']['backoffLimit'])->toBe(0)
+        ->and($job['spec']['ttlSecondsAfterFinished'])->toBeGreaterThan(0);
+});
+
+test('through the cluster, a sync applies the Job, waits for it, and always cleans up', function (): void {
+    Process::fake([
+        '*apply -f -*' => Process::result(output: 'job.batch/x created'),
+        '*wait*--for=condition=complete*' => Process::result(output: 'job.batch/x condition met'),
+        '*delete*' => Process::result(output: 'deleted'),
+        '*' => Process::result(),
+    ]);
+
+    $this->artisan('cloud:ssh-keys:sync', ['stack' => 'my-server', '--kubeconfig' => sshSyncClusterKubeconfig(), '--authorized-key' => [sshSyncKey('one')]])
+        ->expectsOutputToContain('SSH keys updated on the server')
+        ->assertExitCode(0);
+
+    Process::assertRan(fn ($process) => str_contains(implode(' ', (array) $process->command), 'apply -f -')
+        && str_contains((string) $process->input, '"hostPath":{"path":"/home/larakube/.ssh","type":"Directory"}')
+        && str_contains((string) $process->input, sshSyncKey('one')));
+    Process::assertRan(fn ($process) => str_contains(implode(' ', (array) $process->command), 'delete') && str_contains(implode(' ', (array) $process->command), '--ignore-not-found'));
+});
+
+test('through the cluster, a failed Job reports its log and still cleans up', function (): void {
+    Process::fake([
+        '*apply -f -*' => Process::result(output: 'job.batch/x created'),
+        '*wait*--for=condition=complete*' => Process::result(errorOutput: 'timed out waiting', exitCode: 1),
+        '*logs*' => Process::result(output: 'stat: /host-ssh: No such file or directory'),
+        '*delete*' => Process::result(output: 'deleted'),
+        '*' => Process::result(),
+    ]);
+
+    $this->artisan('cloud:ssh-keys:sync', ['stack' => 'my-server', '--kubeconfig' => sshSyncClusterKubeconfig(), '--authorized-key' => [sshSyncKey('one')]])
+        ->expectsOutputToContain('No such file or directory')
+        ->assertExitCode(1);
+
+    Process::assertRan(fn ($process) => str_contains(implode(' ', (array) $process->command), 'delete'));
+});
+
+test('through the cluster, a private key or no key at all is refused before anything runs', function (): void {
+    Process::fake(['*' => Process::result()]);
+
+    $this->artisan('cloud:ssh-keys:sync', ['stack' => 'my-server', '--kubeconfig' => sshSyncClusterKubeconfig(), '--authorized-key' => ["-----BEGIN OPENSSH PRIVATE KEY-----\nabc"]])
+        ->assertExitCode(1);
+    $this->artisan('cloud:ssh-keys:sync', ['stack' => 'my-server', '--kubeconfig' => sshSyncClusterKubeconfig(), '--authorized-key' => []])
+        ->assertExitCode(1);
+
+    Process::assertNothingRan();
 });
