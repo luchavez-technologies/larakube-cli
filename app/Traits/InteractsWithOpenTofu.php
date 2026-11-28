@@ -270,7 +270,7 @@ trait InteractsWithOpenTofu
      * jobs), then GlobalConfigData (Cloudflare R2). Existing stacks with local
      * `terraform.tfstate` and no `backend.tf` stay local unless migrating.
      *
-     * @return array{bucket: string, endpoint: string, region: string, credentialsFile?: string, profile?: string}|null
+     * @return array{bucket: string, endpoint: string, region: string, accessKey?: string, secretKey?: string, credentialsFile?: string, profile?: string}|null
      */
     protected function remoteStateConfig(?string $stack = null, bool $ignoreLocalState = false): ?array
     {
@@ -278,11 +278,21 @@ trait InteractsWithOpenTofu
         $endpoint = getenv('LARAKUBE_TOFU_STATE_ENDPOINT') ?: null;
 
         if ($bucket && $endpoint) {
-            return [
+            $config = [
                 'bucket' => $bucket,
                 'endpoint' => $endpoint,
                 'region' => getenv('LARAKUBE_TOFU_STATE_REGION') ?: 'us-east-1',
             ];
+
+            $accessKey = trim((string) (getenv('LARAKUBE_TOFU_STATE_ACCESS_KEY_ID') ?: ''));
+            $secretKey = trim((string) (getenv('LARAKUBE_TOFU_STATE_SECRET_ACCESS_KEY') ?: ''));
+            if ($accessKey !== '' && $secretKey !== '') {
+                State::registerSecret($secretKey);
+                $config['accessKey'] = $accessKey;
+                $config['secretKey'] = $secretKey;
+            }
+
+            return $config;
         }
 
         $config = $this->getGlobalConfig();
@@ -490,7 +500,9 @@ HCL;
      * the encryption config. Extra per-call vars merge in. Passed via
      * Process::env(), which MERGES over the inherited environment — so e.g.
      * AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY for a remote state backend
-     * pass through from the parent process untouched.
+     * pass through from the parent process untouched when
+     * LARAKUBE_TOFU_STATE_ACCESS_KEY_ID/LARAKUBE_TOFU_STATE_SECRET_ACCESS_KEY
+     * are not set.
      *
      * @param  array<string, string>  $extra
      * @return array<string, string>
@@ -498,6 +510,11 @@ HCL;
     protected function tofuEnv(string $stack, bool $isOpenTofu, array $extra = [], bool $allowUnencryptedFallback = false): array
     {
         $env = [];
+
+        $stateSecret = trim((string) (getenv('LARAKUBE_TOFU_STATE_SECRET_ACCESS_KEY') ?: ''));
+        if ($stateSecret !== '') {
+            State::registerSecret($stateSecret);
+        }
 
         if ($token = $this->getDoToken()) {
             $env['TF_VAR_do_token'] = $token;

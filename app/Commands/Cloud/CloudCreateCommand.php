@@ -5,16 +5,14 @@ namespace App\Commands\Cloud;
 use App\Data\ConfigData;
 use App\Data\StackData;
 use App\Enums\CloudProvider;
-use App\Enums\DnsProvider;
 use App\Enums\ManagedProvider;
 use App\Facades\State;
 use App\Services\Cloud\LiveProviderCatalog;
 use App\Services\Cloud\UbuntuImageResolver;
 use App\Services\Kubectl;
-use App\Support\CloudInstallerTrust;
-use App\Support\SshPublicKey;
 use App\Traits\EmitsJsonOutput;
 use App\Traits\EnsuresKubectl;
+use App\Traits\HandsOverCloudServer;
 use App\Traits\InteractsWithAws;
 use App\Traits\InteractsWithEnvironments;
 use App\Traits\InteractsWithGcp;
@@ -27,7 +25,6 @@ use App\Traits\ProvisionsK3sNode;
 use App\Traits\ReadsCommandOptions;
 use App\Traits\ResolvesEnvironmentContext;
 use Illuminate\Support\Facades\Process;
-use InvalidArgumentException;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\select;
@@ -35,7 +32,6 @@ use function Laravel\Prompts\text;
 
 use LaravelZero\Framework\Commands\Command;
 use Spatie\TemporaryDirectory\TemporaryDirectory;
-use Throwable;
 
 /**
  * Provision real infrastructure with OpenTofu, then hand off to the existing
@@ -46,7 +42,7 @@ use Throwable;
  */
 class CloudCreateCommand extends Command
 {
-    use EmitsJsonOutput, EnsuresKubectl, InteractsWithAws, InteractsWithEnvironments, InteractsWithGcp, InteractsWithHetzner, InteractsWithOpenTofu, InteractsWithProjectConfig, LaraKubeOutput, ManagesSshKeys, ProvisionsK3sNode, ReadsCommandOptions, ResolvesEnvironmentContext;
+    use EmitsJsonOutput, EnsuresKubectl, HandsOverCloudServer, InteractsWithAws, InteractsWithEnvironments, InteractsWithGcp, InteractsWithHetzner, InteractsWithOpenTofu, InteractsWithProjectConfig, LaraKubeOutput, ManagesSshKeys, ProvisionsK3sNode, ReadsCommandOptions, ResolvesEnvironmentContext;
 
     /** Available providers we can provision. */
     private const PROVIDERS = [
@@ -65,7 +61,7 @@ class CloudCreateCommand extends Command
         {--zone= : GCP Compute zone (defaults to <region>-a)}
         {--size= : Droplet/node size slug}
         {--key= : Path to the SSH private key (VPS)}
-        {--authorized-key=* : Public SSH key that keeps access after the build, repeatable; the --key login is removed (Google Cloud VPS, outside a project)}
+        {--authorized-key=* : Public SSH key that keeps access after the build, repeatable; the --key login is removed (VPS, outside a project)}
         {--cloud-installer-issuer= : LaraKube Cloud: token issuer the API server trusts for installs (VPS)}
         {--cloud-installer-audience= : LaraKube Cloud: audience those tokens must carry, unique to this server}
         {--cloud-installer-subject= : LaraKube Cloud: the one subject (cloud identity) allowed to install}
@@ -102,16 +98,6 @@ class CloudCreateCommand extends Command
      * @var array<int, string>
      */
     protected $aliases = ['cloud:new'];
-
-    /**
-     * Fields for the --json result, filled in as the flow learns them
-     * (stackName/kind early, ip/context at the success tail) so the JSON
-     * wrapper in handle() can report them without threading a value through
-     * every return path.
-     *
-     * @var array<string, mixed>
-     */
-    protected array $result = [];
 
     public function handle(): int
     {
@@ -352,210 +338,6 @@ class CloudCreateCommand extends Command
         );
     }
 
-    /**
-     * The optional DNS and TLS steps after a VPS or managed cluster is up: DNS records for every tool
-     * and SSL through the DNS challenge. A person at a terminal is asked; a
-     * scripted run (Desktop) opts in with --dns-provider= (or --cloudflare) and credentials in the
-     * environment. Neither step can fail the server, which already exists: a
-     * problem is reported with how to finish it later.
-     */
-    protected function connectDnsAndTls(string $environment, string $context): void
-    {
-        $interactive = ! $this->flag('no-interaction');
-        $providerSlug = (string) ($this->option('dns-provider') ?: ($this->flag('cloudflare') ? 'cloudflare' : ''));
-        $asked = $providerSlug !== '';
-
-        if (! $interactive && ! $asked) {
-            return;
-        }
-
-        $provider = $asked ? DnsProvider::tryFrom($providerSlug) : null;
-
-        if ($interactive && $provider === null) {
-            if (! confirm('Would you like to automate DNS records and SSL certificates for this cluster?', default: true)) {
-                return;
-            }
-
-            $chosen = select(
-                label: 'Which DNS provider would you like to use?',
-                options: [
-                    DnsProvider::CLOUDFLARE->value => DnsProvider::CLOUDFLARE->label(),
-                    DnsProvider::ROUTE53->value => DnsProvider::ROUTE53->label(),
-                    DnsProvider::GOOGLE->value => DnsProvider::GOOGLE->label(),
-                ],
-                default: DnsProvider::CLOUDFLARE->value,
-            );
-            $provider = DnsProvider::from((string) $chosen);
-        }
-
-        if ($provider === null) {
-            return;
-        }
-
-        if (! $interactive && $provider === DnsProvider::CLOUDFLARE && getenv('LARAKUBE_DNS_GROUPS') !== false) {
-            $this->connectDnsGroups($environment, $context);
-
-            return;
-        }
-
-        if (! $interactive && $provider === DnsProvider::CLOUDFLARE) {
-            $token = trim((string) (getenv('LARAKUBE_CLOUDFLARE_TOKEN') ?: ''));
-            if ($token === '') {
-                $this->laraKubeWarn('--cloudflare was given but no Cloudflare token is set, so DNS and SSL were left for later.');
-                $this->result['dns'] = ['provider' => $provider->value, 'records' => null, 'tls' => null, 'error' => 'No Cloudflare token was set.'];
-
-                return;
-            }
-        }
-
-        $skipDns = (bool) $this->flag('without-dns');
-        $skipTls = (bool) $this->flag('without-tls');
-
-        $dnsArgs = ['--tool' => 'external-dns', 'environment' => $environment, '--context' => $context];
-        $tlsArgs = ['environment' => $environment, '--context' => $context];
-
-        if ($provider !== DnsProvider::CLOUDFLARE || $this->option('dns-provider')) {
-            $dnsArgs['--provider'] = $provider->value;
-            $tlsArgs['--provider'] = $provider->value;
-        }
-
-        if (! $interactive || $this->option('force')) {
-            $dnsArgs['--force'] = true;
-            $tlsArgs['--force'] = true;
-        }
-
-        $steps = [];
-        if (! $skipDns) {
-            $steps['dns'] = [
-                'label' => "{$provider->label()} DNS records",
-                'command' => 'tool:init',
-                'arguments' => $dnsArgs,
-                'question' => "Would you like to automate DNS records with {$provider->label()} for this cluster?",
-                'default' => true,
-            ];
-        }
-        if (! $skipTls) {
-            $steps['ssl'] = [
-                'label' => "SSL through the {$provider->label()} DNS challenge",
-                'command' => 'tls:init',
-                'arguments' => $tlsArgs,
-                'question' => "Would you like to enable the {$provider->label()} DNS challenge for SSL certificates (so proxied hosts keep renewing)?",
-                'default' => true,
-            ];
-        }
-
-        // Reported in --json so a caller such as LaraKube Cloud knows which steps finished. null = not attempted.
-        $outcome = ['provider' => $provider->value, 'records' => null, 'tls' => null, 'error' => null];
-
-        foreach ($steps as $key => $step) {
-            $wanted = $interactive ? ($asked || confirm($step['question'], default: $step['default'])) : true;
-
-            if (! $wanted) {
-                continue;
-            }
-
-            $field = $key === 'dns' ? 'records' : 'tls';
-
-            try {
-                $succeeded = $this->call($step['command'], $step['arguments']) === 0;
-                $outcome[$field] = $succeeded;
-
-                if (! $succeeded) {
-                    $outcome['error'] ??= "{$step['label']} did not finish.";
-                    $this->laraKubeWarn("{$step['label']} did not finish. The server is ready; finish it later with larakube {$step['command']} --context={$context}.");
-                }
-            } catch (Throwable $e) {
-                $outcome[$field] = false;
-                $outcome['error'] ??= "{$step['label']} could not be set up: {$e->getMessage()}";
-                $this->laraKubeWarn("{$step['label']} could not be set up: {$e->getMessage()}");
-                $this->laraKubeLine('  <fg=gray>The server is ready. Finish this later from its page in LaraKube Desktop, or with</> <fg=yellow>larakube '.$step['command'].'</><fg=gray>.</>');
-            }
-        }
-
-        $this->result['dns'] = $outcome;
-    }
-
-    /**
-     * Several Cloudflare accounts on one server: one ExternalDNS group per account, from
-     * LARAKUBE_DNS_GROUPS ([{"group": "...", "token": "..."}]). DNS-01 SSL can use only one of them,
-     * because Traefik takes one set of credentials per DNS provider; --dns-tls-group picks it.
-     * Like the single-token path, nothing here can fail the server, which already exists.
-     */
-    protected function connectDnsGroups(string $environment, string $context): void
-    {
-        $groups = json_decode((string) getenv('LARAKUBE_DNS_GROUPS'), true);
-        $tlsGroup = (string) ($this->option('dns-tls-group') ?? '');
-        $outcome = ['provider' => DnsProvider::CLOUDFLARE->value, 'groups' => [], 'tls' => null, 'tls_group' => $tlsGroup !== '' ? $tlsGroup : null, 'error' => null];
-
-        if (! is_array($groups) || $groups === []) {
-            $outcome['error'] = 'LARAKUBE_DNS_GROUPS is not a list of groups.';
-            $this->result['dns'] = $outcome;
-            $this->laraKubeWarn($outcome['error']);
-
-            return;
-        }
-
-        $tokens = [];
-        foreach ($groups as $entry) {
-            $group = is_array($entry) ? (string) ($entry['group'] ?? '') : '';
-            $token = is_array($entry) ? trim((string) ($entry['token'] ?? '')) : '';
-
-            if (preg_match('/^[a-z0-9][a-z0-9-]{0,40}$/', $group) !== 1 || $token === '' || isset($tokens[$group])) {
-                $outcome['groups'][] = ['group' => $group, 'records' => false, 'error' => 'Each group needs a unique lowercase name and a token.'];
-                $outcome['error'] ??= 'A DNS group was invalid.';
-
-                continue;
-            }
-
-            $tokens[$group] = $token;
-            putenv("LARAKUBE_CLOUDFLARE_TOKEN={$token}");
-
-            try {
-                $succeeded = $this->call('tool:init', ['--tool' => 'external-dns', 'environment' => $environment, '--context' => $context, '--provider' => 'cloudflare', '--group' => $group, '--force' => true]) === 0;
-                $outcome['groups'][] = ['group' => $group, 'records' => $succeeded, 'error' => $succeeded ? null : 'ExternalDNS did not finish.'];
-            } catch (Throwable $e) {
-                $outcome['groups'][] = ['group' => $group, 'records' => false, 'error' => $e->getMessage()];
-            }
-
-            if (! end($outcome['groups'])['records']) {
-                $outcome['error'] ??= "DNS records for {$group} did not finish.";
-                $this->laraKubeWarn("DNS records for {$group} did not finish. The server is ready; finish it later with larakube tool:init --tool=external-dns --group={$group} --context={$context}.");
-            }
-        }
-
-        if ($tlsGroup !== '' && ! $this->flag('without-tls')) {
-            if (! isset($tokens[$tlsGroup])) {
-                $outcome['tls'] = false;
-                $outcome['error'] ??= "The SSL group {$tlsGroup} is not one of the DNS groups.";
-            } else {
-                putenv("LARAKUBE_CLOUDFLARE_TOKEN={$tokens[$tlsGroup]}");
-
-                try {
-                    $outcome['tls'] = $this->call('tls:init', ['environment' => $environment, '--context' => $context, '--provider' => 'cloudflare', '--group' => $tlsGroup, '--force' => true]) === 0;
-                } catch (Throwable $e) {
-                    $outcome['tls'] = false;
-                    $outcome['error'] ??= "SSL through the DNS challenge could not be set up: {$e->getMessage()}";
-                }
-
-                if ($outcome['tls'] === false) {
-                    $outcome['error'] ??= 'SSL through the DNS challenge did not finish.';
-                    $this->laraKubeWarn("SSL through the DNS challenge did not finish. Finish it later with larakube tls:init --group={$tlsGroup} --context={$context}.");
-                }
-            }
-        }
-
-        putenv('LARAKUBE_CLOUDFLARE_TOKEN');
-        $this->result['dns'] = $outcome;
-    }
-
-    /**
-     * Backward-compatible alias for connectDnsAndTls.
-     */
-    protected function connectCloudflare(string $environment, string $context): void
-    {
-        $this->connectDnsAndTls($environment, $context);
-    }
-
     protected function create(): int
     {
         $this->renderHeader();
@@ -790,13 +572,7 @@ class CloudCreateCommand extends Command
             return 1;
         }
 
-        try {
-            $this->installerTrust = CloudInstallerTrust::fromOptions(
-                $this->option('cloud-installer-issuer'), $this->option('cloud-installer-audience'), $this->option('cloud-installer-subject'),
-            );
-        } catch (InvalidArgumentException $e) {
-            $this->laraKubeError($e->getMessage());
-
+        if (! $this->resolveCloudInstallerTrust()) {
             return 1;
         }
 
@@ -811,7 +587,7 @@ class CloudCreateCommand extends Command
         }
 
         if ($authorizedKeys !== []) {
-            if (! $this->handOverSshAccess($bin, $stackName, $templateData, $ip, $sshPort, $keyPath, $authorizedKeys)) {
+            if (! $this->handOverSshAccess($bin, $stackName, $templateData, $ip, $sshPort, $keyPath, $authorizedKeys, $provider)) {
                 return 1;
             }
 
@@ -831,61 +607,24 @@ class CloudCreateCommand extends Command
     }
 
     /**
-     * The validated --authorized-key values as "type base64", empty when none were given, false
-     * when any is unusable. Comments are dropped because keys are written into HCL and a script.
-     *
-     * @return list<string>|false
-     */
-    protected function resolveAuthorizedKeys(string $provider, ?ConfigData $config): array|false
-    {
-        $given = array_values(array_filter(array_map(trim(...), (array) $this->flag('authorized-key')), fn (string $key): bool => $key !== ''));
-
-        if ($given === []) {
-            return [];
-        }
-
-        if ($provider !== 'gcp' || $config !== null) {
-            $this->laraKubeError('--authorized-key is only supported for a Google Cloud VPS created outside a project.');
-
-            return false;
-        }
-
-        $keys = [];
-        foreach ($given as $raw) {
-            $key = $this->normalizeAuthorizedKey($raw);
-            if ($key === null) {
-                $this->laraKubeError('--authorized-key must be a single OpenSSH public key (ed25519, ECDSA or RSA). Private keys are rejected.');
-
-                return false;
-            }
-            $keys[$key] = $key;
-        }
-
-        return array_values($keys);
-    }
-
-    protected function normalizeAuthorizedKey(string $raw): ?string
-    {
-        return SshPublicKey::normalize($raw);
-    }
-
-    /**
-     * Give the server to the approved keys and prove the provisioning key is gone. The keys live in
-     * VM metadata so Google's guest agent owns them: removing one from metadata later revokes it.
+     * Give the server to the approved keys and prove the provisioning key is gone. On Google Cloud
+     * the keys live in VM metadata so its guest agent owns them; on other providers they are
+     * written directly into authorized_keys over SSH because changing the key in tofu would rebuild
+     * the server.
      *
      * @param  array<string, mixed>  $templateData
      * @param  list<string>  $authorizedKeys
      */
-    protected function handOverSshAccess(array $bin, string $stackName, array $templateData, string $ip, int $sshPort, string $keyPath, array $authorizedKeys): bool
+    protected function handOverSshAccess(array $bin, string $stackName, array $templateData, string $ip, int $sshPort, string $keyPath, array $authorizedKeys, string $provider = 'gcp'): bool
     {
+        if ($provider !== 'gcp') {
+            return $this->handOverDirectSshAccess((string) ($templateData['sshPubKey'] ?? ''), $ip, $sshPort, $keyPath, $authorizedKeys);
+        }
+
         $this->laraKubeInfo('Handing SSH access to the approved public keys...');
 
-        $provisioningBlob = explode(' ', trim((string) $templateData['sshPubKey']))[1] ?? '';
-        $blobs = array_map(fn (string $key): string => explode(' ', $key)[1], $authorizedKeys);
-
-        if ($provisioningBlob === '' || in_array($provisioningBlob, $blobs, true)) {
-            $this->laraKubeError('The provisioning key cannot also be an approved key, because it is removed after the build.');
-
+        $provisioningBlob = $this->unapprovedProvisioningBlob((string) ($templateData['sshPubKey'] ?? ''), $authorizedKeys);
+        if ($provisioningBlob === null) {
             return false;
         }
 
@@ -900,21 +639,9 @@ class CloudCreateCommand extends Command
             return false;
         }
 
-        if (! $this->runRemoteCommand('larakube', $ip, (string) $sshPort, $keyPath, $this->handOverSshAccessScript($blobs, $provisioningBlob))) {
-            $this->laraKubeError('The approved keys did not reach the server. It still uses the provisioning key.');
+        $blobs = array_map(fn (string $key): string => explode(' ', $key)[1], $authorizedKeys);
 
-            return false;
-        }
-
-        if ($this->testSsh('larakube', $ip, $sshPort, $keyPath) || $this->testSsh('root', $ip, $sshPort, $keyPath)) {
-            $this->laraKubeError('The provisioning key can still log in, so the server was not handed over cleanly.');
-
-            return false;
-        }
-
-        $this->laraKubeInfo('✅ The approved keys now own SSH access. The provisioning key no longer works.');
-
-        return true;
+        return $this->applyAndVerifySshHandOver($ip, $sshPort, $keyPath, $this->handOverSshAccessScript($blobs, $provisioningBlob));
     }
 
     /** What happens once the host is provisioned: bind the environment, report, connect Cloudflare. */
@@ -937,27 +664,6 @@ class CloudCreateCommand extends Command
         $this->connectDnsAndTls($environment ?: 'production', $context);
 
         return 0;
-    }
-
-    /**
-     * Gives the trusted installer identity admin on this cluster. The API server already trusts its
-     * tokens (written before k3s was installed); this binding is what grants it anything, and deleting
-     * it is how Cloud's install access is revoked.
-     */
-    protected function bindCloudInstallers(string $context): void
-    {
-        $applied = Process::input(CloudInstallerTrust::bindingManifest())
-            ->run(Kubectl::forContext($context)->prefix().' apply -f -');
-
-        $this->result['installer'] = [
-            'ready' => $applied->successful(),
-            'audience' => $this->installerTrust?->audience,
-            'error' => $applied->successful() ? null : 'The installer role binding could not be applied.',
-        ];
-
-        $applied->successful()
-            ? $this->laraKubeInfo('✅ LaraKube Cloud can install apps here with short-lived tokens. Revoke with: kubectl delete clusterrolebinding '.CloudInstallerTrust::BINDING)
-            : $this->laraKubeWarn('LaraKube Cloud install access was not set up: the role binding could not be applied.');
     }
 
     protected function updateStackContext(string $name, ?string $context, ?string $sshKey = null): void

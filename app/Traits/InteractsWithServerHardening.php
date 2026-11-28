@@ -229,6 +229,34 @@ BASH;
     }
 
     /**
+     * Write the approved keys into authorized_keys and remove the provisioning key, for providers
+     * where no guest agent installs keys from VM metadata. Pure.
+     *
+     * @param  list<string>  $approvedKeys  "type base64" public keys
+     */
+    public function writeSshAccessScript(array $approvedKeys, string $provisioningBlob): string
+    {
+        $approved = implode(' ', array_map(escapeshellarg(...), $approvedKeys));
+        $provisioning = escapeshellarg($provisioningBlob);
+
+        return <<<BASH
+set -e
+file=/home/larakube/.ssh/authorized_keys
+staged=\$(mktemp /home/larakube/.ssh/authorized_keys.XXXXXX)
+trap 'rm -f "\$staged"' EXIT
+grep -vF -- {$provisioning} "\$file" > "\$staged" || true
+for key in {$approved}; do
+  grep -qxF -- "\$key" "\$staged" || printf '%s\n' "\$key" >> "\$staged"
+  grep -qF -- "\$key" "\$staged"
+done
+chown larakube:larakube "\$staged"
+chmod 600 "\$staged"
+mv -f "\$staged" "\$file"
+if [ -f /root/.ssh/authorized_keys ]; then : > /root/.ssh/authorized_keys; fi
+BASH;
+    }
+
+    /**
      * Script to configure k3s TLS Subject Alternative Names (SAN) for $ip.
      * Essential for cloud providers (like GCP and AWS) where instances sit behind NAT
      * and only know their internal private IP on eth0/ens4.
