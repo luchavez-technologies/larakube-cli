@@ -87,7 +87,12 @@ Cloud can create a server only in Google Cloud. Desktop creates them on DigitalO
   3. install one app;
   4. destroy, and confirm nothing is left in the provider account.
 
-## Open questions for the user
-1. Approve the in-cluster SSH key sync (privileged, node-pinned Job), or accept keys fixed at creation for non-Google servers?
-2. Which provider to ship first? Suggestion: DigitalOcean (simplest API, OAuth possible later).
-3. Managed Kubernetes (DOKS, EKS) in Cloud too, or VPS only for now? Suggestion: VPS only.
+## Decided (user, 2026-11-28)
+1. **In-cluster SSH key sync approved** (privileged, node-pinned Job through the installer kubeconfig, which is already bound to `cluster-admin` by `CloudInstallerTrust`), so revocation works on every provider.
+2. **DigitalOcean first**, then Hetzner, then AWS.
+3. **Plain servers (VPS) only for now**; no managed Kubernetes in Cloud yet.
+4. **Reuse what the LaraKube CLI and Desktop already have**; anything incompatible is reported, not worked around.
+
+## Found while specifying phase 1
+- For DO, Hetzner and AWS the SSH hand-over cannot go through tofu the way Google's does (changing the key there rebuilds the server). It runs as a script over SSH that writes the approved keys itself, then the same check that the provisioning key is locked out.
+- `cloud:init` is `app/Commands/Cloud/CloudProvisionCommand.php`. It has none of `--authorized-key`, `--cloud-installer-*` or `--dns-provider` yet.
