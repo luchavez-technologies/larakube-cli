@@ -65,7 +65,7 @@ class CloudCreateCommand extends Command
         {--zone= : GCP Compute zone (defaults to <region>-a)}
         {--size= : Droplet/node size slug}
         {--key= : Path to the SSH private key (VPS)}
-        {--authorized-key=* : Public SSH key that keeps access after the build, repeatable; the --key login is removed (Google Cloud VPS, outside a project)}
+        {--authorized-key=* : Public SSH key that keeps access after the build, repeatable; the --key login is removed (VPS, outside a project)}
         {--cloud-installer-issuer= : LaraKube Cloud: token issuer the API server trusts for installs (VPS)}
         {--cloud-installer-audience= : LaraKube Cloud: audience those tokens must carry, unique to this server}
         {--cloud-installer-subject= : LaraKube Cloud: the one subject (cloud identity) allowed to install}
@@ -811,7 +811,7 @@ class CloudCreateCommand extends Command
         }
 
         if ($authorizedKeys !== []) {
-            if (! $this->handOverSshAccess($bin, $stackName, $templateData, $ip, $sshPort, $keyPath, $authorizedKeys)) {
+            if (! $this->handOverSshAccess($bin, $stackName, $templateData, $ip, $sshPort, $keyPath, $authorizedKeys, $provider)) {
                 return 1;
             }
 
@@ -844,8 +844,8 @@ class CloudCreateCommand extends Command
             return [];
         }
 
-        if ($provider !== 'gcp' || $config !== null) {
-            $this->laraKubeError('--authorized-key is only supported for a Google Cloud VPS created outside a project.');
+        if (! in_array($provider, ['gcp', 'do', 'hetzner', 'aws'], true) || $config !== null) {
+            $this->laraKubeError('--authorized-key is only supported for a VPS created outside a project.');
 
             return false;
         }
@@ -870,13 +870,15 @@ class CloudCreateCommand extends Command
     }
 
     /**
-     * Give the server to the approved keys and prove the provisioning key is gone. The keys live in
-     * VM metadata so Google's guest agent owns them: removing one from metadata later revokes it.
+     * Give the server to the approved keys and prove the provisioning key is gone. On Google Cloud
+     * the keys live in VM metadata so its guest agent owns them; on other providers they are
+     * written directly into authorized_keys over SSH because changing the key in tofu would rebuild
+     * the server.
      *
      * @param  array<string, mixed>  $templateData
      * @param  list<string>  $authorizedKeys
      */
-    protected function handOverSshAccess(array $bin, string $stackName, array $templateData, string $ip, int $sshPort, string $keyPath, array $authorizedKeys): bool
+    protected function handOverSshAccess(array $bin, string $stackName, array $templateData, string $ip, int $sshPort, string $keyPath, array $authorizedKeys, string $provider = 'gcp'): bool
     {
         $this->laraKubeInfo('Handing SSH access to the approved public keys...');
 
@@ -889,18 +891,24 @@ class CloudCreateCommand extends Command
             return false;
         }
 
-        $hcl = view('tofu.gcp.vps', array_merge($templateData, ['sshAuthorizedKeys' => $authorizedKeys]))->render();
-        $this->writeTofuFiles($stackName, ['main.tf' => $hcl]);
+        if ($provider === 'gcp') {
+            $hcl = view('tofu.gcp.vps', array_merge($templateData, ['sshAuthorizedKeys' => $authorizedKeys]))->render();
+            $this->writeTofuFiles($stackName, ['main.tf' => $hcl]);
 
-        // Google's project-service refresh needs an API many projects don't enable, and nothing but
-        // this VM's metadata is changing.
-        if (! $this->tofuApply($bin, $stackName, refresh: false)) {
-            $this->laraKubeError('Could not update the VM metadata. The server exists and still uses the provisioning key.');
+            // Google's project-service refresh needs an API many projects don't enable, and nothing but
+            // this VM's metadata is changing.
+            if (! $this->tofuApply($bin, $stackName, refresh: false)) {
+                $this->laraKubeError('Could not update the VM metadata. The server exists and still uses the provisioning key.');
 
-            return false;
+                return false;
+            }
+
+            $script = $this->handOverSshAccessScript($blobs, $provisioningBlob);
+        } else {
+            $script = $this->writeSshAccessScript($authorizedKeys, $provisioningBlob);
         }
 
-        if (! $this->runRemoteCommand('larakube', $ip, (string) $sshPort, $keyPath, $this->handOverSshAccessScript($blobs, $provisioningBlob))) {
+        if (! $this->runRemoteCommand('larakube', $ip, (string) $sshPort, $keyPath, $script)) {
             $this->laraKubeError('The approved keys did not reach the server. It still uses the provisioning key.');
 
             return false;
