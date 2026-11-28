@@ -27,15 +27,15 @@ class CloudSshKeysSyncCommand extends Command
 {
     use EmitsJsonOutput, LaraKubeOutput, ReadsCommandOptions;
 
+    /** Pinned by digest: the Job runs with file-ownership capabilities on the host's .ssh directory. */
+    public const SYNC_IMAGE = 'busybox:1.38.0@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4';
+
     private const SSH_USER = 'larakube';
 
     private const MAX_ATTEMPTS = 3;
 
     /** The Job's only access to the host: this one directory. */
     private const HOST_SSH_DIR = '/home/'.self::SSH_USER.'/.ssh';
-
-    /** Pinned by digest: the Job runs with file-ownership capabilities on the host's .ssh directory. */
-    public const SYNC_IMAGE = 'busybox:1.38.0@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4';
 
     private const SYNC_NAMESPACE = 'kube-system';
 
@@ -90,6 +90,89 @@ class CloudSshKeysSyncCommand extends Command
         );
 
         return implode("\n", [...array_values($others), ...array_map(fn (string $key): string => self::SSH_USER.':'.$key, $keys)]);
+    }
+
+    /**
+     * The ConfigMap holding the keys and the Job that installs them.
+     *
+     * @param  list<string>  $keys
+     * @return array<string, mixed>
+     */
+    public static function syncManifest(string $name, string $namespace, array $keys): array
+    {
+        $labels = ['app.kubernetes.io/managed-by' => 'larakube', 'larakube.io/purpose' => 'ssh-keys'];
+        // Staged beside the target and moved into place, so a reader never sees half a file. The owner is
+        // whoever owns the directory (the larakube user), so the result is exactly what sshd expects.
+        $script = <<<'SH'
+set -eu
+dir=/host-ssh
+owner=$(stat -c %u:%g "$dir")
+staged=$(mktemp "$dir/authorized_keys.XXXXXX")
+trap 'rm -f "$staged"' EXIT
+cp /keys/authorized_keys "$staged"
+chown "$owner" "$staged"
+chmod 600 "$staged"
+mv -f "$staged" "$dir/authorized_keys"
+while IFS= read -r key; do
+  [ -z "$key" ] && continue
+  grep -qxF -- "$key" "$dir/authorized_keys"
+done < /keys/authorized_keys
+echo "SSH keys installed."
+SH;
+
+        return [
+            'apiVersion' => 'v1',
+            'kind' => 'List',
+            'items' => [
+                [
+                    'apiVersion' => 'v1',
+                    'kind' => 'ConfigMap',
+                    'metadata' => ['name' => $name, 'namespace' => $namespace, 'labels' => $labels],
+                    'data' => ['authorized_keys' => implode("\n", $keys)."\n"],
+                ],
+                [
+                    'apiVersion' => 'batch/v1',
+                    'kind' => 'Job',
+                    'metadata' => ['name' => $name, 'namespace' => $namespace, 'labels' => $labels],
+                    'spec' => [
+                        'backoffLimit' => 0,
+                        'activeDeadlineSeconds' => self::SYNC_TIMEOUT_SECONDS,
+                        'ttlSecondsAfterFinished' => 300,
+                        'template' => [
+                            'metadata' => ['labels' => $labels],
+                            'spec' => [
+                                'restartPolicy' => 'Never',
+                                'automountServiceAccountToken' => false,
+                                // The server's node; tolerate its control-plane taint.
+                                'nodeSelector' => ['node-role.kubernetes.io/control-plane' => 'true'],
+                                'tolerations' => [['operator' => 'Exists']],
+                                'containers' => [[
+                                    'name' => 'ssh-keys',
+                                    'image' => self::SYNC_IMAGE,
+                                    'command' => ['sh', '-c', $script],
+                                    'securityContext' => [
+                                        'privileged' => false,
+                                        'allowPrivilegeEscalation' => false,
+                                        'readOnlyRootFilesystem' => true,
+                                        'runAsUser' => 0,
+                                        'capabilities' => ['drop' => ['ALL'], 'add' => ['CHOWN', 'DAC_OVERRIDE', 'FOWNER']],
+                                        'seccompProfile' => ['type' => 'RuntimeDefault'],
+                                    ],
+                                    'volumeMounts' => [
+                                        ['name' => 'host-ssh', 'mountPath' => '/host-ssh'],
+                                        ['name' => 'keys', 'mountPath' => '/keys', 'readOnly' => true],
+                                    ],
+                                ]],
+                                'volumes' => [
+                                    ['name' => 'host-ssh', 'hostPath' => ['path' => self::HOST_SSH_DIR, 'type' => 'Directory']],
+                                    ['name' => 'keys', 'configMap' => ['name' => $name]],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
     }
 
     private function sync(): int
@@ -308,88 +391,5 @@ class CloudSshKeysSyncCommand extends Command
         $this->laraKubeInfo('✅ SSH keys updated on the server.');
 
         return 0;
-    }
-
-    /**
-     * The ConfigMap holding the keys and the Job that installs them.
-     *
-     * @param  list<string>  $keys
-     * @return array<string, mixed>
-     */
-    public static function syncManifest(string $name, string $namespace, array $keys): array
-    {
-        $labels = ['app.kubernetes.io/managed-by' => 'larakube', 'larakube.io/purpose' => 'ssh-keys'];
-        // Staged beside the target and moved into place, so a reader never sees half a file. The owner is
-        // whoever owns the directory (the larakube user), so the result is exactly what sshd expects.
-        $script = <<<'SH'
-set -eu
-dir=/host-ssh
-owner=$(stat -c %u:%g "$dir")
-staged=$(mktemp "$dir/authorized_keys.XXXXXX")
-trap 'rm -f "$staged"' EXIT
-cp /keys/authorized_keys "$staged"
-chown "$owner" "$staged"
-chmod 600 "$staged"
-mv -f "$staged" "$dir/authorized_keys"
-while IFS= read -r key; do
-  [ -z "$key" ] && continue
-  grep -qxF -- "$key" "$dir/authorized_keys"
-done < /keys/authorized_keys
-echo "SSH keys installed."
-SH;
-
-        return [
-            'apiVersion' => 'v1',
-            'kind' => 'List',
-            'items' => [
-                [
-                    'apiVersion' => 'v1',
-                    'kind' => 'ConfigMap',
-                    'metadata' => ['name' => $name, 'namespace' => $namespace, 'labels' => $labels],
-                    'data' => ['authorized_keys' => implode("\n", $keys)."\n"],
-                ],
-                [
-                    'apiVersion' => 'batch/v1',
-                    'kind' => 'Job',
-                    'metadata' => ['name' => $name, 'namespace' => $namespace, 'labels' => $labels],
-                    'spec' => [
-                        'backoffLimit' => 0,
-                        'activeDeadlineSeconds' => self::SYNC_TIMEOUT_SECONDS,
-                        'ttlSecondsAfterFinished' => 300,
-                        'template' => [
-                            'metadata' => ['labels' => $labels],
-                            'spec' => [
-                                'restartPolicy' => 'Never',
-                                'automountServiceAccountToken' => false,
-                                // The server's node; tolerate its control-plane taint.
-                                'nodeSelector' => ['node-role.kubernetes.io/control-plane' => 'true'],
-                                'tolerations' => [['operator' => 'Exists']],
-                                'containers' => [[
-                                    'name' => 'ssh-keys',
-                                    'image' => self::SYNC_IMAGE,
-                                    'command' => ['sh', '-c', $script],
-                                    'securityContext' => [
-                                        'privileged' => false,
-                                        'allowPrivilegeEscalation' => false,
-                                        'readOnlyRootFilesystem' => true,
-                                        'runAsUser' => 0,
-                                        'capabilities' => ['drop' => ['ALL'], 'add' => ['CHOWN', 'DAC_OVERRIDE', 'FOWNER']],
-                                        'seccompProfile' => ['type' => 'RuntimeDefault'],
-                                    ],
-                                    'volumeMounts' => [
-                                        ['name' => 'host-ssh', 'mountPath' => '/host-ssh'],
-                                        ['name' => 'keys', 'mountPath' => '/keys', 'readOnly' => true],
-                                    ],
-                                ]],
-                                'volumes' => [
-                                    ['name' => 'host-ssh', 'hostPath' => ['path' => self::HOST_SSH_DIR, 'type' => 'Directory']],
-                                    ['name' => 'keys', 'configMap' => ['name' => $name]],
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
-        ];
     }
 }
