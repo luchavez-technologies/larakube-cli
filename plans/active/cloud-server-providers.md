@@ -38,6 +38,13 @@ Cloud can create a server only in Google Cloud. Desktop creates them on DigitalO
   Each is verified once on save: DO `GET /v2/account`, Hetzner `GET /v1/server_types?per_page=1`, AWS STS `GetCallerIdentity`.
 - **"A server you already have"** sits under Advanced. Cloud generates a key pair per attempt and shows a one-line command that adds the public key to the server; the private key lives only in that operation's Job Secret.
 
+## Multi-account by default
+A team can connect any number of accounts per provider (two AWS accounts, several DigitalOcean tokens, more than one Google project). Cloud's `cloud_credentials` is unique only on `(team_id, name)` and each server keeps its `cloud_credential_id`, so this already fits.
+- Every new provider account is its own named credential ("Client A – AWS").
+- The create-server page asks which account when a provider has more than one.
+- Each runner Job gets exactly one account's keys.
+- The provider catalog is public and per provider, never per account. An account-specific refusal (a quota, an AWS region not enabled) surfaces as the create error, in plain words.
+
 ## Phases
 
 ### 1. LaraKube CLI (do first; Desktop gains from it too)
@@ -55,11 +62,14 @@ Cloud can create a server only in Google Cloud. Desktop creates them on DigitalO
 - `CloudCredential.provider` already exists; add the `do`, `hetzner` and `aws` kinds, their forms, verification, and storage.
 - The Credentials page becomes "Cloud accounts", with one card per provider: logo, a one-line plain explanation, "Connect", and a short "where do I find this?" guide with a link to the provider's token page. Google keeps "Connect with Google" first.
 
-### 4. Cloud: catalog
-- `ServerCatalog` per provider:
-  - **DigitalOcean and Hetzner:** live, through Saloon connectors with the team's token, filtered and priced like `CloudProvider::vpsSizes()` (the cheapest sensible sizes, with prices).
-  - **AWS:** the CLI's curated regions and sizes, checked against `DescribeInstanceTypeOfferings` when possible.
-- Cache it the way `GoogleServerCatalog` does.
+### 4. Cloud owns the provider catalog; the LaraKube CLI and Desktop pull it
+Decided 2026-11-28, as with app templates: Cloud is the source.
+- **Store:** a `provider_regions` / `provider_sizes` store in Cloud: id, label, vCPU, memory, monthly price as given by the provider (never invented; else a pricing link), available regions.
+- **Refresh:** a scheduled job, daily, with Cloud's own read-only provider tokens (DigitalOcean and Hetzner need one to list sizes; AWS uses its public price list). Cloud holds the curated set (which sizes and regions to offer); seed it from today's `CloudProvider::vpsSizes()` / `regions()` once, then Cloud owns it.
+- **Public endpoint:** `GET /api/v1/providers/{provider}/catalog`, cached, unauthenticated (public data), signed like app releases.
+- **Cloud's own form** reads the store, so it loads instantly.
+- **LaraKube CLI: no built-in list (decided by the user).** `cloud:providers` downloads the catalog from Cloud and caches it. Without Cloud it uses the last downloaded copy; with no copy at all it says so plainly and asks the user to connect once. Remove `CloudProvider::regions()`, `vpsSizes()`, `managedSizes()` and their defaults, and the live `aws`/`gcloud`/DO/Hetzner discovery in `cloud:providers`; defaults (recommended region and size) come from the catalog too. Desktop gets it through the CLI unchanged.
+- Record as an ADR (Cloud is the source for provider catalogs).
 
 ### 5. Cloud: create and destroy
 - `OperationLauncher::inputs()` maps provider to arguments and environment:
@@ -93,6 +103,15 @@ Cloud can create a server only in Google Cloud. Desktop creates them on DigitalO
 3. **Plain servers (VPS) only for now**; no managed Kubernetes in Cloud yet.
 4. **Reuse what the LaraKube CLI and Desktop already have**; anything incompatible is reported, not worked around.
 
+## Phase 1 done (2026-11-28, branch `feat/cloud-server-providers`)
+- **Done:** SSH hand-over for DO/Hetzner/AWS (script over SSH, `HandsOverCloudServer` trait shared by `cloud:create` and `cloud:init`), separate state-storage keys, `cloud:init` taking `--authorized-key`, `--cloud-installer-*` and `--dns-provider`/`--dns-tls-group`, and the in-cluster `cloud:ssh-keys:sync --kubeconfig`.
+- **Follow-ups:**
+  - Cloud must pass `--admin-email` to `cloud:init`; it is required when non-interactive.
+  - `provisionK3sNode()` creates the `larakube` user only when the first SSH user is `root`. An existing server reached as `ubuntu` or `debian` needs it created too.
+  - The state-storage key, when set, is written into the generated `backend.tf` (OpenTofu also keeps backend settings under `.terraform/`). This is fine in Cloud's throwaway runner pods; Desktop never sets it.
+
 ## Found while specifying phase 1
+- **SSH access changes after creation were never wired in Cloud, Google included.** `OperationType::GrantSsh`/`RevokeSsh` exist but `OperationLauncher` has no branch for them, so keys are set only at creation. New step: the in-cluster `cloud:ssh-keys:sync` for every provider, and Cloud's grant/revoke wiring.
+- **The key sync is not a new threat:** it uses the installer access Cloud already holds (`cluster-admin`). The Job (`CloudSshKeysSyncCommand::syncManifest()`) mounts only `/home/larakube/.ssh`; is not privileged and cannot escalate; drops every capability except CHOWN, DAC_OVERRIDE and FOWNER (the larakube user has no fixed UID, so it hands the file to whoever owns that directory); uses `busybox:1.38.0` pinned by digest with a read-only filesystem; mounts no service account token; expires itself; and receives the keys as a ConfigMap, never as shell.
 - For DO, Hetzner and AWS the SSH hand-over cannot go through tofu the way Google's does (changing the key there rebuilds the server). It runs as a script over SSH that writes the approved keys itself, then the same check that the provisioning key is locked out.
 - `cloud:init` is `app/Commands/Cloud/CloudProvisionCommand.php`. It has none of `--authorized-key`, `--cloud-installer-*` or `--dns-provider` yet.

@@ -1,5 +1,7 @@
 # Architectural Plan: Cloud Multi-Account Switcher & API-Driven Catalog
 
+> **Phase 2 superseded (2026-11-28):** provider regions, sizes and prices come only from LaraKube Cloud's catalog, downloaded and cached by the CLI; no live provider lookups and no built-in lists in the CLI. See `cloud-server-providers.md`, phase 4. Phase 1 (multi-account) stands.
+
 ## Goal Description
 Professional developers and agencies frequently manage multiple cloud accounts across clients and environments (e.g., separate AWS profiles, different GCP organization projects, or dedicated DigitalOcean/Hetzner API tokens). Currently, LaraKube only supports a single active credential per provider on Desktop, while AWS/GCP regions, machine sizes, and prices are largely hardcoded as static constants in the source code rather than driven by dynamic provider APIs.
 
